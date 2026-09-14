@@ -1,0 +1,72 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      # The pnpm version comes from `packageManager` in package.json.
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Lint and format
+        run: pnpm lint
+
+      - name: Spell check
+        run: pnpm spell
+
+      - name: Types
+        run: pnpm typecheck
+
+      # The hook bundle is committed because the plugin runs it directly, so a rebuild must
+      # reproduce it byte for byte.
+      - name: Build and compare the committed hook bundle
+        run: |
+          pnpm build
+          git diff --exit-code -- plugin/scripts/guard-hook.mjs
+
+      - name: Tests
+        run: pnpm test
+
+  # Packs the tarball, checks its contents, then installs it in an empty directory and runs it.
+  package:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      - name: Pack
+        run: |
+          mkdir -p /tmp/pack
+          pnpm pack --pack-destination /tmp/pack
+
+      - name: Check tarball contents
+        run: |
+          v=$(node -p "require('./package.json').version")
+          python3 scripts/check-tarball.py /tmp/pack/*.tgz \
+            --package @agenttrail/guard --version "$v"
+
+      - name: Install and run the tarball
+        run: bash scripts/smoke-test.sh /tmp/pack/*.tgz

@@ -1,0 +1,13 @@
+{
+  "name": "agenttrail-guard",
+  "owner": {
+    "name": "agenttrail"
+  },
+  "plugins": [
+    {
+      "name": "agenttrail-guard",
+      "source": "./",
+      "description": "Local guardrails for Claude Code: allow, ask, or block a tool call before it runs."
+    }
+  ]
+}

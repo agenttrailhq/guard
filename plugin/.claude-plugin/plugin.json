@@ -1,0 +1,8 @@
+{
+  "name": "agenttrail-guard",
+  "version": "0.1.0",
+  "description": "Local guardrails for Claude Code: allow, ask, or block a tool call before it runs. No account, no server. The only network call is opt-in crash reporting, off by default.",
+  "author": {
+    "name": "agenttrail"
+  }
+}

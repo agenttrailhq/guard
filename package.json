@@ -1,0 +1,52 @@
+{
+  "name": "@agenttrail/guard",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Free, local guard for Claude Code: a PreToolUse hook that allows, asks, or blocks a tool call against a curated guardrail library. No account, no server. The only network call is crash reporting, which is off unless you turn it on and sends stack traces only.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/agenttrailhq/guard.git"
+  },
+  "homepage": "https://github.com/agenttrailhq/guard#readme",
+  "bugs": {
+    "url": "https://github.com/agenttrailhq/guard/issues"
+  },
+  "license": "Apache-2.0",
+  "packageManager": "pnpm@11.5.2",
+  "publishConfig": {
+    "access": "public"
+  },
+  "bin": {
+    "agenttrail-guard": "./dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "plugin",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsup",
+    "lint": "biome check .",
+    "prepack": "tsup",
+    "spell": "cspell --no-progress .",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@agenttrail/guardrails": "0.0.2",
+    "@biomejs/biome": "2.4.15",
+    "@types/node": "^25.9.1",
+    "@types/picomatch": "^3.0.1",
+    "cspell": "^8.19.4",
+    "picomatch": "4.0.4",
+    "tsup": "^8.3.5",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.7",
+    "zod": "^3.25.17"
+  }
+}

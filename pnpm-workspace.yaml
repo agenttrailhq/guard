@@ -1,0 +1,7 @@
+# esbuild's postinstall is not needed: its binary comes from the platform optional dependency.
+allowBuilds:
+  esbuild: false
+
+# The pinned guardrails release is newer than pnpm's minimum release age.
+minimumReleaseAgeExclude:
+  - "@agenttrail/guardrails@0.0.2"
