@@ -1,6 +1,6 @@
 {
   "name": "@agenttrail/guard",
-  "version": "0.1.0-rc.1",
+  "version": "0.1.0",
   "type": "module",
   "description": "Free, local guard for Claude Code: a PreToolUse hook that allows, asks, or blocks a tool call against a curated guardrail library. No account, no server. The only network call is crash reporting, which is off unless you turn it on and sends stack traces only.",
   "repository": {
