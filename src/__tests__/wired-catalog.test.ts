@@ -46,9 +46,11 @@ function harness(stdin: string): { io: GuardIO; written: string[] } {
   };
 }
 
+/** The permission decision on stdout, or `none` when the hook gave none. */
 function decisionOf(written: string[]): string {
-  expect(written).toHaveLength(1);
-  return JSON.parse(written[0] as string).hookSpecificOutput.permissionDecision;
+  expect(written.length).toBeLessThanOrEqual(1);
+  if (written.length === 0) return "none";
+  return JSON.parse(written[0] as string).hookSpecificOutput?.permissionDecision ?? "none";
 }
 
 async function decide(command: string): Promise<string> {
@@ -112,16 +114,16 @@ describe("the hook enforces it with no catalog injected", () => {
     expect(await decide("helm uninstall api")).toBe("ask");
   });
 
-  it("allows `rm -rf ./node_modules`", async () => {
+  it("gives no decision on `rm -rf ./node_modules`", async () => {
     // The negative control. Without it every assertion above would pass for a
     // catalog that denied everything — the fail-DANGEROUS shape this package has
     // shipped once before and must not repeat.
-    expect(await decide("rm -rf ./node_modules")).toBe("allow");
+    expect(await decide("rm -rf ./node_modules")).toBe("none");
   });
 
-  it("allows `pnpm test`, `git status` and `ls -la`", async () => {
+  it("gives no decision on `pnpm test`, `git status` and `ls -la`", async () => {
     for (const command of ["pnpm test", "git status", "ls -la", "pnpm install"]) {
-      expect(await decide(command), command).toBe("allow");
+      expect(await decide(command), command).toBe("none");
     }
   });
 });

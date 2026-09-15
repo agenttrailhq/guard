@@ -4,6 +4,8 @@ export default defineProject({
   test: {
     name: "guard",
     include: ["src/**/*.test.ts", "src/__tests__/**/*.test.ts"],
+    // Every test file runs with HOME pointed at a temporary directory; see the file.
+    setupFiles: ["src/__tests__/setup-home.ts"],
     passWithNoTests: false,
     // The built-artifact suites shell out to tsup; give them room.
     testTimeout: 120_000,

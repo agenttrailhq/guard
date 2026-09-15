@@ -19,7 +19,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { runHook } from "../commands/hook.js";
+import { NOT_CHECKED_MESSAGE, runHook } from "../commands/hook.js";
 import { captureCrash, resetCaptureGuardForTests } from "../core/crash-capture.js";
 import { readSpool } from "../core/crash-store.js";
 import { createRealIO, type GuardIO } from "../io.js";
@@ -109,20 +109,19 @@ describe("capture cannot change what Claude Code sees", () => {
     expect(await decisionOf({ captureCrash: throwing })).toBe("deny");
   });
 
-  it("a crash on the parse path still emits allow, and captures", async () => {
+  it("a crash on the parse path gives no decision, says so, and captures", async () => {
     const bad: GuardIO = { ...io, readStdin: async () => "not json" };
     const captured: unknown[] = [];
     out = [];
     await runHook(bad, { captureCrash: (e) => void captured.push(e) });
-    expect(JSON.parse(out.join("")).hookSpecificOutput.permissionDecision).toBe("allow");
+    expect(JSON.parse(out.join(""))).toEqual({ systemMessage: NOT_CHECKED_MESSAGE });
     expect(captured).toHaveLength(1);
     expect(captured[0]).toBeInstanceOf(Error);
   });
 
-  it("a capture sink that throws ON the error path still emits allow exactly once", async () => {
+  it("a capture sink that throws ON the error path still emits one message", async () => {
     // The ordering that matters: emit first, capture last. If capture ran before
-    // the emit, a throw here would produce NO output and Claude Code would treat
-    // the empty stdout as plain text and run the tool.
+    // the emit, a throw here would lose the message that the call was not checked.
     const bad: GuardIO = { ...io, readStdin: async () => "not json" };
     out = [];
     await runHook(bad, {
@@ -131,7 +130,7 @@ describe("capture cannot change what Claude Code sees", () => {
       },
     });
     const text = out.join("");
-    expect(JSON.parse(text).hookSpecificOutput.permissionDecision).toBe("allow");
+    expect(JSON.parse(text)).toEqual({ systemMessage: NOT_CHECKED_MESSAGE });
     expect(out).toHaveLength(1);
   });
 
@@ -139,6 +138,6 @@ describe("capture cannot change what Claude Code sees", () => {
     const bad: GuardIO = { ...io, readStdin: async () => "not json" };
     out = [];
     await runHook(bad);
-    expect(JSON.parse(out.join("")).hookSpecificOutput.permissionDecision).toBe("allow");
+    expect(JSON.parse(out.join(""))).toEqual({ systemMessage: NOT_CHECKED_MESSAGE });
   });
 });

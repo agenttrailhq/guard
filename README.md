@@ -201,11 +201,15 @@ build if it stops holding:
    signal and overrides the JSON decision, including `allow`. The hook bundle
    contains no `process.exit` at all, so this is structural rather than a pattern
    someone remembered to grep for.
-2. **It writes exactly one JSON object to stdout and nothing else.** Output that
+2. **It writes at most one JSON object to stdout and nothing else**: exactly one JSON object
+   when it blocks, asks or warns, and no output when nothing matches. Output that
    does not start `{` and end `}` is discarded as plain text and the tool call
    proceeds. One stray log line would make the guard decorative.
-3. **It fails open.** Any parse error, missing config, malformed guardrail, or internal
-   throw emits `allow`. If our code has a bug, your command still runs.
+3. **It fails open, and never answers `allow`.** A PreToolUse `allow` skips Claude
+   Code's own permission prompt, so the guard leaves every call it does not block or
+   hold to Claude Code's normal permission flow. A parse error or internal throw gives
+   no decision, only a message that the call was not checked. If our code has a bug,
+   your command goes through Claude Code's normal permission flow.
 
 ## Files it keeps
 

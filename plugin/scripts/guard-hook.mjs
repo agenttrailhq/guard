@@ -4134,6 +4134,9 @@ function parseConfig(text) {
 
 // src/core/emit.ts
 function buildHookOutput(decision, reason) {
+  if (decision === "allow") {
+    return reason === "" ? "" : JSON.stringify({ systemMessage: reason });
+  }
   return JSON.stringify({
     hookSpecificOutput: {
       hookEventName: "PreToolUse",
@@ -4148,7 +4151,8 @@ function createEmitter(stdout) {
     emit(decision, reason) {
       if (done) return;
       done = true;
-      stdout.write(buildHookOutput(decision, reason));
+      const text = buildHookOutput(decision, reason);
+      if (text !== "") stdout.write(text);
     },
     hasEmitted() {
       return done;
@@ -4940,6 +4944,7 @@ function parseUserRulesData(text) {
 }
 
 // src/commands/hook.ts
+var NOT_CHECKED_MESSAGE = "agenttrail-guard could not evaluate this action; it was not checked.";
 function parsePayload(input) {
   const parsed = JSON.parse(input);
   if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
@@ -4963,7 +4968,7 @@ async function runHook(io2, deps = {}) {
     } catch {
     }
   } catch (err) {
-    emitter.emit("allow", "agenttrail-guard could not evaluate this action; allowing.");
+    emitter.emit("allow", NOT_CHECKED_MESSAGE);
     try {
       deps.captureCrash?.(err);
     } catch {
@@ -5116,7 +5121,7 @@ function captureCrash(err, deps) {
 var scrubSecrets = scrubText;
 
 // src/core/version.ts
-var VERSION = "0.1.0";
+var VERSION = "0.1.0-rc.2";
 
 // src/io.ts
 import {

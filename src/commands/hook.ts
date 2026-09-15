@@ -2,20 +2,24 @@
 /**
  * `agenttrail-guard hook` — the runtime Claude Code invokes before every tool call.
  *
- * stdin JSON → map → normalize → evaluate → ONE JSON object → exit 0.
+ * stdin JSON → map → normalize → evaluate → at most ONE JSON object → exit 0.
  *
  * ── Fail-open is the whole contract ────────────────────────────
- * A bug in the guard must never stop the agent. So EVERY error path here emits `allow`
- * and returns normally: unreadable stdin, malformed JSON, a missing or corrupt config,
- * an uncompilable rule, an evaluator that throws, a recorder that throws. There is no
- * path that denies on error and no path that exits non-zero.
+ * A bug in the guard must never stop the agent. So EVERY error path here gives no
+ * decision and returns normally: unreadable stdin, malformed JSON, a missing or
+ * corrupt config, an uncompilable rule, an evaluator that throws, a recorder that
+ * throws. There is no path that denies on error and no path that exits non-zero.
+ *
+ * Failing open never means answering `allow`, which would also skip Claude Code's
+ * own permission prompt (see `core/emit.ts`). A call the guard could not evaluate
+ * gets a message saying so, and goes through Claude Code's normal permission flow.
  *
  * ── No internal watchdog, on purpose ─────────────────────────────────
  * Claude Code's default `timeout` for a command hook is 600s (`hooks.md:428`); we
  * set `"timeout": 10` in our own `plugin/hooks/hooks.json`. No watchdog is needed
  * because overrun already fails the way we want: "On PreToolUse … a timed-out
  * command hook lets the tool call continue" (`hooks.md:3186`). An overrunning guard
- * allows, which is the fail-open posture.
+ * gives no decision, which is the fail-open posture.
  *
  * That also makes compile-once (`rules.ts`) a requirement rather than an
  * optimization: nothing else keeps a 56-rule catalog inside a 10s budget.
@@ -33,6 +37,10 @@ import { compileCatalog } from "../core/rules.js";
 import type { GuardRule, PreToolUsePayload } from "../core/types.js";
 import { parseUserRulesData } from "../core/user-rules-data.js";
 import type { GuardIO } from "../io.js";
+
+/** Shown to the user when the guard could not evaluate a call. Names no content. */
+export const NOT_CHECKED_MESSAGE =
+  "agenttrail-guard could not evaluate this action; it was not checked.";
 
 /** Overrides for tests. Production passes nothing and gets the bundled catalog. */
 export interface HookDeps {
@@ -67,7 +75,7 @@ function parsePayload(input: string): PreToolUsePayload {
  * Run the hook.
  *
  * Always resolves, never rejects, and never touches `process.exitCode` — so the
- * process ends at 0 whatever happened. Writes exactly one JSON object to stdout.
+ * process ends at 0 whatever happened. Writes at most one JSON object to stdout.
  */
 export async function runHook(io: GuardIO, deps: HookDeps = {}): Promise<void> {
   const emitter = createEmitter({ write: (text) => io.writeStdout(text) });
@@ -113,9 +121,9 @@ export async function runHook(io: GuardIO, deps: HookDeps = {}): Promise<void> {
       /* a failed write is not a reason to block a developer's command */
     }
   } catch (err) {
-    // Unreadable stdin, malformed JSON, or any unforeseen throw. Allow, and say so
-    // in a reason that names no content.
-    emitter.emit("allow", "agenttrail-guard could not evaluate this action; allowing.");
+    // Unreadable stdin, malformed JSON, or any unforeseen throw. No decision, and a
+    // message that names no content.
+    emitter.emit("allow", NOT_CHECKED_MESSAGE);
 
     // Record it locally, AFTER the decision is already out. Best-effort and
     // strictly last: a throw from here cannot reach the emitter, cannot change the

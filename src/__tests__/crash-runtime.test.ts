@@ -110,12 +110,14 @@ describe("the hook bundle — the file Claude Code runs on every tool call", () 
     expect(r.status).toBe(0);
   });
 
-  it("still emits exactly one JSON object while crashing — fail-open holds", () => {
+  it("still emits one message and no decision while crashing — fail-open holds", () => {
     const r = runRecorded(HOOK_BUNDLE, [], inputs[0] as string, { fault: true });
     const trimmed = r.stdout.trim();
     expect(trimmed.startsWith("{")).toBe(true);
     expect(trimmed.endsWith("}")).toBe(true);
-    expect(JSON.parse(trimmed).hookSpecificOutput.permissionDecision).toBe("allow");
+    expect(JSON.parse(trimmed)).toEqual({
+      systemMessage: expect.stringContaining("could not evaluate this action"),
+    });
     expect(r.stderr).toBe("");
   });
 

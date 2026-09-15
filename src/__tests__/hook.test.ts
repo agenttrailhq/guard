@@ -5,12 +5,15 @@
  * A bug in the guard must never stop the agent.
  *
  * So this suite forces a failure at EVERY seam independently and asserts the same
- * three things each time: the decision is `allow`, exactly one JSON object reaches
- * stdout, and nothing touches the exit code.
+ * three things each time: Claude Code gets no permission decision, at most one JSON
+ * object reaches stdout, and nothing touches the exit code.
+ *
+ * "No decision" is the fail-open answer, never `allow`: an `allow` would also skip
+ * Claude Code's own permission prompt.
  */
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { runHook } from "../commands/hook.js";
+import { NOT_CHECKED_MESSAGE, runHook } from "../commands/hook.js";
 import type { GuardRule } from "../core/types.js";
 import type { GuardIO } from "../io.js";
 
@@ -46,16 +49,33 @@ function harness(overrides: Partial<GuardIO> = {}, stdin = "{}"): Harness {
   return { io, written };
 }
 
-function soleDecision(written: string[]): { decision: string; reason: string } {
-  expect(written).toHaveLength(1);
+interface Outcome {
+  decision: string;
+  reason: string;
+  message?: string;
+}
+
+/** What reached stdout: the permission decision (`none` when there is none) and any message. */
+function soleDecision(written: string[]): Outcome {
+  expect(written.length).toBeLessThanOrEqual(1);
+  if (written.length === 0) return { decision: "none", reason: "" };
   const text = written[0] as string;
   expect(text.startsWith("{")).toBe(true);
   expect(text.endsWith("}")).toBe(true);
   const parsed = JSON.parse(text);
+  expect(parsed.hookSpecificOutput?.permissionDecision).not.toBe("allow");
   return {
-    decision: parsed.hookSpecificOutput.permissionDecision,
-    reason: parsed.hookSpecificOutput.permissionDecisionReason,
+    decision: parsed.hookSpecificOutput?.permissionDecision ?? "none",
+    reason: parsed.hookSpecificOutput?.permissionDecisionReason ?? "",
+    message: parsed.systemMessage,
   };
+}
+
+/** The fail-open answer: no decision, and a message that the call was not checked. */
+function expectNotChecked(written: string[]): void {
+  const out = soleDecision(written);
+  expect(out.decision).toBe("none");
+  expect(out.message).toBe(NOT_CHECKED_MESSAGE);
 }
 
 const BLOCKING_RULE: GuardRule = {
@@ -68,6 +88,13 @@ const BLOCKING_RULE: GuardRule = {
   match: { any_of: [{ kind: "execute_tool", detail_contains: ["danger"] }] },
 };
 
+const WARNING_RULE: GuardRule = {
+  ...BLOCKING_RULE,
+  id: "t.warn",
+  defaultAction: "warn",
+  match: { any_of: [{ kind: "execute_tool", detail_contains: ["caution"] }] },
+};
+
 describe("the happy paths still work", () => {
   it("denies a matching call", async () => {
     const h = harness({}, JSON.stringify({ tool_name: "Bash", tool_input: { command: "danger" } }));
@@ -75,10 +102,21 @@ describe("the happy paths still work", () => {
     expect(soleDecision(h.written).decision).toBe("deny");
   });
 
-  it("allows a non-matching call", async () => {
+  it("writes nothing for a non-matching call, so Claude Code's own prompt applies", async () => {
     const h = harness({}, JSON.stringify({ tool_name: "Bash", tool_input: { command: "safe" } }));
     await runHook(h.io, { catalog: [BLOCKING_RULE] });
-    expect(soleDecision(h.written).decision).toBe("allow");
+    expect(h.written).toEqual([]);
+  });
+
+  it("a warn match is a message with no decision", async () => {
+    const h = harness(
+      {},
+      JSON.stringify({ tool_name: "Bash", tool_input: { command: "caution" } }),
+    );
+    await runHook(h.io, { catalog: [BLOCKING_RULE, WARNING_RULE] });
+    const out = soleDecision(h.written);
+    expect(out.decision).toBe("none");
+    expect(out.message).toBe("warning from guardrail: t.warn");
   });
 });
 
@@ -91,27 +129,27 @@ describe("fail-open: malformed stdin", () => {
     ["JSON null", "null"],
     ["a number", "42"],
     ["truncated object", '{"tool_name":'],
-  ])("%s → allow", async (_label, stdin) => {
+  ])("%s → no decision, and a message that it was not checked", async (_label, stdin) => {
     const h = harness({}, stdin);
     await runHook(h.io, { catalog: [BLOCKING_RULE] });
-    expect(soleDecision(h.written).decision).toBe("allow");
+    expectNotChecked(h.written);
   });
 });
 
 describe("fail-open: a throw at every seam", () => {
   const payload = JSON.stringify({ tool_name: "Bash", tool_input: { command: "danger" } });
 
-  it("readStdin throws → allow", async () => {
+  it("readStdin throws → not checked", async () => {
     const h = harness({
       readStdin: async () => {
         throw new Error("stdin exploded");
       },
     });
     await runHook(h.io, { catalog: [BLOCKING_RULE] });
-    expect(soleDecision(h.written).decision).toBe("allow");
+    expectNotChecked(h.written);
   });
 
-  it("readFile throws → allow (config is never load-bearing for availability)", async () => {
+  it("readFile throws → not checked (config is never load-bearing for availability)", async () => {
     const h = harness(
       {
         readFile: () => {
@@ -121,10 +159,10 @@ describe("fail-open: a throw at every seam", () => {
       payload,
     );
     await runHook(h.io, { catalog: [BLOCKING_RULE] });
-    expect(soleDecision(h.written).decision).toBe("allow");
+    expectNotChecked(h.written);
   });
 
-  it("homedir throws → allow", async () => {
+  it("homedir throws → not checked", async () => {
     const h = harness(
       {
         homedir: () => {
@@ -134,14 +172,14 @@ describe("fail-open: a throw at every seam", () => {
       payload,
     );
     await runHook(h.io, { catalog: [BLOCKING_RULE] });
-    expect(soleDecision(h.written).decision).toBe("allow");
+    expectNotChecked(h.written);
   });
 
-  it("a catalog of uncompilable guardrails → allow, not a crash", async () => {
+  it("a catalog of uncompilable guardrails → no output, not a crash", async () => {
     const broken = { ...BLOCKING_RULE, match: { any_of: [] } } as unknown as GuardRule;
     const h = harness({}, payload);
     await runHook(h.io, { catalog: [broken] });
-    expect(soleDecision(h.written).decision).toBe("allow");
+    expect(h.written).toEqual([]);
   });
 
   it("a recorder that throws does NOT change the already-emitted decision", async () => {
@@ -173,7 +211,7 @@ describe("the hook never touches the exit code", () => {
 
   it.each([
     ["a deny", JSON.stringify({ tool_name: "Bash", tool_input: { command: "danger" } })],
-    ["an allow", JSON.stringify({ tool_name: "Bash", tool_input: { command: "safe" } })],
+    ["no decision", JSON.stringify({ tool_name: "Bash", tool_input: { command: "safe" } })],
     ["a crash", "not json"],
   ])("%s leaves process.exitCode untouched", async (_l, stdin) => {
     const h = harness({}, stdin);
@@ -208,7 +246,7 @@ describe("the config is read from ~/.agenttrail/guard/config.json", () => {
       JSON.stringify({ tool_name: "Bash", tool_input: { command: "danger" } }),
     );
     await runHook(h.io, { catalog: [BLOCKING_RULE] });
-    expect(soleDecision(h.written).decision).toBe("allow");
+    expect(h.written).toEqual([]);
   });
 });
 
@@ -275,7 +313,7 @@ describe("the decision recorder is wired, and can never block a tool call", () =
       JSON.stringify({ tool_name: "Bash", tool_input: { command: "safe" } }),
     );
     await runHook(h.io, { catalog: [BLOCKING_RULE] });
-    expect(soleDecision(h.written).decision).toBe("allow");
+    expect(h.written).toEqual([]);
     expect(appended).toEqual([]);
   });
 });

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Installs a packed @agenttrail/guard tarball into an empty directory with an empty HOME and runs
-# it: the CLI prints its usage, and the hook bundle denies `rm -rf /` and allows `ls`.
+# it: the CLI prints its usage, the hook bundle denies `rm -rf /`, and it writes nothing for `ls`.
 #
 # Usage: bash scripts/smoke-test.sh <tarball>
 set -euo pipefail
@@ -24,23 +24,23 @@ echo "  ok  agenttrail-guard --help"
 
 hook=node_modules/@agenttrail/guard/plugin/scripts/guard-hook.mjs
 
-# Prints the permission decision the hook returns for a Bash command.
-decision() {
+# Prints what the hook writes to stdout for a Bash command.
+hook_output() {
   node -e 'process.stdout.write(JSON.stringify({ hook_event_name: "PreToolUse", tool_name: "Bash", tool_input: { command: process.argv[1] } }))' "$1" |
-    node "$hook" |
-    node -e 'const o = JSON.parse(require("fs").readFileSync(0, "utf8")); process.stdout.write(o.hookSpecificOutput.permissionDecision)'
+    node "$hook"
 }
 
-got="$(decision 'rm -rf /')"
+got="$(hook_output 'rm -rf /' | node -e 'const o = JSON.parse(require("fs").readFileSync(0, "utf8")); process.stdout.write(o.hookSpecificOutput?.permissionDecision ?? "none")')"
 if [ "$got" != "deny" ]; then
   echo "error: 'rm -rf /' returned $got, expected deny" >&2
   exit 1
 fi
 echo "  ok  rm -rf / -> deny"
 
-got="$(decision 'ls')"
-if [ "$got" != "allow" ]; then
-  echo "error: 'ls' returned $got, expected allow" >&2
+# No output leaves the call to Claude Code's own permission prompt; "allow" would skip that prompt.
+got="$(hook_output 'ls')"
+if [ -n "$got" ]; then
+  echo "error: 'ls' returned $got, expected no output" >&2
   exit 1
 fi
-echo "  ok  ls -> allow"
+echo "  ok  ls -> no output"

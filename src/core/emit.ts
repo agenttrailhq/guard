@@ -1,7 +1,7 @@
 /**
  * THE ONLY WRITER TO STDOUT ON THE HOOK PATH.
  *
- * ── Exactly one JSON object, and nothing else ────────────────────────────────
+ * ── At most one JSON object, and nothing else ────────────────────────────────
  * Claude Code decides whether stdout is an answer or noise by its first and last
  * character (`hooks.md:784-788`): starts `{` AND ends `}` → parsed as JSON;
  * anything else → treated as plain text, discarded as a non-blocking error, and
@@ -9,8 +9,21 @@
  * escape, and the guard is decorative while still looking installed.
  *
  * That is why this module is the single writer, why `color.ts` must never be
- * reachable from the hook path, and why `hook-contract.test.ts` asserts the built
- * bundle's stdout parses as exactly one object with nothing around it.
+ * reachable from the hook path, and why `built-artifact.test.ts` asserts the built
+ * bundle's stdout is empty or exactly one object with nothing around it.
+ *
+ * ── Never `allow` ────────────────────────────────────────────────────────────
+ * A PreToolUse `"allow"` skips Claude Code's own permission prompt (hooks reference,
+ * PreToolUse decision control). The guard only ever tightens a call, so it never
+ * answers `allow`:
+ *
+ *   deny, ask            → `hookSpecificOutput` with the decision and its reason
+ *   allow with a reason  → `{ "systemMessage": reason }` and no decision: a warn
+ *                          match, or a call the guard could not evaluate
+ *   allow with no reason → no output at all
+ *
+ * With no decision in its output, the call goes through Claude Code's normal
+ * permission flow, as if the guard were not installed.
  *
  * ── Always exit 0. Never exit 2. Structurally ────────────────────────────────
  * Exit 2 is Claude Code's blocking signal and OVERRIDES the JSON decision,
@@ -30,12 +43,15 @@
 import type { PermissionDecision } from "./types.js";
 
 /**
- * Build the `hookSpecificOutput` payload Claude Code parses on exit 0.
+ * Build what the hook writes for one decision: a JSON object, or `""` for no output.
  *
  * `emit.test.ts` pins the exact field names: a renamed field would make Claude Code
  * read the output as plain text and run the tool.
  */
 export function buildHookOutput(decision: PermissionDecision, reason: string): string {
+  if (decision === "allow") {
+    return reason === "" ? "" : JSON.stringify({ systemMessage: reason });
+  }
   return JSON.stringify({
     hookSpecificOutput: {
       hookEventName: "PreToolUse",
@@ -52,7 +68,8 @@ export interface StdoutSink {
 
 /**
  * Write the decision. Idempotent — the first call wins, so a late error path can
- * never append a second object and turn valid JSON into discarded plain text.
+ * never append a second object and turn valid JSON into discarded plain text. A
+ * first call that writes nothing still wins.
  */
 export function createEmitter(stdout: StdoutSink): {
   emit(decision: PermissionDecision, reason: string): void;
@@ -63,7 +80,8 @@ export function createEmitter(stdout: StdoutSink): {
     emit(decision, reason) {
       if (done) return;
       done = true;
-      stdout.write(buildHookOutput(decision, reason));
+      const text = buildHookOutput(decision, reason);
+      if (text !== "") stdout.write(text);
     },
     hasEmitted() {
       return done;

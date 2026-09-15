@@ -33,6 +33,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { beforeAll, describe, expect, it } from "vitest";
+import { NOT_CHECKED_MESSAGE } from "../commands/hook.js";
 import { silenceCommand } from "../commands/status.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -51,8 +52,15 @@ function runHook(input: string): { status: number | null; stdout: string; stderr
   return { status: r.status, stdout: r.stdout, stderr: r.stderr };
 }
 
+/** The permission decision on stdout, or `none` when there is none. */
 function decisionOf(stdout: string): string {
-  return JSON.parse(stdout).hookSpecificOutput.permissionDecision;
+  if (stdout === "") return "none";
+  return JSON.parse(stdout).hookSpecificOutput?.permissionDecision ?? "none";
+}
+
+/** The `systemMessage` on stdout, if any. */
+function messageOf(stdout: string): string | undefined {
+  return stdout === "" ? undefined : JSON.parse(stdout).systemMessage;
 }
 
 describe("the shipped bundles exist and are self-contained", () => {
@@ -111,19 +119,25 @@ describe("always exit 0, never exit 2 (structural, over the bundle)", () => {
   });
 });
 
-describe("exactly one JSON object on stdout, nothing else", () => {
-  const inputs = [
-    JSON.stringify({ tool_name: "Bash", tool_input: { command: "rm -rf /" } }),
-    JSON.stringify({ tool_name: "Bash", tool_input: { command: "ls" } }),
-    JSON.stringify({ tool_name: "Read", tool_input: { file_path: "/a/.env" } }),
-    JSON.stringify({ tool_name: "WebFetch", tool_input: { url: "http://x.test" } }),
-    "not json at all",
-    "",
-    "[]",
+describe("at most one JSON object on stdout, nothing else", () => {
+  // Each input with what it must produce: a decision, a message with no decision, or
+  // no output at all.
+  const cases: [string, "decision" | "message" | "none"][] = [
+    [JSON.stringify({ tool_name: "Bash", tool_input: { command: "rm -rf /" } }), "decision"],
+    [JSON.stringify({ tool_name: "Bash", tool_input: { command: "ls" } }), "none"],
+    [JSON.stringify({ tool_name: "Read", tool_input: { file_path: "/a/.env" } }), "message"],
+    [JSON.stringify({ tool_name: "WebFetch", tool_input: { url: "http://x.test" } }), "none"],
+    ["not json at all", "message"],
+    ["", "message"],
+    ["[]", "message"],
   ];
 
-  it.each(inputs)("stdout parses as ONE object for: %s", (input) => {
+  it.each(cases)("stdout for %s is: %s", (input, expected) => {
     const { stdout } = runHook(input);
+    if (expected === "none") {
+      expect(stdout).toBe("");
+      return;
+    }
     const trimmed = stdout.trim();
     expect(trimmed.startsWith("{")).toBe(true);
     expect(trimmed.endsWith("}")).toBe(true);
@@ -131,12 +145,24 @@ describe("exactly one JSON object on stdout, nothing else", () => {
     // Claude Code would treat the whole thing as plain text and run the tool.
     expect(() => JSON.parse(trimmed)).not.toThrow();
     expect(stdout).toBe(trimmed);
+    const parsed = JSON.parse(trimmed);
+    if (expected === "decision") {
+      expect(parsed).toHaveProperty("hookSpecificOutput.permissionDecision");
+    } else {
+      expect(parsed).toEqual({ systemMessage: expect.any(String) });
+    }
+  });
+
+  it("never answers allow, which would skip Claude Code's own permission prompt", () => {
+    for (const [input] of cases) {
+      expect(runHook(input).stdout).not.toContain('"permissionDecision":"allow"');
+    }
   });
 
   it("writes nothing to stderr", () => {
     // stderr from a hook that exits 0 goes to a debug log the user never sees
     // (`hooks.md:794`), so it is not a channel — it is just noise risk.
-    for (const input of inputs) {
+    for (const [input] of cases) {
       expect(runHook(input).stderr).toBe("");
     }
   });
@@ -149,11 +175,11 @@ describe("acceptance criteria, against the file Claude Code actually runs", () =
     expect(r.status).toBe(0);
   });
 
-  it("`rm -rf ./node_modules` → allow, exit 0", () => {
+  it("`rm -rf ./node_modules` → no output, exit 0", () => {
     const r = runHook(
       JSON.stringify({ tool_name: "Bash", tool_input: { command: "rm -rf ./node_modules" } }),
     );
-    expect(decisionOf(r.stdout)).toBe("allow");
+    expect(r.stdout).toBe("");
     expect(r.status).toBe(0);
   });
 
@@ -162,17 +188,18 @@ describe("acceptance criteria, against the file Claude Code actually runs", () =
     ["empty stdin", ""],
     ["array payload", "[]"],
     ["truncated json", '{"tool_name":'],
-  ])("%s → allow, exit 0 and never 2", (_l, input) => {
+  ])("%s → no decision, a not-checked message, exit 0 and never 2", (_l, input) => {
     const r = runHook(input);
-    expect(decisionOf(r.stdout)).toBe("allow");
+    expect(decisionOf(r.stdout)).toBe("none");
+    expect(messageOf(r.stdout)).toBe(NOT_CHECKED_MESSAGE);
     expect(r.status).toBe(0);
     expect(r.status).not.toBe(2);
   });
 
   it("a Windows-shaped path matches a forward-slash guardrail", () => {
-    // The probe needs a file rule whose action is not `allow`: `block-env-file-read` is
-    // `warn`, which folds into an ALLOW verdict, and asserting `allow` would pass whether
-    // or not separator normalization worked at all.
+    // The probe needs a file rule that produces a decision: `block-env-file-read` is
+    // `warn`, which produces none, and asserting "no decision" would pass whether or not
+    // separator normalization worked at all.
     //
     // `se.credential-file` is a file rule at `require_approval`, so the probe proves a
     // backslash path reaching a forward-slash glob, and fails if `normalizePathSeparators`
@@ -187,12 +214,12 @@ describe("acceptance criteria, against the file Claude Code actually runs", () =
     expect(r.status).toBe(0);
   });
 
-  it("NEGATIVE CONTROL — the same guardrail allows a path it should not match", () => {
+  it("NEGATIVE CONTROL — the same guardrail gives no decision on a path it should not match", () => {
     // Without this, the assertion above would also pass for a rule that asked on everything.
     const r = runHook(
       JSON.stringify({ tool_name: "Read", tool_input: { file_path: "C:\\project\\src\\main.ts" } }),
     );
-    expect(decisionOf(r.stdout)).toBe("allow");
+    expect(decisionOf(r.stdout)).toBe("none");
     expect(r.status).toBe(0);
   });
 
@@ -204,11 +231,11 @@ describe("acceptance criteria, against the file Claude Code actually runs", () =
     expect(r.status).toBe(0);
   });
 
-  it("a WebFetch call is allowed — v1 ships no website guardrails", () => {
+  it("a WebFetch call gets no decision — v1 ships no website guardrails", () => {
     const r = runHook(
       JSON.stringify({ tool_name: "WebFetch", tool_input: { url: "http://x.test/rm -rf /" } }),
     );
-    expect(decisionOf(r.stdout)).toBe("allow");
+    expect(decisionOf(r.stdout)).toBe("none");
     expect(r.status).toBe(0);
   });
 
@@ -239,7 +266,8 @@ describe("the CLI honours the same contract for `hook`", () => {
 
   it("a malformed payload through the CLI still exits 0", () => {
     const r = spawnSync("node", [CLI_BUNDLE, "hook"], { input: "garbage", encoding: "utf8" });
-    expect(decisionOf(r.stdout)).toBe("allow");
+    expect(decisionOf(r.stdout)).toBe("none");
+    expect(messageOf(r.stdout)).toBe(NOT_CHECKED_MESSAGE);
     expect(r.status).toBe(0);
   });
 
@@ -312,17 +340,17 @@ describe("a guardrail the user wrote actually enforces", () => {
     expect(r.status).toBe(0);
   });
 
-  it("NEGATIVE CONTROL: allows an unrelated command with the same guardrail installed", () => {
+  it("NEGATIVE CONTROL: does not stop an unrelated command with the same guardrail installed", () => {
     // Without this, the assertion above would pass for a rule that denied everything.
     const home = scratchHome();
     writeFileSync(join(home, ".agenttrail", "guard", "guardrails.json"), JSON.stringify([FRIDAY]));
-    expect(hookIn(home, "ls -la").decision).toBe("allow");
+    expect(hookIn(home, "ls -la").decision).toBe("none");
   });
 
-  it("NEGATIVE CONTROL: allows that same command when the guardrail is NOT installed", () => {
+  it("NEGATIVE CONTROL: does not stop that same command when the guardrail is NOT installed", () => {
     // Proves the deny above came from the user's rule and not from a shipped one.
     const home = scratchHome();
-    expect(hookIn(home, "./deploy.sh prod").decision).toBe("allow");
+    expect(hookIn(home, "./deploy.sh prod").decision).toBe("none");
   });
 
   it.each([
@@ -342,8 +370,8 @@ describe("a guardrail the user wrote actually enforces", () => {
         { id: "usr.unreadable", category: "prod-infra", defaultAction: "block", title: "t", match },
       ]),
     );
-    expect(hookIn(home, "echo hello").decision).toBe("allow");
-    expect(hookIn(home, "ls -la").decision).toBe("allow");
+    expect(hookIn(home, "echo hello").decision).toBe("none");
+    expect(hookIn(home, "ls -la").decision).toBe("none");
   });
 
   it("REGRESSION: the shipped catalog still enforces alongside a discarded user guardrail", () => {
@@ -420,7 +448,7 @@ describe("a guardrail the user wrote actually enforces", () => {
 
     expect(silence("require-approval-rm-rf", "rm -rf /var/tmp/scratch").status).toBe(0);
     // With both silenced, the shape is genuinely let through.
-    expect(hookIn(home, "rm -rf /var/tmp/scratch").decision).toBe("allow");
+    expect(hookIn(home, "rm -rf /var/tmp/scratch").decision).toBe("none");
 
     // ...and the same rules still deny a different one. Per-SHAPE, not per-rule.
     expect(hookIn(home, "rm -rf /etc").decision).toBe("deny");

@@ -1,5 +1,5 @@
 /**
- * The emitter: the exact wire shape Claude Code reads, and the one-object-only guarantee.
+ * The emitter: the exact wire shape Claude Code reads, and the at-most-one-object guarantee.
  * A renamed field would make Claude Code read the output as plain text and run the tool.
  */
 
@@ -18,8 +18,16 @@ describe("buildHookOutput — wire shape", () => {
     });
   });
 
+  it("an ask carries the same fields", () => {
+    const parsed = JSON.parse(buildHookOutput("ask", "approval required by guardrail: x"));
+    expect(parsed.hookSpecificOutput.permissionDecision).toBe("ask");
+    expect(parsed.hookSpecificOutput.permissionDecisionReason).toBe(
+      "approval required by guardrail: x",
+    );
+  });
+
   it("starts with { and ends with } — the whole parse contract", () => {
-    const out = buildHookOutput("allow", "");
+    const out = buildHookOutput("deny", "");
     expect(out.startsWith("{")).toBe(true);
     expect(out.endsWith("}")).toBe(true);
   });
@@ -32,12 +40,36 @@ describe("buildHookOutput — wire shape", () => {
   });
 });
 
-describe("createEmitter — exactly one object, ever", () => {
+describe("buildHookOutput — never allow", () => {
+  // A PreToolUse `allow` skips Claude Code's own permission prompt.
+  it("an allow with no reason is no output at all", () => {
+    expect(buildHookOutput("allow", "")).toBe("");
+  });
+
+  it("an allow with a reason is a systemMessage with no decision", () => {
+    const parsed = JSON.parse(buildHookOutput("allow", "warning from guardrail: x"));
+    expect(parsed).toEqual({ systemMessage: "warning from guardrail: x" });
+  });
+
+  it("no allow output carries a permission decision", () => {
+    for (const reason of ["", "warning from guardrail: x", 'a "quoted" reason']) {
+      expect(buildHookOutput("allow", reason)).not.toContain("permissionDecision");
+    }
+  });
+});
+
+describe("createEmitter — at most one object, ever", () => {
   it("writes one object", () => {
     const writes: string[] = [];
-    createEmitter({ write: (t) => writes.push(t) }).emit("allow", "");
+    createEmitter({ write: (t) => writes.push(t) }).emit("deny", "x");
     expect(writes).toHaveLength(1);
     expect(JSON.parse(writes[0] as string)).toHaveProperty("hookSpecificOutput");
+  });
+
+  it("writes nothing for an allow with no reason", () => {
+    const writes: string[] = [];
+    createEmitter({ write: (t) => writes.push(t) }).emit("allow", "");
+    expect(writes).toEqual([]);
   });
 
   it("is idempotent — a second emit is dropped, not appended", () => {
@@ -49,6 +81,14 @@ describe("createEmitter — exactly one object, ever", () => {
     emitter.emit("allow", "second");
     expect(writes).toHaveLength(1);
     expect(writes[0]).toContain("first");
+  });
+
+  it("the first call wins even when it wrote nothing", () => {
+    const writes: string[] = [];
+    const emitter = createEmitter({ write: (t) => writes.push(t) });
+    emitter.emit("allow", "");
+    emitter.emit("allow", "late message");
+    expect(writes).toEqual([]);
   });
 
   it("reports whether it has emitted", () => {

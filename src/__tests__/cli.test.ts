@@ -8,6 +8,7 @@
 
 import { describe, expect, it, vi } from "vitest";
 import { runCli, VERSION } from "../cli.js";
+import { NOT_CHECKED_MESSAGE } from "../commands/hook.js";
 import type { GuardIO } from "../io.js";
 
 function harness(stdin = "{}") {
@@ -48,14 +49,20 @@ describe("hook dispatch", () => {
   it("returns 0 even when the payload is garbage", async () => {
     const h = harness("not json");
     expect(await runCli(["hook"], h.io)).toBe(0);
-    expect(JSON.parse(h.out()).hookSpecificOutput.permissionDecision).toBe("allow");
+    expect(JSON.parse(h.out())).toEqual({ systemMessage: NOT_CHECKED_MESSAGE });
   });
 
   it("writes ONLY the decision object — no usage text, no banner", async () => {
-    const h = harness(JSON.stringify({ tool_name: "Bash", tool_input: { command: "ls" } }));
+    const h = harness(JSON.stringify({ tool_name: "Bash", tool_input: { command: "rm -rf /" } }));
     await runCli(["hook"], h.io);
     expect(h.written).toHaveLength(1);
     expect(() => JSON.parse(h.out())).not.toThrow();
+  });
+
+  it("writes nothing at all for a call no guardrail matches", async () => {
+    const h = harness(JSON.stringify({ tool_name: "Bash", tool_input: { command: "ls" } }));
+    await runCli(["hook"], h.io);
+    expect(h.written).toEqual([]);
   });
 
   it("still runs the hook when a stray flag follows it", async () => {
@@ -270,7 +277,16 @@ describe("runCli never calls process.exit", () => {
       throw new Error("process.exit was called");
     }) as never);
     for (const argv of [["hook"], ["--help"], ["init"], ["nonsense"]]) {
-      await runCli(argv, harness().io);
+      const h = harness();
+      // A fake SetupIO, so `init` runs no real `claude` command.
+      await runCli(argv, h.io, {
+        writeStdout: h.io.writeStdout,
+        readFile: () => undefined,
+        exists: () => true,
+        writeFileAtomic: () => {},
+        homedir: () => "/home/test",
+        runClaude: () => ({ code: 0, stdout: "[]", stderr: "" }),
+      });
     }
     expect(spy).not.toHaveBeenCalled();
     spy.mockRestore();
