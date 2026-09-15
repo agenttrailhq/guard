@@ -5121,7 +5121,7 @@ function captureCrash(err, deps) {
 var scrubSecrets = scrubText;
 
 // src/core/version.ts
-var VERSION = "0.1.0-rc.2";
+var VERSION = "0.1.0";
 
 // src/io.ts
 import {
