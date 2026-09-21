@@ -51,8 +51,9 @@ function redacted(kind: string, hint?: string): string {
 // ── Secrets ──────────────────────────────────────────────────────────────────
 
 /**
- * AWS access key id — `AKIA`/`ASIA`/`AGPA`… + 16 base32-ish chars. Safe hint =
- * last-4 of the *id* (not a secret value); a key id is a public-ish identifier.
+ * AWS access key id — `AKIA`/`ASIA`/`AGPA`… + 16 base32-ish chars. Fully redacted:
+ * the label carries NO part of the id, not even the last-4 — those four characters
+ * fingerprint the key, and a shared scan report should disclose nothing that identifies it.
  */
 const AWS_ACCESS_KEY_ID =
   /\b((?:AKIA|ABIA|ACCA|AGPA|AIDA|AIPA|ANPA|ANVA|AROA|ASCA|ASIA)[A-Z0-9]{16})\b/g;
@@ -91,11 +92,13 @@ const SLACK_TOKEN = /\bxox[baprs]-[A-Za-z0-9-]{10,255}\b/g;
 const BEARER_TOKEN = /\bBearer\s+([A-Za-z0-9._~+/-]{8,})=*/gi;
 
 /**
- * Credentialed connection string for common datastores. The whole `user:pass@`
- * userinfo is consumed; group 2 captures ONLY the host, for a non-sensitive
- * `host=<host>` hint. The password class allows `@` and `/` and the host is
- * anchored to the LAST `@` — otherwise `P@ssw0rd` leaks `ssw0rd` into the hint
- * and `pa/ss` misses entirely, persisting the full credential.
+ * Credentialed connection string for common datastores. The whole `user:pass@host`
+ * — credential AND host — is consumed and fully redacted; the label carries NO real
+ * host, because a real hostname fingerprints the environment a shared scan report is
+ * not meant to disclose. Group 2 still captures ONLY the host so the password class,
+ * which allows `@` and `/`, is anchored to the LAST `@` — otherwise `P@ssw0rd` leaks
+ * `ssw0rd` and `pa/ss` misses entirely, persisting the full credential — but the captured
+ * host is used only for that anchoring, never echoed into the placeholder.
  */
 const CONNECTION_STRING =
   /\b(postgres(?:ql)?|mysql|mongodb(?:\+srv)?|redis|rediss|amqp|amqps):\/\/[^\s/@:]+:[^\s]*@([^\s/:@]+)/gi;
@@ -170,7 +173,8 @@ const PATTERNS: readonly ScrubPattern[] = [
   {
     id: "aws-access-key-id",
     regex: AWS_ACCESS_KEY_ID,
-    placeholder: (g) => redacted("secret:aws", `…${g[1].slice(-4)}`),
+    // No hint: the last-4 of the id fingerprints the key, so nothing of it is disclosed.
+    placeholder: () => redacted("secret:aws"),
   },
   {
     id: "pem-private-key",
@@ -200,9 +204,9 @@ const PATTERNS: readonly ScrubPattern[] = [
   {
     id: "connection-string",
     regex: CONNECTION_STRING,
-    // Hint = host only (group 2). The host is not a secret; credentials
-    // (user:pass) are never captured, so none leak.
-    placeholder: (g) => redacted("secret:connection-string", `host=${g[2]}`),
+    // No hint: the host is captured (group 2) only to anchor the password class to the
+    // last `@`; it is a real hostname and is not echoed into the placeholder.
+    placeholder: () => redacted("secret:connection-string"),
   },
   {
     id: "basic-auth-url",

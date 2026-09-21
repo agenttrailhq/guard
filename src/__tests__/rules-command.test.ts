@@ -1,4 +1,4 @@
-// cspell:words frobnicate hardd hardx
+// cspell:words frobnicate hardd hardx exfiltraton
 /**
  * The nine `rules` subcommands, driven through a fake `SetupIO`.
  *
@@ -14,6 +14,7 @@
  * self-consistent and still wrong, and pinning the string would not notice.
  */
 
+import { PACKS } from "@agenttrail/guardrails";
 import { describe, expect, it } from "vitest";
 import { runRules } from "../commands/rules.js";
 import { silenceCommand } from "../commands/status.js";
@@ -68,6 +69,32 @@ const USER_RULE = {
   defaultAction: "block",
   title: "Confirm before deploying",
   match: { any_of: [{ kind: "execute_tool", label: "Bash", detail_contains: ["./deploy.sh"] }] },
+};
+
+/**
+ * A guardrail of the user's own, filed under a category that is not a library pack.
+ * `guardrails add` only accepts library packs, but `guardrails.json` is hand-editable and
+ * the hook loads any non-empty category — so this is a real shape to support.
+ */
+const USER_RULE_OWN_CATEGORY = {
+  id: "local.team-release-freeze",
+  category: "my-team",
+  severity: "medium",
+  defaultAction: "block",
+  title: "Release freeze",
+  match: { any_of: [{ kind: "execute_tool", label: "Bash", detail_contains: ["./release.sh"] }] },
+};
+
+/**
+ * A hand-edited guardrail the hook's structural loader admits (`any_of: [{}]` has a populated
+ * positive arm) but the strict validator rejects (the condition has no `kind`). The hook runs
+ * it, so its category is a real pack to the hook even though `guardrails list` cannot show it.
+ */
+const LOOSE_RULE = {
+  id: "local.loose",
+  category: "loose-team",
+  defaultAction: "block",
+  match: { any_of: [{}] },
 };
 
 /**
@@ -163,6 +190,16 @@ describe("guardrails allow", () => {
       await runRules(["allow", "block-env-file-read", "cat [REDACTED:secret:env]"], h.io),
     ).toBe(1);
     expect(h.writes).toEqual([]);
+  });
+
+  it("refuses a pattern that is one of the guardrail's own block fixtures", async () => {
+    // `git reset --hard` is a canonical dangerous example wt.reset-hard exists to stop.
+    // Allowlisting it would blind the guardrail to its own purpose.
+    const h = harness();
+    expect(await runRules(["allow", "wt.reset-hard", "git reset --hard"], h.io)).toBe(1);
+    expect(h.writes).toEqual([]);
+    expect(h.out()).toContain("refusing that pattern");
+    expect(h.out()).toContain("exists to stop");
   });
 
   it("refuses an unknown guardrail id — an entry naming nothing is dead weight", async () => {
@@ -297,24 +334,96 @@ describe("guardrails enable and disable", () => {
     expect(h.out()).toContain("Enabled wt.reset-hard");
   });
 
-  it("disables a whole pack", async () => {
+  it("disables a whole pack by recording it in disabledPacks, and nothing else", async () => {
     const h = harness();
     expect(await runRules(["disable", "working-tree"], h.io)).toBe(0);
-    expect(h.config().enabledPacks).not.toContain("working-tree");
+    expect(h.config().disabledPacks).toEqual(["working-tree"]);
+    expect(JSON.parse(h.raw(CONFIG) as string)).not.toHaveProperty("enabledPacks");
     expect(h.out()).toContain("Disabled pack working-tree");
   });
 
-  it("REFUSES to empty the pack list — an empty list means NO filter", async () => {
-    // The fail-open trap: `parsePacks` reads `[]` as "no filter", so emptying it would
-    // silently re-enable every rule the user just turned off.
+  it("re-enabling a pack removes it from disabledPacks", async () => {
+    const h = harness();
+    await runRules(["disable", "working-tree"], h.io);
+    await runRules(["disable", "exfiltration"], h.io);
+    expect(await runRules(["enable", "working-tree"], h.io)).toBe(0);
+    expect(h.config().disabledPacks).toEqual(["exfiltration"]);
+    expect(h.out()).toContain("Enabled pack working-tree");
+  });
+
+  it.each([
+    ["disable", "disabled"],
+    ["enable", "enabled"],
+  ])("a second %s of a pack is a stated no-op that writes nothing", async (verb, state) => {
+    const h = harness();
+    if (verb === "enable") await runRules(["disable", "working-tree"], h.io);
+    await runRules([verb, "working-tree"], h.io);
+    const before = h.writes.length;
+    expect(await runRules([verb, "working-tree"], h.io)).toBe(0);
+    expect(h.writes).toHaveLength(before);
+    expect(h.out()).toContain(`Pack working-tree was already ${state}. Nothing changed.`);
+  });
+
+  it("allows turning every library pack off, and says only your own guardrails remain", async () => {
+    // A list of what is OFF has no empty-list trap, so this is expressible and allowed —
+    // but it is said plainly, with the way back.
+    const packs = PACKS.slice(0, -1);
     const h = harness({
-      [CONFIG]: JSON.stringify({ version: 1, enabledPacks: ["working-tree"] }),
+      [CONFIG]: JSON.stringify({ version: 1, disabledPacks: packs }),
+      [RULES]: JSON.stringify([USER_RULE_OWN_CATEGORY]),
     });
-    expect(await runRules(["disable", "working-tree"], h.io)).toBe(1);
-    expect(h.writes).toEqual([]);
-    expect(h.out()).toContain("every guardrail would come back on");
-    // And it names the real way to turn the guard off.
-    expect(h.out()).toContain("uninstall");
+    expect(await runRules(["disable", PACKS[PACKS.length - 1] as string], h.io)).toBe(0);
+    expect(h.config().disabledPacks).toHaveLength(PACKS.length);
+    expect(h.out()).toContain(
+      "No library pack is on now — only your own guardrails are enforcing.",
+    );
+    expect(h.out()).toContain("guardrails reset --all");
+  });
+
+  it("does not warn about every pack being off while any library pack is still on", async () => {
+    const h = harness();
+    await runRules(["disable", "working-tree"], h.io);
+    expect(h.out()).not.toContain("No library pack is on now");
+  });
+
+  it("says the guard checks nothing when every library pack is off and you have no guardrails", async () => {
+    const h = harness({
+      [CONFIG]: JSON.stringify({ version: 1, disabledPacks: PACKS.slice(0, -1) }),
+    });
+    expect(await runRules(["disable", PACKS[PACKS.length - 1] as string], h.io)).toBe(0);
+    expect(h.out()).toContain("you have no guardrails of your own — the guard is checking nothing");
+  });
+
+  it("puts every-pack-off in the --json answer, where the sentence is not printed", async () => {
+    const h = harness({
+      [CONFIG]: JSON.stringify({ version: 1, disabledPacks: PACKS.slice(0, -1) }),
+    });
+    await runRules(["disable", PACKS[PACKS.length - 1] as string, "--json"], h.io);
+    expect(JSON.parse(h.out()).allLibraryPacksOff).toBe(true);
+  });
+
+  it("can turn back on a category only the hook's loader knows about", async () => {
+    // A hand-edited guardrail the hook loads but the stricter validator rejects. Its
+    // category is real to the hook, so the same word must be able to turn it back on.
+    const h = harness({
+      [CONFIG]: JSON.stringify({ version: 1, disabledPacks: ["loose-team"] }),
+      [RULES]: JSON.stringify([LOOSE_RULE]),
+    });
+    expect(await runRules(["enable", "loose-team"], h.io)).toBe(0);
+    expect(h.config().disabledPacks).toEqual([]);
+  });
+
+  it("can take a misspelled name back out of disabledPacks", async () => {
+    const h = harness({ [CONFIG]: JSON.stringify({ version: 1, disabledPacks: ["exfiltraton"] }) });
+    expect(await runRules(["enable", "exfiltraton"], h.io)).toBe(0);
+    expect(h.config().disabledPacks).toEqual([]);
+  });
+
+  it("switches off a category of your own guardrails by name", async () => {
+    const h = harness({ [RULES]: JSON.stringify([USER_RULE_OWN_CATEGORY]) });
+    expect(await runRules(["disable", "my-team"], h.io)).toBe(0);
+    expect(h.config().disabledPacks).toEqual(["my-team"]);
+    expect(h.out()).toContain("Disabled pack my-team (1 guardrail)");
   });
 
   it("tells a user their re-enabled guardrail is still off because its pack is", async () => {
@@ -323,7 +432,7 @@ describe("guardrails enable and disable", () => {
     const h = harness({
       [CONFIG]: JSON.stringify({
         version: 1,
-        enabledPacks: ["destructive-data"],
+        disabledPacks: ["working-tree"],
         disabledGuardrails: ["wt.reset-hard"],
       }),
     });
@@ -402,7 +511,7 @@ describe("guardrails add", () => {
     expect(h.out()).toContain("matches nothing");
   });
 
-  it("REJECTS a category that is not one of the eight packs", async () => {
+  it("REJECTS a category that is not one of the eleven packs", async () => {
     const h = harness({
       "/tmp/c.json": JSON.stringify({ ...USER_RULE, category: "made-up" }),
     });
@@ -474,10 +583,58 @@ describe("guardrails reset", () => {
     expect(config.guardrailActionOverrides).toEqual({});
     expect(config.allowlist).toEqual([]);
     expect(config.disabledGuardrails).toEqual([]);
-    expect(config.enabledPacks).toContain("working-tree");
+    expect(config.disabledPacks).toEqual([]);
+    expect(JSON.parse(h.raw(CONFIG) as string)).not.toHaveProperty("enabledPacks");
     // Asserted rather than assumed.
     expect(h.raw(RULES)).toBe(rulesText);
     expect(h.out()).toContain("were NOT touched");
+  });
+
+  it("--all keeps a guardrail of your own with its own category loading", async () => {
+    // Resetting used to rewrite the pack list to the library's packs, which silently
+    // dropped a user guardrail filed under a category of its own.
+    const h = harness({ [RULES]: JSON.stringify([USER_RULE_OWN_CATEGORY]) });
+    await runRules(["disable", "my-team"], h.io);
+    expect(await runRules(["reset", "--all"], h.io)).toBe(0);
+    expect(h.config().disabledPacks).toEqual([]);
+    const list = harness({ [CONFIG]: h.raw(CONFIG) as string, [RULES]: h.raw(RULES) as string });
+    await runRules(["list", "--json"], list.io);
+    const mine = JSON.parse(list.out()).guardrails.find(
+      (r: { id: string }) => r.id === USER_RULE_OWN_CATEGORY.id,
+    );
+    expect(mine.enabled).toBe(true);
+  });
+
+  it("--all does not count a misspelled disabledPacks entry as a pack coming back", async () => {
+    const h = harness({
+      [CONFIG]: JSON.stringify({ version: 1, disabledPacks: ["working-tree", "exfiltraton"] }),
+    });
+    expect(await runRules(["reset", "--all"], h.io)).toBe(0);
+    expect(h.out()).toContain("Re-enabled 1 pack — every pack is now on.");
+    expect(h.config().disabledPacks).toEqual([]);
+  });
+
+  it("--all clears a disabled category only the hook's loader knows about", async () => {
+    const h = harness({
+      [CONFIG]: JSON.stringify({ version: 1, disabledPacks: ["loose-team"] }),
+      [RULES]: JSON.stringify([LOOSE_RULE]),
+    });
+    expect(await runRules(["reset", "--all"], h.io)).toBe(0);
+    expect(h.config().disabledPacks).toEqual([]);
+    expect(h.out()).toContain("Re-enabled 1 pack — every pack is now on.");
+  });
+
+  it("--all removes an enabledPacks key an older release left, and says so", async () => {
+    const h = harness({
+      [CONFIG]: JSON.stringify({ version: 1, enabledPacks: ["working-tree"] }),
+    });
+    expect(await runRules(["reset", "--all"], h.io)).toBe(0);
+    expect(JSON.parse(h.raw(CONFIG) as string)).not.toHaveProperty("enabledPacks");
+    expect(h.out()).toContain("Removed `enabledPacks`");
+    // And the list that follows has nothing left to report about it.
+    const after = harness({ [CONFIG]: h.raw(CONFIG) as string });
+    await runRules(["list"], after.io);
+    expect(after.out()).not.toContain("PROBLEM in config.json");
   });
 
   it("says so when there is nothing to reset", async () => {
@@ -485,6 +642,18 @@ describe("guardrails reset", () => {
     expect(await runRules(["reset", "--all"], h.io)).toBe(0);
     expect(h.writes).toEqual([]);
     expect(h.out()).toContain("Nothing to reset");
+  });
+
+  it("states pack changes on their own line, separate from override/allowlist, and clears disabledPacks", async () => {
+    const h = harness();
+    await runRules(["disable", "working-tree"], h.io);
+    expect(await runRules(["reset", "--all"], h.io)).toBe(0);
+    expect(h.config().disabledPacks).toEqual([]);
+    // The override/allowlist reset and the pack re-enable are separate sentences.
+    expect(h.out()).toContain(
+      "Reset 0 action overrides, 0 allowlist entries, and 0 disabled guardrails.",
+    );
+    expect(h.out()).toContain("Re-enabled 1 pack — every pack is now on.");
   });
 
   it("needs a target", async () => {
@@ -553,6 +722,34 @@ describe("guardrails list", () => {
     await runRules(["list"], h.io);
     expect(h.out()).toContain("PROBLEM in config.json");
     expect(h.out()).toContain("require_approval");
+  });
+
+  it("names a misspelled pack in disabledPacks, but not a category of your own", async () => {
+    const h = harness({
+      [CONFIG]: JSON.stringify({ version: 1, disabledPacks: ["exfiltraton", "my-team"] }),
+      [RULES]: JSON.stringify([USER_RULE_OWN_CATEGORY]),
+    });
+    await runRules(["list"], h.io);
+    expect(h.out()).toContain("PROBLEM in config.json — disabledPacks.exfiltraton");
+    expect(h.out()).not.toContain("disabledPacks.my-team");
+  });
+
+  it("does not call a category the hook loads unknown, even when the validator rejects its rule", async () => {
+    const h = harness({
+      [CONFIG]: JSON.stringify({ version: 1, disabledPacks: ["loose-team"] }),
+      [RULES]: JSON.stringify([LOOSE_RULE]),
+    });
+    await runRules(["list"], h.io);
+    expect(h.out()).not.toContain("disabledPacks.loose-team");
+  });
+
+  it("marks every guardrail of a disabled pack as off because of its pack", async () => {
+    const h = harness({
+      [CONFIG]: JSON.stringify({ version: 1, disabledPacks: ["working-tree"] }),
+    });
+    await runRules(["list", "--pack", "working-tree"], h.io);
+    expect(h.out()).toMatch(/working-tree\s+\d+ guardrails · disabled/);
+    expect(h.out()).toContain("(pack disabled)");
   });
 
   it("warns about an installed `numeric` guardrail and states the mechanism", async () => {

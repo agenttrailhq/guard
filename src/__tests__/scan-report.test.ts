@@ -71,7 +71,11 @@ describe("counts", () => {
     const result = aggregateScan(corpusOf([], 0), CATALOG, NO_ALLOWLIST);
     expect(result.sessions).toBe(0);
     expect(result.toolCalls).toBe(0);
-    expect(result.tokens.turns).toBe(0);
+    // A corpus that names no agent is Claude Code's: tokens are counted, and there is no
+    // Cursor skipped list.
+    expect(result.agent).toBe("claude");
+    expect(result.tokens?.turns).toBe(0);
+    expect(result).not.toHaveProperty("skipped");
   });
 
   it("carries the quarantine and skipped-line tallies rather than hiding them", () => {
@@ -161,7 +165,6 @@ describe("findings", () => {
 
   it("a disabled guardrail does not appear, because compileCatalog dropped it", () => {
     const narrowed = compileCatalog(TEST_CATALOG, {
-      enabledPacks: undefined,
       guardrailActionOverrides: {},
       disabledGuardrails: ["t.rm-rf"],
     });
@@ -171,6 +174,21 @@ describe("findings", () => {
       NO_ALLOWLIST,
     );
     expect(result.findings).toEqual([]);
+  });
+
+  it("a disabled pack does not appear, and the other packs still do", () => {
+    const narrowed = compileCatalog(TEST_CATALOG, {
+      guardrailActionOverrides: {},
+      disabledPacks: ["destructive-data"],
+    });
+    const result = aggregateScan(
+      corpusOf([
+        session([turn([bash("rm -rf /tmp/x", "1"), bash("git checkout -- src/a.ts", "2")])]),
+      ]),
+      narrowed,
+      NO_ALLOWLIST,
+    );
+    expect(result.findings.map((f) => f.ruleId)).toEqual(["t.git-checkout"]);
   });
 });
 
@@ -324,6 +342,69 @@ describe("display text", () => {
 
   it("redactForReport is the composition, exported so it can be read in one place", () => {
     expect(redactForReport("cat /Users/priya/.env")).toBe("cat <path>");
+  });
+
+  it("an MCP payload is structurally redacted — values go, keys and shape stay", () => {
+    const payload = JSON.stringify({ team: "team-uuid", title: "prose", count: 7, force: true });
+    const text = displayTextOf({ tool: "mcp__tracker__create", args: { full_command: payload } });
+    expect(text).not.toContain("team-uuid");
+    expect(text).not.toContain("prose");
+    // keys and the non-identifying boolean survive; the numeric value does not.
+    expect(text).toContain("team");
+    expect(text).toContain("<value>");
+    expect(text).toContain("true");
+    expect(text).not.toMatch(/\b7\b/);
+  });
+
+  it("a shell command is NOT treated as an MCP payload", () => {
+    // The MCP path keys on the `mcp__` tool prefix, not on the text looking like JSON.
+    const text = displayTextOf({ tool: "Bash", args: { full_command: "rm -rf /tmp/x" } });
+    expect(text).toBe("rm -rf <path>");
+  });
+});
+
+/**
+ * An MCP tool call reaches the aggregator as a serialized JSON blob, and its values must
+ * be redacted before they land in `ScanResult` — the module's by-construction invariant,
+ * proven for the JSON channel the three command passes cannot reach.
+ */
+describe("no raw MCP payload value reaches ScanResult", () => {
+  const MCP_CATALOG = compileCatalog([
+    {
+      id: "t.mcp",
+      category: "prod-infra",
+      severity: "high",
+      defaultAction: "warn",
+      title: "An MCP create call",
+      description: "Matches the planted MCP call so its payload reaches the result.",
+      match: {
+        any_of: [
+          { kind: "execute_tool", label: "mcp__tracker__create", detail_contains: ["team"] },
+        ],
+      },
+    },
+  ]);
+
+  it("strips every value out of the payload, keeping only keys and shape", () => {
+    const input = {
+      team: "team-uuid-leak",
+      title: "prose-leak",
+      nested: { id: 4242, note: "note-leak" },
+    };
+    const result = aggregateScan(
+      corpusOf([session([turn([toolUse("mcp__tracker__create", input, "1")])])]),
+      MCP_CATALOG,
+      NO_ALLOWLIST,
+    );
+    const serialized = JSON.stringify(result);
+    for (const leak of ["team-uuid-leak", "prose-leak", "note-leak", "4242"]) {
+      expect(JSON.stringify(input), `"${leak}" was not in the input`).toContain(leak);
+      expect(serialized, `"${leak}" leaked into the result`).not.toContain(leak);
+    }
+    // The finding still reads: the redacted shape carries the keys and `<value>`.
+    const shape = result.findings[0]?.examples[0]?.text ?? "";
+    expect(shape).toContain("team");
+    expect(shape).toContain("<value>");
   });
 });
 

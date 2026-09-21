@@ -3,7 +3,7 @@
  *
  * Two defaults deserve their own attention, because they fail in OPPOSITE
  * directions and both are deliberate:
- *   - a broken `enabledPacks` means NO FILTER (every rule stays on), because a typo
+ *   - a broken `disabledPacks` is DISCARDED (every pack stays on), because a typo
  *     must never silently disable enforcement;
  *   - a broken `allowlist` entry is DISCARDED, because a malformed suppression must
  *     never silently switch a rule off.
@@ -37,30 +37,48 @@ describe("parseConfig — never throws, always usable", () => {
     const cfg = parseConfig(
       JSON.stringify({
         version: 1,
-        enabledPacks: ["working-tree"],
+        disabledPacks: ["file-scope"],
         guardrailActionOverrides: { "wt.reset-hard": "ask" },
         allowlist: [{ guardrail: "wt.checkout-discard", pattern: "git checkout -- ./generated/*" }],
         failOpen: true,
         crashReports: false,
       }),
     );
-    expect(cfg.enabledPacks).toEqual(["working-tree"]);
+    expect(cfg.disabledPacks).toEqual(["file-scope"]);
     expect(cfg.allowlist).toHaveLength(1);
   });
 });
 
-describe("enabledPacks fails toward ENFORCING", () => {
+describe("disabledPacks fails toward ENFORCING", () => {
   it.each([
-    ["not an array", '{"enabledPacks":"working-tree"}'],
-    ["empty array", '{"enabledPacks":[]}'],
-    ["array of non-strings", '{"enabledPacks":[1,2,3]}'],
+    ["not an array", '{"disabledPacks":"working-tree"}'],
+    ["an object", '{"disabledPacks":{"working-tree":true}}'],
+    ["array of non-strings", '{"disabledPacks":[1,2,3]}'],
     ["absent", "{}"],
-  ])("%s → undefined (no filter, every rule enabled)", (_l, text) => {
-    expect(parseConfig(text).enabledPacks).toBeUndefined();
+  ])("%s → nothing disabled (every pack enabled)", (_l, text) => {
+    expect(parseConfig(text).disabledPacks).toEqual([]);
   });
 
   it("keeps only the string entries from a mixed array", () => {
-    expect(parseConfig('{"enabledPacks":["a",2,"b"]}').enabledPacks).toEqual(["a", "b"]);
+    expect(parseConfig('{"disabledPacks":["a",2,"b"]}').disabledPacks).toEqual(["a", "b"]);
+  });
+});
+
+describe("enabledPacks, written by older releases, is not read", () => {
+  it.each([
+    ["a trimmed list", '{"enabledPacks":["working-tree"]}'],
+    ["an empty list", '{"enabledPacks":[]}'],
+    ["a full list", '{"enabledPacks":["working-tree","file-scope"]}'],
+  ])("%s disables nothing — every pack stays on", (_l, text) => {
+    // The safe direction: a pack a user once trimmed out of this list comes back on,
+    // rather than a pack shipped after their install staying off.
+    expect(parseConfig(text)).toEqual(parseConfig("{}"));
+  });
+
+  it("does not override a disabledPacks beside it", () => {
+    expect(
+      parseConfig('{"enabledPacks":["file-scope"],"disabledPacks":["file-scope"]}').disabledPacks,
+    ).toEqual(["file-scope"]);
   });
 });
 
@@ -98,16 +116,30 @@ describe("guardrailActionOverrides", () => {
 });
 
 describe("flags", () => {
-  it("failOpen defaults to true and only an explicit false turns it off", () => {
-    expect(parseConfig("{}").failOpen).toBe(true);
-    expect(parseConfig('{"failOpen":"no"}').failOpen).toBe(true);
-    expect(parseConfig('{"failOpen":false}').failOpen).toBe(false);
-  });
-
   it("crashReports is OFF unless explicitly true (opt-in)", () => {
     expect(parseConfig("{}").crashReports).toBe(false);
     expect(parseConfig('{"crashReports":"yes"}').crashReports).toBe(false);
     expect(parseConfig('{"crashReports":true}').crashReports).toBe(true);
+  });
+
+  it("disabledPacks defaults to [] and discards malformed entries", () => {
+    expect(parseConfig("{}").disabledPacks).toEqual([]);
+    expect(parseConfig('{"disabledPacks":"nope"}').disabledPacks).toEqual([]);
+    // Non-string and empty entries are dropped; the good ones survive (fail toward enforcing).
+    expect(parseConfig('{"disabledPacks":["file-scope",7,""]}').disabledPacks).toEqual([
+      "file-scope",
+    ]);
+  });
+});
+
+describe("the seed config records what is OFF, never what is on", () => {
+  it("writes an empty disabledPacks and no pack list", () => {
+    // A seed that listed the packs would freeze the install at today's library: a pack
+    // shipped later would be missing from the list, and so never load.
+    const seed = JSON.parse(serializeDefaultConfig());
+    expect(seed.disabledPacks).toEqual([]);
+    expect(seed).not.toHaveProperty("enabledPacks");
+    expect(parseConfig(serializeDefaultConfig()).disabledPacks).toEqual([]);
   });
 });
 
@@ -126,7 +158,7 @@ describe("disabledGuardrails — the per-rule off switch", () => {
   it("round-trips through the seed config and the parser", () => {
     // The writer and the reader must agree on the shape; `serializeDefaultConfig`
     // writes the key explicitly rather than omitting it, for the same reason
-    // `enabledPacks` is explicit: the file is meant to be hand-edited, and a user
+    // `disabledPacks` is explicit: the file is meant to be hand-edited, and a user
     // cannot turn off a rule using a key they cannot see.
     expect(parseConfig(serializeDefaultConfig()).disabledGuardrails).toEqual([]);
     expect(JSON.parse(serializeDefaultConfig())).toHaveProperty("disabledGuardrails");
@@ -189,7 +221,8 @@ describe("updateConfigText preserves what the parser does not understand", () =>
       }),
     );
     expect(next.version).toBe(1);
-    expect(next.enabledPacks).toEqual(JSON.parse(serializeDefaultConfig()).enabledPacks);
+    expect(next.disabledPacks).toEqual([]);
+    expect(next).not.toHaveProperty("enabledPacks");
   });
 
   it("ends with a newline and two-space indent, like the seeded file", () => {

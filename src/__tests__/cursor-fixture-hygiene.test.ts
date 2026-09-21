@@ -1,0 +1,197 @@
+/**
+ * The recorded Cursor payloads in `fixtures/cursor/` carry nothing that identifies a person
+ * or a machine.
+ *
+ * Cursor puts the user's home folder, account email, workspace folders and session ids on
+ * its hook payloads. Each fixture replaces them: paths under `/home/user/`, the email as
+ * `<redacted>`, and ids as `00000000-0000-4000-8000-…` placeholders. This suite fails on
+ * any that slipped through, and each pattern is first proven to fire on a leak.
+ *
+ * The session files under `projects/` are built from the key shapes of Cursor's session
+ * files, not from real sessions. They are checked the same way, and so are their folder
+ * names, since Cursor names a project folder after its path.
+ */
+
+import { readdirSync, readFileSync, statSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { describe, expect, it } from "vitest";
+
+const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), "fixtures", "cursor");
+const FILES = readdirSync(FIXTURES)
+  .filter((f) => f.endsWith(".json"))
+  .sort();
+
+/** Every file under `fixtures/cursor/`, by its path from there, sorted. */
+function filesUnder(dir: string, prefix = ""): string[] {
+  return readdirSync(dir)
+    .sort()
+    .flatMap((entry) => {
+      const path = prefix === "" ? entry : `${prefix}/${entry}`;
+      return statSync(join(dir, entry)).isDirectory() ? filesUnder(join(dir, entry), path) : [path];
+    });
+}
+
+const ALL_FILES = filesUnder(FIXTURES);
+
+/** The session files `scan --agent cursor` reads, in Cursor's folder layout. */
+const SESSION_FILES = ALL_FILES.filter((f) => f.endsWith(".jsonl"));
+
+/** A placeholder id. Removed before scanning, so any id left is a real one. */
+const PLACEHOLDER_ID = /00000000-0000-4000-8000-\d{12}/g;
+
+/** The text the patterns scan: a file with its placeholder ids removed. */
+function scanned(text: string): string {
+  return text.replace(PLACEHOLDER_ID, "<id>");
+}
+
+interface Leak {
+  readonly name: string;
+  readonly pattern: RegExp;
+  /** Text the pattern must match. Without it, a broken pattern would pass every fixture. */
+  readonly leaked: string;
+  /** The redacted form, which the pattern must not match. */
+  readonly redacted: string;
+}
+
+const LEAKS: readonly Leak[] = [
+  {
+    name: "a macOS home folder",
+    pattern: /\/Users\//,
+    leaked: '"/Users/someone/project"',
+    redacted: '"/home/user/project"',
+  },
+  {
+    name: "a Windows home folder",
+    pattern: /[A-Za-z]:(?:\\\\|\\|\/)Users(?:\\\\|\\|\/)/i,
+    leaked: String.raw`"C:\\Users\\someone\\project"`,
+    redacted: String.raw`"C:\\project"`,
+  },
+  {
+    name: "a home folder other than /home/user/",
+    pattern: /\/home\/(?!user\/)[^/"\s]+\//,
+    leaked: '"/home/someone/project"',
+    redacted: '"/home/user/project"',
+  },
+  {
+    name: "a home folder in a Cursor project folder name",
+    pattern: /Users-[^-/"\s]+-/,
+    leaked: '".cursor/projects/Users-someone-project/agent-transcripts"',
+    redacted: '".cursor/projects/home-user-project/agent-transcripts"',
+  },
+  {
+    name: "an email address",
+    pattern: /[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}/,
+    leaked: '"user_email": "someone@example.com"',
+    redacted: '"user_email": "<redacted>"',
+  },
+  {
+    name: "a session, generation or tool id",
+    pattern: /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i,
+    leaked: '"session_id": "3f2a9c1e-7b4d-4e8a-9c2f-1a2b3c4d5e6f"',
+    redacted: '"session_id": "00000000-0000-4000-8000-000000000001"',
+  },
+];
+
+/** A fixture, parsed. */
+function load(file: string): Record<string, unknown> {
+  return JSON.parse(readFileSync(join(FIXTURES, file), "utf8"));
+}
+
+describe("the fixtures exist, and each is one Cursor payload", () => {
+  it("there are fixtures to check — a scan over nothing proves nothing", () => {
+    expect(FILES.length).toBeGreaterThanOrEqual(10);
+  });
+
+  it.each(FILES)("%s is a payload object, not a recording wrapper", (file) => {
+    const payload = load(file);
+    expect(payload !== null && typeof payload === "object" && !Array.isArray(payload)).toBe(true);
+    expect(typeof payload.hook_event_name).toBe("string");
+    expect(typeof payload.cursor_version).toBe("string");
+    // A recording keeps the hook's environment and answer beside the payload. None of
+    // that is part of what Cursor sends, and the environment holds the user's paths.
+    for (const key of ["env", "response", "mode", "payload", "ts"]) {
+      expect(payload).not.toHaveProperty(key);
+    }
+  });
+});
+
+describe("the session-file fixtures exist, and each holds Cursor's record shapes", () => {
+  it("there are session files to check, in Cursor's folder layout", () => {
+    // A session's own file and a sub-agent's file, at least.
+    expect(SESSION_FILES.length).toBeGreaterThanOrEqual(2);
+    for (const file of SESSION_FILES) {
+      expect(file).toMatch(/^projects\/[^/]+\/agent-transcripts\/[^/]+\//);
+    }
+  });
+
+  it("every fixture file is a payload or a session file, so none escapes the checks", () => {
+    expect(ALL_FILES.filter((f) => !FILES.includes(f) && !f.endsWith(".jsonl"))).toEqual([]);
+  });
+
+  it.each(SESSION_FILES)("%s holds only the record shapes Cursor writes", (file) => {
+    const lines = readFileSync(join(FIXTURES, file), "utf8")
+      .split("\n")
+      .filter((line) => line.trim() !== "");
+    expect(lines.length).toBeGreaterThan(0);
+    for (const line of lines) {
+      const keys = Object.keys(JSON.parse(line)).sort();
+      expect([
+        ["message", "role"],
+        ["status", "type"],
+        ["error", "status", "type"],
+      ]).toContainEqual(keys);
+    }
+  });
+});
+
+describe("each pattern fires on a leak and not on its redacted form", () => {
+  it.each(LEAKS)("$name", ({ pattern, leaked, redacted }) => {
+    expect(pattern.test(scanned(leaked))).toBe(true);
+    expect(pattern.test(scanned(redacted))).toBe(false);
+  });
+});
+
+describe("no fixture carries a personal detail", () => {
+  it.each(FILES)("%s matches no leak pattern", (file) => {
+    const text = scanned(readFileSync(join(FIXTURES, file), "utf8"));
+    const hits = LEAKS.filter(({ pattern }) => pattern.test(text)).map(({ name }) => name);
+    expect(hits).toEqual([]);
+  });
+
+  it.each(ALL_FILES)("%s matches no leak pattern in its path or its text", (file) => {
+    const text = scanned(`${file}\n${readFileSync(join(FIXTURES, file), "utf8")}`);
+    const hits = LEAKS.filter(({ pattern }) => pattern.test(text)).map(({ name }) => name);
+    expect(hits).toEqual([]);
+  });
+
+  it.each(FILES)("%s holds the redacted value in every replaced field", (file) => {
+    const payload = load(file);
+    if ("user_email" in payload) expect(payload.user_email).toBe("<redacted>");
+
+    const roots = payload.workspace_roots;
+    expect(Array.isArray(roots)).toBe(true);
+    for (const root of roots as unknown[]) expect(root).toMatch(/^\/home\/user\//);
+
+    const input = payload.tool_input;
+    const workingDirectories = [
+      payload.cwd,
+      typeof input === "object" && input !== null ? (input as { cwd?: unknown }).cwd : undefined,
+    ];
+    for (const cwd of workingDirectories) {
+      if (cwd !== undefined) expect(cwd === "" || /^\/home\/user\//.test(String(cwd))).toBe(true);
+    }
+
+    const transcript = payload.transcript_path;
+    if (transcript !== null && transcript !== undefined) {
+      expect(transcript).toMatch(/^\/home\/user\//);
+    }
+
+    for (const key of ["conversation_id", "session_id", "generation_id", "tool_use_id"]) {
+      const value = payload[key];
+      if (typeof value === "string") {
+        expect(value.replace(PLACEHOLDER_ID, ""), `${file} ${key}`).not.toMatch(/[0-9a-f]{6,}/i);
+      }
+    }
+  });
+});

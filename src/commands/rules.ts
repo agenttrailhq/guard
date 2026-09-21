@@ -40,15 +40,18 @@ import { inspectConfig } from "../core/config-report.js";
 import { compileAllowlist, evaluateCall } from "../core/evaluate.js";
 import { buildGuardSpanContext } from "../core/normalize.js";
 import { guardDir } from "../core/paths.js";
+import { blockFixtureCommands } from "../core/rule-fixtures.js";
 import {
   bannedConstructWarning,
   buildRuleViews,
   displayAction,
+  packsOf,
   type RuleView,
 } from "../core/rule-view.js";
 import { compileCatalog } from "../core/rules.js";
 import type { GuardAction, GuardRule, MappedCall } from "../core/types.js";
 import { loadUserRules } from "../core/user-rules.js";
+import { parseUserRulesData } from "../core/user-rules-data.js";
 import type { SetupIO } from "../setup-io.js";
 
 // ── Arguments ───────────────────────────────────────────────────────────────
@@ -232,6 +235,17 @@ function configIsReadable(text: string | undefined): boolean {
   }
 }
 
+/** Whether `config.json` text carries a top-level `key`, read raw rather than parsed. */
+function hasKey(text: string | undefined, key: string): boolean {
+  if (text === undefined) return false;
+  try {
+    const raw: unknown = JSON.parse(text);
+    return raw !== null && typeof raw === "object" && !Array.isArray(raw) && key in raw;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Refuse to mutate a `config.json` we could not read.
  *
@@ -257,6 +271,18 @@ function viewsFor(files: Files, deps: RulesDeps): { views: RuleView[]; invalidCo
     views: buildRuleViews(deps.catalog ?? SHIPPED_CATALOG, user.valid, config),
     invalidCount: user.invalid.length,
   };
+}
+
+/**
+ * Every pack id a `disabledPacks` entry can name: the library's packs plus the categories of
+ * the user's own guardrails AS THE HOOK LOADS THEM. That is `parseUserRulesData`, not the
+ * stricter `loadUserRules`, so a guardrail the hook runs but the validator would not pass
+ * still counts — otherwise `list` would call a real category unknown, and `enable` and
+ * `reset --all` could not undo a disable the hook is honouring.
+ */
+function knownPacksFor(files: Files, deps: RulesDeps): string[] {
+  const rules = [...(deps.catalog ?? SHIPPED_CATALOG), ...parseUserRulesData(files.rulesText)];
+  return [...new Set(rules.map((r) => r.category))];
 }
 
 function findView(views: readonly RuleView[], id: string): RuleView | undefined {
@@ -416,7 +442,7 @@ function cmdList(io: SetupIO, flags: Flags, files: Files, deps: RulesDeps): numb
       `  ${invalidCount} of your own guardrails ${invalidCount === 1 ? "is" : "are"} invalid and NOT running — run \`agenttrail-guard status\` for the reasons.`,
     );
   }
-  for (const p of inspectConfig(files.configText, PACKS).problems) {
+  for (const p of inspectConfig(files.configText, knownPacksFor(files, deps)).problems) {
     r.say(`  PROBLEM in config.json — ${p.where}: ${p.reason}`);
   }
   return r.ok();
@@ -492,8 +518,14 @@ function cmdEnableDisable(
   const config = parseConfig(files.configText);
   const rule = findView(views, target);
   const packRules = views.filter((v) => v.rule.category === target);
+  // A pack is anything the hook would switch off by that name — and, for `enable`, anything
+  // already in `disabledPacks`, so a disable can always be undone by the same word.
+  const isPackTarget =
+    packRules.length > 0 ||
+    knownPacksFor(files, deps).includes(target) ||
+    (enable && config.disabledPacks.includes(target));
 
-  if (rule === undefined && packRules.length === 0) {
+  if (rule === undefined && !isPackTarget) {
     return r.fail(
       `no guardrail or pack named \`${target}\`.${
         suggest(views, target) !== undefined ? ` Did you mean \`${suggest(views, target)}\`?` : ""
@@ -511,8 +543,7 @@ function cmdEnableDisable(
     // reading the view would miss the pack half — which is precisely the case where
     // `guardrails enable <id>` succeeds and the rule still does not fire. Reporting success
     // there is the silent failure this whole surface exists to remove.
-    const packOff =
-      config.enabledPacks !== undefined && !config.enabledPacks.includes(rule.rule.category);
+    const packOff = config.disabledPacks.includes(rule.rule.category);
     if (enable ? !disabled.has(target) : disabled.has(target)) {
       // A no-op is stated. Silent success and silent no-op are indistinguishable.
       r.say(
@@ -544,36 +575,47 @@ function cmdEnableDisable(
     return r.ok({ changed: true, guardrail: target, enabled: enable });
   }
 
-  // A pack.
-  const current = config.enabledPacks ?? [...new Set(views.map((v) => v.rule.category))];
-  const has = current.includes(target);
-  if (enable ? has : !has) {
+  // A pack. `disabledPacks` is the only pack switch: every pack not named there is on.
+  const off = new Set(config.disabledPacks);
+  if (enable ? !off.has(target) : off.has(target)) {
     r.say(`Pack ${target} was already ${enable ? "enabled" : "disabled"}. Nothing changed.`);
     return r.ok({ changed: false, pack: target });
   }
-  const next = enable ? [...current, target] : current.filter((p) => p !== target);
-  if (next.length === 0) {
-    // The fail-open trap: `parsePacks` reads `[]` as "no filter", so emptying the list
-    // would silently re-enable everything the user just turned off. Refused here rather
-    // than by flipping that hook-path fail-safe, which is right for a MALFORMED list.
-    return r.fail(
-      `that would leave no packs enabled, and an empty pack list means NO filter — every guardrail would come back on. To stop the guard enforcing, run \`claude plugin disable\` or \`agenttrail-guard uninstall\` instead.`,
-    );
-  }
+  if (enable) off.delete(target);
+  else off.add(target);
+  const next = [...off];
   io.writeFileAtomic(
     files.configPath,
     updateConfigText(files.configText, (d) => {
-      d.enabledPacks = next;
+      d.disabledPacks = next;
     }),
   );
   const affected = packRules.length;
+  // Guardrails turned off one at a time stay off whichever way the pack moves, so they
+  // are not counted as switching.
+  const ruleOff = new Set(config.disabledGuardrails);
+  const switching = packRules.filter((v) => !ruleOff.has(v.rule.id)).length;
   const active = views.filter((v) => v.enabled).length;
   r.say(
     enable
-      ? `Enabled pack ${target} (${affected} guardrail${affected === 1 ? "" : "s"}). ${active + affected} guardrails active.`
-      : `Disabled pack ${target} (${affected} guardrail${affected === 1 ? "" : "s"}). ${active - affected} guardrails still active.`,
+      ? `Enabled pack ${target} (${affected} guardrail${affected === 1 ? "" : "s"}). ${active + switching} guardrails active.`
+      : `Disabled pack ${target} (${affected} guardrail${affected === 1 ? "" : "s"}). ${active - switching} guardrails still active.`,
   );
-  return r.ok({ changed: true, pack: target, enabled: enable });
+  // Allowed, because a list of what is OFF has no empty-list trap — but worth saying: with
+  // every library pack off, the guard checks only the user's own guardrails, if any.
+  const libraryPacks = packsOf(views.filter((v) => v.source === "library"));
+  const allLibraryPacksOff =
+    !enable && libraryPacks.length > 0 && libraryPacks.every((p) => off.has(p));
+  if (allLibraryPacksOff) {
+    const way =
+      "Turn one back on with `agenttrail-guard guardrails enable <pack>`, or all of them with `agenttrail-guard guardrails reset --all`.";
+    r.say(
+      parseUserRulesData(files.rulesText).length > 0
+        ? `No library pack is on now — only your own guardrails are enforcing. ${way}`
+        : `No library pack is on now, and you have no guardrails of your own — the guard is checking nothing. ${way}`,
+    );
+  }
+  return r.ok({ changed: true, pack: target, enabled: enable, allLibraryPacksOff });
 }
 
 function cmdSetAction(
@@ -646,7 +688,9 @@ function cmdAllow(
     return r.fail(unknownRule(views, id));
   }
 
-  const refusal = checkAllowPattern(pattern);
+  // Pass the rule's own block fixtures so a pattern that would blind the guardrail to a
+  // command it exists to stop is refused. A user rule has none, so this is `[]` there.
+  const refusal = checkAllowPattern(pattern, blockFixtureCommands(id));
   if (refusal !== undefined) {
     return r.fail(`refusing that pattern — ${refusal.reason}`, { kind: refusal.kind });
   }
@@ -693,11 +737,18 @@ function cmdReset(
     const overrides = Object.keys(config.guardrailActionOverrides).length;
     const allow = config.allowlist.length;
     const off = config.disabledGuardrails.length;
-    const packs = config.enabledPacks;
-    const packsRestored = packs === undefined ? 0 : PACKS.filter((p) => !packs.includes(p)).length;
-    if (overrides + allow + off + packsRestored === 0) {
+    // Every `disabledPacks` entry is cleared, whatever it names. Only the ones that exist — a
+    // library pack or a category of the user's own guardrails — are counted as a pack coming
+    // back; a misspelled entry disabled nothing, so clearing it restores nothing.
+    const disabledPacks = new Set(config.disabledPacks);
+    const known = new Set(knownPacksFor(files, deps));
+    const packsRestored = [...disabledPacks].filter((p) => known.has(p)).length;
+    // A key older releases wrote. It is not read, but `status` keeps reporting it until it
+    // goes, and "reset everything" should leave nothing to report.
+    const staleKey = hasKey(files.configText, "enabledPacks");
+    if (overrides + allow + off + disabledPacks.size === 0 && !staleKey) {
       r.say(
-        "Nothing to reset — no action overrides, no allowlist entries, no disabled guardrails.",
+        "Nothing to reset — no action overrides, no allowlist entries, no disabled guardrails, and every pack is on.",
       );
       return r.ok({ changed: false });
     }
@@ -707,11 +758,24 @@ function cmdReset(
         d.guardrailActionOverrides = {};
         d.allowlist = [];
         d.disabledGuardrails = [];
-        d.enabledPacks = [...PACKS];
+        d.disabledPacks = [];
+        delete d.enabledPacks;
       }),
     );
+    // Pack changes are stated on their OWN line, separate from the override/allowlist reset,
+    // so re-enabling protection is not buried in a housekeeping sentence.
     r.say(
-      `Reset ${overrides} action override${overrides === 1 ? "" : "s"}, ${allow} allowlist entr${allow === 1 ? "y" : "ies"}, ${off} disabled guardrail${off === 1 ? "" : "s"}, and re-enabled ${packsRestored} pack${packsRestored === 1 ? "" : "s"}.`,
+      `Reset ${overrides} action override${overrides === 1 ? "" : "s"}, ${allow} allowlist entr${allow === 1 ? "y" : "ies"}, and ${off} disabled guardrail${off === 1 ? "" : "s"}.`,
+    );
+    if (packsRestored > 0) {
+      r.say(
+        `Re-enabled ${packsRestored} pack${packsRestored === 1 ? "" : "s"} — every pack is now on.`,
+      );
+    }
+    if (staleKey) {
+      r.say("Removed `enabledPacks`, which older releases wrote and this one does not read.");
+    }
+    r.say(
       "Your own guardrails in guardrails.json were NOT touched — remove those with `guardrails remove`.",
     );
     return r.ok({ changed: true });
@@ -870,7 +934,7 @@ function validateUserRule(raw: unknown): { rule?: GuardRule; errors: string[] } 
 
   if (typeof rec.category !== "string" || rec.category.length === 0) {
     errors.push(
-      `\`category\` is required and must be one of the eight packs (${PACKS.join(", ")}) — it is what \`enabledPacks\` filters on, so a guardrail without one stops loading the moment a pack list is set.`,
+      `\`category\` is required and must be one of the ${PACKS.length} packs (${PACKS.join(", ")}) — it names the pack the guardrail belongs to, so \`guardrails disable <pack>\` turns it off with the rest of that pack, and the hook does not load a guardrail without one.`,
     );
   } else if (!isPack(rec.category)) {
     errors.push(

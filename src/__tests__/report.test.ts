@@ -1,3 +1,4 @@
+// cspell:words backticked hrefs noopener noreferrer
 /**
  * `core/report.ts` — a self-contained report, with no currency.
  *
@@ -8,13 +9,17 @@
  * silent failure the assertions exist to prevent.
  */
 
-import { CATALOG_VERSION } from "@agenttrail/guardrails/guardrails";
+import { CATALOG_PUBLISHED_AT, CATALOG_VERSION } from "@agenttrail/guardrails/guardrails";
 import { describe, expect, it } from "vitest";
 import { compileAllowlist } from "../core/evaluate.js";
 import {
+  ARTIFACT_FILENAME,
+  bySeverityThenCount,
   escapeHtml,
   MAX_EXAMPLES,
   MAX_ROWS,
+  matchTally,
+  PRODUCT_NOTE,
   REPORT_FILENAME,
   REPOSITORY_URL,
   type ReportMeta,
@@ -22,8 +27,20 @@ import {
   renderReport,
   reviewStrings,
 } from "../core/report.js";
+import {
+  DARK_TOKENS,
+  LIGHT_TOKENS,
+  LOGO_LOCKUP_SVG,
+  LOGO_MARK_SVG,
+  REPORT_STYLES,
+} from "../core/report-brand.js";
 import { compileCatalog } from "../core/rules.js";
-import { aggregateScan, type ScanCorpus, type ScanResult } from "../core/scan-report.js";
+import {
+  aggregateScan,
+  type ScanCorpus,
+  type ScanFinding,
+  type ScanResult,
+} from "../core/scan-report.js";
 import { bash, session, TEST_CATALOG, toolUse, turn } from "./scan-fixtures.js";
 
 const CATALOG = compileCatalog(TEST_CATALOG);
@@ -64,13 +81,36 @@ const POPULATED = resultOf({
 });
 
 const HTML = renderReport(POPULATED, META);
+const ARTIFACT = renderReport(POPULATED, META, { variant: "artifact" });
+const CURSOR = resultOf({ agent: "cursor" });
+const CURSOR_HTML = renderReport(CURSOR, META);
+const CURSOR_ARTIFACT = renderReport(CURSOR, META, { variant: "artifact" });
 
-describe("the report is self-contained — nothing outside the file is referenced", () => {
+/** Every form the file can take: both apps, both variants. */
+const RENDERINGS: readonly [string, string][] = [
+  ["a Claude Code document", HTML],
+  ["a Claude Code artifact", ARTIFACT],
+  ["a Cursor document", CURSOR_HTML],
+  ["a Cursor artifact", CURSOR_ARTIFACT],
+];
+
+/** Every `href` value in a page, in document order, whatever the quoting. */
+function hrefs(html: string): string[] {
+  return [...html.matchAll(/\shref\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/gi)].map(
+    (m) => m[1] ?? m[2] ?? m[3] ?? "",
+  );
+}
+
+/** Every http(s) URL in a page, in document order. */
+function urls(html: string): string[] {
+  return html.match(/https?:\/\/[^\s"'<>]+/g) ?? [];
+}
+
+describe("the report is self-contained — nothing outside the file is loaded", () => {
   const BANNED: readonly [string, RegExp, string][] = [
     ["a script tag", /<script/i, "<script>alert(1)</script>"],
     ["a src attribute", /\ssrc\s*=/i, `<img src="x.png">`],
     ["a link tag", /<link\b/i, `<link rel="stylesheet" href="x.css">`],
-    ["an href", /\shref\s*=/i, `<a href="https://example.com">x</a>`],
     ["a CSS import", /@import/i, `@import url("x.css");`],
     ["a CSS url()", /url\s*\(/i, `background: url(x.png);`],
     ["an iframe", /<iframe/i, `<iframe src="x"></iframe>`],
@@ -78,8 +118,15 @@ describe("the report is self-contained — nothing outside the file is reference
     ["a form", /<form\b/i, `<form action="https://x"></form>`],
   ];
 
-  it.each(BANNED)("contains no %s", (_label, pattern) => {
-    expect(HTML).not.toMatch(pattern);
+  describe.each(RENDERINGS)("%s", (_name, html) => {
+    it.each(BANNED)("contains no %s", (_label, pattern) => {
+      expect(html).not.toMatch(pattern);
+    });
+
+    it("carries its whole stylesheet inline", () => {
+      expect(html).toContain("<style>");
+      expect(html).toContain("prefers-color-scheme");
+    });
   });
 
   it.each(
@@ -88,12 +135,36 @@ describe("the report is self-contained — nothing outside the file is reference
     expect(violating).toMatch(pattern);
   });
 
-  it("contains no http(s) reference at all, not even in a comment", () => {
-    // The repository URL is the one URL in the file and it is deliberately TEXT. It is
-    // still a `https://` substring, so the assertion is scoped to "no URL other than
-    // that one" rather than "no URL", and the count is pinned so a second one shows up.
-    const urls = HTML.match(/https?:\/\/[^\s"'<>]+/g) ?? [];
-    expect(urls).toEqual([REPOSITORY_URL]);
+  it("a Claude Code report links exactly once, to the product note's address", () => {
+    // The href set is pinned, not pattern-matched: a second link — anywhere, to anything —
+    // turns this red rather than being waved through by an allow-list that was widened.
+    expect(hrefs(HTML)).toEqual([PRODUCT_NOTE.url]);
+    expect(hrefs(ARTIFACT)).toEqual([PRODUCT_NOTE.url]);
+  });
+
+  it("that link opens a new browsing context with no opener and no referrer", () => {
+    expect(HTML).toContain(
+      `<a class="button" href="${PRODUCT_NOTE.url}" target="_blank" rel="noopener noreferrer">`,
+    );
+  });
+
+  it("a Cursor report links nowhere", () => {
+    expect(hrefs(CURSOR_HTML)).toEqual([]);
+    expect(hrefs(CURSOR_ARTIFACT)).toEqual([]);
+  });
+
+  it("negative control — the href reader finds every quoting style", () => {
+    expect(hrefs(`<a href="x">a</a> <a href='y'>b</a> <a href=z>c</a>`)).toEqual(["x", "y", "z"]);
+  });
+
+  it("names no URL beyond the product note's and the repository's, not even in a comment", () => {
+    // The repository URL is deliberately TEXT; the product note's is its one link. Both are
+    // still `https://` substrings, so the assertion is "exactly these, in this order" —
+    // and a Cursor report carries only the repository's.
+    expect(urls(HTML)).toEqual([PRODUCT_NOTE.url, REPOSITORY_URL]);
+    expect(urls(ARTIFACT)).toEqual([PRODUCT_NOTE.url, REPOSITORY_URL]);
+    expect(urls(CURSOR_HTML)).toEqual([REPOSITORY_URL]);
+    expect(urls(CURSOR_ARTIFACT)).toEqual([REPOSITORY_URL]);
   });
 
   it("is a complete HTML document, not a fragment", () => {
@@ -101,10 +172,107 @@ describe("the report is self-contained — nothing outside the file is reference
     expect(HTML).toContain("<title>");
     expect(HTML.trimEnd().endsWith("</html>")).toBe(true);
   });
+});
 
-  it("carries its whole stylesheet inline", () => {
-    expect(HTML).toContain("<style>");
-    expect(HTML).toContain("prefers-color-scheme");
+describe("the artifact variant is page content, for a host that supplies the skeleton", () => {
+  it("starts with its own title and carries no document skeleton", () => {
+    for (const html of [ARTIFACT, CURSOR_ARTIFACT]) {
+      expect(html.startsWith("<title>")).toBe(true);
+      expect(html).not.toMatch(/<!doctype|<html\b|<head\b|<body\b/i);
+      expect(html).toContain("<style>");
+    }
+  });
+
+  it("closes its title inside the first 8KB, where a host looks for it", () => {
+    const end = ARTIFACT.indexOf("</title>");
+    expect(end).toBeGreaterThan(0);
+    expect(end).toBeLessThan(8192);
+  });
+
+  it("carries the same body as the standalone page, apart from who it speaks to", () => {
+    // The findings a publisher reviewed are the findings a viewer reads.
+    const body = (html: string): string =>
+      html
+        .slice(html.indexOf("<main"), html.indexOf("</main>"))
+        .replace(/<p class="provenance">[\s\S]*?<\/p>/, "")
+        .replace(/<p class="warning">[\s\S]*?<\/p>/, "");
+    expect(body(ARTIFACT)).toBe(body(HTML));
+    expect(body(ARTIFACT).length).toBeGreaterThan(2000);
+  });
+
+  it("says where it came from, instead of claiming nothing was uploaded", () => {
+    const provenance = (html: string): string =>
+      html.match(/<p class="provenance">([\s\S]*?)<\/p>/)?.[1] ?? "";
+    expect(provenance(ARTIFACT)).toContain("published to claude.ai by the person who ran it");
+    expect(provenance(ARTIFACT)).toContain("crash reporting is the one exception");
+    expect(provenance(ARTIFACT)).toContain("Claude Code transcripts");
+    expect(provenance(ARTIFACT)).not.toContain("nothing uploaded");
+    expect(provenance(HTML)).toContain("nothing uploaded");
+  });
+
+  it("keeps the review command, addressed to the person who published it", () => {
+    expect(ARTIFACT).toContain("<code>agenttrail-guard scan --agent claude --review</code>");
+    expect(ARTIFACT).toContain("the person who published it can check every line");
+  });
+});
+
+describe("one stylesheet serves both hosts and both themes", () => {
+  it("applies the dark palette by system preference unless a host pins light", () => {
+    expect(REPORT_STYLES).toMatch(
+      /@media \(prefers-color-scheme: dark\) \{\s*:root:not\(\[data-theme="light"\]\)/,
+    );
+  });
+
+  it("applies it again for an explicit dark choice", () => {
+    expect(REPORT_STYLES).toContain(':root[data-theme="dark"]');
+  });
+
+  it("paints the body itself and leaves the root's padding to the host", () => {
+    expect(REPORT_STYLES).toMatch(/body \{[^}]*background: var\(--bg\)/);
+    const rootRules = REPORT_STYLES.match(/:root[^{]*\{[^}]*\}/g) ?? [];
+    expect(rootRules.length).toBe(3);
+    for (const rule of rootRules) expect(rule).not.toMatch(/padding/);
+  });
+
+  it("loads no font and no resource", () => {
+    expect(REPORT_STYLES).not.toMatch(/@font-face|@import|url\s*\(/i);
+  });
+
+  it("defines the same tokens for both themes", () => {
+    expect(Object.keys(DARK_TOKENS).sort()).toEqual(Object.keys(LIGHT_TOKENS).sort());
+  });
+
+  it("carries none of the redaction canary's planted numbers", () => {
+    // `scan-redaction-canary.test.ts` asserts the report never contains them; a colour or
+    // a path coordinate that happened to would fail it for a reason nobody could find.
+    for (const fixed of [REPORT_STYLES, LOGO_LOCKUP_SVG, LOGO_MARK_SVG]) {
+      expect(fixed).not.toContain("3456");
+      expect(fixed).not.toContain("909042");
+    }
+  });
+});
+
+describe("the logo is drawn inline and references nothing", () => {
+  it.each([
+    ["the lockup", LOGO_LOCKUP_SVG],
+    ["the mark", LOGO_MARK_SVG],
+  ])("%s has no namespace URL, link, url(), image or title", (_label, svg) => {
+    expect(svg.startsWith("<svg")).toBe(true);
+    expect(svg).not.toMatch(/xmlns|href|url\s*\(|<use\b|<image\b|<title\b|<script|\son[a-z]+=/i);
+  });
+
+  it.each(RENDERINGS)("%s shows the lockup once, named for assistive technology", (_n, html) => {
+    expect(html.split('class="lockup"').length - 1).toBe(1);
+    expect(html).toContain('<div class="brand" role="img" aria-label="agenttrail">');
+  });
+});
+
+describe("no line of the file is long", () => {
+  // A reader that pages through a file by line — the one that reads a report before it is
+  // published — would otherwise see less than it publishes.
+  it.each(RENDERINGS)("%s", (_name, html) => {
+    const longest = Math.max(...html.split("\n").map((line) => line.length));
+    expect(longest).toBeLessThanOrEqual(1000);
   });
 });
 
@@ -216,21 +384,23 @@ describe("what the report says", () => {
     const html = renderReport(under, META);
     expect(html).toContain("Coverage limit");
     expect(html).toContain("751 further transcript files");
-    expect(html).toContain("does not descend into a session");
+    // The reader DOES descend into sub-agent transcripts, so the note says so.
+    expect(html).toContain("the sub-agent transcripts in its");
   });
 
   it("the coverage note DENIES the alarming reading rather than inviting it", () => {
     // "Sessions filed deeper are outside these numbers" would tell a reader they are
-    // missing most of their history. The nested files are sub-agent transcripts inside
-    // sessions that WERE counted, and overstating a gap misleads as much as hiding one.
+    // missing most of their history. Sub-agent transcripts ARE read and folded into their
+    // session, so what remains is stray files elsewhere — overstating that misleads as much
+    // as hiding it.
     const html = renderReport(
       resultOf({ sessions: [session([])], projects: 1, notRead: 751 }),
       META,
     );
-    expect(html).toContain("belong to sessions already counted above");
-    expect(html).toContain("rather than being sessions of their own");
-    expect(html).toContain("the actions sub-agents took, not the sessions themselves");
+    expect(html).toContain("the session that started it");
+    expect(html).toContain("elsewhere under the projects root");
     expect(html).not.toContain("sessions filed deeper");
+    expect(html).not.toContain("does not descend");
     // The closing line stays: it frames every number on the page.
     expect(html).toContain("Every count above is of what was read, not of everything that exists.");
   });
@@ -302,20 +472,165 @@ describe("what the report says", () => {
 
   it("carries the BUNDLED catalog's version and age, distinct from the tool's", () => {
     // The two versions sit side by side in the footer and answer different questions:
-    // `agenttrail-guard 0.1.0` is the tool, `guardrail library v0.0.1` is the corpus that
-    // determines which rules this user actually has. `META.generatedAt` is fixed, so
-    // the age is deterministic here.
-    expect(HTML).toContain(`guardrail library v${CATALOG_VERSION}, published `);
-    expect(HTML).toMatch(/guardrail library v\d+\.\d+\.\d+, published (today|\d+ days? ago)/);
-    expect(HTML).not.toContain("not yet stamped");
+    // `agenttrail-guard 0.1.0` is the tool, `guardrail library v0.1.0` is the corpus that
+    // determines which rules this user actually has. Render at a `generatedAt` a day
+    // after the catalog's real publish date so the age is a deterministic "1 day ago",
+    // independent of when this release happened.
+    const now = new Date(Date.parse(CATALOG_PUBLISHED_AT) + 24 * 60 * 60 * 1000);
+    const html = renderReport(POPULATED, { version: "0.1.0", generatedAt: now });
+    expect(html).toContain(`guardrail library v${CATALOG_VERSION}, published `);
+    expect(html).toMatch(/guardrail library v\d+\.\d+\.\d+, published (today|\d+ days? ago)/);
+    expect(html).not.toContain("not yet stamped");
   });
 
-  it("has no call to action", () => {
-    expect(HTML).not.toMatch(/sign up|free trial|get started|upgrade|book a demo/i);
+  it("gives the catalog's info severity its own tone", () => {
+    const info: ScanResult = {
+      ...POPULATED,
+      findings: [
+        {
+          ruleId: "t.info",
+          title: "An informational guardrail",
+          severity: "info",
+          action: "warn",
+          count: 1,
+          examples: [{ text: "boom", count: 1 }],
+        },
+      ],
+    };
+    const html = renderReport(info, META);
+    expect(html).toContain('<span class="badge sev-info">info</span>');
+    expect(html).not.toContain('class="badge sev-unknown"');
   });
 
   it("says a finding is not proof that anything went wrong", () => {
     expect(HTML).toContain("It is not proof that anything went wrong");
+  });
+});
+
+describe("the product note", () => {
+  const notes = (html: string): number => html.split('class="product-note"').length - 1;
+
+  it("appears exactly once in a Claude Code report, before the footer, in both variants", () => {
+    for (const html of [HTML, ARTIFACT]) {
+      expect(notes(html)).toBe(1);
+      expect(html.indexOf('class="product-note"')).toBeLessThan(html.indexOf("<footer"));
+      expect(html).toContain(PRODUCT_NOTE.heading);
+      expect(html).toContain(PRODUCT_NOTE.label);
+    }
+  });
+
+  it("never appears in a Cursor report", () => {
+    for (const html of [CURSOR_HTML, CURSOR_ARTIFACT]) {
+      expect(notes(html)).toBe(0);
+      expect(html).not.toContain(PRODUCT_NOTE.heading);
+      expect(html).not.toContain(PRODUCT_NOTE.label);
+    }
+  });
+
+  it("negative control — the counter does count a note", () => {
+    expect(notes('<aside class="product-note">x</aside>')).toBe(1);
+  });
+
+  it.each(RENDERINGS)("%s has no sign-up, trial, upgrade or demo wording", (_n, html) => {
+    expect(html).not.toMatch(/sign up|free trial|get started|upgrade|book a demo/i);
+  });
+
+  it("says that nothing in the report was sent to the product it names", () => {
+    expect(HTML).toContain("nothing in this report was sent to it");
+  });
+});
+
+describe("a backticked span in a guardrail title renders as code", () => {
+  const titled = (title: string): ScanResult => ({
+    ...POPULATED,
+    findings: [
+      {
+        ruleId: "t.titled",
+        title,
+        severity: "high",
+        action: "block",
+        count: 2,
+        examples: [{ text: "x", count: 2 }],
+      },
+    ],
+    recurring: [{ text: "x", count: 2, ruleId: "t.titled", title }],
+  });
+
+  it("wraps the span in code, in the findings and in the repeats", () => {
+    const html = renderReport(titled("Hold `rm -rf` for approval"), META);
+    expect(html.split("Hold <code>rm -rf</code> for approval").length - 1).toBe(2);
+    expect(html).not.toContain("`");
+  });
+
+  it("leaves an unpaired backtick as a backtick", () => {
+    expect(renderReport(titled("A lone ` tick"), META)).toContain("A lone ` tick");
+  });
+
+  it("escapes before it wraps, so markup inside the span stays text", () => {
+    const html = renderReport(titled("Run `<script>` here"), META);
+    expect(html).toContain("<code>&lt;script&gt;</code>");
+    expect(html).not.toContain("<script>");
+  });
+});
+
+describe("the match tally", () => {
+  const finding = (severity: string, action: ScanFinding["action"], count: number) => ({
+    ruleId: `t.${severity}-${action}`,
+    title: "t",
+    severity,
+    action,
+    count,
+    examples: [],
+  });
+
+  it("totals every finding, including those past the table's row cap", () => {
+    const many: ScanResult = {
+      ...POPULATED,
+      findings: Array.from({ length: MAX_ROWS + 5 }, (_, i) => ({
+        ...finding("high", "warn", 2),
+        ruleId: `t.rule-${i}`,
+      })),
+    };
+    const tally = matchTally(many);
+    expect(tally.bySeverity).toEqual([{ severity: "high", count: 2 * (MAX_ROWS + 5) }]);
+    expect(tally.byAction).toEqual([{ action: "warn", count: 2 * (MAX_ROWS + 5) }]);
+  });
+
+  it("lists severities most serious first, then any it does not recognise", () => {
+    const tally = matchTally({
+      ...POPULATED,
+      findings: [
+        finding("low", "warn", 1),
+        finding("zany", "warn", 9),
+        finding("critical", "block", 1),
+        finding("info", "require_approval", 3),
+      ],
+    });
+    expect(tally.bySeverity.map((s) => s.severity)).toEqual(["critical", "low", "info", "zany"]);
+    expect(tally.byAction.map((a) => a.action)).toEqual(["block", "require_approval", "warn"]);
+  });
+
+  it("orders findings for a summary by severity, then count, then id", () => {
+    const ordered = bySeverityThenCount([
+      finding("low", "warn", 50),
+      finding("critical", "block", 1),
+      { ...finding("high", "warn", 2), ruleId: "t.b" },
+      { ...finding("high", "warn", 2), ruleId: "t.a" },
+      finding("high", "block", 7),
+    ]);
+    expect(ordered.map((f) => f.ruleId)).toEqual([
+      "t.critical-block",
+      "t.high-block",
+      "t.a",
+      "t.b",
+      "t.low-warn",
+    ]);
+  });
+
+  it("renders above the findings, and not at all when nothing matched", () => {
+    expect(HTML.indexOf('class="tally"')).toBeGreaterThan(0);
+    expect(HTML.indexOf('class="tally"')).toBeLessThan(HTML.indexOf("<h2>Findings</h2>"));
+    expect(renderReport(resultOf(), META)).not.toContain('class="tally"');
   });
 });
 
@@ -414,9 +729,34 @@ describe("the JSON payload", () => {
   });
 });
 
+describe("the report names the app whose sessions it read", () => {
+  it("a Claude Code report says so, and its review hint names --agent claude", () => {
+    expect(POPULATED.agent).toBe("claude");
+    expect(HTML).toContain('<p class="agent">Agent: Claude Code</p>');
+    expect(HTML).toContain("<code>agenttrail-guard scan --agent claude --review</code>");
+  });
+
+  it("a Claude Code report keeps its token section and has no Cursor-only section", () => {
+    expect(HTML).toContain("<h2>Tokens</h2>");
+    expect(HTML).not.toContain("What was not evaluated");
+    expect(POPULATED).not.toHaveProperty("skipped");
+  });
+
+  it("labels the cache-read total as cumulative, so it is not read as fresh input", () => {
+    // POPULATED has non-zero cache reads, so both the row label and the note appear.
+    expect(HTML).toContain("Read from cache (cumulative)");
+    expect(HTML).toContain("re-read and re-charged every turn");
+  });
+});
+
 describe("the filename is the one the docs promise", () => {
   it("is agenttrail-guard-report.html", () => {
     expect(REPORT_FILENAME).toBe("agenttrail-guard-report.html");
+  });
+
+  it("the page-content variant has its own name, so it never overwrites the page", () => {
+    expect(ARTIFACT_FILENAME).toBe("agenttrail-guard-artifact.html");
+    expect(ARTIFACT_FILENAME).not.toBe(REPORT_FILENAME);
   });
 });
 
@@ -492,6 +832,13 @@ describe("the pre-flight review lists exactly what the file carries", () => {
 
   it("is empty, and says nothing, when nothing matched", () => {
     expect(reviewStrings(resultOf())).toEqual([]);
+  });
+
+  it("keeps every line short even with both caps saturated", () => {
+    for (const variant of ["document", "artifact"] as const) {
+      const html = renderReport(OVERSIZED, META, { variant });
+      expect(Math.max(...html.split("\n").map((line) => line.length))).toBeLessThanOrEqual(1000);
+    }
   });
 
   it("de-duplicates, so a shape that is both a finding and a repeat is read once", () => {

@@ -1,7 +1,7 @@
 {
   "name": "agenttrail-guard",
-  "version": "0.1.0",
-  "description": "Local guardrails for Claude Code: allow, ask, or block a tool call before it runs. No account, no server. The only network call is opt-in crash reporting, off by default.",
+  "version": "0.3.0",
+  "description": "Local guardrails for Claude Code: allow, ask, or block a tool call before it runs. /agenttrail-guard:share-report publishes your scan report as a Claude artifact when you ask. No account, no server. The guard's only network call is opt-in crash reporting, off by default; publishing is done by Claude Code.",
   "author": {
     "name": "agenttrail"
   }

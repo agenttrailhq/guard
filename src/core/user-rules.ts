@@ -94,13 +94,13 @@ export function loadUserRules(text: string | undefined): UserRulesResult {
       });
       return;
     }
-    // `category` is what `compileCatalog` filters packs on (`rules.ts:52`). A rule
-    // without one loads today ONLY because `enabledPacks` defaults to undefined — set
-    // any pack list and it silently stops loading. Reported now rather than later.
+    // `category` is the pack a rule belongs to — what `disabledPacks` switches off. The
+    // hook's loader (`user-rules-data.ts`) skips a rule without one, so it never runs.
     if (typeof rec.category !== "string" || rec.category.length === 0) {
       invalid.push({
         id: named,
-        reason: "missing `category` — it would stop loading as soon as `enabledPacks` is set",
+        reason:
+          "missing `category` — the hook does not load a guardrail without one; set it to the pack it belongs to",
       });
       return;
     }

@@ -16,7 +16,7 @@ import { CATALOG_PUBLISHED_AT, CATALOG_VERSION } from "@agenttrail/guardrails/gu
 import { describe, expect, it } from "vitest";
 import { type CatalogStamp, catalogStamp, formatCatalogStamp } from "../core/catalog-stamp.js";
 import { compileAllowlist } from "../core/evaluate.js";
-import { renderJson, renderReport } from "../core/report.js";
+import { PRODUCT_NOTE, renderJson, renderReport } from "../core/report.js";
 import { compileCatalog } from "../core/rules.js";
 import { aggregateScan } from "../core/scan-report.js";
 import { VERSION } from "../core/version.js";
@@ -166,13 +166,14 @@ describe("degraded output", () => {
 });
 
 describe("the version printed is the catalog's, provably", () => {
-  it("is not the guard's own version", () => {
-    // Not a tautology while the two differ, and this is the assertion that fails if
-    // someone later "simplifies" `catalogStamp` to read `VERSION`. If a release ever
-    // makes them equal by coincidence, the test above pinning `CATALOG_VERSION` is
-    // what still holds the line.
-    expect(CATALOG_VERSION).not.toBe(VERSION);
-    expect(catalogStamp().version).not.toBe(VERSION);
+  it("reads the catalog's stamp, not the guard's version", () => {
+    // The guard's version and the catalog's can coincide (both `0.1.0` today), so
+    // version inequality no longer proves anything. The durable proof that the stamp
+    // comes from the catalog is its `publishedAt`, which no guard-side value produces:
+    // a "simplification" of `catalogStamp` to read `VERSION` would drop it.
+    expect(catalogStamp().version).toBe(CATALOG_VERSION);
+    expect(catalogStamp().publishedAt).toBe(CATALOG_PUBLISHED_AT);
+    expect(catalogStamp().publishedAt).not.toBe(VERSION);
   });
 });
 
@@ -182,7 +183,10 @@ describe("all three surfaces read the SAME stamp", () => {
   // missing — the per-surface tests in `setup-commands.test.ts` and `report.test.ts`
   // cover that — but that one of them grows its own copy of the line and drifts.
   // These assert the shared-source property that no single-surface test can.
-  const now = new Date("2026-09-08T09:00:00.000Z");
+  // Derived from the catalog's real publish date (a day after), so the shared line is a
+  // normal "1 day ago" — not the clock-skew branch, whose apostrophe would be
+  // HTML-escaped in the report and defeat the byte-for-byte `toContain`.
+  const now = new Date(Date.parse(CATALOG_PUBLISHED_AT) + DAY);
   const expected = formatCatalogStamp(catalogStamp(), now);
 
   it("the scan report footer renders exactly the shared line", () => {
@@ -203,14 +207,23 @@ describe("all three surfaces read the SAME stamp", () => {
     const html = renderReport(EMPTY_RESULT, { version: VERSION, generatedAt: now });
     expect(html).toContain(`agenttrail-guard ${VERSION}`);
     expect(html).toContain(`guardrail library v${CATALOG_VERSION}`);
-    expect(CATALOG_VERSION).not.toBe(VERSION);
+    // Both strings are present and distinct in the footer; the two versions may share a
+    // number (both `0.1.0` today) without the footer collapsing them.
   });
 
-  it("the report footer carries no call to action beside the stamp", () => {
-    // The report has no call to action. Asserted here too because this adds a line to that
-    // footer, and an upgrade prompt is exactly the thing that would get appended to a
-    // version line.
+  it("the report footer carries no product note and no prompt beside the stamp", () => {
+    // A Claude Code report carries one product note, and it sits BEFORE the footer. The
+    // footer says what the tool is and where the source lives: a prompt is exactly the
+    // thing that would get appended to a version line, so the footer is checked on its own.
     const html = renderReport(EMPTY_RESULT, { version: VERSION, generatedAt: now });
-    expect(html).not.toMatch(/sign up|free trial|get started|upgrade|book a demo/i);
+    expect(EMPTY_RESULT.agent).toBe("claude");
+    const footer = html.slice(html.indexOf("<footer"), html.indexOf("</footer>"));
+    expect(footer).toContain(expected);
+    expect(footer).not.toContain("product-note");
+    expect(footer).not.toContain(PRODUCT_NOTE.url);
+    expect(footer).not.toContain(PRODUCT_NOTE.heading);
+    expect(footer).not.toMatch(/sign up|free trial|get started|upgrade|book a demo|waitlist/i);
+    // The control: the note IS in the page, so the slice above is what kept it out.
+    expect(html).toContain(PRODUCT_NOTE.heading);
   });
 });

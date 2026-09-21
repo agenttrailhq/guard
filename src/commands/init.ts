@@ -1,6 +1,11 @@
 // cspell:words upsert repointed
 /**
- * `agenttrail-guard init` — install the hook, seed the config, prove it works.
+ * `agenttrail-guard init --agent claude|cursor` — install the hook, seed the config, prove it
+ * works.
+ *
+ * `--agent` is required, and checked before anything is read, written or run. `--agent
+ * cursor` is `cursor/install.ts`: it writes guard's entries into `~/.cursor/hooks.json` and
+ * never runs `claude`. Everything below this paragraph describes `--agent claude`.
  *
  * ── It installs via the PLUGIN system, and never writes settings.json ────────
  * `init` writes exactly two files, both under `~/.agenttrail/guard/`, and then shells
@@ -17,13 +22,28 @@
 
 import { SHIPPED_CATALOG } from "../core/catalog.js";
 import { catalogStamp, formatCatalogStamp } from "../core/catalog-stamp.js";
+import {
+  approvalOverride,
+  claudeSettingsPath,
+  formatApprovalOverride,
+  readPermissionAllow,
+} from "../core/claude-settings.js";
 import { serializeDefaultConfig } from "../core/config.js";
+import { mapCursorCall } from "../core/cursor-mapper.js";
 import { compileAllowlist, evaluateCall } from "../core/evaluate.js";
 import { mapToolCall } from "../core/mapper.js";
 import { buildGuardSpanContext } from "../core/normalize.js";
 import { configPath, guardDir, userRulesPath } from "../core/paths.js";
 import { compileCatalog } from "../core/rules.js";
-import type { GuardRule } from "../core/types.js";
+import type { AgentSource, GuardRule, MappedCall } from "../core/types.js";
+import { VERSION } from "../core/version.js";
+import { type CursorFileIO, createRealCursorFileIO } from "../cursor/cursor-io.js";
+import {
+  applyCursorInstall,
+  CURSOR_RUN_MODE_NOTE,
+  describeCursorInstall,
+  planCursorInstall,
+} from "../cursor/install.js";
 import {
   AGENTTRAIL_PLUGIN_ID,
   agenttrailPluginPresent,
@@ -35,6 +55,7 @@ import {
   resolvePluginScaffoldDir,
 } from "../plugin/install.js";
 import type { SetupIO } from "../setup-io.js";
+import { agentChoiceMessage, chosenAgent } from "./agent-choice.js";
 
 /** The command fed through the evaluator to demonstrate enforcement. Never executed. */
 const DEMO_COMMAND = "rm -rf /";
@@ -47,6 +68,22 @@ export interface InitDeps {
   /** The bundled `plugin.json` version, for staleness detection. */
   readonly bundledVersion?: string;
   readonly now?: Date;
+  /** `--agent cursor`'s file seam. Overridden in tests, so none touches a real `~/.cursor`. */
+  readonly cursorIo?: CursorFileIO;
+  /** The Node that guard's Cursor entries run. Defaults to the Node running this command. */
+  readonly nodePath?: string;
+  /**
+   * Path to Claude Code's `settings.json`, for the approval-override check. Defaults to
+   * `CLAUDE_CONFIG_DIR`'s `settings.json`, else `~/.claude/settings.json`. Injectable so
+   * a test need not depend on the runner's environment.
+   */
+  readonly settingsPath?: string;
+}
+
+/** What `init` was asked for. `agent` is the raw `--agent` value, checked by `runInit`. */
+export interface InitArgs {
+  readonly print?: boolean;
+  readonly agent?: string | boolean;
 }
 
 /** Read the bundled plugin manifest's version, if it can be read. */
@@ -76,7 +113,7 @@ function readBundledVersion(io: SetupIO, scaffoldDir: string): string | undefine
  */
 function dryRunReport(io: SetupIO, home: string, scaffoldDir: string, deps: InitDeps): string {
   const lines: string[] = [
-    "agenttrail-guard init --print — this is what would happen. Nothing is changed.",
+    "agenttrail-guard init --agent claude --print — this is what would happen. Nothing is changed.",
     "",
   ];
 
@@ -138,9 +175,46 @@ function dryRunReport(io: SetupIO, home: string, scaffoldDir: string, deps: Init
   return `${lines.join("\n")}\n`;
 }
 
+/**
+ * The demo command as the app's hook receives it: a Claude Code `Bash` call, or the command
+ * at Cursor's `beforeShellExecution` checkpoint.
+ */
+function demoCall(agent: AgentSource): MappedCall {
+  const cursor =
+    agent === "cursor"
+      ? mapCursorCall({ hook_event_name: "beforeShellExecution", command: DEMO_COMMAND })
+      : undefined;
+  return (
+    cursor?.candidates[0] ??
+    mapToolCall({ tool_name: "Bash", tool_input: { command: DEMO_COMMAND } })
+  );
+}
+
+/**
+ * The closing lines of a successful `init`: the demonstration, the library's age, a pointer.
+ *
+ * `overrideBlock` is the settings.json approval-override disclosure, already formatted with a
+ * trailing newline per line, or empty. It only applies to Claude Code (whose `permissions.allow`
+ * can silence a hold), so the Cursor path leaves it empty.
+ */
+function closing(
+  catalog: readonly GuardRule[],
+  agent: AgentSource,
+  now: Date,
+  overrideBlock = "",
+): string {
+  return (
+    "Here it is working — a dangerous command, evaluated, not run:\n\n" +
+    `${demonstrate(catalog, agent)}\n` +
+    `${formatCatalogStamp(catalogStamp(), now)}\n` +
+    overrideBlock +
+    "Run `agenttrail-guard status` any time to see what it has been doing.\n"
+  );
+}
+
 /** Run the demo through the real evaluator and describe the outcome. */
-function demonstrate(catalog: readonly GuardRule[]): string {
-  const mapped = mapToolCall({ tool_name: "Bash", tool_input: { command: DEMO_COMMAND } });
+function demonstrate(catalog: readonly GuardRule[], agent: AgentSource): string {
+  const mapped = demoCall(agent);
   const decision = evaluateCall(
     compileCatalog(catalog),
     buildGuardSpanContext(mapped),
@@ -164,16 +238,67 @@ function demonstrate(catalog: readonly GuardRule[]): string {
 }
 
 /**
+ * `init --agent cursor`: plan by reading, then either describe the plan (`--print`) or carry
+ * it out. Never runs `claude`.
+ */
+function initCursor(
+  io: SetupIO,
+  dryRun: boolean,
+  scaffoldDir: string,
+  deps: InitDeps,
+  catalog: readonly GuardRule[],
+  now: Date,
+): number {
+  const request = {
+    setup: io,
+    files: deps.cursorIo ?? createRealCursorFileIO(),
+    scaffoldDir,
+    nodePath: deps.nodePath ?? process.execPath,
+    guardVersion: VERSION,
+    now,
+  };
+  const planned = planCursorInstall(request);
+  if (dryRun) {
+    io.writeStdout(describeCursorInstall(planned));
+    return 0;
+  }
+  if (!planned.ok) {
+    io.writeStdout(`agenttrail-guard: ${planned.message}\n`);
+    return 1;
+  }
+  const applied = applyCursorInstall(request, planned.value);
+  if (!applied.ok) {
+    io.writeStdout(`agenttrail-guard: ${applied.message}\n`);
+    return 1;
+  }
+  // The Cursor analogue of the Claude path's approval-override disclosure: Cursor's own run
+  // mode can auto-run a shell command before the guard's approval card shows.
+  io.writeStdout(
+    `${applied.value.join("\n")}\n\n${closing(catalog, "cursor", now, `${CURSOR_RUN_MODE_NOTE}\n`)}`,
+  );
+  return 0;
+}
+
+/**
  * Run `init`. Returns a process exit code; never throws, never calls `process.exit`.
+ *
+ * `--agent` must be exactly `claude` or `cursor`. Anything else, including no flag, prints
+ * the choice and exits 1 before any read, write or spawn.
  *
  * `--print` performs every READ — version gate, coexistence check, marketplace state —
  * and then describes what it would do, writing no file and running no mutating command.
  */
 export async function runInit(
   io: SetupIO,
-  argv: { readonly print?: boolean } = {},
+  argv: InitArgs = {},
   deps: InitDeps = {},
 ): Promise<number> {
+  const agent = chosenAgent(argv.agent);
+  if (agent === undefined) {
+    io.writeStdout(agentChoiceMessage("init"));
+    return 1;
+  }
+
   const dryRun = argv.print === true;
   const catalog = deps.catalog ?? SHIPPED_CATALOG;
   const now = deps.now ?? new Date();
@@ -186,6 +311,8 @@ export async function runInit(
     io.writeStdout(`agenttrail-guard: ${(error as Error).message}\n`);
     return 1;
   }
+
+  if (agent === "cursor") return initCursor(io, dryRun, scaffoldDir, deps, catalog, now);
 
   // Coexistence FIRST, before any write or any spawn. The agenttrail plugin already does
   // what this hook does, and two hooks would mean two decisions, two prompts and twice
@@ -267,7 +394,13 @@ export async function runInit(
       );
       break;
     default:
-      lines.push(`Installed ${result.pluginId} (scope: ${result.scope}).`);
+      lines.push(
+        `Installed ${result.pluginId} (scope: ${result.scope}).`,
+        // A fresh install needs the same restart the refresh path asks for: Claude Code
+        // loads plugin hooks at session start, so the guard does not begin enforcing in
+        // the session that is already open until it restarts.
+        "Restart Claude Code for the guard to start enforcing.",
+      );
   }
 
   if (result.marketplace === "recovered") {
@@ -297,12 +430,24 @@ export async function runInit(
   }
   for (const path of written) lines.push(`Wrote ${path}`);
 
-  io.writeStdout(
-    `${lines.join("\n")}\n\n` +
-      "Here it is working — a dangerous command, evaluated, not run:\n\n" +
-      `${demonstrate(catalog)}\n` +
-      `${formatCatalogStamp(catalogStamp(), now)}\n` +
-      "Run `agenttrail-guard status` any time to see what it has been doing.\n",
-  );
+  // The holds `settings.json` will override. A require_approval guardrail whose tool is
+  // allowed outright never prompts (Claude Code's allow rule beats the hook's `ask`), so
+  // saying so now is more honest than letting a hold be found to do nothing later. Read
+  // against the shipped catalog's actions — the state just installed. Read-only, and only
+  // on the Claude path: Cursor does not consult Claude Code's `permissions.allow`.
+  const settingsFile = deps.settingsPath ?? claudeSettingsPath(home, process.env.CLAUDE_CONFIG_DIR);
+  const allow = readPermissionAllow(io.readFile(settingsFile));
+  const override =
+    allow === undefined
+      ? { total: 0, overridden: 0, tools: [] as readonly string[] }
+      : approvalOverride(
+          catalog.map((rule) => ({ match: rule.match, action: rule.defaultAction })),
+          allow,
+        );
+  const overrideBlock = formatApprovalOverride(override)
+    .map((line) => `${line}\n`)
+    .join("");
+
+  io.writeStdout(`${lines.join("\n")}\n\n${closing(catalog, "claude", now, overrideBlock)}`);
   return 0;
 }

@@ -21,6 +21,8 @@ export interface DecisionRecord {
   readonly decision: string;
   readonly ruleId: string;
   readonly command: string;
+  /** The app that sent the call: `claude` or `cursor`. */
+  readonly agent: string;
 }
 
 /** The rule that fired most often, with a representative command shape. */
@@ -37,7 +39,8 @@ function readString(rec: Record<string, unknown>, key: string): string | undefin
 }
 
 /**
- * Parse the log. Never throws; unparseable lines are skipped.
+ * Parse the log. Never throws; unparseable lines are skipped, and so is a line without a
+ * string `ruleId`, `decision` or `agent`.
  *
  * Only the LAST `limit` lines are parsed. An unrotated log must not make `status` slow
  * — and the recent-decisions view only ever shows the tail anyway.
@@ -57,13 +60,15 @@ export function parseDecisionLog(text: string | undefined, limit = 500): Decisio
     const rec = parsed as Record<string, unknown>;
     const ruleId = readString(rec, "ruleId");
     const decision = readString(rec, "decision");
-    if (ruleId === undefined || decision === undefined) continue;
+    const agent = readString(rec, "agent");
+    if (ruleId === undefined || decision === undefined || agent === undefined) continue;
     out.push({
       ts: readString(rec, "ts") ?? "",
       tool: readString(rec, "tool") ?? "",
       decision,
       ruleId,
       command: readString(rec, "command") ?? "",
+      agent,
     });
   }
   return out;

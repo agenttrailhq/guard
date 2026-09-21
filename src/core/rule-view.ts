@@ -2,7 +2,7 @@
  * The joined read model behind `guardrails list` and `guardrails show`. Pure, CLI-only.
  *
  * Four sources have to agree before a person can be told what a rule is doing: the
- * shipped catalog, the user's own rules, `config.json`'s three levers (`enabledPacks`,
+ * shipped catalog, the user's own rules, `config.json`'s three levers (`disabledPacks`,
  * `disabledGuardrails`, `guardrailActionOverrides`), and the allowlist. Joining them in each
  * renderer is how the two views end up disagreeing about the same rule, so it happens
  * once, here, with no IO and no formatting.
@@ -130,11 +130,11 @@ export function buildRuleViews(
   config: GuardConfig,
 ): RuleView[] {
   const disabled = new Set(config.disabledGuardrails);
-  const packs = config.enabledPacks;
+  const disabledPacks = new Set(config.disabledPacks);
   const views: RuleView[] = [];
 
   const add = (rule: GuardRule, source: RuleSource): void => {
-    const packOff = packs !== undefined && !packs.includes(rule.category);
+    const packOff = disabledPacks.has(rule.category);
     const ruleOff = disabled.has(rule.id);
     const override = config.guardrailActionOverrides[rule.id];
     views.push({

@@ -71,11 +71,14 @@ describe("the hook command entry", () => {
     expect(entry.hooks[0]?.timeout).toBe(10);
   });
 
-  it("invokes the built bundle from CLAUDE_PLUGIN_ROOT", () => {
+  it("invokes the built bundle from CLAUDE_PLUGIN_ROOT, naming the app with --agent claude", () => {
     // The `${...}` is Claude Code's own interpolation, expanded by the vendor at
     // hook-invocation time. It is the literal under test, not a stray JS template.
-    // biome-ignore lint/suspicious/noTemplateCurlyInString: vendor placeholder, asserted verbatim
-    expect(entry.hooks[0]?.command).toBe('node "${CLAUDE_PLUGIN_ROOT}/scripts/guard-hook.mjs"');
+    // `--agent claude` tells the hook which app's configuration launched it.
+    expect(entry.hooks[0]?.command).toBe(
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: vendor placeholder, asserted verbatim
+      'node "${CLAUDE_PLUGIN_ROOT}/scripts/guard-hook.mjs" --agent claude',
+    );
   });
 });
 

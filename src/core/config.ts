@@ -7,8 +7,8 @@
  * into "the agent is frozen".
  *
  * Note which way each default fails:
- *   - `enabledPacks` defaults to `undefined` = NO pack filter = every rule enabled.
- *     A malformed packs list must not silently disable enforcement.
+ *   - `disabledPacks` defaults to empty = every pack enabled, and a malformed one is
+ *     DISCARDED. A broken packs list must not silently disable enforcement.
  *   - `allowlist` defaults to empty, and a malformed one is DISCARDED. A broken
  *     allowlist must never suppress a rule by accident — it fails toward enforcing.
  */
@@ -32,11 +32,10 @@ export const VALID_ACTIONS: ReadonlySet<string> = new Set(["block", "require_app
 
 /** The config used when there is no file, or the file is unusable. */
 export const DEFAULT_CONFIG: GuardConfig = {
-  enabledPacks: undefined,
   disabledGuardrails: [],
+  disabledPacks: [],
   guardrailActionOverrides: {},
   allowlist: [],
-  failOpen: true,
   crashReports: false,
   crashEndpoint: undefined,
 };
@@ -68,6 +67,15 @@ function parseDisabledRules(raw: unknown): string[] {
   return raw.filter((id): id is string => typeof id === "string" && id.length > 0);
 }
 
+/**
+ * Packs turned off by the user. Same discard-on-malformed posture as `parseDisabledRules`:
+ * a broken list fails toward enforcing, so a typo can never switch a pack off.
+ */
+function parseDisabledPacks(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.filter((p): p is string => typeof p === "string" && p.length > 0);
+}
+
 function parseOverrides(raw: unknown): Record<string, GuardAction> {
   if (raw === null || typeof raw !== "object" || Array.isArray(raw)) return {};
   const out: Record<string, GuardAction> = {};
@@ -79,55 +87,26 @@ function parseOverrides(raw: unknown): Record<string, GuardAction> {
   return out;
 }
 
-function parsePacks(raw: unknown): readonly string[] | undefined {
-  if (!Array.isArray(raw)) return undefined;
-  const packs = raw.filter((p): p is string => typeof p === "string");
-  // An array that held nothing usable is treated as "no filter", not "nothing enabled".
-  return packs.length > 0 ? packs : undefined;
-}
-
-/**
- * Parse config text. Never throws.
- *
- * @param text - the raw file contents, or `undefined` when the file is absent.
- */
-/**
- * The eight packs seeded into a fresh `config.json`.
- *
- * Written EXPLICITLY rather than left absent, even though absent means "no filter =
- * every pack enabled" and is the same behavior today. The file is meant to be
- * hand-edited, and a user cannot turn off a pack they cannot see the name of.
- *
- * `safety-bypass` holds the rules that catch a SAFETY CONTROL being switched off —
- * pre-commit hooks, branch protection, host-key checking. A config naming a pack that
- * does not exist enables nothing, and `inspectConfig` reports it as an unknown pack.
- */
-export const DEFAULT_ENABLED_PACKS: readonly string[] = [
-  "working-tree",
-  "destructive-data",
-  "prod-infra",
-  "secret-exposure",
-  "rce-supply-chain",
-  "safety-bypass",
-  "privilege-supply-chain",
-  "file-scope",
-];
-
 /**
  * The seed `config.json` text written by `init`.
  *
  * Kept beside `parseConfig` on purpose: the writer and the reader must agree on the
  * shape, and a round-trip test pins that they do.
+ *
+ * Packs are recorded by what is OFF, never by what is on. Every pack in the library is
+ * enabled unless it is named in `disabledPacks`, so a pack added in a later release is
+ * enforced as soon as that release is installed, and the seed never lists pack names that
+ * could fall out of step with the library. `status` and `guardrails list` show the
+ * resolved set, so the file does not need to spell it out to stay legible.
  */
 export function serializeDefaultConfig(): string {
   return `${JSON.stringify(
     {
       version: 1,
-      enabledPacks: DEFAULT_ENABLED_PACKS,
+      disabledPacks: [],
       disabledGuardrails: [],
       guardrailActionOverrides: {},
       allowlist: [],
-      failOpen: true,
       crashReports: false,
     },
     null,
@@ -172,6 +151,15 @@ export function updateConfigText(
   return `${JSON.stringify(draft, null, 2)}\n`;
 }
 
+/**
+ * Parse config text. Never throws.
+ *
+ * A key this module does not know is ignored. That includes `enabledPacks`, which older
+ * releases wrote: it is no longer read, so a file that still carries it enforces every pack
+ * not named in `disabledPacks`. `inspectConfig` reports the leftover key.
+ *
+ * @param text - the raw file contents, or `undefined` when the file is absent.
+ */
 export function parseConfig(text: string | undefined): GuardConfig {
   if (text === undefined) return DEFAULT_CONFIG;
   let raw: unknown;
@@ -183,11 +171,10 @@ export function parseConfig(text: string | undefined): GuardConfig {
   if (raw === null || typeof raw !== "object" || Array.isArray(raw)) return DEFAULT_CONFIG;
   const obj = raw as Record<string, unknown>;
   return {
-    enabledPacks: parsePacks(obj.enabledPacks),
     disabledGuardrails: parseDisabledRules(obj.disabledGuardrails),
+    disabledPacks: parseDisabledPacks(obj.disabledPacks),
     guardrailActionOverrides: parseOverrides(obj.guardrailActionOverrides),
     allowlist: parseAllowlist(obj.allowlist),
-    failOpen: obj.failOpen !== false,
     crashReports: obj.crashReports === true,
     // A non-string, or an empty string, is "not configured" — never a partial URL.
     // `resolveEndpoint` re-validates the scheme; this only decides presence.

@@ -2,7 +2,7 @@
  * Catalog loading and the COMPILE-ONCE step.
  *
  * Compiling a predicate inside the per-rule loop — compile, evaluate, discard, per
- * rule, per call — is the one thing that could push a 56-rule call toward the 10s
+ * rule, per call — is the one thing that could push a 74-rule call toward the 10s
  * ceiling set in `plugin/hooks/hooks.json`, and the guard has no internal watchdog by
  * design. So the catalog is compiled once: parse, skip anything malformed, and keep
  * `{rule, evaluate}` closures.
@@ -36,19 +36,20 @@ export interface CompiledRule {
  */
 export function compileCatalog(
   rules: readonly GuardRule[],
-  config?: Pick<GuardConfig, "enabledPacks" | "guardrailActionOverrides"> &
-    Partial<Pick<GuardConfig, "disabledGuardrails">>,
+  config?: Pick<GuardConfig, "guardrailActionOverrides"> &
+    Partial<Pick<GuardConfig, "disabledGuardrails" | "disabledPacks">>,
 ): CompiledRule[] {
   const compiled: CompiledRule[] = [];
-  const enabledPacks = config?.enabledPacks;
   const overrides = config?.guardrailActionOverrides ?? {};
-  // A Set, not `.includes`: this runs once per rule on the hook's hot path, and the
-  // list is user-authored with no bound on its length.
+  // Sets, not `.includes`: this runs once per rule on the hook's hot path, and both
+  // lists are user-authored with no bound on their length.
   const disabled = new Set(config?.disabledGuardrails ?? []);
+  const disabledPacks = new Set(config?.disabledPacks ?? []);
 
   for (const rule of rules) {
-    // `undefined` means "no pack filter configured" → every pack is enabled.
-    if (enabledPacks !== undefined && !enabledPacks.includes(rule.category)) continue;
+    // Every pack is on unless the user turned it off, so a pack shipped after install
+    // is enforced with no step beyond installing the release that carries it.
+    if (disabledPacks.has(rule.category)) continue;
     // Turned off individually by `guardrails disable <guardrail-id>`. Checked after
     // the pack filter so a rule can be off for either reason, and `guardrails list` can say
     // which — see `core/rule-view.ts`.

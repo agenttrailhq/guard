@@ -20,6 +20,7 @@ import { runStatus } from "../commands/status.js";
 import { parseDecisionLog } from "../core/decision-log.js";
 import {
   createEventRecorder,
+  DEDUP_WINDOW_MS,
   MAX_AGE_MS,
   MAX_BYTES,
   NOOP_RECORDER,
@@ -81,25 +82,37 @@ function lines(text: string | undefined): string[] {
 }
 
 describe("the record shape", () => {
-  it("writes exactly {ts, tool, decision, ruleId, command}, in that order", () => {
+  it("writes exactly {ts, tool, decision, ruleId, command, agent}, in that order", () => {
     const { io, files } = fakeFs();
     createEventRecorder(io, () => Date.parse("2026-09-07T10:00:00.000Z")).record({
       mapped: call("git reset --hard"),
       decision: denied(),
+      agent: "claude",
     });
 
     const written = lines(files.get(LOG));
     expect(written).toHaveLength(1);
     const parsed = JSON.parse(written[0] as string);
-    expect(Object.keys(parsed)).toEqual(["ts", "tool", "decision", "ruleId", "command"]);
+    expect(Object.keys(parsed)).toEqual(["ts", "tool", "decision", "ruleId", "command", "agent"]);
     expect(parsed).toEqual({
       ts: "2026-09-07T10:00:00.000Z",
       tool: "Bash",
       decision: "deny",
       ruleId: "wt.reset-hard",
       command: "git reset --hard",
+      agent: "claude",
     });
     expect(Number.isFinite(Date.parse(parsed.ts))).toBe(true);
+  });
+
+  it("writes the event's agent, not a fixed value", () => {
+    // The caller decides the app; the writer copies it. A writer that always wrote
+    // `claude` would still pass the test above.
+    for (const agent of ["claude", "cursor"] as const) {
+      const { io, files } = fakeFs();
+      createEventRecorder(io).record({ mapped: call("x"), decision: denied(), agent });
+      expect(JSON.parse(lines(files.get(LOG))[0] as string).agent).toBe(agent);
+    }
   });
 
   it("round-trips through the reader that consumes it", () => {
@@ -107,7 +120,8 @@ describe("the record shape", () => {
     // shapes. This is the only assertion that proves they agree on the wire.
     const { io, files } = fakeFs();
     const rec = createEventRecorder(io, () => Date.parse("2026-09-07T10:00:00.000Z"));
-    rec.record({ mapped: call("rm -rf ./build"), decision: denied("fs.rm-rf") });
+    rec.record({ mapped: call("rm -rf ./build"), decision: denied("fs.rm-rf"), agent: "claude" });
+    rec.record({ mapped: call("rm -rf ./dist"), decision: denied("fs.rm-rf"), agent: "cursor" });
 
     expect(parseDecisionLog(files.get(LOG))).toEqual([
       {
@@ -116,6 +130,15 @@ describe("the record shape", () => {
         decision: "deny",
         ruleId: "fs.rm-rf",
         command: "rm -rf ./build",
+        agent: "claude",
+      },
+      {
+        ts: "2026-09-07T10:00:00.000Z",
+        tool: "Bash",
+        decision: "deny",
+        ruleId: "fs.rm-rf",
+        command: "rm -rf ./dist",
+        agent: "cursor",
       },
     ]);
   });
@@ -125,8 +148,38 @@ describe("the record shape", () => {
     createEventRecorder(io).record({
       mapped: { tool: "Edit", args: { file_path: "/etc/hosts" } },
       decision: denied("fs.system-path"),
+      agent: "claude",
     });
     expect(JSON.parse(lines(files.get(LOG))[0] as string).command).toBe("/etc/hosts");
+  });
+});
+
+describe("the reader requires agent", () => {
+  const LINE = {
+    ts: "2026-09-07T10:00:00.000Z",
+    tool: "Bash",
+    decision: "deny",
+    ruleId: "wt.reset-hard",
+    command: "git reset --hard",
+  };
+
+  it("skips a line without a string agent, and keeps the lines around it", () => {
+    const text = [
+      JSON.stringify({ ...LINE, agent: "claude" }),
+      JSON.stringify(LINE),
+      JSON.stringify({ ...LINE, agent: null }),
+      JSON.stringify({ ...LINE, agent: 1 }),
+      JSON.stringify({ ...LINE, ruleId: "fs.rm-rf", agent: "cursor" }),
+    ].join("\n");
+
+    expect(parseDecisionLog(text)).toEqual([
+      { ...LINE, agent: "claude" },
+      { ...LINE, ruleId: "fs.rm-rf", agent: "cursor" },
+    ]);
+  });
+
+  it("a log whose lines all lack agent reads as empty", () => {
+    expect(parseDecisionLog(`${JSON.stringify(LINE)}\n${JSON.stringify(LINE)}\n`)).toEqual([]);
   });
 });
 
@@ -138,6 +191,7 @@ describe("what is recorded, and what is not", () => {
     createEventRecorder(io).record({
       mapped: call("ls"),
       decision: { decision: "allow", reason: "", matches: [] },
+      agent: "claude",
     });
     expect(files.get(LOG)).toBeUndefined();
   });
@@ -153,6 +207,7 @@ describe("what is recorded, and what is not", () => {
         reason: "warning from rule: sc.new-dependency",
         matches: [{ ruleId: "sc.new-dependency", action: "warn" }],
       },
+      agent: "claude",
     });
     const parsed = JSON.parse(lines(files.get(LOG))[0] as string);
     expect(parsed.decision).toBe("allow");
@@ -188,7 +243,7 @@ describe("what is recorded, and what is not", () => {
 
     for (const decision of cases) {
       const { io, files } = fakeFs();
-      createEventRecorder(io).record({ mapped: call("x"), decision });
+      createEventRecorder(io).record({ mapped: call("x"), decision, agent: "claude" });
       const parsed = JSON.parse(lines(files.get(LOG))[0] as string);
       expect(decision.reason.endsWith(parsed.ruleId)).toBe(true);
     }
@@ -207,7 +262,7 @@ describe("scrubbing: the field, then serialize", () => {
 
   it.each(SECRETS)("redacts a %s before it reaches the file", (_name, command) => {
     const { io, files } = fakeFs();
-    createEventRecorder(io).record({ mapped: call(command), decision: denied() });
+    createEventRecorder(io).record({ mapped: call(command), decision: denied(), agent: "claude" });
 
     const raw = files.get(LOG) ?? "";
     const parsed = JSON.parse(lines(raw)[0] as string);
@@ -221,11 +276,13 @@ describe("scrubbing: the field, then serialize", () => {
   it("every written line re-parses as JSON", () => {
     const { io, files } = fakeFs();
     const rec = createEventRecorder(io);
-    for (const [, command] of SECRETS) rec.record({ mapped: call(command), decision: denied() });
-    rec.record({ mapped: call("echo 'a\nb'"), decision: denied() });
+    for (const [, command] of SECRETS)
+      rec.record({ mapped: call(command), decision: denied(), agent: "claude" });
+    rec.record({ mapped: call("echo 'a\nb'"), decision: denied(), agent: "claude" });
     rec.record({
       mapped: call(JSON.stringify({ query: "x", api_key: "abcd1234efgh" }), "mcp__demo__run"),
       decision: denied(),
+      agent: "claude",
     });
 
     const written = lines(files.get(LOG));
@@ -256,13 +313,71 @@ describe("scrubbing: the field, then serialize", () => {
     createEventRecorder(io).record({
       mapped: call("aws s3 cp x s3://b --profile AKIAIOSFODNN7EXAMPLE"),
       decision: denied(),
+      agent: "claude",
     });
     const once = JSON.parse(lines(files.get(LOG))[0] as string).command as string;
-    expect(once).toContain("[REDACTED:secret:aws:");
+    expect(once).toContain("[REDACTED:secret:aws]");
 
     const twice = scrubText(once).text;
     expect(twice).not.toBe(once);
     expect(twice).toContain("[REDACTED:secret:[REDACTED:");
+  });
+});
+
+describe("dedupe — one tool call, one record", () => {
+  const claude = (command: string, callId?: string) => ({
+    mapped: call(command),
+    decision: denied("fs.rm-rf"),
+    agent: "claude" as const,
+    ...(callId === undefined ? {} : { callId }),
+  });
+
+  it("skips the twin record of a double hook invocation (same tool_use_id)", () => {
+    const { io, files } = fakeFs();
+    const rec = createEventRecorder(io);
+    rec.record(claude("rm -rf ./build", "toolu_123"));
+    rec.record(claude("rm -rf ./build", "toolu_123"));
+    expect(lines(files.get(LOG))).toHaveLength(1);
+  });
+
+  it("keeps two distinct calls that share a command but differ in tool_use_id", () => {
+    // The whole reason the id path exists: it never folds real, separate calls together.
+    const { io, files } = fakeFs();
+    const rec = createEventRecorder(io);
+    rec.record(claude("rm -rf ./build", "toolu_a"));
+    rec.record(claude("rm -rf ./build", "toolu_b"));
+    expect(lines(files.get(LOG))).toHaveLength(2);
+  });
+
+  it("without an id, folds identical records inside the window and keeps them apart outside it", () => {
+    const within = fakeFs();
+    let t = 1_000_000;
+    const rw = createEventRecorder(within.io, () => t);
+    rw.record(claude("rm -rf ./x"));
+    t += DEDUP_WINDOW_MS; // still within (the bound is inclusive)
+    rw.record(claude("rm -rf ./x"));
+    expect(lines(within.files.get(LOG))).toHaveLength(1);
+
+    const outside = fakeFs();
+    let u = 1_000_000;
+    const ro = createEventRecorder(outside.io, () => u);
+    ro.record(claude("rm -rf ./x"));
+    u += DEDUP_WINDOW_MS + 1;
+    ro.record(claude("rm -rf ./x"));
+    expect(lines(outside.files.get(LOG))).toHaveLength(2);
+  });
+
+  it("never writes a tool_use_id into the log line", () => {
+    const { io, files } = fakeFs();
+    createEventRecorder(io).record({
+      mapped: call("x"),
+      decision: denied(),
+      agent: "cursor",
+      callId: "toolu_secret_id",
+    });
+    expect(files.get(LOG)).not.toContain("toolu_secret_id");
+    const parsed = JSON.parse(lines(files.get(LOG))[0] as string);
+    expect(Object.keys(parsed)).toEqual(["ts", "tool", "decision", "ruleId", "command", "agent"]);
   });
 });
 
@@ -275,6 +390,7 @@ describe("bounded — by bytes on write, by age at compaction", () => {
       decision: "deny",
       ruleId: "r.seed",
       command: `cmd-${String(i).padStart(6, "0")}-${"x".repeat(100)}`,
+      agent: "claude",
     });
   }
 
@@ -293,6 +409,7 @@ describe("bounded — by bytes on write, by age at compaction", () => {
     createEventRecorder(io, () => now).record({
       mapped: call("the newest command"),
       decision: denied("r.newest"),
+      agent: "claude",
     });
 
     const after = files.get(LOG) ?? "";
@@ -325,7 +442,11 @@ describe("bounded — by bytes on write, by age at compaction", () => {
     }
     const { io, files } = fakeFs({ [LOG]: `${filler.join("\n")}\n${aged}\n${fresh}\n` });
 
-    createEventRecorder(io, () => now).record({ mapped: call("x"), decision: denied() });
+    createEventRecorder(io, () => now).record({
+      mapped: call("x"),
+      decision: denied(),
+      agent: "claude",
+    });
 
     const after = files.get(LOG) ?? "";
     expect(after).toContain("cmd-000002"); // fresh, same position band — retained
@@ -345,7 +466,11 @@ describe("bounded — by bytes on write, by age at compaction", () => {
     // A process killed mid-append leaves exactly this.
     const { io, files } = fakeFs({ [LOG]: `${seed.join("\n")}\n{"ts":"2026-09-07T09` });
 
-    createEventRecorder(io, () => now).record({ mapped: call("x"), decision: denied() });
+    createEventRecorder(io, () => now).record({
+      mapped: call("x"),
+      decision: denied(),
+      agent: "claude",
+    });
 
     const after = files.get(LOG) ?? "";
     for (const line of lines(after)) expect(() => JSON.parse(line)).not.toThrow();
@@ -354,7 +479,8 @@ describe("bounded — by bytes on write, by age at compaction", () => {
   it("does not compact while under the ceiling", () => {
     const { io, files } = fakeFs();
     const rec = createEventRecorder(io);
-    for (let i = 0; i < 50; i++) rec.record({ mapped: call(`cmd ${i}`), decision: denied() });
+    for (let i = 0; i < 50; i++)
+      rec.record({ mapped: call(`cmd ${i}`), decision: denied(), agent: "claude" });
     expect(lines(files.get(LOG))).toHaveLength(50);
   });
 });
@@ -378,7 +504,11 @@ describe("never fatal — every IO member forced to fail in turn", () => {
       },
     };
     expect(() =>
-      createEventRecorder(broken).record({ mapped: call("x"), decision: denied() }),
+      createEventRecorder(broken).record({
+        mapped: call("x"),
+        decision: denied(),
+        agent: "claude",
+      }),
     ).not.toThrow();
   });
 
@@ -390,7 +520,11 @@ describe("never fatal — every IO member forced to fail in turn", () => {
     const { io } = fakeFs();
     const refusing: GuardIO = { ...io, [member]: () => false };
     expect(() =>
-      createEventRecorder(refusing).record({ mapped: call("x"), decision: denied() }),
+      createEventRecorder(refusing).record({
+        mapped: call("x"),
+        decision: denied(),
+        agent: "claude",
+      }),
     ).not.toThrow();
   });
 
@@ -401,13 +535,16 @@ describe("never fatal — every IO member forced to fail in turn", () => {
     createEventRecorder({ ...readOnly, writeStdout: (t) => written.push(t) }).record({
       mapped: call("x"),
       decision: denied(),
+      agent: "claude",
     });
     expect(files.get(LOG)).toBeUndefined();
     expect(written).toEqual([]);
   });
 
   it("NOOP_RECORDER still exists and does nothing", () => {
-    expect(() => NOOP_RECORDER.record({ mapped: call("x"), decision: denied() })).not.toThrow();
+    expect(() =>
+      NOOP_RECORDER.record({ mapped: call("x"), decision: denied(), agent: "claude" }),
+    ).not.toThrow();
   });
 });
 
@@ -444,7 +581,8 @@ describe("the display leg — no second scrub", () => {
 
     const { io, files } = fakeFs();
     const rec = createEventRecorder(io);
-    for (const [, command] of secrets) rec.record({ mapped: call(command), decision: denied() });
+    for (const [, command] of secrets)
+      rec.record({ mapped: call(command), decision: denied(), agent: "claude" });
 
     const { setup, out } = setupOver(files);
     return runStatus(setup, { catalog: [] }).then((code) => {

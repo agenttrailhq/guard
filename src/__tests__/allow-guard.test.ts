@@ -85,6 +85,40 @@ describe("checkAllowPattern refuses a pattern that would mute the guardrail glob
   });
 });
 
+describe("checkAllowPattern refuses a pattern that would blind the rule to its own fixture", () => {
+  const BLOCK_FIXTURES = [
+    "git reset --hard",
+    "git reset --hard HEAD~3",
+    "git -C /tmp reset --hard",
+  ];
+
+  it("refuses a pattern equal to one of the rule's own block fixtures", () => {
+    const refusal = checkAllowPattern("git reset --hard", BLOCK_FIXTURES);
+    expect(refusal?.kind).toBe("blinds-rule");
+    expect(refusal?.reason).toMatch(/git reset --hard/);
+    expect(refusal?.reason).toMatch(/exists to stop/);
+  });
+
+  it("refuses a glob that would cover a block fixture", () => {
+    // Not just literal equality: the pattern is compiled with the same picomatch the
+    // allowlist uses, so a wider shape that swallows a fixture is caught too.
+    expect(checkAllowPattern("git reset*", BLOCK_FIXTURES)?.kind).toBe("blinds-rule");
+  });
+
+  it("accepts a narrower shape that no block fixture matches", () => {
+    // The pressure valve still works: a shape the rule catches but that is not one of its
+    // own canonical dangerous examples can be silenced.
+    expect(
+      checkAllowPattern("git reset --hard origin/scratch-branch", BLOCK_FIXTURES),
+    ).toBeUndefined();
+  });
+
+  it("with no fixtures supplied, behaves exactly as before", () => {
+    // A user rule has no fixtures, and existing callers pass none.
+    expect(checkAllowPattern("git reset --hard")).toBeUndefined();
+  });
+});
+
 describe("checkAllowPattern refuses a pattern that can never match", () => {
   it("refuses the `<your pattern>` placeholder, which is the one users will paste", () => {
     // `status` prints this literal when the recorded command was redacted.

@@ -23,9 +23,11 @@
  * `{dir: true}` with the directory in the positionals. Both therefore take their RAW
  * argv and scan it themselves, the same shape of exception `hook` already has below.
  *
- * ── THREE IO objects, and the split is structural ───────────────────────────
+ * ── FOUR IO objects, and the split is structural ────────────────────────────
  * `hook` takes `GuardIO`; `init`/`status`/`uninstall`/`guardrails` take `SetupIO`; `scan`
- * takes `ScanIO`. They are separate because `io.ts` is inside the hook bundle graph, so
+ * takes `ScanIO`; `init --agent cursor`, `uninstall --agent cursor` and `status` also take
+ * `CursorFileIO`, for Cursor's hooks file, and `status` reads the crash spool through
+ * `GuardIO`. They are separate because `io.ts` is inside the hook bundle graph, so
  * teaching it to spawn a process would ship a process spawner into the file Claude Code
  * runs on every tool call — and `scan` needs one, to open the report. This module is
  * the only place all three meet, and it is NOT on the hook path, because Claude Code
@@ -46,23 +48,25 @@ import { runRules } from "./commands/rules.js";
 import { runScan } from "./commands/scan.js";
 import { runStatus } from "./commands/status.js";
 import { runUninstall } from "./commands/uninstall.js";
+import { agentFromArgv } from "./core/agent.js";
 import { VERSION } from "./core/version.js";
+import type { CursorFileIO } from "./cursor/cursor-io.js";
 import { createRealIO, type GuardIO } from "./io.js";
 import { createRealScanIO, type ScanIO } from "./scan-io.js";
 import { createRealSetupIO, type SetupIO } from "./setup-io.js";
 
-const USAGE = `agenttrail-guard — local guardrails for Claude Code
+const USAGE = `agenttrail-guard — local guardrails for Claude Code and Cursor
 
 Usage:
-  agenttrail-guard init           Install the hook as a Claude Code plugin and seed config
-  agenttrail-guard status         Show what is enforcing, and what it has been doing
-  agenttrail-guard uninstall      Remove the plugin (only ours)
-  agenttrail-guard hook           Evaluate a PreToolUse payload on stdin (used by Claude Code)
-  agenttrail-guard guardrails     See and change what the guard enforces
-  agenttrail-guard scan           Read your transcripts; write a shareable report
-  agenttrail-guard crash-report   Show, enable, disable, send or clear crash reports
-  agenttrail-guard --help         Show this message
-  agenttrail-guard --version      Show the version
+  agenttrail-guard init --agent <claude|cursor>        Install the hook for Claude Code or Cursor, and seed config
+  agenttrail-guard status                              Show what is enforcing, and what it has been doing
+  agenttrail-guard uninstall --agent <claude|cursor>   Remove the hook from Claude Code or Cursor (only ours)
+  agenttrail-guard hook                                Evaluate a hook payload on stdin (used by Claude Code and Cursor)
+  agenttrail-guard guardrails                          See and change what the guard enforces
+  agenttrail-guard scan --agent <claude|cursor>        Read your transcripts; write a shareable report
+  agenttrail-guard crash-report                        Show, enable, disable, send or clear crash reports
+  agenttrail-guard --help                              Show this message
+  agenttrail-guard --version                           Show the version
 
 crash-report flags: --status (default) --enable --disable --send [--endpoint <url>] --clear
 Crash reporting is OFF by default and sends stack traces only. It is the one network
@@ -71,8 +75,10 @@ call this tool can make, and only when you turn it on and run --send yourself.
 guardrails subcommands: list  show  enable  disable  set-action  add  remove  allow
                         reset  validate  (run "agenttrail-guard guardrails --help")
 
-scan flags: --dir <root> --json --open --review
-scan reads transcripts already on your disk and writes one self-contained HTML file.
+scan flags: --agent <claude|cursor> (required) --dir <root> --out <file> --artifact
+            --no-open --review --json
+scan reads transcripts already on your disk, writes one self-contained HTML file, and
+opens it in your browser (--no-open to skip).
 No account, and no network call of its own — crash reporting above is the one
 exception in this tool, and a scan never uses it. Commands, paths and identifying
 operands are redacted before display or write; --review shows every line first.
@@ -95,6 +101,7 @@ export async function runCli(
   io: GuardIO,
   setupIo?: SetupIO,
   scanIo?: ScanIO,
+  cursorIo?: CursorFileIO,
 ): Promise<number> {
   let positionals: string[];
   let values: {
@@ -102,6 +109,12 @@ export async function runCli(
     version?: boolean | undefined;
     print?: boolean | undefined;
     "clear-history"?: boolean | undefined;
+    /**
+     * Declared as a string, but a lone `--agent` still arrives as `true`, and
+     * `--agent --print` arrives as `"--print"`. `init` and `uninstall` accept only the exact
+     * names.
+     */
+    agent?: string | boolean | undefined;
   };
   try {
     const parsed = parseArgs({
@@ -111,6 +124,7 @@ export async function runCli(
         version: { type: "boolean", short: "v" },
         print: { type: "boolean" },
         "clear-history": { type: "boolean" },
+        agent: { type: "string" },
       },
       allowPositionals: true,
       strict: false,
@@ -126,8 +140,11 @@ export async function runCli(
 
   // `hook` is checked BEFORE --help/--version so that a stray flag in a hooks.json
   // command line can never turn an enforcement call into a usage dump on stdout.
+  //
+  // `--agent` is read from the raw argv here, by the same function the hook bundle uses, so
+  // `agenttrail-guard hook` and the bundle read one command line the same way.
   if (command === "hook") {
-    await runHook(io);
+    await runHook(io, { agent: agentFromArgv(argv.slice(1)) });
     return 0;
   }
 
@@ -165,11 +182,19 @@ export async function runCli(
   // for the setup IO, and so a test can drive them with a fake.
   if (command === "init" || command === "status" || command === "uninstall") {
     const setup = setupIo ?? createRealSetupIO();
-    if (command === "init") return runInit(setup, { print: values.print === true });
-    if (command === "status") {
-      return runStatus(setup, { clearHistory: values["clear-history"] === true });
+    // Omitted rather than `undefined`, so each command builds the real Cursor seam itself.
+    const cursorDeps = cursorIo === undefined ? {} : { cursorIo };
+    if (command === "init") {
+      return runInit(setup, { print: values.print === true, agent: values.agent }, cursorDeps);
     }
-    return runUninstall(setup);
+    if (command === "status") {
+      return runStatus(setup, {
+        clearHistory: values["clear-history"] === true,
+        guardIo: io,
+        ...cursorDeps,
+      });
+    }
+    return runUninstall(setup, { agent: values.agent }, cursorDeps);
   }
 
   io.writeStdout(`agenttrail-guard: unknown command "${command}".\n\n${USAGE}`);

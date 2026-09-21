@@ -17,6 +17,12 @@
  * any other — `hooks.json` matches on tool name and knows nothing about sidechains. A
  * scan that dropped them would under-report exactly the work the user delegated and
  * watched least closely.
+ *
+ * ── One tool call, counted once ──────────────────────────────────────────────
+ * `commands/scan.ts` folds a session's separate sub-agent transcript files into the same
+ * `ParsedSession`. A tool call that appears both inline in the main transcript and in a
+ * sub-agent's file would then be seen twice, so `toolCallsOf` de-duplicates by
+ * `tool_use_id` — unique per call, so this never drops a distinct call, only a repeat.
  */
 
 import type { ParsedSession, ToolUse } from "./transcript/transcript-types.js";
@@ -38,8 +44,17 @@ export function toolCallPayload(use: ToolUse): PreToolUsePayload {
 /** Every tool call in a session, in transcript order, as hook payloads. */
 export function toolCallsOf(session: ParsedSession): PreToolUsePayload[] {
   const payloads: PreToolUsePayload[] = [];
+  const seen = new Set<string>();
   for (const turn of session.turns) {
-    for (const use of turn.toolUses) payloads.push(toolCallPayload(use));
+    for (const use of turn.toolUses) {
+      // De-dup by `tool_use_id`: a session merged from a main transcript and its
+      // sub-agents' files can carry one call twice, and it must count once. Ids are unique
+      // per call, so this drops only a repeat, never a distinct call. A call with no id
+      // (the parser only keeps tool_uses that had one, so this is defensive) is always kept.
+      if (use.toolUseId !== "" && seen.has(use.toolUseId)) continue;
+      seen.add(use.toolUseId);
+      payloads.push(toolCallPayload(use));
+    }
   }
   return payloads;
 }

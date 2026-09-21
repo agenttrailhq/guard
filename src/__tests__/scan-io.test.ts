@@ -13,8 +13,8 @@
  * runs — a lever inside the released bytes that redirects a process launch. So the
  * DECISION is tested exhaustively
  * through the exported `openCommand`, and the four lines that hand that decision to
- * `spawn` are covered by `built-artifact.test.ts` running the real binary with
- * `--open` absent. `commands/scan.ts` covers both outcomes of the boolean it returns.
+ * `spawn` are kept out of `built-artifact.test.ts`, which runs the real binary with
+ * `--no-open`. `commands/scan.ts` covers both outcomes of the boolean it returns.
  */
 
 import { existsSync, mkdtempSync, statSync, writeFileSync } from "node:fs";

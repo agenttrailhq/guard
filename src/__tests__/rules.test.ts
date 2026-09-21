@@ -6,8 +6,10 @@
  * the only thing that could push a call toward the ceiling.
  */
 
+import { PACKS } from "@agenttrail/guardrails";
 import { describe, expect, it, vi } from "vitest";
 import { SHIPPED_CATALOG } from "../core/catalog.js";
+import { parseConfig, serializeDefaultConfig } from "../core/config.js";
 import { buildGuardSpanContext } from "../core/normalize.js";
 import { compileCatalog } from "../core/rules.js";
 import type { GuardAction, GuardRule } from "../core/types.js";
@@ -68,19 +70,18 @@ describe("a malformed guardrail is skipped, not fatal", () => {
 });
 
 describe("config shapes the compiled catalog", () => {
-  it("enabledPacks filters by category", () => {
+  it("disabledPacks switches a pack off by category", () => {
     const catalog = compileCatalog([rule("a", "keep"), rule("b", "drop")], {
-      enabledPacks: ["keep"],
+      disabledPacks: ["drop"],
       guardrailActionOverrides: {},
     });
     expect(catalog.map((c) => c.rule.id)).toEqual(["a"]);
   });
 
-  it("an ABSENT pack list means no filter — every guardrail stays enabled", () => {
+  it("an ABSENT disabledPacks means every guardrail stays enabled", () => {
     // Fails toward enforcing: a missing/unusable packs list must never silently
     // disable the catalog.
     const catalog = compileCatalog([rule("a", "x"), rule("b", "y")], {
-      enabledPacks: undefined,
       guardrailActionOverrides: {},
     });
     expect(catalog).toHaveLength(2);
@@ -88,7 +89,6 @@ describe("config shapes the compiled catalog", () => {
 
   it("guardrailActionOverrides changes the effective action", () => {
     const catalog = compileCatalog([rule("a", "test", "block")], {
-      enabledPacks: undefined,
       guardrailActionOverrides: { a: "warn" },
     });
     expect(catalog[0]?.action).toBe("warn");
@@ -96,10 +96,55 @@ describe("config shapes the compiled catalog", () => {
 
   it("an override for an unrelated guardrail id leaves this one alone", () => {
     const catalog = compileCatalog([rule("a", "test", "block")], {
-      enabledPacks: undefined,
       guardrailActionOverrides: { somethingElse: "warn" },
     });
     expect(catalog[0]?.action).toBe("block");
+  });
+});
+
+/**
+ * The two defects the disabled-packs config exists to close.
+ *
+ * A config that LISTED the enabled packs froze each install at the library of the day it
+ * was written: a pack shipped later was missing from the list and never loaded. And the
+ * list `init` seeded was a hand-typed copy of the library's packs, so a pack could be
+ * missing from it even on a brand-new install. Recording only what is OFF closes both.
+ */
+describe("a pack shipped after install is enforced with no extra step", () => {
+  it("a fresh install's seed config enforces the whole shipped library", () => {
+    const compiled = compileCatalog(SHIPPED_CATALOG, parseConfig(serializeDefaultConfig()));
+    expect(compiled).toHaveLength(SHIPPED_CATALOG.length);
+    expect([...new Set(compiled.map((c) => c.rule.category))].sort()).toEqual([...PACKS].sort());
+  });
+
+  it("an existing config enforces a pack the library gained later, and keeps its own choices", () => {
+    // The config was written when the library had two packs; the user turned one off.
+    const config = parseConfig(JSON.stringify({ version: 1, disabledPacks: ["old-b"] }));
+    const later = [rule("a.1", "old-a"), rule("b.1", "old-b"), rule("n.1", "shipped-later")];
+    expect(compileCatalog(later, config).map((c) => c.rule.id)).toEqual(["a.1", "n.1"]);
+  });
+
+  it("a config written by an older release, listing packs, still enforces every pack", () => {
+    // What a 0.1.0 install carries: an `enabledPacks` naming the eight packs of its day.
+    // It is no longer read, so the packs added since load without the user doing anything.
+    const old = parseConfig(
+      JSON.stringify({
+        version: 1,
+        enabledPacks: PACKS.filter(
+          (p) => p !== "agent-context" && p !== "test-integrity" && p !== "exfiltration",
+        ),
+      }),
+    );
+    const categories = new Set(compileCatalog(SHIPPED_CATALOG, old).map((c) => c.rule.category));
+    for (const p of ["agent-context", "test-integrity", "exfiltration"]) {
+      expect(categories.has(p), p).toBe(true);
+    }
+  });
+
+  it("a user guardrail with a category of its own loads unless that category is disabled", () => {
+    const mine = rule("mine.a", "my-team");
+    expect(compileCatalog([mine], parseConfig("{}"))).toHaveLength(1);
+    expect(compileCatalog([mine], parseConfig('{"disabledPacks":["my-team"]}'))).toHaveLength(0);
   });
 });
 

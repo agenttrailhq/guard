@@ -80,7 +80,7 @@ export function capMiddle(s: string): string {
 }
 
 /** `JSON.stringify` that cannot throw (cycles, BigInt) — returns "" instead. */
-function safeStringify(v: unknown): string {
+export function safeStringify(v: unknown): string {
   try {
     return JSON.stringify(v) ?? "";
   } catch {

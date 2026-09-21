@@ -1,5 +1,5 @@
 /**
- * The guard actually loads the real 56-rule corpus.
+ * The guard actually loads the real 74-rule corpus.
  *
  * `hook.ts`, `status.ts`, `init.ts` and `rules.ts` all read
  * `deps.catalog ?? SHIPPED_CATALOG`, and every other test in this package passes
@@ -65,15 +65,15 @@ describe("the shipped catalog is the real one", () => {
     expect(SHIPPED_CATALOG).toBe(RULES);
   });
 
-  it("holds 56 guardrails", () => {
-    expect(SHIPPED_CATALOG.length).toBe(56);
+  it("holds 74 guardrails", () => {
+    expect(SHIPPED_CATALOG.length).toBe(74);
   });
 
-  it("compiles all 56 — a guardrail that will not compile is SKIPPED, so a drop is silent", () => {
+  it("compiles all 74 — a guardrail that will not compile is SKIPPED, so a drop is silent", () => {
     // `compileCatalog` swallows a bad predicate per-rule by design ("one bad rule
     // must not disable the other 55"), which means a corpus-wide breakage shows up
     // as a smaller catalog rather than as an error. This is where that is noticed.
-    expect(compileCatalog(SHIPPED_CATALOG)).toHaveLength(56);
+    expect(compileCatalog(SHIPPED_CATALOG)).toHaveLength(74);
   });
 
   it("resolves the pack's lead guardrail by id", () => {
@@ -83,13 +83,16 @@ describe("the shipped catalog is the real one", () => {
   it("carries every pack, so no pack ships empty behind an enabled config", () => {
     const packs = new Set(SHIPPED_CATALOG.map((rule) => rule.category));
     expect([...packs].sort()).toEqual([
+      "agent-context",
       "destructive-data",
+      "exfiltration",
       "file-scope",
       "privilege-supply-chain",
       "prod-infra",
       "rce-supply-chain",
       "safety-bypass",
       "secret-exposure",
+      "test-integrity",
       "working-tree",
     ]);
   });

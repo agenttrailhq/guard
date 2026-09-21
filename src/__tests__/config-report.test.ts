@@ -1,3 +1,4 @@
+// cspell:words exfiltraton
 /**
  * What `config.json` lost, and whether anything says so.
  *
@@ -18,13 +19,9 @@
  * the parse; it must never change it.
  */
 
+import { PACKS } from "@agenttrail/guardrails";
 import { describe, expect, it } from "vitest";
-import {
-  DEFAULT_CONFIG,
-  DEFAULT_ENABLED_PACKS,
-  parseConfig,
-  serializeDefaultConfig,
-} from "../core/config.js";
+import { DEFAULT_CONFIG, parseConfig, serializeDefaultConfig } from "../core/config.js";
 import { inspectConfig } from "../core/config-report.js";
 
 /** The problem reported for one key path, or `undefined` when that path was not reported. */
@@ -103,46 +100,61 @@ describe("the `ask` override — the silent loss this module exists for", () => 
   });
 });
 
-describe("enabledPacks — including the empty list, which reads backwards", () => {
-  it("says an empty list means EVERY pack, not none, and points at the real off switch", () => {
-    const p = problemAt('{"enabledPacks":[]}', "enabledPacks");
-    expect(p?.reason).toContain("every pack is active, not none");
-    expect(p?.reason).toContain("uninstall");
-    // And that is what the parser did with it: no filter at all.
-    expect(parseConfig('{"enabledPacks":[]}').enabledPacks).toBeUndefined();
+describe("enabledPacks — written by older releases, no longer read", () => {
+  it("says the key is not read, that every pack is on, and how to turn one off", () => {
+    const p = problemAt('{"enabledPacks":["working-tree"]}', "enabledPacks");
+    expect(p?.reason).toContain("no longer read");
+    expect(p?.reason).toContain("every pack is on unless it is named in `disabledPacks`");
+    expect(p?.reason).toContain("guardrails disable <pack>");
   });
 
+  it("is telling the truth — the parser really does ignore it", () => {
+    expect(parseConfig('{"enabledPacks":["working-tree"]}')).toEqual(parseConfig("{}"));
+  });
+
+  it.each([
+    ["an empty list", '{"enabledPacks":[]}'],
+    ["a full list", JSON.stringify({ enabledPacks: PACKS })],
+    ["a non-array", '{"enabledPacks":"working-tree"}'],
+  ])("reports %s once, however it is shaped", (_label, text) => {
+    expect(reportedPaths(text, PACKS)).toEqual(["enabledPacks"]);
+  });
+});
+
+describe("disabledPacks — a dropped entry leaves a pack on; an unknown one does nothing", () => {
   it("names an unknown pack and lists the ones that exist", () => {
-    const p = problemAt(
-      '{"enabledPacks":["working-tree","working-trees"]}',
-      "enabledPacks.working-trees",
-      ["working-tree", "secret-exposure"],
-    );
-    expect(p?.reason).toContain("enables nothing");
-    expect(p?.reason).toContain("Known packs: working-tree, secret-exposure.");
+    const p = problemAt('{"disabledPacks":["exfiltraton"]}', "disabledPacks.exfiltraton", [
+      "exfiltration",
+      "working-tree",
+    ]);
+    expect(p?.reason).toContain("disables nothing");
+    expect(p?.reason).toContain("Known packs: exfiltration, working-tree.");
   });
 
   it("skips the unknown-pack check entirely when no pack list is supplied", () => {
     // Omitting `knownPacks` must mean "cannot check", not "every pack is unknown".
-    expect(inspectConfig('{"enabledPacks":["working-trees"]}').problems).toEqual([]);
+    expect(inspectConfig('{"disabledPacks":["exfiltraton"]}').problems).toEqual([]);
   });
 
   it("stays quiet on a list of packs that all exist", () => {
-    expect(inspectConfig('{"enabledPacks":["working-tree"]}', ["working-tree"]).problems).toEqual(
-      [],
-    );
+    expect(inspectConfig('{"disabledPacks":["exfiltration"]}', PACKS).problems).toEqual([]);
   });
 
-  it("reports a non-array as leaving every pack active", () => {
-    expect(problemAt('{"enabledPacks":"working-tree"}', "enabledPacks")?.reason).toContain(
-      "every pack is active",
-    );
+  it("stays quiet on an empty list — the seed shape", () => {
+    expect(inspectConfig('{"disabledPacks":[]}', PACKS).problems).toEqual([]);
   });
 
-  it("quotes a non-string entry so the user can find it in the file", () => {
-    expect(problemAt('{"enabledPacks":["working-tree",7]}', "enabledPacks")?.reason).toContain(
-      "entry 7 is not a string",
-    );
+  it("reports a non-array as leaving every pack on, and the parser agrees", () => {
+    const text = '{"disabledPacks":"exfiltration"}';
+    expect(problemAt(text, "disabledPacks")?.reason).toContain("every pack is on");
+    expect(parseConfig(text).disabledPacks).toEqual([]);
+  });
+
+  it("quotes a non-string or empty entry, by its position in the file", () => {
+    const text = '{"disabledPacks":["exfiltration",7,""]}';
+    expect(problemAt(text, "disabledPacks[1]")?.reason).toContain("7 is not a pack name");
+    expect(problemAt(text, "disabledPacks[2]")?.reason).toContain("is still on");
+    expect(parseConfig(text).disabledPacks).toEqual(["exfiltration"]);
   });
 });
 
@@ -236,8 +248,9 @@ describe("the reporter explains the parse and never changes it", () => {
     ["a JSON array", "[1,2]"],
     ["an empty object", "{}"],
     ["the ask override", '{"guardrailActionOverrides":{"wt.reset-hard":"ask"}}'],
-    ["an empty pack list", '{"enabledPacks":[]}'],
-    ["an unknown pack", '{"enabledPacks":["working-trees"]}'],
+    ["a leftover enabledPacks", '{"enabledPacks":["working-tree"]}'],
+    ["an unknown disabled pack", '{"disabledPacks":["working-trees"]}'],
+    ["a malformed disabled pack list", '{"disabledPacks":"working-tree"}'],
     ["a half-broken allowlist", '{"allowlist":[{"guardrail":"a","pattern":"*"},null]}'],
     ["a half-broken disable list", '{"disabledGuardrails":["a",7]}'],
     ["every flag set", '{"failOpen":false,"crashReports":true,"crashEndpoint":"https://x.test/c"}'],
@@ -245,7 +258,7 @@ describe("the reporter explains the parse and never changes it", () => {
   ];
 
   it.each(SAMPLES)("%s → config is exactly parseConfig's answer", (_label, text) => {
-    expect(inspectConfig(text, DEFAULT_ENABLED_PACKS).config).toEqual(parseConfig(text));
+    expect(inspectConfig(text, PACKS).config).toEqual(parseConfig(text));
   });
 });
 
@@ -254,13 +267,13 @@ describe("silence on a healthy file", () => {
     // The seed file is the one every new user starts with. If the reporter has anything
     // to say about it, either the writer and the reader disagree or the reporter always
     // fires — and a reporter that always fires is one nobody reads.
-    expect(inspectConfig(serializeDefaultConfig(), DEFAULT_ENABLED_PACKS).problems).toEqual([]);
+    expect(inspectConfig(serializeDefaultConfig(), PACKS).problems).toEqual([]);
   });
 
   it("a hand-written file using every key it knows reports no problems", () => {
     const text = JSON.stringify({
       version: 1,
-      enabledPacks: ["working-tree", "secret-exposure"],
+      disabledPacks: ["working-tree", "secret-exposure"],
       disabledGuardrails: ["wt.force-push"],
       guardrailActionOverrides: { "wt.reset-hard": "require_approval" },
       allowlist: [{ guardrail: "dd.rm-rf-absolute", pattern: "rm -rf /tmp/scratch" }],

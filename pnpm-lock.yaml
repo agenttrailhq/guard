@@ -9,8 +9,8 @@ importers:
   .:
     devDependencies:
       '@agenttrail/guardrails':
-        specifier: 0.0.2
-        version: 0.0.2
+        specifier: 0.2.0
+        version: 0.2.0
       '@biomejs/biome':
         specifier: 2.4.15
         version: 2.4.15
@@ -41,8 +41,8 @@ importers:
 
 packages:
 
-  '@agenttrail/guardrails@0.0.2':
-    resolution: {integrity: sha512-meHd9XaPtceLEKJvVpb9SkO565HIPj5mZAgqfH7XSwe1kdauDxGoxCuUA6TxMA3zw/UpUbYOJP0OjmzYKc0tiA==}
+  '@agenttrail/guardrails@0.2.0':
+    resolution: {integrity: sha512-eAQsIITayLbJqGb7z0JQ62kQVl5V+EbxburQBqgFbKxhClgGcu84oOKz64CBKYhhnX1jC8TnE8OoecJeL3pY9Q==}
     engines: {node: '>=22.13'}
 
   '@biomejs/biome@2.4.15':
@@ -1376,7 +1376,7 @@ packages:
 
 snapshots:
 
-  '@agenttrail/guardrails@0.0.2':
+  '@agenttrail/guardrails@0.2.0':
     dependencies:
       zod: 3.25.76
 

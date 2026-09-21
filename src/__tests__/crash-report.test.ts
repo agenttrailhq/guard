@@ -230,12 +230,12 @@ describe("enable / disable / clear / status", () => {
   it("--enable preserves keys it does not own, including ones the parser drops", async () => {
     // `parseConfig` does not read `version`, so round-tripping through
     // it would silently delete the field. The raw object is edited instead.
-    writeConfig({ version: 1, failOpen: false, enabledPacks: ["working-tree"] });
+    writeConfig({ version: 1, failOpen: false, disabledPacks: ["working-tree"] });
     await runCrashReport(["--enable"], io, {});
     const back = JSON.parse(readFileSync(configPath(home), "utf8"));
     expect(back.version).toBe(1);
     expect(back.failOpen).toBe(false);
-    expect(back.enabledPacks).toEqual(["working-tree"]);
+    expect(back.disabledPacks).toEqual(["working-tree"]);
     expect(back.crashReports).toBe(true);
   });
 
@@ -259,6 +259,9 @@ describe("enable / disable / clear / status", () => {
     expect(text).toContain("OFF (default)");
     expect(text).toContain("Stack traces only");
     expect(text).toContain("explicit `--send`");
+    // The second requirement `--send` has: an endpoint, which no default install carries.
+    expect(text).toContain("Send endpoint: none configured");
+    expect(text).toContain("none ships by default");
   });
 
   it("reports a write failure rather than claiming success", async () => {

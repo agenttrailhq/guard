@@ -149,12 +149,23 @@ export async function runCrashReport(
   }
 
   // `--status`, and the default with no flags.
+  // Resolve the endpoint the same way `--send` does, so status states the second
+  // requirement `--send` has and whether it is met. No endpoint ships with the tool, so
+  // on a default install this reads "none configured" and `--send` would refuse.
+  const statusEndpoint = resolveEndpoint(
+    flagValue(argv, "--endpoint"),
+    (deps.env ?? process.env).AGENTTRAIL_GUARD_CRASH_ENDPOINT,
+    config.crashEndpoint,
+  );
   io.writeStdout(
     [
       `Crash reporting: ${config.crashReports ? "ON" : "OFF (default)"}`,
       `Spooled locally: ${spool.length}`,
+      `Send endpoint: ${statusEndpoint === undefined ? "none configured" : statusEndpoint}`,
       "Stack traces only. No commands, no file contents, no environment.",
       "Nothing is ever sent without both the setting ON and an explicit `--send`.",
+      "`--send` also needs an endpoint, and none ships by default — bring your own with",
+      '--endpoint <url>, AGENTTRAIL_GUARD_CRASH_ENDPOINT, or "crashEndpoint" in config.json.',
       `Files: ~/.agenttrail/guard/crashes/ — deleting them is always safe.`,
       "",
     ].join("\n"),

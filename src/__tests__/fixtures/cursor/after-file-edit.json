@@ -1,0 +1,18 @@
+{
+  "conversation_id": "00000000-0000-4000-8000-000000000011",
+  "generation_id": "00000000-0000-4000-8000-000000000012",
+  "model": "composer-2.5",
+  "file_path": "/home/user/project/notes.txt",
+  "edits": [
+    {
+      "old_string": "",
+      "new_string": "probe-edit-2"
+    }
+  ],
+  "session_id": "00000000-0000-4000-8000-000000000011",
+  "hook_event_name": "afterFileEdit",
+  "cursor_version": "3.12.17",
+  "workspace_roots": ["/home/user/project"],
+  "user_email": "<redacted>",
+  "transcript_path": null
+}

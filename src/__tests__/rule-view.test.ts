@@ -54,11 +54,10 @@ function rule(over: Partial<GuardRule> & Pick<GuardRule, "id">): GuardRule {
 /** A config with every lever at its shipped default, so overrides read as the subject. */
 function config(over: Partial<GuardConfig> = {}): GuardConfig {
   return {
-    enabledPacks: undefined,
     disabledGuardrails: [],
+    disabledPacks: [],
     guardrailActionOverrides: {},
     allowlist: [],
-    failOpen: true,
     crashReports: false,
     crashEndpoint: undefined,
     ...over,
@@ -170,7 +169,7 @@ describe("why a guardrail is off, not merely that it is", () => {
 
   it("off because its pack is off", () => {
     const v = viewOf(
-      buildRuleViews(twoPacks, [], config({ enabledPacks: ["secret-exposure"] })),
+      buildRuleViews(twoPacks, [], config({ disabledPacks: ["working-tree"] })),
       "wt.a",
     );
     expect(v.enabled).toBe(false);
@@ -191,7 +190,7 @@ describe("why a guardrail is off, not merely that it is", () => {
       buildRuleViews(
         twoPacks,
         [],
-        config({ enabledPacks: ["secret-exposure"], disabledGuardrails: ["wt.a"] }),
+        config({ disabledPacks: ["working-tree"], disabledGuardrails: ["wt.a"] }),
       ),
       "wt.a",
     );
@@ -201,14 +200,14 @@ describe("why a guardrail is off, not merely that it is", () => {
 
   it("on, with no reason to give", () => {
     const v = viewOf(
-      buildRuleViews(twoPacks, [], config({ enabledPacks: ["working-tree"] })),
+      buildRuleViews(twoPacks, [], config({ disabledPacks: ["secret-exposure"] })),
       "wt.a",
     );
     expect(v.enabled).toBe(true);
     expect(v.disabledBy).toBeUndefined();
   });
 
-  it("an absent pack list is NO filter — every guardrail stays on, failing toward enforcing", () => {
+  it("nothing disabled means every guardrail stays on, including a category of your own", () => {
     const views = buildRuleViews(
       twoPacks,
       [rule({ id: "mine.a", category: "anything" })],
@@ -228,13 +227,24 @@ describe("why a guardrail is off, not merely that it is", () => {
     expect(viewOf(views, "wt.b").disabledBy).toBeUndefined();
   });
 
-  it("the pack filter reads the category, so a guardrail id in enabledPacks enables nothing", () => {
+  it("the pack switch reads the category, so a guardrail id in disabledPacks disables nothing", () => {
     const v = viewOf(
-      buildRuleViews([rule({ id: "wt.a" })], [], config({ enabledPacks: ["wt.a"] })),
+      buildRuleViews([rule({ id: "wt.a" })], [], config({ disabledPacks: ["wt.a"] })),
       "wt.a",
     );
-    expect(v.enabled).toBe(false);
-    expect(v.disabledBy).toBe("pack");
+    expect(v.enabled).toBe(true);
+    expect(v.disabledBy).toBeUndefined();
+  });
+
+  it("a category of your own is switched off by name, like a library pack", () => {
+    const views = buildRuleViews(
+      twoPacks,
+      [rule({ id: "mine.a", category: "mine" })],
+      config({ disabledPacks: ["mine"] }),
+    );
+    expect(viewOf(views, "mine.a").disabledBy).toBe("pack");
+    expect(viewOf(views, "wt.a").enabled).toBe(true);
+    expect(viewOf(views, "se.a").enabled).toBe(true);
   });
 });
 
@@ -291,7 +301,7 @@ describe("packsOf", () => {
     const views = buildRuleViews(
       [rule({ id: "a", category: "working-tree" })],
       [],
-      config({ enabledPacks: ["secret-exposure"] }),
+      config({ disabledPacks: ["working-tree"] }),
     );
     expect(viewOf(views, "a").enabled).toBe(false);
     expect(packsOf(views)).toEqual(["working-tree"]);
@@ -413,7 +423,7 @@ describe("the shipped catalog under a real config", () => {
       SHIPPED_CATALOG,
       [],
       config({
-        enabledPacks: ["destructive-data", "secret-exposure"],
+        disabledPacks: ["working-tree"],
         disabledGuardrails: ["se.env-print"],
         guardrailActionOverrides: { "dd.rm-rf-absolute": "warn" },
         allowlist: [{ guardrail: "dd.rm-rf-absolute", pattern: "rm -rf /tmp/scratch" }],
@@ -459,6 +469,9 @@ describe("the shipped catalog under a real config", () => {
       "safety-bypass",
       "privilege-supply-chain",
       "file-scope",
+      "agent-context",
+      "test-integrity",
+      "exfiltration",
     ]);
   });
 });

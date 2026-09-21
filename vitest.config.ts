@@ -12,8 +12,8 @@ export default defineProject({
     /**
      * Run this package's files ONE AT A TIME.
      *
-     * TWO suites rebuild the shared, checked-in `plugin/scripts/guard-hook.mjs` (and
-     * `dist/cli.js`) with tsup in `beforeAll` — `built-artifact.test.ts` and
+     * TWO suites rebuild the shared, checked-in `plugin/scripts/guard-hook.mjs` (with
+     * `guard-scan.mjs` and `dist/cli.js`) with tsup in `beforeAll` — `built-artifact.test.ts` and
      * `crash-runtime.test.ts` — while FIVE spawn `node` on the result. Run in parallel
      * workers, one suite can execute the bundle during the window another is truncating
      * and rewriting it. The symptom is a hook that emits nothing, surfacing as
@@ -35,6 +35,9 @@ export default defineProject({
         // actually matters — `built-artifact.test.ts` executes the built bundle in a
         // child process and asserts its stdout and exit code.
         "src/hook-entry.ts",
+        // The same shape for `scan`: one top-level `await runScan(...)`, covered by
+        // `built-artifact.test.ts` running the built `guard-scan.mjs` in a child process.
+        "src/scan-entry.ts",
         // A single re-export binding crash reporting to the secret scrubber. Same
         // rationale as `hook-entry.ts`: there is no behavior to instrument in-process,
         // and it IS exercised where it matters — `crash-runtime.test.ts` drives a crash

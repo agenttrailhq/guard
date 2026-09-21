@@ -17,6 +17,7 @@
  */
 
 import { runHook } from "./commands/hook.js";
+import { agentFromArgv } from "./core/agent.js";
 import { captureCrash } from "./core/crash-capture.js";
 import { scrubSecrets } from "./core/crash-scrub.js";
 import { VERSION } from "./core/version.js";
@@ -25,6 +26,9 @@ import { createRealIO } from "./io.js";
 const io = createRealIO();
 
 await runHook(io, {
+  // The app named on the hook's command line: `--agent claude` in the Claude Code
+  // plugin's `hooks/hooks.json`.
+  agent: agentFromArgv(process.argv.slice(2)),
   captureCrash: (err) => {
     captureCrash(err, {
       io,

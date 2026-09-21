@@ -57,9 +57,9 @@ function parseImports(source: string): ParsedImport[] {
  * than globbing `src/` keeps the fence accurate as modules are added, and keeps it off
  * CLI-only files that never reach the hook bundle.
  */
-function hookBundleGraph(): string[] {
+function hookBundleGraph(entry: string = HOOK_ENTRY): string[] {
   const seen = new Set<string>();
-  const queue = [HOOK_ENTRY];
+  const queue = [entry];
   while (queue.length > 0) {
     const file = queue.pop();
     if (file === undefined || seen.has(file)) continue;
@@ -153,13 +153,50 @@ describe("the colour helper is unreachable from the hook", () => {
     expect(specifiers.filter((s) => /color|chalk|picocolors|ansi/i.test(s))).toEqual([]);
   });
 
-  it("no module in the hook graph writes to stdout except emit.ts", () => {
+  /**
+   * The modules allowed to reach stdout, by name. A suffix check would also exempt any later
+   * module whose file name merely ends in `emit.ts` or `io.ts`.
+   */
+  const STDOUT_WRITERS = [
+    join(PKG_ROOT, "src", "core", "emit.ts"),
+    join(PKG_ROOT, "src", "core", "cursor-emit.ts"),
+    join(PKG_ROOT, "src", "io.ts"),
+  ];
+
+  /** A write to stdout, or a console call, in source with block comments removed. */
+  const STDOUT_WRITE = /process\s*\.\s*stdout|console\s*\.\s*(log|info|warn|error)/;
+
+  it("no module in the hook graph writes to stdout except the named writers", () => {
     const writers = hookBundleGraph().filter((f) => {
-      if (f.endsWith("emit.ts") || f.endsWith("io.ts")) return false;
+      if (STDOUT_WRITERS.includes(f)) return false;
       const code = readFileSync(f, "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
-      return /process\s*\.\s*stdout|console\s*\.\s*(log|info|warn|error)/.test(code);
+      return STDOUT_WRITE.test(code);
     });
     expect(writers).toEqual([]);
+  });
+
+  it("every named writer is in the hook graph, so the list cannot go stale", () => {
+    const graph = hookBundleGraph();
+    for (const writer of STDOUT_WRITERS) expect(graph).toContain(writer);
+  });
+
+  it("negative control — the detector DOES flag a stdout write and a console call", () => {
+    expect(STDOUT_WRITE.test('process.stdout.write("{}")')).toBe(true);
+    expect(STDOUT_WRITE.test('console.log("debug")')).toBe(true);
+    expect(STDOUT_WRITE.test("stdout.write(text)")).toBe(false);
+  });
+});
+
+describe("the Cursor modules are in the hook graph", () => {
+  // Named, so every fence in this file is known to cover them: a module that fell out of
+  // the graph would pass every fence without being checked.
+  it.each([
+    "core/agent.ts",
+    "core/cursor-mapper.ts",
+    "core/cursor-emit.ts",
+    "core/cursor-entry.ts",
+  ])("%s is inlined into the hook bundle", (module) => {
+    expect(hookBundleGraph()).toContain(join(PKG_ROOT, "src", ...module.split("/")));
   });
 });
 
@@ -194,7 +231,7 @@ describe("the hook can never gain the ability to spawn a process", () => {
   });
 
   it("scan-io.ts is the second spawner, and it is outside the graph too", () => {
-    // `scan --open` launches the desktop's file handler, which makes it the second
+    // `scan` launches the desktop's file handler to open its report, which makes it the second
     // `node:child_process` importer outside `setup-io.ts`.
     const scanIo = join(PKG_ROOT, "src", "scan-io.ts");
     expect(readFileSync(scanIo, "utf8")).toContain("node:child_process");
@@ -207,6 +244,57 @@ describe("the hook can never gain the ability to spawn a process", () => {
     const graph = hookBundleGraph();
     expect(graph).not.toContain(join(PKG_ROOT, "src", "commands", "scan.ts"));
     expect(graph).not.toContain(join(PKG_ROOT, "src", "core", "report.ts"));
+    expect(graph).not.toContain(join(PKG_ROOT, "src", "core", "report-brand.ts"));
     expect(graph).not.toContain(join(PKG_ROOT, "src", "core", "color.ts"));
+  });
+});
+
+describe("the scan-only plugin bundle carries scan and nothing else", () => {
+  // `plugin/scripts/guard-scan.mjs` is built from `scan-entry.ts` and run by the plugin's
+  // share-report skill. It needs the scanner and the report; it has no business with the
+  // install commands, the process that drives Claude Code's own CLI, or crash reporting.
+  const SCAN_ENTRY = join(PKG_ROOT, "src", "scan-entry.ts");
+  const graph = hookBundleGraph(SCAN_ENTRY);
+
+  it("finds the scan command and the report in it", () => {
+    expect(graph).toContain(join(PKG_ROOT, "src", "commands", "scan.ts"));
+    expect(graph).toContain(join(PKG_ROOT, "src", "core", "report.ts"));
+    expect(graph).toContain(join(PKG_ROOT, "src", "core", "report-brand.ts"));
+  });
+
+  it.each([
+    "setup-io.ts",
+    "commands/init.ts",
+    "commands/status.ts",
+    "commands/uninstall.ts",
+    "commands/crash-report.ts",
+    "commands/hook.ts",
+    "plugin/install.ts",
+    "cursor/install.ts",
+  ])("%s exists and is not inlined into it", (module) => {
+    const file = join(PKG_ROOT, "src", ...module.split("/"));
+    expect(existsSync(file)).toBe(true);
+    expect(graph).not.toContain(file);
+  });
+
+  it("reaches nothing under src/net/", () => {
+    expect(graph.filter((f) => f.includes(`${join(PKG_ROOT, "src", "net")}`))).toEqual([]);
+  });
+});
+
+describe("the Cursor install is outside the hook graph", () => {
+  // `init --agent cursor` and `uninstall --agent cursor` write files, which the file Claude Code
+  // and Cursor run before every tool call has no reason to do.
+  it.each([
+    "cursor/install.ts",
+    "cursor/cursor-io.ts",
+    "commands/agent-choice.ts",
+    "commands/init.ts",
+    "commands/uninstall.ts",
+    "commands/status.ts",
+  ])("%s exists and is not inlined into the hook bundle", (module) => {
+    const file = join(PKG_ROOT, "src", ...module.split("/"));
+    expect(existsSync(file)).toBe(true);
+    expect(hookBundleGraph()).not.toContain(file);
   });
 });

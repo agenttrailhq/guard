@@ -32,7 +32,10 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const PKG_ROOT = join(HERE, "..", "..");
 const SRC = join(PKG_ROOT, "src");
 const HOOK_ENTRY = join(SRC, "hook-entry.ts");
+/** The entry of `plugin/scripts/guard-scan.mjs`, which the plugin's skill runs. */
+const SCAN_ENTRY = join(SRC, "scan-entry.ts");
 const COMMANDS = join(SRC, "commands");
+const PLUGIN_SCRIPTS = join(PKG_ROOT, "plugin", "scripts");
 
 /** The one file allowed to contain a network call. */
 const TRANSPORT = join(SRC, "net", "crash-transport.ts");
@@ -160,6 +163,38 @@ describe("no network — the sender is unreachable from `hook`", () => {
       .map((f) => f.replace(`${SRC}/`, ""));
     expect(offenders).toEqual([]);
   });
+
+  it.each([
+    "core/agent.ts",
+    "core/cursor-mapper.ts",
+    "core/cursor-emit.ts",
+    "core/cursor-entry.ts",
+  ])("the Cursor module %s is in the hook graph, so the two fences above cover it", (module) => {
+    const file = join(SRC, ...module.split("/"));
+    expect(graphFrom(HOOK_ENTRY)).toContain(file);
+    expect(NETWORK.test(code(file))).toBe(false);
+  });
+});
+
+describe("no network — the sender is unreachable from the scan-only plugin bundle", () => {
+  // `commands/` is fenced by glob below, but this entry lives outside it, so it is named.
+  it("finds a non-trivial scan graph that really is the scan command", () => {
+    const graph = graphFrom(SCAN_ENTRY);
+    expect(graph.length).toBeGreaterThan(8);
+    expect(graph).toContain(join(COMMANDS, "scan.ts"));
+  });
+
+  it("no module reachable from the scan entry imports src/net/**", () => {
+    const offenders = graphFrom(SCAN_ENTRY).filter((f) => f.startsWith(join(SRC, "net")));
+    expect(offenders).toEqual([]);
+  });
+
+  it("no module reachable from the scan entry references the network at all", () => {
+    const offenders = graphFrom(SCAN_ENTRY)
+      .filter((f) => NETWORK.test(code(f)))
+      .map((f) => f.replace(`${SRC}/`, ""));
+    expect(offenders).toEqual([]);
+  });
 });
 
 describe("no network — and unreachable from every command except the sender", () => {
@@ -221,11 +256,24 @@ describe("the secret scrubber holds no guard-specific redaction", () => {
 });
 
 describe("the built artifacts still say what we claim", () => {
-  it("the HOOK bundle contains no fetch call — the old grep, KEPT", () => {
+  it("the plugin ships exactly the two bundles fenced here", () => {
+    // A third `.mjs` in `plugin/scripts/` would ship to every user with no grep over it.
+    if (!existsSync(PLUGIN_SCRIPTS)) return;
+    expect(
+      readdirSync(PLUGIN_SCRIPTS)
+        .filter((f) => f.endsWith(".mjs"))
+        .sort(),
+    ).toEqual(["guard-hook.mjs", "guard-scan.mjs"]);
+  });
+
+  it.each([
+    "guard-hook.mjs",
+    "guard-scan.mjs",
+  ])("the plugin bundle %s contains no fetch call — the old grep, KEPT", (name) => {
     // The bundle grep cannot cover `dist/cli.js`, because crash reporting puts a fetch in
-    // it. It still holds for the hook bundle: the hook is a separate tsup entry and the
-    // sender is not in its graph, so this assertion stays for that artifact.
-    const bundle = join(PKG_ROOT, "plugin", "scripts", "guard-hook.mjs");
+    // it. It holds for both plugin bundles: each is a separate tsup entry and the sender
+    // is not in either graph, so this assertion stays for those artifacts.
+    const bundle = join(PLUGIN_SCRIPTS, name);
     if (!existsSync(bundle)) return;
     expect(readFileSync(bundle, "utf8")).not.toMatch(/\bfetch\s*\(/);
   });

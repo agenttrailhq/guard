@@ -1,5 +1,8 @@
 // cspell:words acmecorp betaholdings clientco clientdb createdb dbname dropdb flyctl
 // cspell:words mongosh mysqladmin mysqldump nerdctl podman rmi sftp unpause
+// cspell:words apikey passwd pwd autoscale svc configmap configmaps daemonset
+// cspell:words statefulset replicaset serviceaccount rolebinding clusterrole
+// cspell:words clusterrolebinding cronjob namespaces endpoints pvc hpa crd
 /**
  * `redactIdentifiers` — identifying NAMES that are not path-shaped, out of anything
  * `scan` displays or writes.
@@ -39,6 +42,11 @@
  *     psql -h acme-prod.internal -d clientdb      internal hostname, database name
  *     ssh deploy@acme-prod-01                     host and login
  *     git commit -m 'fix billing for AcmeCorp'    free-text commit message
+ *     git config user.name 'Priya at AcmeCorp'    commit identity
+ *     op item get acme-stripe-live-key            password-manager item name
+ *     gh pr create --title '[ACME-12] billing'    pull-request title and body
+ *     setup --org 123e4567-e89b-42d3-a456-…       an account or record UUID
+ *     git commit -F - <<'EOF' … EOF               a heredoc body — free text
  *
  * Neither earlier pass is looking for them: one matches value shapes and the other
  * matches path structure, and a container name is neither.
@@ -65,7 +73,29 @@
  * shared. For the container family every operand is replaced UNLESS it is one of the
  * subcommand keywords in {@link CONTAINER_KEYWORDS} — so `docker volume rm <name>`
  * needs no per-subcommand arity table and a subcommand added by a future Docker release
- * over-redacts instead of leaking.
+ * over-redacts instead of leaking. The `kube` family takes the same line against
+ * {@link KUBE_KEYWORDS}, so a resource NAME (`get pods <name>`, `exec <name>`) goes and
+ * not only the `-n` namespace. The `db` family redacts the SQL statement handed to
+ * `-c`/`-e` ({@link DB_SQL_FLAGS}) whole, rather than parsing table names out of it. The
+ * `op` family keeps {@link OP_KEYWORDS} and redacts every other operand, so an item id
+ * or a vault name goes; the `gh` family redacts only titles, bodies and notes.
+ *
+ * ── Four passes that are NOT keyed to a command at all ───────────────────────
+ * A secret handed as a flag value ({@link SECRET_FLAG} — `--token abc`, `--password x`)
+ * leaks the same on a tool the deny-list has never heard of, so it is redacted wherever
+ * it appears, before any family is considered. `scrubText` cannot: it anchors to an
+ * `=`/`:` assignment, and a space-separated flag value is neither. Likewise a `#`
+ * comment is free text a human wrote — a branch, a host, a note — and is collapsed to
+ * `#<comment>` in any command. A heredoc body ({@link redactHeredocBodies}) is free text of
+ * the same kind — a commit message, a pull-request body, a note — and becomes one
+ * `<message>` line between its delimiters. A UUID ({@link UUID}) names an account, an
+ * organization or a record in whatever command carries it, and becomes `<name>`; so does
+ * the value of a 1Password setting passed as an environment variable (`OP_ACCOUNT=…`).
+ *
+ * A value slot that is redacted WHOLE — a commit message, a SQL statement, a title — is
+ * redacted even when an earlier pass already replaced part of it: a message whose only
+ * scrubbed part was the co-author's email still carried the issue number and the author, so
+ * such a slot is kept only when it is already nothing but a placeholder.
  *
  * ── It keeps enough of the command to be worth reading ───────────────────────
  * `redact-path.test.ts` draws this line and it holds here: the point is a readable
@@ -78,7 +108,8 @@
  * ── It never touches a placeholder ───────────────────────────────────────────
  * A word containing `<…>` or `[REDACTED:` is left exactly as it is. That is what makes
  * this pass idempotent, and it is what stops `-e FOO=<path>` from having its one marker
- * overwritten by `<name>`.
+ * overwritten by `<name>`. The one exception is a value slot redacted whole (above): there
+ * a word is kept only when it is NOTHING BUT a placeholder, which is still idempotent.
  */
 
 import { REDACTION_PREFIX } from "./redaction.js";
@@ -91,9 +122,51 @@ export const HOST_PLACEHOLDER = "<host>";
 export const USER_PLACEHOLDER = "<user>";
 /** Free text a human wrote — a commit or tag message. */
 export const MESSAGE_PLACEHOLDER = "<message>";
+/** The body of a shell comment (`# …`) — free text a human wrote in any command. */
+export const COMMENT_PLACEHOLDER = "<comment>";
+
+/**
+ * A secret carried as a flag's value in ANY command, redacted for the report.
+ *
+ * It reuses `scrubText`'s `[REDACTED:…]` vocabulary — the report's legend already
+ * explains that marker as a redacted secret — so a bare-argument secret reads the same
+ * as a shape-matched one. `isRedactedWord` recognizes it, keeping the pass idempotent.
+ */
+const SECRET_ARG_PLACEHOLDER = `${REDACTION_PREFIX}secret:arg]`;
+
+/**
+ * A flag whose value is a secret, whatever command it appears in.
+ *
+ * `scrubText` catches a secret by SHAPE and anchors to an `=`/`:` assignment; a value
+ * handed as the next word (`--token abc123`) is neither, so it survives to here. This is
+ * command-INDEPENDENT — a secret flag leaks the same on a tool the deny-list has never
+ * heard of — so it is matched in the main loop before any family is considered.
+ *
+ * The names covered are the ones that imply a credential (`--password`, `--api-key`,
+ * `--auth-token`, `--client-secret`, …) plus the two short generic ones people actually
+ * type for a secret (`--key`, `--pass`, `--pwd`). It does NOT match `--namespace`,
+ * `--dbname`, `--message` or `--name`: none of those contain a secret word.
+ */
+const SECRET_FLAG =
+  /^--(?:[a-z0-9-]*(?:password|passwd|secret|token|api-?key|apikey|access-?key|access-?token|auth-?token|credentials?)[a-z0-9-]*|key|pass|pwd)$/i;
+
+/**
+ * A UUID, anywhere in a word — an account, organization or record id.
+ *
+ * Global and case-insensitive; applied to whatever part of a word the family rules kept,
+ * so `--org=<uuid>` becomes `--org=<name>` and a UUID inside JSON loses only the UUID.
+ */
+const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
+
+/**
+ * A heredoc operator: `<<WORD`, `<<'WORD'`, `<<"WORD"`, `<<\WORD`, and the tab-stripping
+ * `<<-WORD`. Not `<<<`, which is a here-string with no body. The delimiter must start
+ * with a letter or `_`, so an arithmetic shift such as `$((1 << 2))` is not read as one.
+ */
+const HEREDOC_OPERATOR = /(?<!<)<<(?!<)(-?)[ \t]*\\?(['"]?)([A-Za-z_][A-Za-z0-9_]*)\2/g;
 
 /** Which rule set a command word turns on. */
-type Family = "container" | "kube" | "db" | "ssh" | "git";
+type Family = "container" | "kube" | "db" | "ssh" | "git" | "op" | "gh";
 
 /**
  * The commands whose operands are inspected at all. Everything else is untouched.
@@ -124,6 +197,8 @@ const COMMANDS: ReadonlyMap<string, Family> = new Map<string, Family>([
   ["scp", "ssh"],
   ["sftp", "ssh"],
   ["git", "git"],
+  ["op", "op"],
+  ["gh", "gh"],
 ]);
 
 /**
@@ -219,6 +294,97 @@ const CONTAINER_INNER_COMMAND = new Set(["exec", "run"]);
 /** `kubectl` flags whose value names a namespace. */
 const KUBE_NAME_FLAGS = new Set(["-n", "--namespace"]);
 
+/**
+ * `kubectl` verbs and resource-type words — the allow-list INSIDE the command.
+ *
+ * The posture the container family takes, applied to `kubectl`: a bare operand that is
+ * not one of these is a resource NAME, a context name, or a namespace given positionally
+ * — all identifying — and is redacted. So `kubectl get pods acme-web-7` keeps `get pods`
+ * and blanks `acme-web-7`, and `kubectl exec acme-web-7 -- sh` blanks the name too. The
+ * cost is over-redaction of an alias not listed here (a rare resource type collapses to
+ * `<name>`), which is the safe direction for a shared file. It is not exhaustive by
+ * design — a shape nobody thought of defaults to redacted rather than shared.
+ */
+const KUBE_KEYWORDS: ReadonlySet<string> = new Set([
+  // verbs
+  "annotate",
+  "api-resources",
+  "api-versions",
+  "apply",
+  "attach",
+  "auth",
+  "autoscale",
+  "cluster-info",
+  "completion",
+  "config",
+  "cordon",
+  "cp",
+  "create",
+  "delete",
+  "describe",
+  "diff",
+  "drain",
+  "edit",
+  "exec",
+  "explain",
+  "expose",
+  "get",
+  "help",
+  "label",
+  "logs",
+  "patch",
+  "port-forward",
+  "proxy",
+  "replace",
+  "rollout",
+  "run",
+  "scale",
+  "set",
+  "top",
+  "version",
+  "wait",
+  // resource types
+  "all",
+  "clusterrole",
+  "clusterrolebinding",
+  "configmap",
+  "configmaps",
+  "context",
+  "contexts",
+  "cronjob",
+  "crd",
+  "daemonset",
+  "deploy",
+  "deployment",
+  "deployments",
+  "endpoints",
+  "event",
+  "events",
+  "hpa",
+  "ingress",
+  "job",
+  "jobs",
+  "namespace",
+  "namespaces",
+  "node",
+  "nodes",
+  "ns",
+  "pod",
+  "pods",
+  "pv",
+  "pvc",
+  "replicaset",
+  "role",
+  "rolebinding",
+  "secret",
+  "secrets",
+  "service",
+  "serviceaccount",
+  "services",
+  "statefulset",
+  "svc",
+]);
+
 /** Database-client flags whose value is a host. */
 const DB_HOST_FLAGS = new Set(["-h", "--host"]);
 
@@ -230,6 +396,18 @@ const DB_HOST_FLAGS = new Set(["-h", "--host"]);
  * `ls`, `sort`, `patch` and `uniq`, none of which this pass ever inspects.
  */
 const DB_NAME_FLAGS = new Set(["-d", "-D", "--dbname", "--database"]);
+
+/**
+ * Database-client flags whose value is a SQL statement.
+ *
+ * The statement is redacted WHOLE (`psql -c 'SELECT … FROM customers'` → `psql -c
+ * <name>`) rather than parsed: pulling the table and column names out of arbitrary SQL
+ * is a parser this report does not need, and a WHERE clause carries values as
+ * identifying as any table name. Blanking the statement is the safe direction, and the
+ * rule id beside it still says what fired. Scoped to the clients in {@link COMMANDS},
+ * which is what makes `-c`/`-e` safe to read as "the SQL" here and nowhere else.
+ */
+const DB_SQL_FLAGS = new Set(["-c", "--command", "-e", "--execute", "--eval"]);
 
 /**
  * `ssh`-family flags that CONSUME the next word.
@@ -299,6 +477,78 @@ const GIT_MESSAGE_SUBCOMMANDS = new Set([
 /** `-m`, `--message`, and short-flag clusters ending in `m` such as `-am`. */
 const GIT_MESSAGE_FLAG = /^(?:-[A-Za-z]*m|--message)$/;
 
+/**
+ * `git config` keys whose value is the committer's identity. Read both as the operand
+ * after `git config` and as the `key=value` given to `git -c`.
+ */
+const GIT_IDENTITY_KEYS = new Set(["user.name", "user.email"]);
+
+/**
+ * 1Password CLI (`op`) subcommand and object words — the allow-list INSIDE the command.
+ *
+ * The container posture again: any other bare operand is an item, vault, document,
+ *     op item get acme-stripe-live-key            password-manager item name
+ * keeps `item get` and loses the id. A reference given as `op://vault/item` is already
+ * `<path>` by the time this pass runs.
+ */
+const OP_KEYWORDS: ReadonlySet<string> = new Set([
+  "account",
+  "add",
+  "completion",
+  "confirm",
+  "connect",
+  "create",
+  "delete",
+  "document",
+  "edit",
+  "events-api",
+  "forget",
+  "get",
+  "grant",
+  "group",
+  "inject",
+  "item",
+  "list",
+  "ls",
+  "move",
+  "plugin",
+  "provision",
+  "reactivate",
+  "read",
+  "remove",
+  "revoke",
+  "rm",
+  "run",
+  "server",
+  "service-account",
+  "share",
+  "signin",
+  "signout",
+  "suspend",
+  "template",
+  "token",
+  "update",
+  "user",
+  "vault",
+  "whoami",
+]);
+
+/** `op` flags whose value names a vault or account. */
+const OP_NAME_FLAGS = new Set(["--vault", "--account"]);
+
+/**
+ * `op` flags whose value is kept: field labels and output formats say what was read,
+ * not whose. Listed so the value is consumed rather than taken for an item name.
+ */
+const OP_KEPT_VALUE_FLAGS = new Set(["--fields", "--field", "--format"]);
+
+/**
+ * GitHub CLI (`gh`) flags whose value is free text a human or an agent wrote — a pull
+ * request, issue or release title, body or notes. Everything else `gh` takes is kept: a
+ * PR number identifies nobody, and an `owner/repo` is already `<path>`.
+ */
+const GH_MESSAGE_FLAGS = new Set(["--title", "-t", "--body", "-b", "--notes"]);
+
 /** A `--flag=value` or `KEY=value` word, split at the FIRST `=`. */
 const ASSIGNMENT = /^([^=]+)=(.+)$/;
 
@@ -323,6 +573,28 @@ function isRedactedWord(word: string): boolean {
   return /<[a-z]+>/.test(word) || word.includes(REDACTION_PREFIX);
 }
 
+/**
+ * Is this word NOTHING BUT one placeholder, optionally quoted?
+ *
+ * Narrower than {@link isRedactedWord}, for a value slot that is redacted whole (a commit
+ * message, a SQL statement, a title). There, a word that merely CONTAINS a placeholder
+ * still carries everything around it — a message whose only scrubbed part is the
+ * co-author's email still names the issue — so only a value that is already a bare
+ * placeholder is left as it is.
+ */
+function isPlaceholderOnly(word: string): boolean {
+  const quoted = /^(["'])([\s\S]*)\1$/.exec(word);
+  const inner = quoted === null ? word : (quoted[2] as string);
+  return /^(?:<[a-z]+>|\[REDACTED:[^\]]*\])$/.test(inner);
+}
+
+/**
+ * A 1Password CLI setting passed through the environment (`OP_ACCOUNT=…`, `OP_VAULT=…`):
+ * the value names an account, a vault or a server. A token-shaped one is a secret and
+ * `scrubText` has already replaced it, which this leaves alone.
+ */
+const OP_ENV_ASSIGNMENT = /^(OP_[A-Z0-9_]+)=(.+)$/;
+
 /** One whitespace-delimited word, with where it sits in the original string. */
 interface Word {
   readonly text: string;
@@ -330,8 +602,11 @@ interface Word {
   readonly end: number;
 }
 
-/** A word, or the boundary between two commands. */
-type Piece = { readonly kind: "word"; readonly word: Word } | { readonly kind: "break" };
+/** A word, a command boundary, or a shell comment run (`#` to end of line). */
+type Piece =
+  | { readonly kind: "word"; readonly word: Word }
+  | { readonly kind: "break" }
+  | { readonly kind: "comment"; readonly start: number; readonly end: number };
 
 /**
  * Split a command into words and command boundaries, quote-aware.
@@ -376,6 +651,18 @@ function tokenize(text: string): Piece[] {
       continue;
     }
 
+    if (ch === "#" && start < 0) {
+      // A `#` at a word boundary begins a shell comment that runs to end of line — free
+      // text a human wrote, which can name a branch, a host or a client. Mid-word
+      // (`foo#bar`) a `#` is an ordinary character, so this fires only when no word is
+      // open. The trailing newline is left for the SPACE branch to emit as a boundary.
+      const newline = text.indexOf("\n", i);
+      const commentEnd = newline === -1 ? text.length : newline;
+      pieces.push({ kind: "comment", start: i, end: commentEnd });
+      i = commentEnd;
+      continue;
+    }
+
     if (ch === "'" || ch === '"') {
       const close = text.indexOf(ch, i + 1);
       if (close !== -1) {
@@ -411,6 +698,89 @@ function replaceValue(word: string, placeholder: string): string {
 interface Pending {
   /** The placeholder to write, or `undefined` to consume the value and keep it. */
   readonly placeholder: string | undefined;
+  /**
+   * For a value that is kept, an optional narrower rewrite of it — `git -c`'s
+   * `user.name=…` is the case: the value is kept unless it is an identity key.
+   */
+  readonly rewrite?: (word: string) => string | undefined;
+}
+
+/** `user.name=…` / `user.email=…` as handed to `git -c`, with the value redacted. */
+function gitIdentityPair(word: string): string | undefined {
+  const pair = ASSIGNMENT.exec(word);
+  if (pair === null) return undefined;
+  const key = pair[1] as string;
+  return GIT_IDENTITY_KEYS.has(key) ? `${key}=${USER_PLACEHOLDER}` : undefined;
+}
+
+/** Replace every UUID in a word with `<name>`, leaving the rest of the word as it is. */
+function withoutIds(word: string): string {
+  return word.replace(UUID, NAME_PLACEHOLDER);
+}
+
+/**
+ * Collapse each heredoc body to one `<message>` line, keeping the operator and the
+ * delimiter so the shape still reads as a heredoc.
+ *
+ * Runs on the raw, multi-line text before tokenizing. The body starts on the line after
+ * the operator and ends at the first line whose trimmed text is the delimiter — trimmed,
+ * because agents routinely indent a terminator inside `"$(cat <<'EOF' … EOF)"`. A heredoc
+ * whose terminator is not found runs to the end of the text, as the shell reads one — and
+ * it is the common case, not a corner: the engine keeps only the first `MAX_DETAIL_LEN`
+ * characters of a shell command, so a long body loses its terminator before it gets here.
+ * A one-line command has no body to redact, so `echo "use << EOF"` is untouched; a
+ * multi-line one with such a string over-redacts, which is the safe direction. Several
+ * heredoc operators on one line are read in order, as the shell reads them.
+ */
+export function redactHeredocBodies(text: string): string {
+  if (!text.includes("<<")) return text;
+  const edits: { start: number; end: number }[] = [];
+  let lineStart = 0;
+
+  while (lineStart < text.length) {
+    const lineEnd = text.indexOf("\n", lineStart);
+    if (lineEnd === -1) break;
+    const operators = [...text.slice(lineStart, lineEnd).matchAll(HEREDOC_OPERATOR)];
+    let next = lineEnd + 1;
+
+    for (const operator of operators) {
+      const stripTabs = operator[1] === "-";
+      const delimiter = operator[3] as string;
+      let at = next;
+      let terminator = -1;
+      let terminatorEnd = -1;
+      while (at <= text.length) {
+        const newline = text.indexOf("\n", at);
+        const end = newline === -1 ? text.length : newline;
+        const line = text.slice(at, end);
+        if ((stripTabs ? line.replace(/^\t+/, "") : line).trim() === delimiter) {
+          terminator = at;
+          terminatorEnd = end;
+          break;
+        }
+        if (newline === -1) break;
+        at = newline + 1;
+      }
+      if (terminator === -1) {
+        // Unterminated: the body is the rest of the text.
+        if (next < text.length) edits.push({ start: next, end: text.length });
+        next = text.length;
+        break;
+      }
+      if (terminator > next) edits.push({ start: next, end: terminator - 1 });
+      next = terminatorEnd + 1;
+    }
+    lineStart = next;
+  }
+
+  if (edits.length === 0) return text;
+  let out = "";
+  let cursor = 0;
+  for (const edit of edits) {
+    out += `${text.slice(cursor, edit.start)}${MESSAGE_PLACEHOLDER}`;
+    cursor = edit.end;
+  }
+  return out + text.slice(cursor);
 }
 
 /** Mutable per-command state. Reset at every boundary and at every new command word. */
@@ -442,12 +812,31 @@ function freshState(family: Family | undefined, command?: string): State {
 }
 
 /**
+ * Options for {@link redactIdentifiers}.
+ *
+ * The default (`{}`) is the command posture. `redactTitle` overrides only what a PROSE
+ * title cannot take — the same kind of decision that omits the path pass for titles.
+ */
+export interface RedactIdentifiersOptions {
+  /**
+   * Redact bare `kubectl` resource-name operands (`get pods <name>`). On by default; a
+   * title turns it OFF, so a sentence like "kubectl delete / drain removes running
+   * workloads" keeps its words.
+   */
+  readonly kubeResourceOperands?: boolean;
+}
+
+/**
  * Decide the replacement for one word, advancing `state`.
  *
  * Returns the replacement text, or `undefined` to keep the word as it is. Every branch
  * is per-family; a word reaching here with no family set is kept.
  */
-function classify(word: string, state: State): string | undefined {
+function classify(
+  word: string,
+  state: State,
+  options: RedactIdentifiersOptions,
+): string | undefined {
   const family = state.family;
   if (family === undefined) return undefined;
   const isFlag = word.startsWith("-");
@@ -473,11 +862,23 @@ function classify(word: string, state: State): string | undefined {
 
     case "kube": {
       const assignment = ASSIGNMENT.exec(word);
-      if (assignment !== null && KUBE_NAME_FLAGS.has(assignment[1] as string)) {
-        return `${assignment[1]}=${NAME_PLACEHOLDER}`;
+      if (assignment !== null) {
+        if (KUBE_NAME_FLAGS.has(assignment[1] as string)) {
+          return `${assignment[1]}=${NAME_PLACEHOLDER}`;
+        }
+        return undefined;
       }
-      if (KUBE_NAME_FLAGS.has(word)) state.pending = { placeholder: NAME_PLACEHOLDER };
-      return undefined;
+      if (isFlag) {
+        if (KUBE_NAME_FLAGS.has(word)) state.pending = { placeholder: NAME_PLACEHOLDER };
+        return undefined;
+      }
+      // A bare operand: keep kubectl's own verbs and resource types, redact the rest —
+      // a resource NAME, a context name, or a positional namespace are all identifying.
+      // OFF for a title, which is prose: "kubectl delete / drain removes running
+      // workloads" is a sentence, not a command, and its words are not resource names.
+      if (options.kubeResourceOperands === false) return undefined;
+      if (KUBE_KEYWORDS.has(word)) return undefined;
+      return replaceValue(word, NAME_PLACEHOLDER);
     }
 
     case "db": {
@@ -486,10 +887,12 @@ function classify(word: string, state: State): string | undefined {
         const flag = assignment[1] as string;
         if (DB_HOST_FLAGS.has(flag)) return `${flag}=${HOST_PLACEHOLDER}`;
         if (DB_NAME_FLAGS.has(flag)) return `${flag}=${NAME_PLACEHOLDER}`;
+        if (DB_SQL_FLAGS.has(flag)) return `${flag}=${NAME_PLACEHOLDER}`;
         return undefined;
       }
       if (DB_HOST_FLAGS.has(word)) state.pending = { placeholder: HOST_PLACEHOLDER };
       else if (DB_NAME_FLAGS.has(word)) state.pending = { placeholder: NAME_PLACEHOLDER };
+      else if (DB_SQL_FLAGS.has(word)) state.pending = { placeholder: NAME_PLACEHOLDER };
       return undefined;
     }
 
@@ -527,14 +930,52 @@ function classify(word: string, state: State): string | undefined {
       if (isFlag) {
         if (messageSubcommand && GIT_MESSAGE_FLAG.test(word)) {
           state.pending = { placeholder: MESSAGE_PLACEHOLDER };
+        } else if (word === "-c" && state.gitSubcommand === undefined) {
+          // `git -c user.name=… commit`: the pair is kept unless it sets an identity.
+          state.pending = { placeholder: undefined, rewrite: gitIdentityPair };
         } else if (GIT_VALUE_FLAGS.has(word)) {
           state.pending = { placeholder: undefined };
         }
         return undefined;
       }
+      // `git config [--global] user.name '…'`: the value after an identity key is a name.
+      if (state.gitSubcommand === "config" && GIT_IDENTITY_KEYS.has(word)) {
+        state.pending = { placeholder: USER_PLACEHOLDER };
+        return undefined;
+      }
       // A placeholder is never the subcommand: `git -C <path> commit -m …` must still
       // reach `commit`, or the message it was about to redact survives.
       if (!isRedactedWord(word)) state.gitSubcommand ??= word;
+      return undefined;
+    }
+
+    case "op": {
+      if (state.stopped) return undefined;
+      const assignment = ASSIGNMENT.exec(word);
+      if (assignment !== null) {
+        const flag = assignment[1] as string;
+        if (OP_NAME_FLAGS.has(flag)) return `${flag}=${NAME_PLACEHOLDER}`;
+        return undefined;
+      }
+      if (isFlag) {
+        // `op run -- <command>`: what follows `--` is somebody else's command line.
+        if (word === "--") state.stopped = true;
+        else if (OP_NAME_FLAGS.has(word)) state.pending = { placeholder: NAME_PLACEHOLDER };
+        else if (OP_KEPT_VALUE_FLAGS.has(word)) state.pending = { placeholder: undefined };
+        return undefined;
+      }
+      if (OP_KEYWORDS.has(word)) return undefined;
+      return replaceValue(word, NAME_PLACEHOLDER);
+    }
+
+    case "gh": {
+      const assignment = ASSIGNMENT.exec(word);
+      if (assignment !== null) {
+        const flag = assignment[1] as string;
+        if (GH_MESSAGE_FLAGS.has(flag)) return `${flag}=${MESSAGE_PLACEHOLDER}`;
+        return undefined;
+      }
+      if (GH_MESSAGE_FLAGS.has(word)) state.pending = { placeholder: MESSAGE_PLACEHOLDER };
       return undefined;
     }
   }
@@ -546,9 +987,12 @@ function classify(word: string, state: State): string | undefined {
  * Pure, total and idempotent. Compose it LAST — after `scrubText` and `redactPaths` —
  * for the reasons in the module header.
  */
-export function redactIdentifiers(text: string): string {
-  if (text.length === 0) return text;
+export function redactIdentifiers(input: string, options: RedactIdentifiersOptions = {}): string {
+  if (input.length === 0) return input;
 
+  // Heredoc bodies first: they are free text, and once collapsed nothing inside them can
+  // be mistaken for a command word or a comment by the word pass below.
+  const text = redactHeredocBodies(input);
   const pieces = tokenize(text);
   const edits: { start: number; end: number; text: string }[] = [];
   let state = freshState(undefined);
@@ -556,6 +1000,15 @@ export function redactIdentifiers(text: string): string {
   for (const piece of pieces) {
     if (piece.kind === "break") {
       state = freshState(undefined);
+      continue;
+    }
+
+    if (piece.kind === "comment") {
+      // Collapse a comment that carries text to `#<comment>`; a bare `#` is left alone.
+      const body = text.slice(piece.start + 1, piece.end);
+      if (body.trim().length > 0) {
+        edits.push({ start: piece.start, end: piece.end, text: `#${COMMENT_PLACEHOLDER}` });
+      }
       continue;
     }
 
@@ -568,10 +1021,40 @@ export function redactIdentifiers(text: string): string {
     const pending = state.pending;
     state.pending = undefined;
     if (pending !== undefined && !word.startsWith("-")) {
-      if (pending.placeholder !== undefined && !isRedactedWord(word)) {
-        edits.push({ start, end, text: replaceValue(word, pending.placeholder) });
+      if (pending.placeholder !== undefined) {
+        // A value redacted WHOLE — even when an earlier pass already took a secret or a
+        // path out of part of it; only a value that is already a bare placeholder stays.
+        if (!isPlaceholderOnly(word)) {
+          edits.push({ start, end, text: replaceValue(word, pending.placeholder) });
+        }
+      } else if (!isRedactedWord(word)) {
+        const kept = pending.rewrite?.(word) ?? withoutIds(word);
+        if (kept !== word) edits.push({ start, end, text: kept });
       }
       continue;
+    }
+
+    // Command-INDEPENDENT: a 1Password setting handed through the environment.
+    const opEnv = OP_ENV_ASSIGNMENT.exec(word);
+    if (opEnv !== null && !isPlaceholderOnly(opEnv[2] as string)) {
+      edits.push({ start, end, text: `${opEnv[1]}=${NAME_PLACEHOLDER}` });
+      continue;
+    }
+
+    // Command-INDEPENDENT: a secret-bearing flag's value is a secret in ANY command,
+    // including one no family covers. Checked before the family logic so it wins over a
+    // family's own reading of the same flag, and skipped on an already-redacted word so
+    // the pass stays idempotent.
+    if (!isRedactedWord(word)) {
+      const secretAssignment = ASSIGNMENT.exec(word);
+      if (secretAssignment !== null && SECRET_FLAG.test(secretAssignment[1] as string)) {
+        edits.push({ start, end, text: `${secretAssignment[1]}=${SECRET_ARG_PLACEHOLDER}` });
+        continue;
+      }
+      if (SECRET_FLAG.test(word)) {
+        state.pending = { placeholder: SECRET_ARG_PLACEHOLDER };
+        continue;
+      }
     }
 
     // A known command word re-arms the state wherever it appears — after `sudo`, after
@@ -586,14 +1069,14 @@ export function redactIdentifiers(text: string): string {
     if (isRedactedWord(word)) {
       // Not modified — but it still OCCUPIES its position, so `docker exec <name> psql`
       // does not promote `psql` into the operand slot on a second pass.
-      classify(word, state);
+      classify(word, state, options);
       continue;
     }
 
-    const replacement = classify(word, state);
-    if (replacement !== undefined && replacement !== word) {
-      edits.push({ start, end, text: replacement });
-    }
+    // A UUID goes from whatever the family rules kept — the whole word when no family
+    // claimed it, or the kept half of a `--flag=value` a family rewrote.
+    const replacement = withoutIds(classify(word, state, options) ?? word);
+    if (replacement !== word) edits.push({ start, end, text: replacement });
   }
 
   if (edits.length === 0) return text;

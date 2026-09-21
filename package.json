@@ -1,8 +1,20 @@
 {
   "name": "@agenttrail/guard",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "type": "module",
-  "description": "Free, local guard for Claude Code: a PreToolUse hook that allows, asks, or blocks a tool call against a curated guardrail library. No account, no server. The only network call is crash reporting, which is off unless you turn it on and sends stack traces only.",
+  "description": "Free, local guard for Claude Code and Cursor: a hook that allows, asks, or blocks a tool call against a curated guardrail library. No account, no server. The only network call is crash reporting, which is off unless you turn it on and sends stack traces only.",
+  "keywords": [
+    "claude-code",
+    "cursor",
+    "guardrails",
+    "security",
+    "hooks",
+    "ai-agents",
+    "agent-safety",
+    "cli",
+    "policy",
+    "code-safety"
+  ],
   "repository": {
     "type": "git",
     "url": "git+https://github.com/agenttrailhq/guard.git"
@@ -38,7 +50,7 @@
   },
   "dependencies": {},
   "devDependencies": {
-    "@agenttrail/guardrails": "0.0.2",
+    "@agenttrail/guardrails": "0.2.0",
     "@biomejs/biome": "2.4.15",
     "@types/node": "^25.9.1",
     "@types/picomatch": "^3.0.1",

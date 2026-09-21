@@ -178,7 +178,7 @@ describe.skipIf(!ENABLED)("live: a vanished marketplace source, and the recovery
     void runStatus(sandboxIo(home, out));
     const text = out.join("");
     expect(text).toContain("PROBLEM: the plugin source is missing");
-    expect(text).toContain("npx @agenttrail/guard init");
+    expect(text).toContain("npx @agenttrail/guard@latest init --agent claude");
   });
 
   it("recovers from the dangle and refreshes to the new version, cache and all", () => {

@@ -12,7 +12,7 @@ export const NumericComparisonSchema = z
   })
   .strict();
 
-export const DETAIL_MATCHES_MAX_PATTERN_LENGTH = 200;
+export const DETAIL_MATCHES_MAX_PATTERN_LENGTH = 320;
 
 export const DETAIL_MATCHES_MAX_PATTERNS = 10;
 

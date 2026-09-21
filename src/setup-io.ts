@@ -22,8 +22,10 @@ import { spawnSync } from "node:child_process";
 import {
   existsSync,
   mkdirSync,
+  readdirSync,
   readFileSync,
   renameSync,
+  rmSync,
   unlinkSync,
   writeFileSync,
 } from "node:fs";
@@ -67,6 +69,21 @@ export interface SetupIO {
   homedir(): string;
   /** Run `claude` with these arguments. */
   runClaude: ClaudeRunner;
+  /**
+   * List a directory's entries, or `undefined` when it is missing or unreadable.
+   *
+   * OPTIONAL, so the many bare `SetupIO` test literals keep compiling. Used only by
+   * `uninstall` to see and clear the plugin's stale cache directories; when absent, that
+   * cleanup is skipped (best-effort by design).
+   */
+  readdir?(path: string): string[] | undefined;
+  /**
+   * Remove a directory and everything under it. Best-effort — the real one never throws.
+   *
+   * OPTIONAL, for the same reason as `readdir`. Only `uninstall` uses it, only against the
+   * guard's own plugin-cache tree.
+   */
+  removeDirRecursive?(path: string): void;
 }
 
 /**
@@ -130,5 +147,21 @@ export function createRealSetupIO(): SetupIO {
     },
 
     runClaude: defaultClaudeRunner,
+
+    readdir(path: string): string[] | undefined {
+      try {
+        return readdirSync(path);
+      } catch {
+        return undefined;
+      }
+    },
+
+    removeDirRecursive(path: string): void {
+      try {
+        rmSync(path, { recursive: true, force: true });
+      } catch {
+        /* best-effort: a cache we could not clear is inert residue, never a failure */
+      }
+    },
   };
 }

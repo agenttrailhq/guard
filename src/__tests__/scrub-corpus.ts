@@ -57,8 +57,8 @@ export const POSITIVE_FIXTURES: readonly PositiveFixture[] = [
     id: "aws-access-key-id",
     input: "aws sts get-caller-identity --profile AKIAIOSFODNN7EXAMPLE",
     secret: "AKIAIOSFODNN7EXAMPLE",
-    // Hint = last 4 of the key ID, which is a public-ish identifier, not a secret.
-    placeholder: "[REDACTED:secret:aws:…MPLE]",
+    // No hint: the last 4 of the key ID fingerprint the key, so nothing of it is disclosed.
+    placeholder: "[REDACTED:secret:aws]",
   },
   {
     id: "pem-private-key",
@@ -101,8 +101,9 @@ export const POSITIVE_FIXTURES: readonly PositiveFixture[] = [
     // this fixture's result would change with it.
     input: "psql postgres://appuser:s3cr3t@db.internal:5432/app",
     secret: "s3cr3t",
-    // Hint = host only. Credentials are never captured, so none can leak into it.
-    placeholder: "[REDACTED:secret:connection-string:host=db.internal]",
+    // No hint: the host is a real hostname that fingerprints the environment, so it is
+    // fully redacted rather than echoed into the label.
+    placeholder: "[REDACTED:secret:connection-string]",
   },
   {
     id: "basic-auth-url",

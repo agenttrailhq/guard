@@ -80,16 +80,25 @@ export const ALLOW_CANARIES: readonly string[] = [
 
 /** Why a pattern was refused, in one line a person can act on. */
 export interface PatternRefusal {
-  readonly kind: "too-broad" | "placeholder" | "redacted" | "empty";
+  readonly kind: "too-broad" | "placeholder" | "redacted" | "empty" | "blinds-rule";
   readonly reason: string;
 }
 
 /**
  * Check a candidate allowlist pattern.
  *
+ * @param pattern - the candidate allowlist pattern.
+ * @param blockFixtures - the named rule's own block fixtures (command/path strings), if it
+ *   is a library rule. A pattern that matches one of them is refused: allowlisting a shape
+ *   the guardrail exists to stop would blind it to its own purpose while `guardrails list`
+ *   still showed it enabled. Defaults to none, so a user rule (which has no fixtures) and
+ *   callers that do not supply them behave exactly as before.
  * @returns `undefined` when the pattern is fine, else the refusal.
  */
-export function checkAllowPattern(pattern: string): PatternRefusal | undefined {
+export function checkAllowPattern(
+  pattern: string,
+  blockFixtures: readonly string[] = [],
+): PatternRefusal | undefined {
   if (pattern.trim().length === 0) {
     return {
       kind: "empty",
@@ -119,6 +128,24 @@ export function checkAllowPattern(pattern: string): PatternRefusal | undefined {
     return {
       kind: "empty",
       reason: `not a usable pattern (${(error as Error).message}).`,
+    };
+  }
+
+  // The guardrail's OWN block fixtures — the shapes it exists to catch. A pattern that
+  // matches one of them would silence the guardrail on exactly what it guards against,
+  // leaving it enabled in name only. Checked before the canaries because it is the more
+  // specific, more actionable refusal, and because the suggester in `status` builds its
+  // hint from a real matched command, which is precisely where a block fixture shows up.
+  const blinded = blockFixtures.filter((fixture) => isMatch(fixture));
+  if (blinded.length > 0) {
+    return {
+      kind: "blinds-rule",
+      reason: `it matches ${blinded
+        .slice(0, 3)
+        .map((b) => `\`${b}\``)
+        .join(", ")}${
+        blinded.length > 3 ? ` and ${blinded.length - 3} more` : ""
+      }, ${blinded.length === 1 ? "which is" : "which are"} exactly what this guardrail exists to stop, so this would blind it to its own purpose. Silence a narrower shape you actually trust, not the dangerous command itself.`,
     };
   }
 

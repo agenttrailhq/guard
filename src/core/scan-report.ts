@@ -23,25 +23,37 @@
  * see, so a scan would report different findings from the ones the hook produces on
  * the same command — the exact divergence `core/transcripts.ts` exists to prevent.
  *
+ * ── Claude Code and Cursor ───────────────────────────────────────────────────
+ * A Claude Code tool call maps to one call through `mapper.ts`, as the hook maps it. A
+ * Cursor tool call maps through `cursor-transcript/scan.ts`, to two calls for a `Grep` or
+ * `Glob` with a folder and a glob. Every call is evaluated and the stricter verdict is
+ * kept, as the hook keeps it, so one tool call counts as one risky action at most. Cursor's
+ * session files record no token counts, so a Cursor result has `tokens: null`, and
+ * `skipped` counts what the reader could not use.
+ *
  * ── No currency, and no field that could carry one ───────────────────────────
  * There is no price, no rate, no risk figure and no "estimated" anything on any type
  * in this file. Counts are counts and tokens come straight off the transcript. A
  * dollar figure is a count multiplied by an assumption; see `core/report.ts`.
  */
 
-import type { SpanContext } from "../engine/evaluator.js";
+import { type EvaluatedCandidate, strictestCandidate } from "./cursor-emit.js";
+import type { CursorCandidates } from "./cursor-mapper.js";
+import type { CursorLineCounts } from "./cursor-transcript/parse.js";
+import { cursorSessionCalls } from "./cursor-transcript/scan.js";
 import type { CompiledAllowlist } from "./evaluate.js";
 import { evaluateCall } from "./evaluate.js";
 import { mapToolCall, TRUNCATION_MARKER } from "./mapper.js";
 import { buildGuardSpanContext } from "./normalize.js";
 import { redactIdentifiers } from "./redact-identifiers.js";
+import { redactMcpPayload } from "./redact-mcp.js";
 import { redactPaths } from "./redact-path.js";
 import type { CompiledRule } from "./rules.js";
 import { scrubText } from "./scrub.js";
 import { addUsage, EMPTY_TOKEN_TOTALS, type TokenTotals } from "./tokens.js";
 import type { ParsedSession } from "./transcript/transcript-types.js";
 import { toolCallsOf } from "./transcripts.js";
-import type { GuardAction, MappedCall } from "./types.js";
+import type { AgentSource, GuardAction, MappedCall } from "./types.js";
 
 /**
  * The three redactors, composed in the one order that is correct.
@@ -68,7 +80,7 @@ export function redactForReport(text: string): string {
  * A title is PROSE. `redactPaths` is calibrated for shell TOKENS, where a bare `/` is the
  * filesystem root and any token carrying a separator is a location — the right rule for a
  * command and the wrong one for a sentence, where `/` is the word "or". Run over the
- * shipped library's 56 titles:
+ * shipped library's 74 titles:
  *
  *     damaged by redactPaths        6  (11%)
  *     damaged by redactIdentifiers  0
@@ -89,10 +101,15 @@ export function redactForReport(text: string): string {
  * What remains still earns its place: `scrubText` takes out a secret pasted into a title,
  * and `redactIdentifiers` takes the container name out of "Audit docker exec acme-prod-db",
  * which is a plausible thing for a user to call their own rule. Neither touches any of the
- * 56, and `scan-report.test.ts` asserts that over the real catalog rather than a fixture.
+ * 74, and `scan-report.test.ts` asserts that over the real catalog rather than a fixture.
  */
 export function redactTitle(text: string): string {
-  return redactIdentifiers(scrubText(text).text);
+  // `kubeResourceOperands: false` for the same reason the path pass is skipped: a title
+  // is prose, and "kubectl delete / drain removes running workloads" is a sentence whose
+  // words are not resource names. The container-name redaction is KEPT — a title such as
+  // "Audit docker exec acme-prod-db" carries a real name — and `scan-report.test.ts`
+  // asserts both directions over the shipped catalog.
+  return redactIdentifiers(scrubText(text).text, { kubeResourceOperands: false });
 }
 
 /**
@@ -139,7 +156,16 @@ function capDisplay(s: string): string {
  */
 export function displayTextOf(mapped: MappedCall): string {
   const command = mapped.args.full_command;
-  if (command !== undefined) return capDisplay(flatten(redactForReport(command)));
+  if (command !== undefined) {
+    // An `mcp__*` command channel is a serialized JSON payload, not shell text: its
+    // values are structurally redacted FIRST (`redactMcpPayload`), leaving only keys and
+    // placeholders, and then the three command passes run as a second layer. Every other
+    // channel is shell text and goes straight through the composition.
+    const redacted = mapped.tool.startsWith("mcp__")
+      ? redactForReport(redactMcpPayload(command))
+      : redactForReport(command);
+    return capDisplay(flatten(redacted));
+  }
   const filePath = mapped.args.file_path;
   if (filePath !== undefined) {
     return capDisplay(flatten(`${mapped.tool} ${redactForReport(filePath)}`));
@@ -175,8 +201,37 @@ export interface RecurringItem {
   readonly title: string;
 }
 
+/** What a reader could not use, by kind. Cursor's reader counts these. */
+export interface ReaderSkips extends CursorLineCounts {
+  /** Session files that could not be opened or read to the end. */
+  readonly unreadableFiles: number;
+}
+
+/** A tool name the reader does not recognize, and how many calls used it. */
+export interface UnmappedTool {
+  /** Redacted, and `<other>` for a name that is not a plain identifier. */
+  readonly name: string;
+  readonly count: number;
+}
+
+/** What a Cursor scan read but did not evaluate. */
+export interface ScanSkipped extends ReaderSkips {
+  /** Tool calls that are not actions a guardrail checks, such as a to-do list. */
+  readonly notActions: number;
+  /** Tool calls with a name the reader does not recognize, most frequent first. */
+  readonly unmappedTools: readonly UnmappedTool[];
+}
+
+/** One tool call from a session, as what it is evaluated as. */
+export type SessionToolCall =
+  | { readonly kind: "action"; readonly candidates: CursorCandidates }
+  | { readonly kind: "not-action" }
+  | { readonly kind: "unmapped"; readonly name: string };
+
 /** What a scan found. Every string on it is redacted; see the module header. */
 export interface ScanResult {
+  /** Whose sessions were read. */
+  readonly agent: AgentSource;
   /** Sessions successfully parsed. */
   readonly sessions: number;
   /** Files that could not be folded into a session at all, and were skipped. */
@@ -185,14 +240,12 @@ export interface ScanResult {
    * Transcript files under the root that the reader never opened.
    *
    * **A count of FILES, and it must not be rendered as a count of sessions.** The reader
-   * walks exactly `<root>/<project>/<session>.jsonl`; Claude Code also writes
-   * `<root>/<project>/<session>/subagents/*.jsonl`, and those normally belong to a
-   * session file that WAS read. What is absent is the tool calls sub-agents made inside
-   * sessions that were counted, not whole sessions, and the report says so: overstating
-   * a gap misleads as much as hiding one.
-   *
-   * The reader does not descend into those directories, so this counts the gap and
-   * states it.
+   * opens each `<root>/<project>/<session>.jsonl` AND the sub-agent transcripts beside it
+   * in `<root>/<project>/<session>/subagents/*.jsonl`, folding a sub-agent's tool calls into
+   * the session that started it. So what this counts is the `.jsonl` files ELSEWHERE — a
+   * stray file, or one nested somewhere the reader does not walk — never a whole session
+   * that was silently skipped, and the report says so: overstating a gap misleads as much
+   * as hiding one.
    */
   readonly notRead: number;
   /** Individual transcript lines skipped as unparseable, across all sessions. */
@@ -207,11 +260,16 @@ export interface ScanResult {
   readonly findings: readonly ScanFinding[];
   /** Shapes seen two or more times, most frequent first. */
   readonly recurring: readonly RecurringItem[];
-  readonly tokens: TokenTotals;
+  /** `null` for Cursor, whose session files record no token counts. */
+  readonly tokens: TokenTotals | null;
+  /** Cursor only: what was read but not evaluated, by kind. */
+  readonly skipped?: ScanSkipped;
 }
 
 /** Counts of what the walk found on disk, which the aggregator cannot see for itself. */
 export interface ScanCorpus {
+  /** Whose sessions these are. Omitted means Claude Code. */
+  readonly agent?: AgentSource;
   readonly sessions: readonly ParsedSession[];
   /** Files the parser refused. Counted so one corrupt file is visible, not silent. */
   readonly quarantined: number;
@@ -219,6 +277,57 @@ export interface ScanCorpus {
   readonly notRead: number;
   /** How many distinct projects the sessions came from. A COUNT, never a name. */
   readonly projects: number;
+  /** What the reader could not use. Cursor's reader sets it. */
+  readonly skipped?: ReaderSkips;
+}
+
+/** Nothing skipped. */
+const NO_READER_SKIPS: ReaderSkips = {
+  unparseableLines: 0,
+  truncatedLastLines: 0,
+  unknownRecords: 0,
+  turnsEndedWithError: 0,
+  unreadableFiles: 0,
+};
+
+/**
+ * Evaluate one tool call's candidates and keep the strictest, as the hook does.
+ *
+ * Exported so a test can check that a session file's tool call and the same call as a hook
+ * payload get one verdict.
+ */
+export function evaluateAction(
+  catalog: readonly CompiledRule[],
+  allowlist: CompiledAllowlist,
+  candidates: CursorCandidates,
+): EvaluatedCandidate {
+  const evaluate = (mapped: MappedCall): EvaluatedCandidate => ({
+    mapped,
+    decision: evaluateCall(catalog, buildGuardSpanContext(mapped), mapped, allowlist),
+  });
+  const [first, ...rest] = candidates;
+  return strictestCandidate([evaluate(first), ...rest.map(evaluate)]);
+}
+
+/** Every tool call in a Claude Code session, each mapped as the hook maps it. */
+function* claudeSessionCalls(session: ParsedSession): Iterable<SessionToolCall> {
+  for (const payload of toolCallsOf(session)) {
+    yield { kind: "action", candidates: [mapToolCall(payload)] };
+  }
+}
+
+/** A plain tool name, like Cursor's own (`Shell`, `CallMcpTool`). */
+const PLAIN_TOOL_NAME = /^[A-Za-z][A-Za-z0-9_]{0,63}$/;
+
+/**
+ * An unrecognized tool name, as the report may show it.
+ *
+ * A name is Cursor's vocabulary, not the user's text, but it comes off disk, so it is held
+ * to a plain identifier and still redacted: anything else is `<other>`.
+ */
+function unmappedToolName(raw: string): string {
+  if (raw === "") return "<unnamed>";
+  return PLAIN_TOOL_NAME.test(raw) ? redactTitle(raw) : "<other>";
 }
 
 /** Mutable accumulator for one rule. */
@@ -236,7 +345,7 @@ function byCountThenText<T extends { count: number; text: string }>(a: T, b: T):
  * Aggregate a corpus into a `ScanResult`.
  *
  * A rule that matched nothing is absent from `findings` rather than present with a
- * zero: a table of 56 rules with 53 zeroes buries the three that fired, and "this rule
+ * zero: a table of 74 rules with 71 zeroes buries the three that fired, and "this rule
  * never matched" is not a finding.
  */
 export function aggregateScan(
@@ -244,6 +353,7 @@ export function aggregateScan(
   catalog: readonly CompiledRule[],
   allowlist: CompiledAllowlist,
 ): ScanResult {
+  const agent: AgentSource = corpus.agent ?? "claude";
   const byRule = new Map<string, FindingAccumulator>();
   const ruleOf = new Map<string, CompiledRule>();
   for (const entry of catalog) ruleOf.set(entry.rule.id, entry);
@@ -251,17 +361,27 @@ export function aggregateScan(
   let toolCalls = 0;
   let riskyActions = 0;
   let skippedLines = 0;
+  let notActions = 0;
+  const unmapped = new Map<string, number>();
   let tokens = EMPTY_TOKEN_TOTALS;
 
   for (const session of corpus.sessions) {
     skippedLines += session.skippedLines;
     for (const turn of session.turns) tokens = addUsage(tokens, turn.usage);
 
-    for (const payload of toolCallsOf(session)) {
+    const calls = agent === "cursor" ? cursorSessionCalls(session) : claudeSessionCalls(session);
+    for (const call of calls) {
+      if (call.kind === "not-action") {
+        notActions++;
+        continue;
+      }
+      if (call.kind === "unmapped") {
+        const name = unmappedToolName(call.name);
+        unmapped.set(name, (unmapped.get(name) ?? 0) + 1);
+        continue;
+      }
       toolCalls++;
-      const mapped = mapToolCall(payload);
-      const context: SpanContext = buildGuardSpanContext(mapped);
-      const decision = evaluateCall(catalog, context, mapped, allowlist);
+      const { mapped, decision } = evaluateAction(catalog, allowlist, call.candidates);
       if (decision.matches.length === 0) continue;
 
       riskyActions++;
@@ -329,7 +449,8 @@ export function aggregateScan(
   findings.sort((a, b) => b.count - a.count || a.ruleId.localeCompare(b.ruleId));
   recurring.sort(byCountThenText);
 
-  return {
+  const result: ScanResult = {
+    agent,
     sessions: corpus.sessions.length,
     quarantined: corpus.quarantined,
     notRead: corpus.notRead,
@@ -339,6 +460,65 @@ export function aggregateScan(
     riskyActions,
     findings,
     recurring,
-    tokens,
+    tokens: agent === "cursor" ? null : tokens,
   };
+  if (agent !== "cursor") return result;
+
+  const unmappedTools: UnmappedTool[] = [...unmapped]
+    .map(([name, count]) => ({ name, count }))
+    .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+  return {
+    ...result,
+    skipped: { ...(corpus.skipped ?? NO_READER_SKIPS), notActions, unmappedTools },
+  };
+}
+
+/** Cap on the MCP payloads `--review` discloses, so the local check stays bounded. */
+const MAX_MCP_DISCLOSURES = 50;
+
+/**
+ * The raw MCP payloads `--review` shows the operator — secrets scrubbed, identifiers kept.
+ *
+ * The report redacts every MCP value to `<value>` (`displayTextOf`), which is right for a
+ * file meant to be shared and useless for deciding whether it is safe to share: the
+ * reviewer can no longer see WHAT is being removed. `--review` runs on the operator's own
+ * machine, so it discloses the real values here — with `scrubText` applied so an actual
+ * secret is never printed to a terminal, but identifiers left visible so the human can
+ * judge them. Bounded and de-duplicated; only calls that MATCHED a rule — the ones the
+ * report will carry — are disclosed, and only for an `mcp__*` payload, since every other
+ * channel is already shown verbatim in the review's command list.
+ *
+ * The calls are derived exactly as `aggregateScan` derives them — through the Cursor path
+ * for a Cursor corpus and the Claude path otherwise — so a Cursor MCP call (`CallMcpTool`
+ * / `CallDynamicTool`, mapped to `mcp__<server>__<tool>`) is recognized and disclosed here
+ * just as a Claude `mcp__*` call is. The report itself stays `<value>`-redacted for both.
+ */
+export function mcpReviewDisclosures(
+  corpus: ScanCorpus,
+  catalog: readonly CompiledRule[],
+  allowlist: CompiledAllowlist,
+): readonly string[] {
+  const agent: AgentSource = corpus.agent ?? "claude";
+  const seen = new Set<string>();
+  const out: string[] = [];
+
+  for (const session of corpus.sessions) {
+    const calls = agent === "cursor" ? cursorSessionCalls(session) : claudeSessionCalls(session);
+    for (const call of calls) {
+      if (call.kind !== "action") continue;
+      const { mapped, decision } = evaluateAction(catalog, allowlist, call.candidates);
+      if (!mapped.tool.startsWith("mcp__")) continue;
+      const command = mapped.args.full_command;
+      if (command === undefined) continue;
+      if (decision.matches.length === 0) continue;
+
+      const disclosure = `${mapped.tool}  ${scrubText(command).text}`;
+      if (seen.has(disclosure)) continue;
+      seen.add(disclosure);
+      out.push(disclosure);
+      if (out.length >= MAX_MCP_DISCLOSURES) return out;
+    }
+  }
+
+  return out;
 }

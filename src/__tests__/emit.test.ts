@@ -19,11 +19,10 @@ describe("buildHookOutput — wire shape", () => {
   });
 
   it("an ask carries the same fields", () => {
-    const parsed = JSON.parse(buildHookOutput("ask", "approval required by guardrail: x"));
+    const reason = "agenttrail-guard needs a person to approve this: A rule (guardrail x)";
+    const parsed = JSON.parse(buildHookOutput("ask", reason));
     expect(parsed.hookSpecificOutput.permissionDecision).toBe("ask");
-    expect(parsed.hookSpecificOutput.permissionDecisionReason).toBe(
-      "approval required by guardrail: x",
-    );
+    expect(parsed.hookSpecificOutput.permissionDecisionReason).toBe(reason);
   });
 
   it("starts with { and ends with } — the whole parse contract", () => {
@@ -47,12 +46,17 @@ describe("buildHookOutput — never allow", () => {
   });
 
   it("an allow with a reason is a systemMessage with no decision", () => {
-    const parsed = JSON.parse(buildHookOutput("allow", "warning from guardrail: x"));
-    expect(parsed).toEqual({ systemMessage: "warning from guardrail: x" });
+    const reason = "agenttrail-guard is warning about this: A rule (guardrail x)";
+    const parsed = JSON.parse(buildHookOutput("allow", reason));
+    expect(parsed).toEqual({ systemMessage: reason });
   });
 
   it("no allow output carries a permission decision", () => {
-    for (const reason of ["", "warning from guardrail: x", 'a "quoted" reason']) {
+    for (const reason of [
+      "",
+      "agenttrail-guard is warning about this: A rule (guardrail x)",
+      'a "quoted" reason',
+    ]) {
       expect(buildHookOutput("allow", reason)).not.toContain("permissionDecision");
     }
   });

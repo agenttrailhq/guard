@@ -1,0 +1,16 @@
+{
+  "conversation_id": "00000000-0000-4000-8000-000000000011",
+  "generation_id": "00000000-0000-4000-8000-000000000012",
+  "model": "composer-2.5",
+  "tool_name": "MCP:echo",
+  "tool_input": {
+    "text": "hello"
+  },
+  "tool_use_id": "00000000-0000-4000-8000-000000000017",
+  "session_id": "00000000-0000-4000-8000-000000000011",
+  "hook_event_name": "preToolUse",
+  "cursor_version": "3.12.17",
+  "workspace_roots": ["/home/user/project"],
+  "user_email": "<redacted>",
+  "transcript_path": null
+}

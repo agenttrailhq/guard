@@ -17,16 +17,19 @@ function normalizeDependencyPaths(file: string): void {
 }
 
 /**
- * Two build products, deliberately separate.
+ * Three build products, deliberately separate.
  *
  * 1. `dist/cli.js` — the npm bin (`agenttrail-guard`). Carries every command.
  * 2. `plugin/scripts/guard-hook.mjs` — the file Claude Code actually executes on
  *    every tool call. SELF-CONTAINED (`noExternal`), and reached from its own
  *    entry (`src/hook-entry.ts`) rather than through the CLI, so the argument
  *    parser and the colour helper are structurally absent from the hot path.
+ * 3. `plugin/scripts/guard-scan.mjs` — `scan` alone, run by the plugin's
+ *    `share-report` skill from Claude Code's copy of `plugin/`, where `dist/` is not.
+ *    From its own entry (`src/scan-entry.ts`), so crash reporting is not in it.
  *
- * The hook bundle is a CHECKED-IN artifact because Claude Code needs a real file
- * to invoke.
+ * The two plugin bundles are CHECKED-IN artifacts because Claude Code needs real
+ * files to invoke.
  *
  * Tests cannot tell whether the committed bundle is stale:
  * `src/__tests__/built-artifact.test.ts` rebuilds in `beforeAll` and binds every
@@ -66,5 +69,20 @@ export default defineConfig([
     platform: "node",
     shims: false,
     onSuccess: async () => normalizeDependencyPaths("plugin/scripts/guard-hook.mjs"),
+  },
+  {
+    entry: { "guard-scan": "src/scan-entry.ts" },
+    outDir: "plugin/scripts",
+    format: ["esm"],
+    outExtension: () => ({ js: ".mjs" }),
+    noExternal: [/.*/],
+    dts: false,
+    clean: false,
+    sourcemap: false,
+    minify: false,
+    target: "node20",
+    platform: "node",
+    shims: false,
+    onSuccess: async () => normalizeDependencyPaths("plugin/scripts/guard-scan.mjs"),
   },
 ]);

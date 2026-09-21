@@ -16,7 +16,7 @@
  *
  * ── When colour is OFF, and why each case ────────────────────────────────────
  * `NO_COLOR` (any non-empty value, per no-color.org), `TERM=dumb`, or a stdout that is
- * not a TTY — the last is what makes `agenttrail-guard scan | tee report.txt` produce
+ * not a TTY — the last is what makes `agenttrail-guard scan --agent claude | tee report.txt` produce
  * a clean file rather than one full of escape bytes. `FORCE_COLOR` overrides all three,
  * which is how CI logs keep their colour. Resolution is a pure function of the
  * environment so a test can drive every branch without touching `process`.
@@ -100,3 +100,14 @@ export function createColors(enabled: boolean): Colors {
 
 /** Colour helpers that emit nothing. The safe default anywhere the switch is unknown. */
 export const NO_COLORS: Colors = createColors(false);
+
+/**
+ * A clickable terminal link (OSC 8), or the bare text when colour is off.
+ *
+ * Gated on the colour switch rather than a second one: a terminal that renders escape
+ * sequences renders this one, and `NO_COLOR`, a pipe, or an agent's output pane get the
+ * plain text with no escape bytes in it.
+ */
+export function hyperlink(enabled: boolean, url: string, text: string): string {
+  return enabled ? `]8;;${url}\\${text}]8;;\\` : text;
+}

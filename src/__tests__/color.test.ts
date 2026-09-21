@@ -8,7 +8,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { createColors, NO_COLORS, shouldUseColor } from "../core/color.js";
+import { createColors, hyperlink, NO_COLORS, shouldUseColor } from "../core/color.js";
 
 /**
  * Any ANSI CSI sequence.
@@ -65,5 +65,21 @@ describe("the helpers", () => {
   it("reports which way it was built", () => {
     expect(createColors(true).enabled).toBe(true);
     expect(createColors(false).enabled).toBe(false);
+  });
+});
+
+describe("hyperlink", () => {
+  const ESC = String.fromCharCode(0x1b);
+
+  it("wraps the text in an OSC 8 link when enabled", () => {
+    expect(hyperlink(true, "file:///tmp/r.html", "/tmp/r.html")).toBe(
+      `${ESC}]8;;file:///tmp/r.html${ESC}\\/tmp/r.html${ESC}]8;;${ESC}\\`,
+    );
+  });
+
+  it("is the bare text, with no escape byte, when disabled", () => {
+    const plain = hyperlink(false, "file:///tmp/r.html", "/tmp/r.html");
+    expect(plain).toBe("/tmp/r.html");
+    expect(plain).not.toContain(ESC);
   });
 });

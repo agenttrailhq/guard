@@ -1,0 +1,14 @@
+{
+  "conversation_id": "00000000-0000-4000-8000-000000000011",
+  "generation_id": "00000000-0000-4000-8000-000000000012",
+  "model": "composer-2.5",
+  "content": "<redacted: 83 chars>",
+  "file_path": "/home/user/project/notes.txt",
+  "attachments": [],
+  "session_id": "00000000-0000-4000-8000-000000000011",
+  "hook_event_name": "beforeReadFile",
+  "cursor_version": "3.12.17",
+  "workspace_roots": ["/home/user/project"],
+  "user_email": "<redacted>",
+  "transcript_path": null
+}

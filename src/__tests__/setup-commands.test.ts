@@ -11,17 +11,88 @@
 
 import { CATALOG_VERSION } from "@agenttrail/guardrails/guardrails";
 import { describe, expect, it } from "vitest";
-import { runInit } from "../commands/init.js";
-import { REPOINT_COMMAND, runStatus, silenceCommand } from "../commands/status.js";
-import { runUninstall } from "../commands/uninstall.js";
+import { type InitDeps, runInit } from "../commands/init.js";
+import {
+  REPOINT_COMMAND,
+  runStatus as runStatusCommand,
+  type StatusDeps,
+  silenceCommand,
+} from "../commands/status.js";
+import { runUninstall, type UninstallDeps } from "../commands/uninstall.js";
 import { parseConfig } from "../core/config.js";
 import { PATTERN_PLACEHOLDER } from "../core/redaction.js";
+import type { GuardRule } from "../core/types.js";
+import { VERSION } from "../core/version.js";
+import type { GuardIO } from "../io.js";
 import { AGENTTRAIL_PLUGIN_ID, GUARD_PLUGIN_ID } from "../plugin/install.js";
-import type { ClaudeRunResult, SetupIO } from "../setup-io.js";
+import type { ClaudeRunner, ClaudeRunResult, SetupIO } from "../setup-io.js";
+import { type FakeCursorFilesOptions, fakeCursorFiles } from "./cursor-files.js";
 
 const HOME = "/home/test";
 const SCAFFOLD = "/pkg/plugin";
 const OK: ClaudeRunResult = { code: 0, stdout: "", stderr: "" };
+
+/** Where Claude Code's user settings live, for the approval-override check. */
+const CLAUDE_SETTINGS = `${HOME}/.claude/settings.json`;
+
+/** The guard's config file, seeded by `init` and never rewritten by it afterwards. */
+const CONFIG_FILE = `${HOME}/.agenttrail/guard/config.json`;
+
+/** A `config.json` with the given fields over the shipped shape. */
+function configWith(over: Record<string, unknown>): string {
+  return `${JSON.stringify(
+    {
+      version: 1,
+      disabledPacks: [],
+      disabledGuardrails: [],
+      guardrailActionOverrides: {},
+      allowlist: [],
+      crashReports: false,
+      ...over,
+    },
+    null,
+    2,
+  )}\n`;
+}
+
+/**
+ * A tiny catalog with a known shape, so the override count is deterministic: two
+ * `require_approval` holds — one shell (`{Bash,PowerShell}`), one file (`file_glob`) —
+ * and one shell `block` that must never be counted as a hold.
+ */
+const OVERRIDE_CATALOG: GuardRule[] = [
+  {
+    id: "sh.hold",
+    category: "working-tree",
+    severity: "high",
+    defaultAction: "require_approval",
+    title: "a shell hold",
+    description: "",
+    match: {
+      any_of: [{ kind: "execute_tool", label: "{Bash,PowerShell}", detail_matches: ["\\brm\\b"] }],
+    },
+  },
+  {
+    id: "fs.hold",
+    category: "file-scope",
+    severity: "high",
+    defaultAction: "require_approval",
+    title: "a file hold",
+    description: "",
+    match: { any_of: [{ kind: "execute_tool", file_glob: "/etc/**" }] },
+  },
+  {
+    id: "sh.block",
+    category: "working-tree",
+    severity: "critical",
+    defaultAction: "block",
+    title: "a shell block",
+    description: "",
+    match: {
+      any_of: [{ kind: "execute_tool", label: "{Bash,PowerShell}", detail_matches: ["\\bdd\\b"] }],
+    },
+  },
+];
 
 interface Harness {
   io: SetupIO;
@@ -121,10 +192,72 @@ function harness(
 
 const initDeps = { scaffoldDir: SCAFFOLD, bundledVersion: "0.1.0" };
 
+/** `--agent claude`, which `init` and `uninstall` now require to act as they always have. */
+const CLAUDE = { agent: "claude" } as const;
+
+/**
+ * A `GuardIO` over an in-memory crash spool. It records every directory listed, every file
+ * read, and every call that could write.
+ */
+function fakeGuardIo(options: { files?: Record<string, string>; home?: string } = {}) {
+  const files = new Map(Object.entries(options.files ?? {}));
+  const writes: string[] = [];
+  const listed: string[] = [];
+  const read: string[] = [];
+  const io: GuardIO = {
+    readStdin: async () => "",
+    writeStdout: (text) => {
+      writes.push(`stdout ${text}`);
+    },
+    readFile: (path) => {
+      read.push(path);
+      return files.get(path);
+    },
+    homedir: () => options.home ?? HOME,
+    mkdirp: (path) => {
+      writes.push(`mkdirp ${path}`);
+      return true;
+    },
+    writeFileAtomic: (path) => {
+      writes.push(`write ${path}`);
+      return true;
+    },
+    listDir: (path) => {
+      listed.push(path);
+      const prefix = `${path}/`;
+      return [...files.keys()]
+        .filter((key) => key.startsWith(prefix) && !key.slice(prefix.length).includes("/"))
+        .map((key) => key.slice(prefix.length));
+    },
+    deleteFile: (path) => {
+      writes.push(`delete ${path}`);
+      return true;
+    },
+    appendFile: (path) => {
+      writes.push(`append ${path}`);
+      return true;
+    },
+    fileSize: () => 0,
+  };
+  return { io, writes, listed, read };
+}
+
+/**
+ * `status` with fakes for the two seams `SetupIO` does not cover, an empty `~/.cursor` and an
+ * empty crash spool, unless a test passes its own. So no test here reads the real file system.
+ */
+function runStatus(io: SetupIO, deps: StatusDeps = {}): Promise<number> {
+  return runStatusCommand(io, {
+    cursorIo: fakeCursorFiles().io,
+    guardIo: fakeGuardIo().io,
+    ...deps,
+  });
+}
+
 describe("init", () => {
   it("seeds both files and installs the plugin", async () => {
     const h = harness();
-    expect(await runInit(h.io, {}, initDeps)).toBe(0);
+    expect(await runInit(h.io, CLAUDE, initDeps)).toBe(0);
 
     expect(h.writes.map((w) => w.path)).toEqual([
       `${HOME}/.agenttrail/guard/config.json`,
@@ -132,13 +265,44 @@ describe("init", () => {
     ]);
     expect(h.ran(`plugin marketplace add ${SCAFFOLD} --scope user`)).toBe(true);
     expect(h.ran(`plugin install ${GUARD_PLUGIN_ID} --scope user`)).toBe(true);
+    // A fresh install tells the user to restart, just as the refresh path does: the
+    // plugin's hook only takes effect once Claude Code reloads.
+    expect(h.out()).toContain("Restart Claude Code");
+  });
+
+  it("warns at install when settings.json already allows a held tool", async () => {
+    const h = harness({
+      files: { [CLAUDE_SETTINGS]: JSON.stringify({ permissions: { allow: ["Bash"] } }) },
+    });
+    expect(
+      await runInit(h.io, CLAUDE, {
+        ...initDeps,
+        catalog: OVERRIDE_CATALOG,
+        settingsPath: CLAUDE_SETTINGS,
+      }),
+    ).toBe(0);
+    expect(h.out()).toContain(
+      "1 of 2 approval guardrails will not prompt because settings.json allows: Bash",
+    );
+    // Reading settings.json must never turn into writing it.
+    expect(h.writes.some((w) => w.path.includes("settings.json"))).toBe(false);
+  });
+
+  it("prints no override warning at install when settings.json allows nothing relevant", async () => {
+    const h = harness();
+    await runInit(h.io, CLAUDE, {
+      ...initDeps,
+      catalog: OVERRIDE_CATALOG,
+      settingsPath: CLAUDE_SETTINGS,
+    });
+    expect(h.out()).not.toContain("will not prompt because settings.json allows");
   });
 
   it("NEVER writes outside ~/.agenttrail/guard — settings.json above all", async () => {
     // Asserted over the write list, not by grepping the output: a stray write would be
     // invisible to a string search but caught here.
     const h = harness();
-    await runInit(h.io, {}, initDeps);
+    await runInit(h.io, CLAUDE, initDeps);
     for (const w of h.writes) {
       expect(w.path.startsWith(`${HOME}/.agenttrail/guard/`)).toBe(true);
     }
@@ -148,17 +312,18 @@ describe("init", () => {
 
   it("writes a config the reader round-trips", async () => {
     const h = harness();
-    await runInit(h.io, {}, initDeps);
+    await runInit(h.io, CLAUDE, initDeps);
     const text = h.writes.find((w) => w.path.endsWith("config.json"))?.text ?? "";
     const config = parseConfig(text);
-    expect(config.failOpen).toBe(true);
     expect(config.crashReports).toBe(false);
-    expect(config.enabledPacks).toContain("working-tree");
+    // Nothing off, and no list of packs that a later release could outgrow.
+    expect(config.disabledPacks).toEqual([]);
+    expect(JSON.parse(text)).not.toHaveProperty("enabledPacks");
   });
 
   it("demonstrates itself — a synthetic rm -rf / shown blocked, not run", async () => {
     const h = harness();
-    await runInit(h.io, {}, initDeps);
+    await runInit(h.io, CLAUDE, initDeps);
     expect(h.out()).toContain("rm -rf /");
     expect(h.out()).toContain("BLOCKED");
     expect(h.out()).toContain("evaluated, not executed");
@@ -166,7 +331,7 @@ describe("init", () => {
 
   it("prints the BUNDLED catalog's version and its age", async () => {
     const h = harness();
-    await runInit(h.io, {}, initDeps);
+    await runInit(h.io, CLAUDE, initDeps);
     // The version is the catalog package's, not the guard's — the guard bundles the
     // catalog at build time, so that is what determines which rules a user has.
     // `catalog-stamp.test.ts` owns the age arithmetic; this pins that `init` is one of
@@ -178,7 +343,7 @@ describe("init", () => {
 
   it("is idempotent — a second run rewrites nothing and reinstalls nothing", async () => {
     const h = harness();
-    await runInit(h.io, {}, initDeps);
+    await runInit(h.io, CLAUDE, initDeps);
     const firstWrites = h.writes.length;
 
     // Second run, with the plugin now present.
@@ -186,7 +351,7 @@ describe("init", () => {
       files: Object.fromEntries(h.files),
       plugins: [{ id: GUARD_PLUGIN_ID, version: "0.1.0" }],
     });
-    expect(await runInit(h2.io, {}, initDeps)).toBe(0);
+    expect(await runInit(h2.io, CLAUDE, initDeps)).toBe(0);
 
     expect(firstWrites).toBe(2);
     expect(h2.writes).toHaveLength(0);
@@ -196,7 +361,7 @@ describe("init", () => {
 
   it("declines when the agenttrail plugin is present — exit 0, nothing written or run", async () => {
     const h = harness({ plugins: [{ id: AGENTTRAIL_PLUGIN_ID }] });
-    expect(await runInit(h.io, {}, initDeps)).toBe(0);
+    expect(await runInit(h.io, CLAUDE, initDeps)).toBe(0);
 
     expect(h.out()).toContain(AGENTTRAIL_PLUGIN_ID);
     expect(h.out()).toContain("Nothing was written");
@@ -207,14 +372,14 @@ describe("init", () => {
 
   it("warns when the plugin is installed but disabled", async () => {
     const h = harness({ plugins: [{ id: GUARD_PLUGIN_ID, version: "0.1.0", enabled: false }] });
-    await runInit(h.io, {}, initDeps);
+    await runInit(h.io, CLAUDE, initDeps);
     expect(h.out()).toContain("DISABLED");
     expect(h.out()).toContain("claude plugin enable");
   });
 
   it("--print changes nothing at all", async () => {
     const h = harness();
-    expect(await runInit(h.io, { print: true }, initDeps)).toBe(0);
+    expect(await runInit(h.io, { ...CLAUDE, print: true }, initDeps)).toBe(0);
 
     expect(h.writes).toHaveLength(0);
     expect(h.ran("marketplace add")).toBe(false);
@@ -227,15 +392,187 @@ describe("init", () => {
 
   it("--print still detects the agenttrail plugin and declines", async () => {
     const h = harness({ plugins: [{ id: AGENTTRAIL_PLUGIN_ID }] });
-    await runInit(h.io, { print: true }, initDeps);
+    await runInit(h.io, { ...CLAUDE, print: true }, initDeps);
     expect(h.out()).toContain("already installed");
   });
 
   it("an unwritable config dir is a named error, not a stack trace", async () => {
     const h = harness({ writeThrows: true });
-    expect(await runInit(h.io, {}, initDeps)).toBe(1);
+    expect(await runInit(h.io, CLAUDE, initDeps)).toBe(1);
     expect(h.out()).toContain("could not write");
     expect(h.out()).not.toContain("at Object.");
+  });
+});
+
+describe("init never rewrites an existing config", () => {
+  // OVERRIDE_CATALOG has two packs: working-tree and file-scope.
+  const PACK_DEPS = { ...initDeps, catalog: OVERRIDE_CATALOG };
+
+  it("a re-run keeps a pack the user turned off, off — the file is not touched", async () => {
+    const text = configWith({ disabledPacks: ["file-scope"] });
+    const h = harness({
+      files: { [CONFIG_FILE]: text },
+      plugins: [{ id: GUARD_PLUGIN_ID, version: "0.1.0" }],
+    });
+    expect(await runInit(h.io, CLAUDE, PACK_DEPS)).toBe(0);
+    expect(h.writes.some((w) => w.path === CONFIG_FILE)).toBe(false);
+    expect(h.files.get(CONFIG_FILE)).toBe(text);
+  });
+
+  it("a config written by an older release, listing packs, is left as it is", async () => {
+    // Its `enabledPacks` is simply no longer read, so there is nothing to migrate:
+    // every pack it does not name is already on.
+    const text = configWith({ enabledPacks: ["working-tree"] });
+    const h = harness({ files: { [CONFIG_FILE]: text } });
+    expect(await runInit(h.io, CLAUDE, PACK_DEPS)).toBe(0);
+    expect(h.files.get(CONFIG_FILE)).toBe(text);
+    expect(h.out()).not.toContain("Adopted");
+  });
+
+  it("init --agent cursor leaves an existing config alone too", async () => {
+    const cursor = fakeCursorFiles({
+      files: { [`${SCAFFOLD}/scripts/guard-hook.mjs`]: "// hook\n" },
+    });
+    const text = configWith({ disabledPacks: ["file-scope"] });
+    const h = harness({ files: { [CONFIG_FILE]: text } });
+    expect(
+      await runInit(
+        h.io,
+        { agent: "cursor" },
+        { ...PACK_DEPS, cursorIo: cursor.io, nodePath: "/n" },
+      ),
+    ).toBe(0);
+    expect(h.writes.some((w) => w.path === CONFIG_FILE)).toBe(false);
+    expect(h.files.get(CONFIG_FILE)).toBe(text);
+  });
+});
+
+describe("status reports the packs that are on, resolved from disabledPacks", () => {
+  // OVERRIDE_CATALOG has two packs: working-tree and file-scope.
+  it("counts every library pack as on when nothing is disabled", async () => {
+    const h = harness({
+      plugins: [{ id: GUARD_PLUGIN_ID, version: VERSION }],
+      files: { [CONFIG_FILE]: configWith({}) },
+    });
+    await runStatus(h.io, { catalog: OVERRIDE_CATALOG });
+    expect(h.out()).toContain("across 2 of 2 packs");
+    expect(h.out()).not.toContain("PROBLEM");
+  });
+
+  it("counts a disabled pack as off", async () => {
+    const h = harness({
+      plugins: [{ id: GUARD_PLUGIN_ID, version: VERSION }],
+      files: { [CONFIG_FILE]: configWith({ disabledPacks: ["file-scope"] }) },
+    });
+    await runStatus(h.io, { catalog: OVERRIDE_CATALOG });
+    expect(h.out()).toContain("across 1 of 2 packs");
+  });
+
+  it("says 0 of 2 when every library pack is off", async () => {
+    const h = harness({
+      plugins: [{ id: GUARD_PLUGIN_ID, version: VERSION }],
+      files: { [CONFIG_FILE]: configWith({ disabledPacks: ["working-tree", "file-scope"] }) },
+    });
+    await runStatus(h.io, { catalog: OVERRIDE_CATALOG });
+    expect(h.out()).toContain("Enforcement: ON · 0 guardrails across 0 of 2 packs");
+  });
+
+  it("an older config listing packs enforces all of them, and says the list is not read", async () => {
+    const h = harness({
+      plugins: [{ id: GUARD_PLUGIN_ID, version: VERSION }],
+      files: { [CONFIG_FILE]: configWith({ enabledPacks: ["working-tree"] }) },
+    });
+    await runStatus(h.io, { catalog: OVERRIDE_CATALOG });
+    expect(h.out()).toContain("across 2 of 2 packs");
+    expect(h.out()).toContain("enabledPacks: is no longer read");
+  });
+
+  it("names a misspelled pack in disabledPacks, which disables nothing", async () => {
+    const h = harness({
+      plugins: [{ id: GUARD_PLUGIN_ID, version: VERSION }],
+      files: { [CONFIG_FILE]: configWith({ disabledPacks: ["file-scop"] }) },
+    });
+    await runStatus(h.io, { catalog: OVERRIDE_CATALOG });
+    expect(h.out()).toContain("across 2 of 2 packs");
+    expect(h.out()).toContain("disabledPacks.file-scop: is not a pack this build knows about");
+  });
+
+  it("does not call a disabled category of your own guardrails a misspelling", async () => {
+    const h = harness({
+      plugins: [{ id: GUARD_PLUGIN_ID, version: VERSION }],
+      files: {
+        [CONFIG_FILE]: configWith({ disabledPacks: ["my-team"] }),
+        [`${HOME}/.agenttrail/guard/guardrails.json`]: JSON.stringify([
+          {
+            id: "local.release-freeze",
+            category: "my-team",
+            severity: "medium",
+            defaultAction: "block",
+            title: "Release freeze",
+            match: { any_of: [{ kind: "execute_tool", detail_contains: ["./release.sh"] }] },
+          },
+        ]),
+      },
+    });
+    await runStatus(h.io, { catalog: OVERRIDE_CATALOG });
+    expect(h.out()).not.toContain("disabledPacks.my-team");
+  });
+});
+
+describe("status flags a Claude Code plugin older than this guard", () => {
+  it("names both versions, the refresh command, and the restart", async () => {
+    // Installing a newer guard replaces the files on disk, but Claude Code keeps running
+    // its cached copy until `init` refreshes it and Claude Code restarts.
+    const h = harness({ plugins: [{ id: GUARD_PLUGIN_ID, version: "0.0.9" }] });
+    await runStatus(h.io);
+    expect(h.out()).toContain(
+      `Claude Code is running guard 0.0.9; this is guard ${VERSION}. Refresh it: \`agenttrail-guard init --agent claude\`, then restart Claude Code.`,
+    );
+  });
+
+  it("never suggests an init that would downgrade a NEWER plugin", async () => {
+    // A global `agenttrail-guard` older than the release `npx …@latest init` just installed:
+    // its `init` would roll the plugin back, so it must say it is the one out of date.
+    const h = harness({ plugins: [{ id: GUARD_PLUGIN_ID, version: "99.0.0" }] });
+    await runStatus(h.io);
+    expect(h.out()).toContain(
+      `Claude Code is running guard 99.0.0, newer than this guard ${VERSION} — this command is out of date.`,
+    );
+    expect(h.out()).toContain("npx @agenttrail/guard@latest status");
+    expect(h.out()).not.toContain("Refresh it:");
+  });
+
+  it("says nothing when the versions match", async () => {
+    const h = harness({ plugins: [{ id: GUARD_PLUGIN_ID, version: VERSION }] });
+    await runStatus(h.io);
+    expect(h.out()).not.toContain("Claude Code is running guard");
+  });
+
+  it("says nothing when the plugin reports no version", async () => {
+    const h = harness({ plugins: [{ id: GUARD_PLUGIN_ID }] });
+    // The harness defaults a missing version to 0.1.0, so drop it from the listing itself.
+    const list = h.io.runClaude;
+    h.io.runClaude = (args) => {
+      const res = list(args);
+      if (args.join(" ") !== "plugin list --json") return res;
+      const rows = JSON.parse(res.stdout).map((p: Record<string, unknown>) => {
+        const { version: _drop, ...rest } = p;
+        return rest;
+      });
+      return { ...res, stdout: JSON.stringify(rows) };
+    };
+    await runStatus(h.io);
+    expect(h.out()).toContain("Enforcement: ON");
+    expect(h.out()).not.toContain("Claude Code is running guard");
+  });
+
+  it("says nothing when the plugin is not installed or is disabled", async () => {
+    const none = harness();
+    await runStatus(none.io);
+    expect(none.out()).not.toContain("Claude Code is running guard");
+    const off = harness({ plugins: [{ id: GUARD_PLUGIN_ID, version: "0.0.9", enabled: false }] });
+    await runStatus(off.io);
+    expect(off.out()).not.toContain("Claude Code is running guard");
   });
 });
 
@@ -247,8 +584,11 @@ describe("status", () => {
   it("says NOT INSTALLED when nothing is installed", async () => {
     const h = harness();
     expect(await runStatus(h.io)).toBe(0);
-    expect(h.out()).toContain("NOT INSTALLED");
-    expect(h.out()).toContain("agenttrail-guard init");
+    // The whole Claude Code line: Cursor's section says NOT INSTALLED too.
+    expect(h.out()).toContain(
+      "Enforcement: NOT INSTALLED — run `agenttrail-guard init --agent claude`.",
+    );
+    expect(h.out()).toContain("agenttrail-guard init --agent claude");
   });
 
   it("distinguishes installed-but-DISABLED from enforcing", async () => {
@@ -275,6 +615,7 @@ describe("status", () => {
           decision: "deny",
           ruleId: "wt.reset-hard",
           command: "git reset --hard",
+          agent: "claude",
         }),
       },
     });
@@ -305,7 +646,7 @@ describe("status", () => {
     });
     await runStatus(h.io);
     expect(h.out()).toContain("local.no-category");
-    expect(h.out()).toContain("enabledPacks");
+    expect(h.out()).toContain("the hook does not load a guardrail without one");
   });
 
   it("names `require_approval` when a guardrail copied from the docs says `ask`", async () => {
@@ -334,6 +675,7 @@ describe("status", () => {
         decision: "deny",
         ruleId: "wt.checkout-discard",
         command: "git checkout -- ./generated/api-types.ts",
+        agent: "claude",
       }),
     );
     const quiet = JSON.stringify({
@@ -342,6 +684,7 @@ describe("status", () => {
       decision: "deny",
       ruleId: "wt.reset-hard",
       command: "git reset --hard",
+      agent: "claude",
     });
     const h = harness({
       plugins: [{ id: GUARD_PLUGIN_ID }],
@@ -376,7 +719,7 @@ describe("status", () => {
       plugins: [{ id: GUARD_PLUGIN_ID }],
       files: {
         [eventsFile]:
-          `${JSON.stringify({ ts: "", tool: "Bash", decision: "deny", ruleId: "a.b", command: "x" })}\n` +
+          `${JSON.stringify({ ts: "", tool: "Bash", decision: "deny", ruleId: "a.b", command: "x", agent: "claude" })}\n` +
           '{"ts":"2026-09-07T00:00:0',
       },
     });
@@ -458,6 +801,90 @@ describe("status", () => {
     // action" would be a useless answer.
     expect(h.out()).toContain("require_approval");
   });
+
+  it("names the require_approval holds a settings.json allow rule will not prompt", async () => {
+    const h = harness({
+      plugins: [{ id: GUARD_PLUGIN_ID }],
+      files: { [CLAUDE_SETTINGS]: JSON.stringify({ permissions: { allow: ["Bash"] } }) },
+    });
+    await runStatus(h.io, { catalog: OVERRIDE_CATALOG, settingsPath: CLAUDE_SETTINGS });
+    const out = h.out();
+    // The shell hold fires on Bash; the file hold does not, so 1 of 2, naming Bash.
+    expect(out).toContain(
+      "1 of 2 approval guardrails will not prompt because settings.json allows: Bash",
+    );
+    expect(out).toContain("Claude Code runs an allowed tool before the guard's hold can ask");
+  });
+
+  it("names the file tool when a bare Read allow silences a file hold", async () => {
+    const h = harness({
+      plugins: [{ id: GUARD_PLUGIN_ID }],
+      files: { [CLAUDE_SETTINGS]: JSON.stringify({ permissions: { allow: ["Read"] } }) },
+    });
+    await runStatus(h.io, { catalog: OVERRIDE_CATALOG, settingsPath: CLAUDE_SETTINGS });
+    expect(h.out()).toContain(
+      "1 of 2 approval guardrails will not prompt because settings.json allows: Read",
+    );
+  });
+
+  it("prints no override line for a missing settings.json or a merely scoped allow", async () => {
+    const missing = harness({ plugins: [{ id: GUARD_PLUGIN_ID }] });
+    await runStatus(missing.io, { catalog: OVERRIDE_CATALOG, settingsPath: CLAUDE_SETTINGS });
+    expect(missing.out()).not.toContain("will not prompt because settings.json allows");
+
+    // A scoped allow is narrower than the whole tool, so it is conservatively not counted.
+    const scoped = harness({
+      plugins: [{ id: GUARD_PLUGIN_ID }],
+      files: { [CLAUDE_SETTINGS]: JSON.stringify({ permissions: { allow: ["Bash(git:*)"] } }) },
+    });
+    await runStatus(scoped.io, { catalog: OVERRIDE_CATALOG, settingsPath: CLAUDE_SETTINGS });
+    expect(scoped.out()).not.toContain("will not prompt because settings.json allows");
+  });
+
+  it("does not print the override line while the guard is not enforcing", async () => {
+    const h = harness({
+      plugins: [{ id: GUARD_PLUGIN_ID, enabled: false }],
+      files: { [CLAUDE_SETTINGS]: JSON.stringify({ permissions: { allow: ["Bash"] } }) },
+    });
+    await runStatus(h.io, { catalog: OVERRIDE_CATALOG, settingsPath: CLAUDE_SETTINGS });
+    expect(h.out()).toContain("Enforcement: OFF");
+    expect(h.out()).not.toContain("will not prompt because settings.json allows");
+  });
+
+  it("says a logged `ask` is a verdict, not proof of a prompt", async () => {
+    const h = harness({
+      plugins: [{ id: GUARD_PLUGIN_ID }],
+      files: {
+        [eventsFile]: JSON.stringify({
+          ts: "2026-09-07T00:00:00Z",
+          tool: "Bash",
+          decision: "ask",
+          ruleId: "sh.hold",
+          command: "rm -rf $DIR",
+          agent: "claude",
+        }),
+      },
+    });
+    await runStatus(h.io);
+    expect(h.out()).toContain("not confirmation you were prompted");
+  });
+
+  it("omits the ask caveat when no decision in the log was an ask", async () => {
+    const h = harness({
+      plugins: [{ id: GUARD_PLUGIN_ID }],
+      files: {
+        [eventsFile]: JSON.stringify({
+          ts: "2026-09-07T00:00:00Z",
+          tool: "Bash",
+          decision: "deny",
+          ruleId: "wt.reset-hard",
+          command: "git reset --hard",
+        }),
+      },
+    });
+    await runStatus(h.io);
+    expect(h.out()).not.toContain("not confirmation you were prompted");
+  });
 });
 
 describe("init says what actually happened to the marketplace", () => {
@@ -469,7 +896,7 @@ describe("init says what actually happened to the marketplace", () => {
       marketplaces: [{ name: "agenttrail-guard", path: "/gone/plugin" }],
       missingPaths: ["/gone/plugin"],
     });
-    expect(await runInit(h.io, {}, initDeps)).toBe(0);
+    expect(await runInit(h.io, CLAUDE, initDeps)).toBe(0);
     expect(h.out()).toContain("Recovered the marketplace");
     expect(h.out()).toContain("could");
     expect(h.out()).toContain(SCAFFOLD);
@@ -482,7 +909,7 @@ describe("init says what actually happened to the marketplace", () => {
       plugins: [{ id: GUARD_PLUGIN_ID, version: "0.1.0" }],
       marketplaces: [{ name: "agenttrail-guard", path: "/somewhere/else" }],
     });
-    await runInit(h.io, {}, initDeps);
+    await runInit(h.io, CLAUDE, initDeps);
     expect(h.out()).toContain("Re-pointed the marketplace");
     expect(h.out()).not.toContain("Recovered the marketplace");
   });
@@ -496,7 +923,7 @@ describe("init says what actually happened to the marketplace", () => {
       marketplaces: [{ name: "agenttrail-guard", path: SCAFFOLD }],
       updateMovesTo: "0.1.0",
     });
-    expect(await runInit(h.io, {}, initDeps)).toBe(0);
+    expect(await runInit(h.io, CLAUDE, initDeps)).toBe(0);
     expect(h.out()).toContain(`Refreshed ${GUARD_PLUGIN_ID}`);
     expect(h.out()).toContain("Restart Claude Code");
   });
@@ -513,7 +940,7 @@ describe("init says what actually happened to the marketplace", () => {
           ? { code: 1, stdout: "", stderr: 'Plugin "agenttrail-guard" not found' }
           : h.io.runClaude(args),
     };
-    expect(await runInit(io, {}, initDeps)).toBe(0);
+    expect(await runInit(io, CLAUDE, initDeps)).toBe(0);
     expect(h.out()).toContain("could NOT be updated");
     expect(h.out()).toContain("not found");
     // It must not frighten: the older version is still enforcing.
@@ -529,7 +956,7 @@ describe("init says what actually happened to the marketplace", () => {
       plugins: [{ id: GUARD_PLUGIN_ID, version: "0.1.0", errors: [DANGLE] }],
       marketplaces: [{ name: "agenttrail-guard", path: SCAFFOLD }],
     });
-    await runInit(h.io, {}, initDeps);
+    await runInit(h.io, CLAUDE, initDeps);
     expect(h.out()).toContain("still reports a problem");
     expect(h.out()).toContain(DANGLE);
   });
@@ -598,7 +1025,9 @@ describe("status reports a dangling plugin source", () => {
     // marketplace path would be noise on top of it.
     const h = harness({ marketplaces: [{ name: "agenttrail-guard", path: "/gone" }] });
     await runStatus(h.io);
-    expect(h.out()).toContain("NOT INSTALLED");
+    expect(h.out()).toContain(
+      "Enforcement: NOT INSTALLED — run `agenttrail-guard init --agent claude`.",
+    );
     expect(h.out()).not.toContain("plugin source is missing");
   });
 });
@@ -613,7 +1042,7 @@ describe("init --print tells the truth about what it would do", () => {
       marketplaces: [{ name: "agenttrail-guard", path: "/gone/plugin" }],
       missingPaths: ["/gone/plugin"],
     });
-    expect(await runInit(h.io, { print: true }, initDeps)).toBe(0);
+    expect(await runInit(h.io, { ...CLAUDE, print: true }, initDeps)).toBe(0);
     expect(h.out()).toContain("PROBLEM");
     expect(h.out()).toContain("/gone/plugin");
     expect(h.out()).toContain("re-points it");
@@ -629,7 +1058,7 @@ describe("init --print tells the truth about what it would do", () => {
         [`${HOME}/.agenttrail/guard/guardrails.json`]: "[]",
       },
     });
-    await runInit(h.io, { print: true }, initDeps);
+    await runInit(h.io, { ...CLAUDE, print: true }, initDeps);
     expect(h.out()).toContain("nothing to do");
     expect(h.out()).toContain("already installed at 0.1.0");
   });
@@ -639,7 +1068,7 @@ describe("init --print tells the truth about what it would do", () => {
       plugins: [{ id: GUARD_PLUGIN_ID, version: "0.0.9" }],
       marketplaces: [{ name: "agenttrail-guard", path: SCAFFOLD }],
     });
-    await runInit(h.io, { print: true }, initDeps);
+    await runInit(h.io, { ...CLAUDE, print: true }, initDeps);
     expect(h.out()).toContain(`claude plugin update ${GUARD_PLUGIN_ID}`);
     expect(h.out()).toContain("0.0.9");
   });
@@ -654,7 +1083,7 @@ describe("init --print tells the truth about what it would do", () => {
           ? { code: 0, stdout: "2.0.1 (Claude Code)", stderr: "" }
           : h.io.runClaude(args),
     };
-    expect(await runInit(io, { print: true }, initDeps)).toBe(0);
+    expect(await runInit(io, { ...CLAUDE, print: true }, initDeps)).toBe(0);
     expect(h.out()).toContain("It would STOP");
     expect(h.out()).toContain("2.1.211");
   });
@@ -671,7 +1100,7 @@ describe("init --print tells the truth about what it would do", () => {
       { plugins: [{ id: GUARD_PLUGIN_ID, enabled: false }] },
     ]) {
       const h = harness(options);
-      await runInit(h.io, { print: true }, initDeps);
+      await runInit(h.io, { ...CLAUDE, print: true }, initDeps);
       expect(h.writes).toEqual([]);
       for (const verb of MUTATING) {
         expect(h.calls.some((c) => c.includes(verb))).toBe(false);
@@ -689,6 +1118,7 @@ describe("status --clear-history", () => {
     decision: "deny",
     ruleId: "wt.reset-hard",
     command: "git reset --hard",
+    agent: "claude",
   });
 
   it("empties the log, names the path, and exits 0", async () => {
@@ -750,6 +1180,7 @@ describe("status withholds a silence pattern it knows cannot work", () => {
         decision: "deny",
         ruleId: "sec.env-read",
         command,
+        agent: "claude",
       }),
     ).join("\n")}\n`;
   }
@@ -796,26 +1227,56 @@ describe("status withholds a silence pattern it knows cannot work", () => {
     expect(out).toContain(silenceCommand("sec.env-read", "git reset --hard ./src"));
     expect(out).not.toContain("cannot be used as a match pattern");
   });
+
+  /** A log of `n` identical records for a real library rule and command. */
+  function libraryLog(ruleId: string, command: string, n = 3): string {
+    return `${Array.from({ length: n }, () =>
+      JSON.stringify({
+        ts: "2026-09-07T00:00:00Z",
+        tool: "Bash",
+        decision: "deny",
+        ruleId,
+        command,
+        agent: "claude",
+      }),
+    ).join("\n")}\n`;
+  }
+
+  it("explains instead of suggesting when the shape is the guardrail's own block fixture", async () => {
+    // `git reset --hard` is exactly what wt.reset-hard exists to stop, so silencing that
+    // shape would blind the guardrail — the suggester must not propose it.
+    const h = harness({
+      plugins: [{ id: GUARD_PLUGIN_ID }],
+      files: { [eventsFile]: libraryLog("wt.reset-hard", "git reset --hard") },
+    });
+    await runStatus(h.io);
+    const out = h.out();
+
+    expect(out).toContain("Most frequent match");
+    expect(out).toContain("wt.reset-hard");
+    expect(out).toContain("blind the guardrail to its own purpose");
+    expect(out).not.toContain(silenceCommand("wt.reset-hard", "git reset --hard"));
+  });
 });
 
 describe("uninstall", () => {
   it("removes ours and says the rest is untouched", async () => {
     const h = harness({ plugins: [{ id: GUARD_PLUGIN_ID }] });
-    expect(await runUninstall(h.io)).toBe(0);
+    expect(await runUninstall(h.io, CLAUDE)).toBe(0);
     expect(h.ran(`plugin uninstall ${GUARD_PLUGIN_ID} --scope user`)).toBe(true);
     expect(h.out()).toContain("untouched");
   });
 
   it("running it twice is not an error", async () => {
     const h = harness({ plugins: [] });
-    expect(await runUninstall(h.io)).toBe(0);
+    expect(await runUninstall(h.io, CLAUDE)).toBe(0);
     expect(h.out()).toContain("not installed");
     expect(h.ran("plugin uninstall")).toBe(false);
   });
 
   it("keeps the user's own settings and says where they are", async () => {
     const h = harness({ plugins: [{ id: GUARD_PLUGIN_ID }] });
-    await runUninstall(h.io);
+    await runUninstall(h.io, CLAUDE);
     expect(h.writes).toHaveLength(0);
     expect(h.out()).toContain("/.agenttrail/guard");
   });
@@ -833,6 +1294,692 @@ describe("uninstall", () => {
         return OK;
       },
     };
-    expect(await runUninstall(io)).toBe(1);
+    expect(await runUninstall(io, CLAUDE)).toBe(1);
+  });
+
+  const PLUGIN_CACHE_DIR = `${HOME}/.claude/plugins/cache/agenttrail-guard/agenttrail-guard`;
+
+  it("clears the plugin's stale cache version directories on uninstall", async () => {
+    const h = harness({ plugins: [{ id: GUARD_PLUGIN_ID }] });
+    const removed: string[] = [];
+    const io: SetupIO = {
+      ...h.io,
+      readdir: (p) => (p === PLUGIN_CACHE_DIR ? ["0.0.9", "0.1.0"] : undefined),
+      removeDirRecursive: (p) => {
+        removed.push(p);
+      },
+    };
+    expect(await runUninstall(io, CLAUDE)).toBe(0);
+    expect(removed).toContain(PLUGIN_CACHE_DIR);
+    expect(h.out()).toContain("Cleared 2 stale plugin cache directories");
+  });
+
+  it("clears leftover cache directories even when the plugin is not installed", async () => {
+    // Stale version dirs outlive an uninstall the vendor already did, so "not installed"
+    // is exactly when they may still be there.
+    const h = harness({ plugins: [] });
+    const removed: string[] = [];
+    const io: SetupIO = {
+      ...h.io,
+      readdir: (p) => (p === PLUGIN_CACHE_DIR ? ["0.1.0"] : undefined),
+      removeDirRecursive: (p) => {
+        removed.push(p);
+      },
+    };
+    expect(await runUninstall(io, CLAUDE)).toBe(0);
+    expect(removed).toContain(PLUGIN_CACHE_DIR);
+    expect(h.out()).toContain("Cleared 1 stale plugin cache directory");
+  });
+
+  it("does not fail when there is no cache directory to clear", async () => {
+    const h = harness({ plugins: [{ id: GUARD_PLUGIN_ID }] });
+    const io: SetupIO = {
+      ...h.io,
+      readdir: () => undefined,
+      removeDirRecursive: () => {
+        throw new Error("should not be called when nothing to clear");
+      },
+    };
+    expect(await runUninstall(io, CLAUDE)).toBe(0);
+    expect(h.out()).not.toContain("stale plugin cache");
+  });
+});
+
+describe("init and uninstall require --agent claude or --agent cursor", () => {
+  /**
+   * What `parseArgs` hands on for no flag, a lone `--agent`, `--agent x` and
+   * `--agent --print`, plus near misses and `--print` alone.
+   */
+  const REFUSED: Array<[string, { agent?: string | boolean; print?: boolean }]> = [
+    ["no flag", {}],
+    ["a lone --agent", { agent: true }],
+    ["--agent x", { agent: "x" }],
+    ["--agent --print", { agent: "--print" }],
+    ["--agent Cursor", { agent: "Cursor" }],
+    ["an empty --agent", { agent: "" }],
+    ["--print and no --agent", { print: true }],
+  ];
+
+  /**
+   * Dependencies that throw when read, so a refusal that looked at any of them — the plugin
+   * folder, the Cursor file seam — fails instead of passing.
+   */
+  const untouchable = new Proxy(
+    {},
+    {
+      get: (_target, key) => {
+        throw new Error(`deps.${String(key)} was read before --agent was checked`);
+      },
+    },
+  );
+
+  /** A harness whose every read, write and spawn is recorded. */
+  function recorded() {
+    const h = harness();
+    const touched: string[] = [];
+    const io: SetupIO = {
+      ...h.io,
+      readFile: (p) => {
+        touched.push(`read ${p}`);
+        return h.io.readFile(p);
+      },
+      exists: (p) => {
+        touched.push(`exists ${p}`);
+        return h.io.exists(p);
+      },
+      homedir: () => {
+        touched.push("homedir");
+        return HOME;
+      },
+    };
+    return { h, io, touched };
+  }
+
+  it.each(
+    REFUSED,
+  )("init with %s: the choice, exit 1, nothing read, written or run", async (_l, argv) => {
+    const { h, io, touched } = recorded();
+    expect(await runInit(io, argv, untouchable as InitDeps)).toBe(1);
+    expect(h.out()).toContain("choose --agent claude or --agent cursor");
+    expect(h.out()).toContain("agenttrail-guard init --agent cursor");
+    expect(h.writes).toEqual([]);
+    expect(h.calls).toEqual([]);
+    expect(touched).toEqual([]);
+  });
+
+  it.each(
+    REFUSED,
+  )("uninstall with %s: the choice, exit 1, nothing read, written or run", async (_l, argv) => {
+    const { h, io, touched } = recorded();
+    expect(await runUninstall(io, argv, untouchable as UninstallDeps)).toBe(1);
+    expect(h.out()).toContain("choose --agent claude or --agent cursor");
+    expect(h.out()).toContain("agenttrail-guard uninstall --agent claude");
+    expect(h.writes).toEqual([]);
+    expect(h.calls).toEqual([]);
+    expect(touched).toEqual([]);
+  });
+});
+
+describe("--agent cursor writes only guard's folder and Cursor's user hooks file", () => {
+  const HOOKS = `${HOME}/.cursor/hooks.json`;
+  const GUARD = `${HOME}/.agenttrail/guard/`;
+
+  it("init NEVER writes outside ~/.agenttrail/guard/ except ~/.cursor/hooks.json, and runs no claude", async () => {
+    // The same kind of promise `init --agent claude` makes above, over the recorded writes of
+    // both seams rather than the output.
+    const h = harness();
+    const cursor = fakeCursorFiles({
+      files: { [`${SCAFFOLD}/scripts/guard-hook.mjs`]: "// hook\n" },
+    });
+    const deps = { ...initDeps, cursorIo: cursor.io, nodePath: "/usr/local/bin/node" };
+    expect(await runInit(h.io, { agent: "cursor" }, deps)).toBe(0);
+
+    const paths = [...h.writes.map((w) => w.path), ...cursor.writes.map((w) => w.path)];
+    // Both places were written, so the loop below is not checking an empty list.
+    expect(paths).toContain(HOOKS);
+    expect(paths.filter((p) => p.startsWith(GUARD)).length).toBeGreaterThan(0);
+    for (const path of paths) {
+      expect(path.startsWith(GUARD) || path === HOOKS, path).toBe(true);
+    }
+    expect(paths.some((p) => p.includes(".claude"))).toBe(false);
+    expect(h.calls).toEqual([]);
+  });
+
+  it("closes with the run-mode approval note — the Cursor analogue of the settings.json hold disclosure", async () => {
+    const h = harness();
+    const cursor = fakeCursorFiles({
+      files: { [`${SCAFFOLD}/scripts/guard-hook.mjs`]: "// hook\n" },
+    });
+    await runInit(h.io, { agent: "cursor" }, { ...initDeps, cursorIo: cursor.io, nodePath: "/n" });
+    expect(h.out()).toContain("Cursor's own run mode auto-approves the command first");
+  });
+
+  it("uninstall changes nothing outside those two places either, and runs no claude", async () => {
+    const h = harness();
+    const cursor = fakeCursorFiles({
+      files: { [`${SCAFFOLD}/scripts/guard-hook.mjs`]: "// hook\n" },
+    });
+    await runInit(h.io, { agent: "cursor" }, { ...initDeps, cursorIo: cursor.io, nodePath: "/n" });
+    const before = cursor.writes.length;
+
+    expect(await runUninstall(h.io, { agent: "cursor" }, { cursorIo: cursor.io })).toBe(0);
+    const changed = [...cursor.writes.slice(before).map((w) => w.path), ...cursor.deletes];
+    expect(changed).toContain(HOOKS);
+    for (const path of changed) {
+      expect(path.startsWith(GUARD) || path === HOOKS, path).toBe(true);
+    }
+    expect(h.calls).toEqual([]);
+  });
+});
+
+// ── status: one section per app ──────────────────────────────────────────────
+
+const CURSOR_HOOKS = `${HOME}/.cursor/hooks.json`;
+const HOOK_COPY = `${HOME}/.agenttrail/guard/cursor/guard-hook.mjs`;
+const INSTALL_RECORD = `${HOME}/.agenttrail/guard/cursor/install.json`;
+const CRASHES = `${HOME}/.agenttrail/guard/crashes`;
+const NODE = "/usr/local/bin/node";
+/** The command `init --agent cursor` writes for `NODE` and `HOOK_COPY`. */
+const GUARD_COMMAND = `"${NODE}" "${HOOK_COPY}" --agent cursor`;
+
+const CLAUDE_NOT_INSTALLED =
+  "Enforcement: NOT INSTALLED — run `agenttrail-guard init --agent claude`.";
+const CURSOR_NOT_INSTALLED =
+  "Enforcement: NOT INSTALLED — run `agenttrail-guard init --agent cursor`.";
+const CURSOR_AGAIN = "Run `agenttrail-guard init --agent cursor` again.";
+const AGENT_WINDOW = "Cursor's Agent Window can skip hooks";
+
+function hooksText(hooks: unknown): string {
+  return JSON.stringify({ version: 1, hooks });
+}
+
+function hookEntry(command: string = GUARD_COMMAND): { command: string; timeout: number } {
+  return { command, timeout: 10 };
+}
+
+/** Cursor's files with guard installed and working. */
+const WORKING: Record<string, string> = {
+  [CURSOR_HOOKS]: hooksText({ preToolUse: [hookEntry()], beforeShellExecution: [hookEntry()] }),
+  [NODE]: "",
+  [HOOK_COPY]: "// hook\n",
+};
+
+/** `WORKING` without one file. */
+function workingWithout(path: string): Record<string, string> {
+  return Object.fromEntries(Object.entries(WORKING).filter(([key]) => key !== path));
+}
+
+/** `install.json` recording `guardVersion`. */
+function installRecord(guardVersion: string): string {
+  return JSON.stringify({
+    installedAt: "2026-09-01T00:00:00.000Z",
+    hookPath: HOOK_COPY,
+    nodePath: NODE,
+    guardVersion,
+  });
+}
+
+/** The Claude Code section: everything before the first blank line. */
+function claudeSection(out: string): string {
+  return out.split("\n\n")[0] ?? "";
+}
+
+/** The Cursor section: its heading, to the blank line that ends it. */
+function cursorSection(out: string): string {
+  const start = out.indexOf("\nCursor\n");
+  expect(start, out).toBeGreaterThanOrEqual(0);
+  return out.slice(start + 1).split("\n\n")[0] ?? "";
+}
+
+/** One crash record, as the spool holds it. */
+function crashRecord(command: string, ts: string): string {
+  return JSON.stringify({
+    v: 1,
+    ts,
+    guardVersion: "0.2.0",
+    nodeVersion: "v22.14.0",
+    platform: "darwin",
+    command,
+    errorName: "TypeError",
+    frames: "",
+  });
+}
+
+/**
+ * Three hook records, whose newest time is NOT in the last file by name, a `scan` record newer
+ * than all of them, and a file whose name the spool does not use.
+ */
+const SPOOL: Record<string, string> = {
+  [`${CRASHES}/crash-1757462400000-aaaa1111.json`]: crashRecord("hook", "2026-09-10T00:00:00.000Z"),
+  [`${CRASHES}/crash-1757635200000-bbbb2222.json`]: crashRecord("hook", "2026-09-14T08:30:00.000Z"),
+  [`${CRASHES}/crash-1757721600000-cccc3333.json`]: crashRecord("hook", "2026-09-12T00:00:00.000Z"),
+  [`${CRASHES}/crash-1757808000000-dddd4444.json`]: crashRecord("scan", "2026-09-15T00:00:00.000Z"),
+  [`${CRASHES}/notes.json`]: crashRecord("hook", "2026-09-16T00:00:00.000Z"),
+};
+const CRASH_LINE =
+  "Crash records from guard's hook (shared by Claude Code and Cursor): 3, newest 2026-09-14T08:30:00.000Z.";
+
+/** `status` over every seam's fake, with each read of `SetupIO` recorded. */
+async function statusOver(
+  options: {
+    cursor?: FakeCursorFilesOptions;
+    spool?: Record<string, string>;
+    setup?: Parameters<typeof harness>[0];
+    runClaude?: (h: Harness) => ClaudeRunner;
+  } = {},
+) {
+  const h = harness(options.setup);
+  const setupReads: string[] = [];
+  const io: SetupIO = {
+    ...h.io,
+    readFile: (path) => {
+      setupReads.push(path);
+      return h.io.readFile(path);
+    },
+    runClaude: options.runClaude?.(h) ?? h.io.runClaude,
+  };
+  const cursor = fakeCursorFiles(options.cursor);
+  const guard = fakeGuardIo({ files: options.spool });
+  const code = await runStatus(io, { cursorIo: cursor.io, guardIo: guard.io });
+  return { code, out: h.out(), h, setupReads, cursor, guard };
+}
+
+/** A `claude` that cannot be started, recording what was asked of it. */
+function missingClaude(calls: string[][]): ClaudeRunner {
+  return (args) => {
+    calls.push([...args]);
+    return { code: null, stdout: "", stderr: "", spawnError: "ENOENT" };
+  };
+}
+
+describe("status: the Claude Code section", () => {
+  it("says Claude Code was not found when `claude` cannot start, and reads no plugin state", async () => {
+    const calls: string[][] = [];
+    const { code, out } = await statusOver({
+      setup: {
+        plugins: [{ id: GUARD_PLUGIN_ID }],
+        marketplaces: [{ name: "agenttrail-guard", path: "/gone" }],
+        missingPaths: ["/gone"],
+      },
+      runClaude: () => missingClaude(calls),
+    });
+    expect(code).toBe(0);
+    expect(claudeSection(out)).toMatch(
+      /^Claude Code: not found\. Once it is installed, run `agenttrail-guard init --agent claude`\./,
+    );
+    // The version check is the only spawn: no `plugin list`, no `marketplace list`.
+    expect(calls).toEqual([["--version"]]);
+    expect(out).not.toContain(CLAUDE_NOT_INSTALLED);
+    expect(out).not.toContain("Enforcement: ON");
+    expect(out).not.toContain("plugin source is missing");
+    // The Cursor section is still reported.
+    expect(cursorSection(out)).toBe(`Cursor\n${CURSOR_NOT_INSTALLED}`);
+  });
+
+  it("an older `claude` still goes through today's plugin reads", async () => {
+    const { out, h } = await statusOver({
+      setup: { plugins: [{ id: GUARD_PLUGIN_ID }] },
+      runClaude: (harnessed) => (args) =>
+        args[0] === "--version"
+          ? { code: 0, stdout: "2.0.1 (Claude Code)", stderr: "" }
+          : harnessed.io.runClaude(args),
+    });
+    expect(h.ran("plugin list --json")).toBe(true);
+    expect(claudeSection(out)).toMatch(/^Claude Code\nEnforcement: ON · \d+ guardrails/);
+    expect(out).not.toContain("Claude Code: not found");
+  });
+
+  it("a `claude --version` that throws for another reason still goes through the plugin reads", async () => {
+    const { out, h } = await statusOver({
+      setup: { plugins: [{ id: GUARD_PLUGIN_ID }] },
+      runClaude: (harnessed) => (args) => {
+        if (args[0] === "--version") throw new Error("EPIPE");
+        return harnessed.io.runClaude(args);
+      },
+    });
+    expect(h.ran("plugin list --json")).toBe(true);
+    expect(claudeSection(out)).toMatch(/^Claude Code\nEnforcement: ON · /);
+    expect(out).not.toContain("Claude Code: not found");
+  });
+
+  it("names the active bundle path so the running version is unambiguous", async () => {
+    const { out } = await statusOver({
+      setup: { plugins: [{ id: GUARD_PLUGIN_ID, version: "0.1.0" }] },
+    });
+    expect(claudeSection(out)).toContain(
+      "Active bundle: /home/test/.claude/plugins/cache/agenttrail-guard/agenttrail-guard/0.1.0",
+    );
+  });
+
+  it("shows the active version alone when the bundle path is not where it is expected", async () => {
+    const bundle = "/home/test/.claude/plugins/cache/agenttrail-guard/agenttrail-guard/0.1.0";
+    const { out } = await statusOver({
+      setup: { plugins: [{ id: GUARD_PLUGIN_ID, version: "0.1.0" }], missingPaths: [bundle] },
+    });
+    expect(claudeSection(out)).toContain("Active version: 0.1.0");
+    expect(claudeSection(out)).not.toContain("Active bundle:");
+  });
+});
+
+describe("status: the Cursor section", () => {
+  it("is ON when both entries run guard's command and the Node and hook copy exist", async () => {
+    const { code, out } = await statusOver({ cursor: { files: WORKING } });
+    expect(code).toBe(0);
+    const section = cursorSection(out);
+    expect(section).toMatch(/^Cursor\nEnforcement: ON · \d+ guardrails/);
+    expect(section).toContain(AGENT_WINDOW);
+    expect(section).not.toContain("BROKEN");
+    expect(section).not.toContain("Installed by guard");
+  });
+
+  it.each<[string, Record<string, string>]>([
+    ["there is no hooks.json", {}],
+    [
+      "hooks.json has no guard entry",
+      { [CURSOR_HOOKS]: hooksText({ preToolUse: [hookEntry("node other-hook.mjs")] }) },
+    ],
+    ["hooks.json has an empty hooks object", { [CURSOR_HOOKS]: hooksText({}) }],
+    [
+      "guard's two lists are empty",
+      { [CURSOR_HOOKS]: hooksText({ preToolUse: [], beforeShellExecution: [] }) },
+    ],
+  ])("is NOT INSTALLED, with nothing else in the section, when %s", async (_label, files) => {
+    const { out } = await statusOver({ cursor: { files: { ...files, [NODE]: "" } } });
+    expect(cursorSection(out)).toBe(`Cursor\n${CURSOR_NOT_INSTALLED}`);
+  });
+
+  it.each<[string, FakeCursorFilesOptions, string]>([
+    [
+      "only the preToolUse entry is there",
+      { files: { ...WORKING, [CURSOR_HOOKS]: hooksText({ preToolUse: [hookEntry()] }) } },
+      `${CURSOR_HOOKS} has guard's preToolUse entry but not its beforeShellExecution entry`,
+    ],
+    [
+      "only the beforeShellExecution entry is there",
+      { files: { ...WORKING, [CURSOR_HOOKS]: hooksText({ beforeShellExecution: [hookEntry()] }) } },
+      `${CURSOR_HOOKS} has guard's beforeShellExecution entry but not its preToolUse entry`,
+    ],
+    [
+      "the Node is missing",
+      { files: workingWithout(NODE) },
+      `the Node that guard's preToolUse entry runs is missing: ${NODE}`,
+    ],
+    [
+      "the hook copy is missing",
+      { files: workingWithout(HOOK_COPY) },
+      `the hook copy that guard's preToolUse entry runs is missing: ${HOOK_COPY}`,
+    ],
+    [
+      "hooks.json is not valid JSON",
+      { files: { ...WORKING, [CURSOR_HOOKS]: "{ not json" } },
+      `${CURSOR_HOOKS} is not valid JSON`,
+    ],
+    [
+      "a hook list is not an array",
+      {
+        files: {
+          ...WORKING,
+          [CURSOR_HOOKS]: hooksText({
+            preToolUse: hookEntry(),
+            beforeShellExecution: [hookEntry()],
+          }),
+        },
+      },
+      `${CURSOR_HOOKS} has a "preToolUse" hook list that is not an array`,
+    ],
+    [
+      "a guard entry's command is not quoted the way guard writes it",
+      {
+        files: {
+          ...WORKING,
+          [CURSOR_HOOKS]: hooksText({
+            preToolUse: [hookEntry(`${NODE} ${HOOK_COPY} --agent cursor`)],
+            beforeShellExecution: [hookEntry()],
+          }),
+        },
+      },
+      `guard's preToolUse entry in ${CURSOR_HOOKS} runs a command in a form guard does not write`,
+    ],
+    [
+      "a guard entry's command carries an extra flag",
+      {
+        files: {
+          ...WORKING,
+          [CURSOR_HOOKS]: hooksText({
+            preToolUse: [hookEntry()],
+            beforeShellExecution: [hookEntry(`${GUARD_COMMAND} --verbose`)],
+          }),
+        },
+      },
+      `guard's beforeShellExecution entry in ${CURSOR_HOOKS} runs a command in a form guard does not write`,
+    ],
+    [
+      "hooks.json cannot be read",
+      { files: WORKING, failReads: [CURSOR_HOOKS] },
+      `could not read ${CURSOR_HOOKS} — EACCES`,
+    ],
+    [
+      "the Node cannot be checked",
+      { files: WORKING, failReads: [NODE] },
+      `could not check ${NODE} — EACCES`,
+    ],
+  ])("is BROKEN, with the reason and the fix, when %s", async (_label, cursor, reason) => {
+    const { code, out } = await statusOver({ cursor });
+    expect(code).toBe(0);
+    const section = cursorSection(out);
+    expect(section).toContain(`\nEnforcement: BROKEN — ${reason}`);
+    expect(section).toContain(`\n  ${CURSOR_AGAIN}`);
+    expect(section).toContain(AGENT_WINDOW);
+    expect(section).not.toContain("Enforcement: ON");
+    expect(section).not.toContain("NOT INSTALLED");
+  });
+
+  it("says when install.json records another guard version, and how to refresh", async () => {
+    const { out } = await statusOver({
+      cursor: { files: { ...WORKING, [INSTALL_RECORD]: installRecord("0.0.1") } },
+    });
+    expect(VERSION).not.toBe("0.0.1");
+    expect(cursorSection(out)).toContain(
+      `\n  Installed by guard 0.0.1; this is guard ${VERSION}. Refresh it: \`agenttrail-guard init --agent cursor\``,
+    );
+  });
+
+  it("never suggests an init that would downgrade a NEWER Cursor install", async () => {
+    const { out } = await statusOver({
+      cursor: { files: { ...WORKING, [INSTALL_RECORD]: installRecord("99.0.0") } },
+    });
+    const section = cursorSection(out);
+    expect(section).toContain(
+      `Installed by guard 99.0.0, newer than this guard ${VERSION} — this command is out of date.`,
+    );
+    expect(section).toContain("npm install -g @agenttrail/guard@latest");
+    expect(section).not.toContain("Refresh it:");
+  });
+
+  it("shows the version difference on a BROKEN install too", async () => {
+    const { out } = await statusOver({
+      cursor: { files: { ...workingWithout(HOOK_COPY), [INSTALL_RECORD]: installRecord("0.0.1") } },
+    });
+    const section = cursorSection(out);
+    expect(section).toContain("Enforcement: BROKEN");
+    expect(section).toContain("Installed by guard 0.0.1");
+  });
+
+  it.each<[string, Record<string, string>]>([
+    ["install.json records this version", { ...WORKING, [INSTALL_RECORD]: installRecord(VERSION) }],
+    ["there is no install.json", WORKING],
+    ["install.json is not JSON", { ...WORKING, [INSTALL_RECORD]: "{" }],
+    [
+      "guard is not installed for Cursor",
+      { [INSTALL_RECORD]: installRecord("0.0.1"), [NODE]: "", [HOOK_COPY]: "// hook\n" },
+    ],
+  ])("says nothing about the version when %s", async (_label, files) => {
+    const { out } = await statusOver({ cursor: { files } });
+    expect(out).not.toContain("Installed by guard");
+  });
+
+  it.each<[string, boolean, Record<string, string>]>([
+    ["ON", true, WORKING],
+    ["BROKEN", true, workingWithout(HOOK_COPY)],
+    ["NOT INSTALLED", false, {}],
+  ])("when Cursor is %s, the Agent Window line is shown: %s", async (_state, shown, files) => {
+    const { out } = await statusOver({ cursor: { files } });
+    expect(out.split(AGENT_WINDOW).length - 1).toBe(shown ? 1 : 0);
+    expect(cursorSection(out).includes(AGENT_WINDOW)).toBe(shown);
+  });
+
+  const RUN_MODE = "Cursor's own run mode auto-approves the command first";
+
+  it.each<[string, boolean, Record<string, string>]>([
+    ["ON", true, WORKING],
+    ["BROKEN", true, workingWithout(HOOK_COPY)],
+    ["NOT INSTALLED", false, {}],
+  ])("when Cursor is %s, the run-mode approval note is shown: %s — the Cursor analogue of the settings.json hold disclosure", async (_state, shown, files) => {
+    const { out } = await statusOver({ cursor: { files } });
+    expect(cursorSection(out).includes(RUN_MODE)).toBe(shown);
+  });
+});
+
+describe("status: crash records", () => {
+  it("counts the hook's records in both sections, with the newest time, labelled as shared", async () => {
+    const { out } = await statusOver({ cursor: { files: WORKING }, spool: SPOOL });
+    expect(claudeSection(out)).toContain(`\n  ${CRASH_LINE}`);
+    expect(cursorSection(out)).toContain(`\n  ${CRASH_LINE}`);
+    expect(out.split(CRASH_LINE).length - 1).toBe(2);
+  });
+
+  it("prints no crash line when no record is from the hook", async () => {
+    const scanOnly = {
+      [`${CRASHES}/crash-1757808000000-dddd4444.json`]: crashRecord(
+        "scan",
+        "2026-09-15T00:00:00.000Z",
+      ),
+    };
+    const { out } = await statusOver({ spool: scanOnly });
+    expect(out).not.toContain("Crash records");
+  });
+
+  it("reads the spool under the home folder status was given, not the hook IO's own", async () => {
+    const h = harness();
+    const guard = fakeGuardIo({ files: SPOOL, home: "/somewhere/else" });
+    await runStatus(h.io, { cursorIo: fakeCursorFiles().io, guardIo: guard.io });
+    expect(h.out()).toContain(CRASH_LINE);
+    expect(guard.listed).toEqual([CRASHES]);
+    expect(guard.read.length).toBeGreaterThan(0);
+    for (const path of guard.read) expect(path.startsWith(`${CRASHES}/`), path).toBe(true);
+  });
+});
+
+describe("status: recent decisions name the app", () => {
+  it("shows claude or cursor on each line", async () => {
+    const decision = (agent: string, ruleId: string, verdict: string) =>
+      JSON.stringify({
+        ts: "2026-09-07T00:00:00Z",
+        tool: "Bash",
+        decision: verdict,
+        ruleId,
+        command: "x",
+        agent,
+      });
+    const { out } = await statusOver({
+      setup: {
+        files: {
+          [`${HOME}/.agenttrail/guard/events.jsonl`]: [
+            decision("claude", "wt.reset-hard", "deny"),
+            decision("cursor", "ti.dep-install", "ask"),
+          ].join("\n"),
+        },
+      },
+    });
+    expect(out).toMatch(/^ {2}deny {2}claude wt\.reset-hard +x$/m);
+    expect(out).toMatch(/^ {2}ask {3}cursor ti\.dep-install +x$/m);
+  });
+});
+
+describe("status writes nothing", () => {
+  const events = {
+    [`${HOME}/.agenttrail/guard/events.jsonl`]: JSON.stringify({
+      ts: "2026-09-07T00:00:00Z",
+      tool: "Bash",
+      decision: "deny",
+      ruleId: "wt.reset-hard",
+      command: "x",
+      agent: "cursor",
+    }),
+  };
+
+  it.each<[string, Parameters<typeof statusOver>[0]]>([
+    [
+      "Cursor ON with an older install record, crashes and decisions",
+      {
+        cursor: { files: { ...WORKING, [INSTALL_RECORD]: installRecord("0.0.1") } },
+        spool: SPOOL,
+        setup: { plugins: [{ id: GUARD_PLUGIN_ID }], files: events },
+      },
+    ],
+    [
+      "Cursor BROKEN and the plugin source missing",
+      {
+        cursor: { files: workingWithout(HOOK_COPY) },
+        spool: SPOOL,
+        setup: {
+          plugins: [{ id: GUARD_PLUGIN_ID }],
+          marketplaces: [{ name: "agenttrail-guard", path: "/gone" }],
+          missingPaths: ["/gone"],
+          files: events,
+        },
+      },
+    ],
+    [
+      "Claude Code not found",
+      {
+        cursor: { files: WORKING },
+        spool: SPOOL,
+        setup: { files: events },
+        runClaude: () => missingClaude([]),
+      },
+    ],
+  ])("%s: no write on any seam, and file contents read only under the home folder", async (_label, options) => {
+    const { code, h, setupReads, cursor, guard } = await statusOver(options);
+    expect(code).toBe(0);
+    expect(h.writes).toEqual([]);
+    expect(cursor.writes).toEqual([]);
+    expect(cursor.deletes).toEqual([]);
+    expect(guard.writes).toEqual([]);
+
+    // Each seam was read, so the loops below are not checking empty lists.
+    expect(setupReads.length).toBeGreaterThan(0);
+    expect(cursor.reads.length).toBeGreaterThan(0);
+    expect(guard.read.length).toBeGreaterThan(0);
+    for (const path of setupReads) expect(path.startsWith(`${HOME}/`), path).toBe(true);
+    for (const path of guard.read) expect(path.startsWith(`${HOME}/`), path).toBe(true);
+    // `cursor.reads` also holds existence checks; the Node guard's entries run is the only
+    // path outside the home folder.
+    for (const path of cursor.reads) {
+      expect(path.startsWith(`${HOME}/`) || path === NODE, path).toBe(true);
+    }
+  });
+});
+
+describe("status agrees with init and uninstall for Cursor", () => {
+  it("reports ON after init --agent cursor, and NOT INSTALLED after uninstall --agent cursor", async () => {
+    const h = harness();
+    const cursor = fakeCursorFiles({
+      files: { [`${SCAFFOLD}/scripts/guard-hook.mjs`]: "// hook\n", [NODE]: "" },
+    });
+    const guardIo = fakeGuardIo().io;
+    const deps = { ...initDeps, cursorIo: cursor.io, nodePath: NODE };
+    expect(await runInit(h.io, { agent: "cursor" }, deps)).toBe(0);
+
+    let from = h.out().length;
+    expect(await runStatus(h.io, { cursorIo: cursor.io, guardIo })).toBe(0);
+    const installed = cursorSection(h.out().slice(from));
+    expect(installed).toMatch(/^Cursor\nEnforcement: ON · /);
+    expect(installed).not.toContain("Installed by guard");
+
+    expect(await runUninstall(h.io, { agent: "cursor" }, { cursorIo: cursor.io })).toBe(0);
+    from = h.out().length;
+    expect(await runStatus(h.io, { cursorIo: cursor.io, guardIo })).toBe(0);
+    expect(cursorSection(h.out().slice(from))).toBe(`Cursor\n${CURSOR_NOT_INSTALLED}`);
   });
 });

@@ -3,9 +3,10 @@
  * The local decision log — `~/.agenttrail/guard/events.jsonl`.
  *
  * One JSON object per decision that MATCHED a rule: `{ ts, tool, decision, ruleId,
- * command }`. It is what makes `status` useful — "this rule fired 14 times this
- * week" is a count over this file, and without it nobody can tell which rule is the
- * noisy one, so the allowlist pressure valve cannot work.
+ * command, agent }`, where `agent` is the app that sent the call (`claude` or `cursor`).
+ * It is what makes `status` useful — "this rule fired 14 times this week" is a count
+ * over this file, and without it nobody can tell which rule is the noisy one, so the
+ * allowlist pressure valve cannot work.
  *
  * **Never leaves the machine.** Nothing here transmits, and nothing reachable from
  * the hook entry can (`no-network.test.ts` proves that with a parser). Deleting the
@@ -44,7 +45,7 @@
  * ── Scrubbed exactly once ────────────────────────────────────────────────────
  *
  * `scrubText` is NOT idempotent: 11 of the 14 placeholders it emits are mangled by
- * a second pass (`[REDACTED:secret:aws:…MPLE]` → `[REDACTED:secret:[REDACTED:…`,
+ * a second pass (`[REDACTED:secret:aws]` → `[REDACTED:secret:[REDACTED:…`,
  * because the `.env` heuristic reads the literal word `secret` in our own
  * placeholder as a key name), and a GitHub token in a URL is *reclassified* to
  * `basic-auth`. So this module is the ONLY place a recorded command is scrubbed.
@@ -53,14 +54,22 @@
  */
 
 import type { GuardIO } from "../io.js";
-import { eventsPath, guardDir } from "./paths.js";
+import { dedupMarkerPath, eventsPath, guardDir } from "./paths.js";
 import { scrubText } from "./scrub.js";
-import type { GuardAction, GuardDecision, MappedCall } from "./types.js";
+import type { AgentSource, GuardAction, GuardDecision, MappedCall } from "./types.js";
 
 /** One decision, ready to be recorded. */
 export interface DecisionEvent {
   readonly mapped: MappedCall;
   readonly decision: GuardDecision;
+  /** The app that sent the call. Written as the line's last key, `agent`. */
+  readonly agent: AgentSource;
+  /**
+   * The payload's `tool_use_id`, when the app supplied one. Used ONLY to dedupe a hook
+   * invoked twice for one tool call; it is never written to the log (the record shape is
+   * unchanged) — see the dedup section below.
+   */
+  readonly callId?: string;
 }
 
 /** Sink for decision records. */
@@ -95,6 +104,40 @@ export const TARGET_BYTES = 524_288;
 /** Records older than this are dropped at compaction. Matches the crash spool. */
 export const MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
 
+/**
+ * How close in time two identical records must be to count as one duplicate.
+ *
+ * Only the FALLBACK path — a payload with no `tool_use_id` — uses this. When an id is
+ * present the match is exact, so no window is applied and a distinct call that carried an
+ * id is never folded away. Both Claude Code and Cursor send an id in practice, so this is
+ * the rare degraded case; three seconds covers the ~1s gap between one call's two hook
+ * invocations without merging two identical commands a user genuinely re-ran seconds apart.
+ */
+export const DEDUP_WINDOW_MS = 3000;
+
+/** A tiny non-cryptographic hash (FNV-1a, 32-bit). The marker holds only this, not the key. */
+function fnv1a(text: string): string {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < text.length; i += 1) {
+    hash ^= text.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return (hash >>> 0).toString(16);
+}
+
+/** The dedup marker as `{h, t}` (a key hash and its write time), or `undefined`. Never throws. */
+function readMarker(text: string | undefined): { h: string; t: number } | undefined {
+  if (text === undefined) return undefined;
+  try {
+    const parsed: unknown = JSON.parse(text);
+    if (parsed === null || typeof parsed !== "object") return undefined;
+    const { h, t } = parsed as { h?: unknown; t?: unknown };
+    return typeof h === "string" && typeof t === "number" ? { h, t } : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /** The `events.jsonl` line shape. Read by `core/decision-log.ts`. */
 interface DecisionRecord {
   readonly ts: string;
@@ -102,6 +145,7 @@ interface DecisionRecord {
   readonly decision: string;
   readonly ruleId: string;
   readonly command: string;
+  readonly agent: AgentSource;
 }
 
 /**
@@ -193,7 +237,7 @@ function compact(io: GuardIO, path: string, nowMs: number): void {
  */
 export function createEventRecorder(io: GuardIO, now: () => number = Date.now): EventRecorder {
   return {
-    record({ mapped, decision }: DecisionEvent): void {
+    record({ mapped, decision, agent, callId }: DecisionEvent): void {
       try {
         // Only decisions that MATCHED a rule are recorded. `parseDecisionLog`
         // discards any line without a `ruleId`, so an unmatched call would be
@@ -214,17 +258,41 @@ export function createEventRecorder(io: GuardIO, now: () => number = Date.now): 
           decision: decision.decision,
           ruleId,
           // Scrub the FIELD, then serialize. See the header — the inverse leaves an
-          // escaped-quote secret unredacted. `ruleId` and `tool` are our own
+          // escaped-quote secret unredacted. `ruleId`, `agent` and `tool` are our own
           // identifiers and the vendor's tool name, never user content, so they are
           // not scrubbed; scrubbing an id could only corrupt it.
           command: scrubText(raw).text,
+          agent,
         };
 
         const home = io.homedir();
+
+        // ── One tool call → one record ────────────────────────────────────────
+        // Claude Code and Cursor can each invoke the hook TWICE for a single tool call,
+        // which without this writes the same decision twice, about a second apart. The
+        // key is the payload's `tool_use_id` when present — exact, and two distinct calls
+        // never share one, so this path can never drop a real call — and the event content
+        // within a short window otherwise. The key is hashed into a marker file so it
+        // survives across the fresh process each hook run is; the log line gains no id, so
+        // the record shape (and Cursor's "no id in the log" guarantee) is unchanged.
+        const byId = callId !== undefined && callId.length > 0;
+        const dedupKey = byId
+          ? `id:${callId}`
+          : `ev:${agent} ${record.tool} ${record.decision} ${ruleId} ${record.command}`;
+        const keyHash = fnv1a(dedupKey);
+        const nowMs = now();
+        const marker = readMarker(io.readFile(dedupMarkerPath(home)));
+        if (marker?.h === keyHash && (byId || nowMs - marker.t <= DEDUP_WINDOW_MS)) return;
+
         if (!io.mkdirp(guardDir(home))) return;
 
         const path = eventsPath(home);
         if (!io.appendFile(path, `${JSON.stringify(record)}\n`)) return;
+
+        // Remember this decision's key, AFTER the append so a failed write never suppresses
+        // the retry. Best-effort: a failed marker write only means the next duplicate is
+        // not caught, which is the pre-existing behaviour, not a regression.
+        io.writeFileAtomic(dedupMarkerPath(home), JSON.stringify({ h: keyHash, t: nowMs }));
 
         if (io.fileSize(path) > MAX_BYTES) compact(io, path, now());
       } catch {

@@ -41,7 +41,12 @@ export interface TokenTotals {
   /** Uncached input tokens. */
   readonly input: number;
   readonly output: number;
-  /** Cache READ — the tokens served from an existing cache entry. */
+  /**
+   * Cache READ, CUMULATIVE. The cached prefix is served from an existing cache entry and
+   * re-charged on every turn, so this counts the same tokens many times over a session —
+   * it is a total of what the model billed for, not of distinct input. Every renderer
+   * labels it with that qualifier so it is not misread as fresh consumption.
+   */
   readonly cacheRead: number;
   /** Cache WRITE, the vendor's flat aggregate. The stored count of record. */
   readonly cacheCreation: number;

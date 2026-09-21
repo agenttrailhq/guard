@@ -62,8 +62,9 @@ function actionReason(value: unknown): string {
  * changes no behavior. It only explains it.
  *
  * @param text - the raw file contents, or `undefined` when the file is absent.
- * @param knownPacks - the pack ids that exist, for spotting a misspelled one. Omit to
- *   skip that check rather than report every pack as unknown.
+ * @param knownPacks - the pack ids that exist — the library's packs plus any category the
+ *   user's own guardrails use, since those can be disabled by name too — for spotting a
+ *   misspelled one. Omit to skip that check rather than report every pack as unknown.
  */
 export function inspectConfig(
   text: string | undefined,
@@ -110,37 +111,40 @@ export function inspectConfig(
     }
   }
 
-  // ── enabledPacks: an unknown id, and the empty-array trap. ─────────────────
-  const packs = obj.enabledPacks;
+  // ── enabledPacks: written by older releases, no longer read. ───────────────
+  // Worth saying because the key is not inert in the reader's mind: someone who trimmed
+  // it by hand to turn packs off sees those packs come back, and this is the only place
+  // that tells them why.
+  if (obj.enabledPacks !== undefined) {
+    problems.push({
+      where: "enabledPacks",
+      reason:
+        "is no longer read — every pack is on unless it is named in `disabledPacks`. Remove this key, and list any pack you want off under `disabledPacks` (or run `agenttrail-guard guardrails disable <pack>`).",
+    });
+  }
+
+  // ── disabledPacks: a dropped entry leaves a pack on; an unknown one does nothing. ─
+  const packs = obj.disabledPacks;
   if (packs !== undefined) {
     if (!Array.isArray(packs)) {
       problems.push({
-        where: "enabledPacks",
-        reason: "expected an array of pack names — it was ignored, so every pack is active.",
+        where: "disabledPacks",
+        reason: "expected an array of pack names — it was ignored, so every pack is on.",
       });
     } else {
-      if (packs.length === 0) {
-        // Not a malformed value, and that is exactly why it needs saying: an empty
-        // array reads as "nothing enabled" and means "no filter — everything enabled".
-        problems.push({
-          where: "enabledPacks",
-          reason:
-            "is empty, which means NO pack filter — every pack is active, not none. To turn the guard off, use `claude plugin disable` or `agenttrail-guard uninstall`.",
-        });
-      }
-      for (const p of packs) {
-        if (typeof p !== "string") {
+      packs.forEach((p, i) => {
+        if (typeof p !== "string" || p.length === 0) {
           problems.push({
-            where: "enabledPacks",
-            reason: `entry ${JSON.stringify(p)} is not a string and was ignored.`,
+            where: `disabledPacks[${i}]`,
+            reason: `${JSON.stringify(p)} is not a pack name and was ignored — that pack, if you meant one, is still on.`,
           });
         } else if (knownPacks !== undefined && !knownPacks.includes(p)) {
           problems.push({
-            where: `enabledPacks.${p}`,
-            reason: `is not a pack this build knows about — it enables nothing. Known packs: ${knownPacks.join(", ")}.`,
+            where: `disabledPacks.${p}`,
+            reason: `is not a pack this build knows about — it disables nothing. Known packs: ${knownPacks.join(", ")}.`,
           });
         }
-      }
+      });
     }
   }
 

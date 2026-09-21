@@ -1,4 +1,6 @@
 // cspell:words acmecorp betaholdings clientco clientdb dbname mongosh nerdctl podman sftp
+// cspell:words tokenvalue passvalue keyvalue apivalue clientvalue mytool
+// cspell:words acmeq7k2m9p4w8r1t5y6u3v0xz ACMEQ7K2M9P4W8R1T5Y6U3V0XZ
 /**
  * `core/redact-identifiers.ts` — the identifying names that are not path-shaped, and
  * the three-way composition `scan` actually uses.
@@ -46,6 +48,32 @@ const LEAKS: readonly (readonly [string, string, string])[] = [
     "a free-text commit message",
     "git commit -m 'fix billing for AcmeCorp'",
     "git commit -m '<message>'",
+  ],
+  [
+    "a commit identity set with git config",
+    "git config user.name 'Priya at AcmeCorp'",
+    "git config user.name '<user>'",
+  ],
+  [
+    "a commit identity handed to git -c",
+    "git -c user.email=priya@acme.dev commit -m 'x'",
+    "git -c user.email=<user> commit -m '<message>'",
+  ],
+  [
+    "a 1Password item id",
+    "op item get acmeq7k2m9p4w8r1t5y6u3v0xz --fields credential --reveal",
+    "op item get <name> --fields credential --reveal",
+  ],
+  ["a 1Password vault name", "op item list --vault AcmeClientVault", "op item list --vault <name>"],
+  [
+    "a pull-request title and body",
+    `gh pr create --title "[ACME-12] billing" --body "for AcmeCorp"`,
+    `gh pr create --title "<message>" --body "<message>"`,
+  ],
+  [
+    "a heredoc body",
+    "git commit -F - <<'EOF'\nfix billing for AcmeCorp\nEOF",
+    "git commit -F - <<'EOF'\n<message>\nEOF",
   ],
 ];
 
@@ -266,5 +294,260 @@ describe("composition — the order scan uses", () => {
     expect(NAME_PLACEHOLDER).toBe("<name>");
     expect(HOST_PLACEHOLDER).toBe("<host>");
     expect(MESSAGE_PLACEHOLDER).toBe("<message>");
+  });
+});
+
+describe("a secret handed as a flag value, in any command", () => {
+  it.each([
+    ["--token", "deploy --token tokenvalue", "deploy --token [REDACTED:secret:arg]"],
+    ["--password", "mytool --password passvalue", "mytool --password [REDACTED:secret:arg]"],
+    ["--key", "provider auth --key keyvalue", "provider auth --key [REDACTED:secret:arg]"],
+    ["--api-key=", "call --api-key=apivalue", "call --api-key=[REDACTED:secret:arg]"],
+    [
+      "--client-secret",
+      "login --client-secret clientvalue",
+      "login --client-secret [REDACTED:secret:arg]",
+    ],
+  ])("%s is redacted even for a tool no family covers", (_label, input, expected) => {
+    expect(redactIdentifiers(input)).toBe(expected);
+  });
+
+  it("does not eat a following flag as the secret value", () => {
+    expect(redactIdentifiers("deploy --token --verbose")).toBe("deploy --token --verbose");
+  });
+
+  it("does not fire on a flag that merely names a namespace or a message", () => {
+    expect(redactIdentifiers("kubectl --namespace acme-prod get pods")).toContain("--namespace");
+    expect(redactIdentifiers("git commit --message hello")).not.toContain("[REDACTED:secret:arg]");
+  });
+});
+
+describe("kubectl redacts resource-name operands, not just the namespace", () => {
+  it.each([
+    ["a resource name after a type", "kubectl get pods acme-web-7", "kubectl get pods <name>"],
+    ["a namespace given as an operand", "kubectl get ns acme-prod", "kubectl get ns <name>"],
+    ["a delete target", "kubectl delete deployment acme-api", "kubectl delete deployment <name>"],
+  ])("%s", (_label, input, expected) => {
+    expect(redactIdentifiers(input)).toBe(expected);
+  });
+
+  it("still keeps the verb and resource type, so the shape reads", () => {
+    const out = redactIdentifiers("kubectl -n acme-prod get pods acme-web-7");
+    expect(out).toBe("kubectl -n <name> get pods <name>");
+    expect(out).not.toContain("acme");
+  });
+});
+
+describe("a SQL statement handed to a database client is redacted whole", () => {
+  it.each([
+    ["-c", "psql -c 'SELECT * FROM customers'", "psql -c '<name>'"],
+    ["-e", "mysql -e 'DROP TABLE clients'", "mysql -e '<name>'"],
+    ["--command=", "psql --command='TRUNCATE orders'", "psql --command=<name>"],
+  ])("%s", (_label, input, expected) => {
+    expect(redactIdentifiers(input)).toBe(expected);
+  });
+
+  it("still keeps a username operand readable — the finding is worth reading", () => {
+    // `-U app` is not a host, a database or a SQL statement, so it survives, as before.
+    expect(redactIdentifiers("psql -U app")).toBe("psql -U app");
+  });
+});
+
+describe("a shell comment is redacted, in any command", () => {
+  it("collapses a comment that names a branch, keeping the command", () => {
+    expect(redactIdentifiers("git push origin main # switch to acme-prod later")).toBe(
+      "git push origin main #<comment>",
+    );
+  });
+
+  it("a `#` mid-word is an ordinary character, not a comment", () => {
+    expect(redactIdentifiers("grep foo#bar file")).toBe("grep foo#bar file");
+  });
+
+  it("a bare `#` with no body is left alone", () => {
+    expect(redactIdentifiers("echo done #")).toBe("echo done #");
+  });
+
+  it("redacts a comment on the second line of a chained command", () => {
+    // Redaction runs before flatten, so the newline structure is still here.
+    const out = redactIdentifiers("git status\ngit push # deploy acme-prod");
+    expect(out).toBe("git status\ngit push #<comment>");
+  });
+});
+
+describe("a UUID is redacted in any command", () => {
+  const ORG = "123e4567-e89b-42d3-a456-426614174000";
+
+  it.each([
+    ["as a flag's value", `exporter setup --org ${ORG}`, "exporter setup --org <name>"],
+    ["in a --flag=value word", `exporter setup --org=${ORG}`, "exporter setup --org=<name>"],
+    ["in upper case", `run ${ORG.toUpperCase()}`, "run <name>"],
+    [
+      "inside a quoted JSON payload, keeping the rest",
+      `curl -d '{"org":"${ORG}","plan":"team"}'`,
+      `curl -d '{"org":"<name>","plan":"team"}'`,
+    ],
+    ["as a value a family keeps", `git -C ${ORG} status`, "git -C <name> status"],
+  ])("%s", (_label, input, expected) => {
+    expect(input.toLowerCase()).toContain("123e4567");
+    expect(redactIdentifiers(input)).toBe(expected);
+  });
+
+  it("leaves a short hash and an ordinary hyphenated word alone", () => {
+    expect(redactIdentifiers("git show 3f2a9c1e")).toBe("git show 3f2a9c1e");
+    expect(redactIdentifiers("npm install left-pad")).toBe("npm install left-pad");
+  });
+});
+
+describe("a heredoc body is redacted, whatever command reads it", () => {
+  it.each([
+    [
+      "an unquoted delimiter",
+      "cat <<EOF > notes.md\nclient AcmeCorp\nEOF",
+      "cat <<EOF > notes.md\n<message>\nEOF",
+    ],
+    [
+      "a double-quoted delimiter over several lines",
+      'python3 - <<"PY"\nprint("acme")\nprint("beta")\nPY',
+      'python3 - <<"PY"\n<message>\nPY',
+    ],
+    [
+      "a tab-stripped <<- terminator",
+      "cat <<-END\n\tfor AcmeCorp\n\tEND",
+      "cat <<-END\n<message>\n\tEND",
+    ],
+    [
+      "an indented terminator inside $(cat …), as agents write it",
+      `x "$(cat <<'EOF'\n   Closes ACME-12\n   EOF\n   )"`,
+      `x "$(cat <<'EOF'\n<message>\n   EOF\n   )"`,
+    ],
+    [
+      "two heredoc operators on one line, read in order",
+      "diff <(cat <<A\nacme one\nA\n) <(cat <<B\nbeta two\nB\n)",
+      "diff <(cat <<A\n<message>\nA\n) <(cat <<B\n<message>\nB\n)",
+    ],
+  ])("%s", (_label, input, expected) => {
+    expect(input).toMatch(/acme|beta/i);
+    const out = redactIdentifiers(input);
+    expect(out).toBe(expected);
+    expect(out).not.toMatch(/acme|beta/i);
+  });
+
+  it("redacts to the end when the terminator is gone, as a long command capped by the engine is", () => {
+    // Shell commands keep only their first MAX_DETAIL_LEN characters, so a long heredoc
+    // arrives here with no terminator. Found on a real corpus: the body carried a ticket id.
+    const input = `cat > <path> <<'BODY'\n## Result for ACME-12\nclient notes${"x".repeat(50)}`;
+    const out = redactIdentifiers(input);
+    expect(out).toBe("cat > <path> <<'BODY'\n<message>");
+    expect(out).not.toMatch(/acme|client/i);
+  });
+
+  it.each([
+    [
+      "a one-line operator with no body, which may be text in a string",
+      `echo "use << EOF for acme"`,
+    ],
+    ["a here-string, which has no body", `cat <<< "acme"`],
+    ["an arithmetic shift", "echo $((1 << 2))"],
+  ])("leaves %s alone", (_label, input) => {
+    expect(redactIdentifiers(input)).toBe(input);
+  });
+
+  it("is idempotent", () => {
+    const once = redactIdentifiers("git commit -F - <<'EOF'\nfix for AcmeCorp\nEOF");
+    expect(redactIdentifiers(once)).toBe(once);
+  });
+
+  it("survives the full composition and the report's one-line flattening", () => {
+    const out = redactForReport(
+      "git commit -F - <<'EOF'\nchore: format for AcmeCorp [skip ci]\nEOF",
+    )
+      .replace(/\s+/g, " ")
+      .trim();
+    expect(out).toBe("git commit -F - <<'EOF' <message> EOF");
+  });
+});
+
+describe("the 1Password and GitHub CLIs keep their verbs", () => {
+  it.each([
+    ["op signin", "op signin"],
+    ["op whoami", "op whoami"],
+    ["op read <path>", "op read <path>"],
+    ["gh pr view 467", "gh pr view 467"],
+    ["gh pr merge 467 --squash", "gh pr merge 467 --squash"],
+  ])("%s survives unchanged", (input) => {
+    expect(redactIdentifiers(input)).toBe(input);
+  });
+
+  it("stops at `op run --`, leaving the wrapped command readable", () => {
+    expect(redactIdentifiers("op run --env-file prod.env -- npm start")).toBe(
+      "op run --env-file <name> -- npm start",
+    );
+  });
+
+  it("a known command after `op run --` is still read as itself", () => {
+    expect(redactIdentifiers("op run -- docker exec acme-db psql")).toBe(
+      "op run -- docker exec <name> psql",
+    );
+  });
+
+  it("redacts the --title=value and short -t / -b forms of gh", () => {
+    expect(redactIdentifiers("gh issue create --title=ACME -b 'for beta'")).toBe(
+      "gh issue create --title=<message> -b '<message>'",
+    );
+  });
+});
+
+describe("a value slot is redacted whole, even when an earlier pass redacted part of it", () => {
+  it.each([
+    [
+      "a commit message whose only scrubbed part is the co-author email",
+      `git commit -m "fix ACME-12 billing\n\nCo-Authored-By: Claude <[REDACTED:pii:email]>"`,
+      `git commit -m "<message>"`,
+    ],
+    [
+      "a pull-request title that contains a placeholder-looking word",
+      `gh pr create --title "Map<string> for AcmeCorp"`,
+      `gh pr create --title "<message>"`,
+    ],
+    ["a SQL statement that held a path", `psql -c "COPY acme_users TO <path>"`, `psql -c "<name>"`],
+  ])("%s", (_label, input, expected) => {
+    expect(redactIdentifiers(input)).toBe(expected);
+    expect(redactIdentifiers(input)).not.toMatch(/acme/i);
+  });
+
+  it("keeps a value that is already nothing but a placeholder, so a secret's marker survives", () => {
+    expect(redactIdentifiers("deploy --token [REDACTED:secret:env]")).toBe(
+      "deploy --token [REDACTED:secret:env]",
+    );
+    expect(redactIdentifiers(`git commit -m "<message>"`)).toBe(`git commit -m "<message>"`);
+  });
+
+  it("is still idempotent over the whole-value case", () => {
+    const once = redactIdentifiers(`git commit -m "x <[REDACTED:pii:email]>"`);
+    expect(redactIdentifiers(once)).toBe(once);
+  });
+});
+
+describe("a 1Password setting passed through the environment", () => {
+  it.each([
+    ["an account", "export OP_ACCOUNT=ACMEQ7K2M9P4W8R1T5Y6U3V0XZ", "export OP_ACCOUNT=<name>"],
+    [
+      "a vault, before the command",
+      "OP_VAULT=AcmeVault op item list",
+      "OP_VAULT=<name> op item list",
+    ],
+  ])("%s", (_label, input, expected) => {
+    expect(redactIdentifiers(input)).toBe(expected);
+    expect(redactIdentifiers(input)).not.toMatch(/acme/i);
+  });
+
+  it("leaves a token the scrubber already replaced, and an unrelated variable, alone", () => {
+    expect(redactIdentifiers("OP_SERVICE_ACCOUNT_TOKEN=[REDACTED:secret:env] op whoami")).toBe(
+      "OP_SERVICE_ACCOUNT_TOKEN=[REDACTED:secret:env] op whoami",
+    );
+    expect(redactIdentifiers("NODE_ENV=production npm start")).toBe(
+      "NODE_ENV=production npm start",
+    );
   });
 });

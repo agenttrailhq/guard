@@ -355,6 +355,24 @@ export function resolvePluginScaffoldDir(fromDir?: string): string {
   );
 }
 
+/**
+ * Where Claude Code caches the guard plugin's bytes, honouring `CLAUDE_CONFIG_DIR`.
+ *
+ * Claude Code runs a CACHED COPY of a plugin from
+ * `<config>/plugins/cache/<marketplace>/<plugin>/<version>/`, not the source it was
+ * installed from (see the module docblock). Each installed version gets its own
+ * `<version>` directory, and the vendor's `plugin uninstall` leaves them on disk, so they
+ * pile up across uninstall/reinstall cycles. This is the plugin directory that holds them:
+ * `status` names the active `<version>` under it, and `uninstall` clears the tree.
+ */
+export function guardPluginCacheDir(home: string, configDir?: string): string {
+  const base =
+    configDir !== undefined && configDir.trim().length > 0
+      ? configDir.trim()
+      : join(home, ".claude");
+  return join(base, "plugins", "cache", GUARD_MARKETPLACE_NAME, GUARD_PLUGIN_NAME);
+}
+
 // ── Install / refresh / uninstall ────────────────────────────────────────────
 
 /**

@@ -44,12 +44,11 @@ describe("correctness — each pattern redacts its own secret shape", () => {
 
   it("no placeholder ever echoes a meaningful run of the secret it replaced", () => {
     // Every emitted placeholder is checked against EVERY 6-character window of the
-    // secret it replaced. The two deliberate hints stay comfortably under that
-    // threshold and are non-sensitive by construction — an AWS access key ID's last
-    // 4 (a public-ish identifier, not a secret value) and a connection string's HOST
-    // (credentials are never captured by that pattern, so none can reach the hint).
-    // Both are pinned exactly by the per-fixture `placeholder` assertions above; this
-    // is the general guard that catches a NEW hint that leaks.
+    // secret it replaced. No secret-class placeholder carries a hint any more — the AWS
+    // key-id last-4 and the connection-string host were both dropped, because each
+    // fingerprints something a shared report should not disclose — so every placeholder
+    // is a bare `[REDACTED:kind]`. This is the general guard that catches a NEW hint that
+    // leaks; the exact placeholders are pinned by the per-fixture assertions above.
     for (const { id, input, secret } of POSITIVE_FIXTURES) {
       const emitted = scrubText(input).text.match(/\[REDACTED:[^\]]*\]/g) ?? [];
       expect(emitted.length, id).toBeGreaterThan(0);
@@ -133,7 +132,7 @@ describe("engine semantics carried over from the source of truth", () => {
     // final restore pass would substitute the wrong slot.
     const result = scrubText(`${SENTINEL} AKIAIOSFODNN7EXAMPLE`);
     expect(result.text).not.toContain(SENTINEL);
-    expect(result.text).toBe(" [REDACTED:secret:aws:…MPLE]");
+    expect(result.text).toBe(" [REDACTED:secret:aws]");
     expect(result.total).toBe(1);
   });
 
@@ -172,16 +171,15 @@ describe("engine semantics carried over from the source of truth", () => {
     // Known behavior, pinned because the opposite is the natural assumption.
     //
     // The `.env` heuristic matches the word `secret` inside the placeholder the
-    // catalog itself emits (`[REDACTED:secret:aws:…MPLE]` → key `secret`, separator
-    // `:`, value `aws:…MPLE]`), so a second pass mangles the first pass's output and
-    // inflates the tally.
+    // catalog itself emits (`[REDACTED:secret:aws]` is `secret` + `:` + a value), so a
+    // second pass mangles the first pass's output and inflates the tally.
     //
     // The consequence for the consumers: **scrub exactly once, at the point of
     // display/write.** The `scan` report and `events.jsonl` read independent sources
     // today, so nothing double-scrubs — but if either ever scrubs a value that came
     // from the other, this is what happens.
     const once = scrubText("AKIAIOSFODNN7EXAMPLE and priya@acme.io").text;
-    expect(once).toBe("[REDACTED:secret:aws:…MPLE] and [REDACTED:pii:email]");
+    expect(once).toBe("[REDACTED:secret:aws] and [REDACTED:pii:email]");
 
     const twice = scrubText(once);
     expect(twice.text).not.toBe(once);

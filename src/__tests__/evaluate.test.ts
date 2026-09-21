@@ -13,13 +13,18 @@ import { buildGuardSpanContext } from "../core/normalize.js";
 import { compileCatalog } from "../core/rules.js";
 import type { GuardAction, GuardRule, MappedCall } from "../core/types.js";
 
-function rule(id: string, action: GuardAction, contains: string): GuardRule {
+function rule(
+  id: string,
+  action: GuardAction,
+  contains: string,
+  title = `the ${id} rule`,
+): GuardRule {
   return {
     id,
     category: "test",
     severity: "high",
     defaultAction: action,
-    title: id,
+    title,
     description: "fixture",
     match: { any_of: [{ kind: "execute_tool", detail_contains: [contains] }] },
   };
@@ -55,8 +60,83 @@ describe("verdict mapping", () => {
 
   it("the reason names the guardrail and never echoes the command", () => {
     const out = run([rule("r.block", "block", "secret-token-value")], bash("secret-token-value"));
-    expect(out.reason).toBe("blocked by guardrail: r.block");
+    expect(out.reason).toBe("agenttrail-guard blocked this: the r.block rule (guardrail r.block)");
     expect(out.reason).not.toContain("secret-token-value");
+  });
+});
+
+describe("every message names the product, the guardrail and its title", () => {
+  // In Cursor no reason of Cursor's own is shown, so this text, quoted back by the agent, is
+  // all a user gets. It has to say which tool stopped them and which guardrail to look at —
+  // and carry nothing of what they were doing.
+  const COMMAND = "deploy --token hunter2-do-not-echo-me";
+  const FILE = "/home/user/project/.env.production";
+
+  const commandRule = (action: GuardAction, title: string) =>
+    rule("r.msg", action, "deploy", title);
+
+  const fileRule = (action: GuardAction, title: string): GuardRule => ({
+    ...rule("r.msg", action, "unused", title),
+    match: { any_of: [{ kind: "execute_tool", file_glob: "**/.env*" }] },
+  });
+
+  const CASES: [GuardAction, string, string][] = [
+    ["block", "Block a production deploy", "agenttrail-guard blocked this: "],
+    [
+      "require_approval",
+      "Ask before a production deploy",
+      "agenttrail-guard needs a person to approve this: ",
+    ],
+    ["warn", "Production deploys are noisy", "agenttrail-guard is warning about this: "],
+  ];
+
+  it.each(CASES)("a %s message reads in full", (action, title, lead) => {
+    expect(run([commandRule(action, title)], bash(COMMAND)).reason).toBe(
+      `${lead}${title} (guardrail r.msg)`,
+    );
+  });
+
+  it.each(CASES)("a %s message carries nothing of what it judged", (action, title) => {
+    const onCommand = run([commandRule(action, title)], bash(COMMAND)).reason;
+    const onFile = run([fileRule(action, title)], {
+      tool: "Read",
+      args: { file_path: FILE },
+    }).reason;
+    for (const reason of [onCommand, onFile]) {
+      expect(reason).not.toContain("hunter2");
+      expect(reason).not.toContain(FILE);
+      expect(reason).not.toContain("production.");
+      expect(reason.split("\n")).toHaveLength(1);
+    }
+  });
+
+  it("names the guardrail that DECIDED, not merely the first that matched", () => {
+    const out = run(
+      [
+        rule("r.first", "warn", "deploy", "A warning"),
+        rule("r.decides", "block", "deploy", "The blocking rule"),
+      ],
+      bash(COMMAND),
+    );
+    expect(out.reason).toBe(
+      "agenttrail-guard blocked this: The blocking rule (guardrail r.decides)",
+    );
+  });
+
+  it("leaves the id standing alone when a guardrail has no usable title", () => {
+    for (const title of ["", "   "]) {
+      expect(run([commandRule("block", title)], bash(COMMAND)).reason).toBe(
+        "agenttrail-guard blocked this: guardrail r.msg",
+      );
+    }
+  });
+
+  it("collapses a title's whitespace, because the message is one line", () => {
+    // A bundled title is single-line; a user's own guardrail carries whatever they typed.
+    const out = run([commandRule("block", " Block a\n  production\tdeploy ")], bash(COMMAND));
+    expect(out.reason).toBe(
+      "agenttrail-guard blocked this: Block a production deploy (guardrail r.msg)",
+    );
   });
 });
 
@@ -81,7 +161,9 @@ describe("a warn keeps its identity even though the verdict discards it", () => 
     const out = run([rule("r.warn", "warn", "x")], bash("x"));
     expect(out.decision).toBe("allow");
     expect(out.matches).toEqual([{ ruleId: "r.warn", action: "warn" }]);
-    expect(out.reason).toBe("warning from guardrail: r.warn");
+    expect(out.reason).toBe(
+      "agenttrail-guard is warning about this: the r.warn rule (guardrail r.warn)",
+    );
   });
 
   it("a warn-only result is distinguishable from no match at all", () => {
