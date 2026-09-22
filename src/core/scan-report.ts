@@ -23,13 +23,18 @@
  * see, so a scan would report different findings from the ones the hook produces on
  * the same command — the exact divergence `core/transcripts.ts` exists to prevent.
  *
- * ── Claude Code and Cursor ───────────────────────────────────────────────────
+ * ── One reader per app, and the result follows the READER ────────────────────
  * A Claude Code tool call maps to one call through `mapper.ts`, as the hook maps it. A
  * Cursor tool call maps through `cursor-transcript/scan.ts`, to two calls for a `Grep` or
- * `Glob` with a folder and a glob. Every call is evaluated and the stricter verdict is
- * kept, as the hook keeps it, so one tool call counts as one risky action at most. Cursor's
- * session files record no token counts, so a Cursor result has `tokens: null`, and
- * `skipped` counts what the reader could not use.
+ * `Glob` with a folder and a glob. A Codex tool call maps through
+ * `codex-transcript/scan.ts`. Every call is evaluated and the stricter verdict is kept, as
+ * the hook keeps it, so one tool call counts as one risky action at most.
+ *
+ * What the result CARRIES is decided by `corpus.capabilities`, which each reader states
+ * about itself, and not by asking which app it was a second time. Cursor's session files
+ * record no token counts and Codex's do, so "is there a token total" is a fact about the
+ * records a reader found; an `agent === "cursor"` test here would have silently given
+ * Codex Claude Code's answers the day a third reader appeared.
  *
  * ── No currency, and no field that could carry one ───────────────────────────
  * There is no price, no rate, no risk figure and no "estimated" anything on any type
@@ -37,6 +42,8 @@
  * dollar figure is a count multiplied by an assumption; see `core/report.ts`.
  */
 
+import { unhandledAgent } from "./agent.js";
+import { codexSessionCalls } from "./codex-transcript/scan.js";
 import { type EvaluatedCandidate, strictestCandidate } from "./cursor-emit.js";
 import type { CursorCandidates } from "./cursor-mapper.js";
 import type { CursorLineCounts } from "./cursor-transcript/parse.js";
@@ -145,6 +152,16 @@ function capDisplay(s: string): string {
 }
 
 /**
+ * The command-cell treatment `status`'s decision table shares with this report: flatten a
+ * possibly multi-line command to one line, then middle-truncate to `MAX_DISPLAY_LEN`. One
+ * truncation vocabulary across both surfaces, so a heredoc reads the same wherever it is
+ * shown, and neither one turns a single decision into a wall of ragged lines.
+ */
+export function oneLineForDisplay(command: string): string {
+  return capDisplay(flatten(command));
+}
+
+/**
  * The one-line, fully-redacted rendering of a tool call.
  *
  * A shell command reads best alone (`rm -rf <path>`). A file-tool call has no command,
@@ -201,7 +218,7 @@ export interface RecurringItem {
   readonly title: string;
 }
 
-/** What a reader could not use, by kind. Cursor's reader counts these. */
+/** What a reader could not use, by kind. The Cursor and Codex readers count these. */
 export interface ReaderSkips extends CursorLineCounts {
   /** Session files that could not be opened or read to the end. */
   readonly unreadableFiles: number;
@@ -214,7 +231,7 @@ export interface UnmappedTool {
   readonly count: number;
 }
 
-/** What a Cursor scan read but did not evaluate. */
+/** What a scan read but did not evaluate, for a reader that counts it. */
 export interface ScanSkipped extends ReaderSkips {
   /** Tool calls that are not actions a guardrail checks, such as a to-do list. */
   readonly notActions: number;
@@ -260,16 +277,42 @@ export interface ScanResult {
   readonly findings: readonly ScanFinding[];
   /** Shapes seen two or more times, most frequent first. */
   readonly recurring: readonly RecurringItem[];
-  /** `null` for Cursor, whose session files record no token counts. */
+  /** `null` when the sessions that were read record no token counts, as Cursor's do not. */
   readonly tokens: TokenTotals | null;
-  /** Cursor only: what was read but not evaluated, by kind. */
+  /** What was read but not evaluated, by kind, for a reader that counts it. */
   readonly skipped?: ScanSkipped;
 }
+
+/**
+ * What a reader's records support, stated by the reader that produced them.
+ *
+ * The alternative is a second identity check in the aggregator, which is how a new app
+ * inherits another app's answers without anyone noticing: widening the agent union
+ * compiles clean, and `agent === "cursor" ? null : tokens` then reports a token total for
+ * a reader that never read one. These are facts about the RECORDS, so they travel with
+ * them.
+ */
+export interface CorpusCapabilities {
+  /** The session files carry token counts, so a total means something. */
+  readonly tokens: boolean;
+  /** The reader counts what it read and could not use, so the report can list it. */
+  readonly skips: boolean;
+}
+
+/**
+ * What a corpus with no stated capabilities supports.
+ *
+ * Claude Code's: `readCorpus` predates the field, its transcripts carry usage, and its
+ * reader counts no skips.
+ */
+const DEFAULT_CAPABILITIES: CorpusCapabilities = { tokens: true, skips: false };
 
 /** Counts of what the walk found on disk, which the aggregator cannot see for itself. */
 export interface ScanCorpus {
   /** Whose sessions these are. Omitted means Claude Code. */
   readonly agent?: AgentSource;
+  /** What this reader's records support. Omitted means Claude Code's. */
+  readonly capabilities?: CorpusCapabilities;
   readonly sessions: readonly ParsedSession[];
   /** Files the parser refused. Counted so one corrupt file is visible, not silent. */
   readonly quarantined: number;
@@ -277,7 +320,7 @@ export interface ScanCorpus {
   readonly notRead: number;
   /** How many distinct projects the sessions came from. A COUNT, never a name. */
   readonly projects: number;
-  /** What the reader could not use. Cursor's reader sets it. */
+  /** What the reader could not use. The Cursor and Codex readers set it. */
   readonly skipped?: ReaderSkips;
 }
 
@@ -316,14 +359,37 @@ function* claudeSessionCalls(session: ParsedSession): Iterable<SessionToolCall> 
   }
 }
 
-/** A plain tool name, like Cursor's own (`Shell`, `CallMcpTool`). */
+/**
+ * How one app's sessions are read into tool calls.
+ *
+ * A checked switch, so a new app cannot be scanned with another app's reader. It used to
+ * be `agent === "cursor" ? cursorSessionCalls : claudeSessionCalls` in two places, which
+ * would have read Codex's session files — a different format entirely — as Claude Code's
+ * transcripts and reported whatever fell out.
+ */
+function sessionCallsFor(
+  agent: AgentSource,
+): (session: ParsedSession) => Iterable<SessionToolCall> {
+  switch (agent) {
+    case "cursor":
+      return cursorSessionCalls;
+    case "claude":
+      return claudeSessionCalls;
+    case "codex":
+      return codexSessionCalls;
+    default:
+      return unhandledAgent(agent);
+  }
+}
+
+/** A plain tool name, like Cursor's own (`Shell`, `CallMcpTool`) or Codex's (`exec`). */
 const PLAIN_TOOL_NAME = /^[A-Za-z][A-Za-z0-9_]{0,63}$/;
 
 /**
  * An unrecognized tool name, as the report may show it.
  *
- * A name is Cursor's vocabulary, not the user's text, but it comes off disk, so it is held
- * to a plain identifier and still redacted: anything else is `<other>`.
+ * A name is the app's vocabulary, not the user's text, but it comes off disk, so it is
+ * held to a plain identifier and still redacted: anything else is `<other>`.
  */
 function unmappedToolName(raw: string): string {
   if (raw === "") return "<unnamed>";
@@ -353,7 +419,11 @@ export function aggregateScan(
   catalog: readonly CompiledRule[],
   allowlist: CompiledAllowlist,
 ): ScanResult {
+  // A corpus with no `agent` is Claude Code's: `readCorpus` predates the field and
+  // every other reader stamps its own.
   const agent: AgentSource = corpus.agent ?? "claude";
+  const capabilities = corpus.capabilities ?? DEFAULT_CAPABILITIES;
+  const sessionCalls = sessionCallsFor(agent);
   const byRule = new Map<string, FindingAccumulator>();
   const ruleOf = new Map<string, CompiledRule>();
   for (const entry of catalog) ruleOf.set(entry.rule.id, entry);
@@ -369,7 +439,7 @@ export function aggregateScan(
     skippedLines += session.skippedLines;
     for (const turn of session.turns) tokens = addUsage(tokens, turn.usage);
 
-    const calls = agent === "cursor" ? cursorSessionCalls(session) : claudeSessionCalls(session);
+    const calls = sessionCalls(session);
     for (const call of calls) {
       if (call.kind === "not-action") {
         notActions++;
@@ -460,9 +530,11 @@ export function aggregateScan(
     riskyActions,
     findings,
     recurring,
-    tokens: agent === "cursor" ? null : tokens,
+    // Withheld, not zeroed, when the records carry no counts: a total of 0 is a
+    // measurement nobody made.
+    tokens: capabilities.tokens ? tokens : null,
   };
-  if (agent !== "cursor") return result;
+  if (!capabilities.skips) return result;
 
   const unmappedTools: UnmappedTool[] = [...unmapped]
     .map(([name, count]) => ({ name, count }))
@@ -488,22 +560,25 @@ const MAX_MCP_DISCLOSURES = 50;
  * report will carry — are disclosed, and only for an `mcp__*` payload, since every other
  * channel is already shown verbatim in the review's command list.
  *
- * The calls are derived exactly as `aggregateScan` derives them — through the Cursor path
- * for a Cursor corpus and the Claude path otherwise — so a Cursor MCP call (`CallMcpTool`
- * / `CallDynamicTool`, mapped to `mcp__<server>__<tool>`) is recognized and disclosed here
- * just as a Claude `mcp__*` call is. The report itself stays `<value>`-redacted for both.
+ * The calls are derived exactly as `aggregateScan` derives them, through the same checked
+ * switch over readers, so a Cursor MCP call (`CallMcpTool` / `CallDynamicTool`, mapped to
+ * `mcp__<server>__<tool>`) is recognized and disclosed here just as a Claude `mcp__*` call
+ * is. The report itself stays `<value>`-redacted for both.
  */
 export function mcpReviewDisclosures(
   corpus: ScanCorpus,
   catalog: readonly CompiledRule[],
   allowlist: CompiledAllowlist,
 ): readonly string[] {
+  // A corpus with no `agent` is Claude Code's: `readCorpus` predates the field and
+  // every other reader stamps its own.
   const agent: AgentSource = corpus.agent ?? "claude";
+  const sessionCalls = sessionCallsFor(agent);
   const seen = new Set<string>();
   const out: string[] = [];
 
   for (const session of corpus.sessions) {
-    const calls = agent === "cursor" ? cursorSessionCalls(session) : claudeSessionCalls(session);
+    const calls = sessionCalls(session);
     for (const call of calls) {
       if (call.kind !== "action") continue;
       const { mapped, decision } = evaluateAction(catalog, allowlist, call.candidates);

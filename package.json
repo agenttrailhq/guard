@@ -1,6 +1,6 @@
 {
   "name": "@agenttrail/guard",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "type": "module",
   "description": "Free, local guard for Claude Code and Cursor: a hook that allows, asks, or blocks a tool call against a curated guardrail library. No account, no server. The only network call is crash reporting, which is off unless you turn it on and sends stack traces only.",
   "keywords": [

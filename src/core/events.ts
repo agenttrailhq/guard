@@ -3,7 +3,8 @@
  * The local decision log — `~/.agenttrail/guard/events.jsonl`.
  *
  * One JSON object per decision that MATCHED a rule: `{ ts, tool, decision, ruleId,
- * command, agent }`, where `agent` is the app that sent the call (`claude` or `cursor`).
+ * command, agent }`, where `agent` is the app that sent the call (`claude`, `cursor` or
+ * `codex`).
  * It is what makes `status` useful — "this rule fired 14 times this week" is a count
  * over this file, and without it nobody can tell which rule is the noisy one, so the
  * allowlist pressure valve cannot work.
@@ -65,9 +66,10 @@ export interface DecisionEvent {
   /** The app that sent the call. Written as the line's last key, `agent`. */
   readonly agent: AgentSource;
   /**
-   * The payload's `tool_use_id`, when the app supplied one. Used ONLY to dedupe a hook
-   * invoked twice for one tool call; it is never written to the log (the record shape is
-   * unchanged) — see the dedup section below.
+   * What identifies the ACTION this decision is about: the payload's `tool_use_id` where
+   * the app supplies one, or a key the caller built when it does not. Used ONLY to dedupe
+   * a hook invoked twice for one tool call; it is HASHED into the marker and never written
+   * to the log (the record shape is unchanged) — see the dedup section below.
    */
   readonly callId?: string;
 }
@@ -107,10 +109,11 @@ export const MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
 /**
  * How close in time two identical records must be to count as one duplicate.
  *
- * Only the FALLBACK path — a payload with no `tool_use_id` — uses this. When an id is
- * present the match is exact, so no window is applied and a distinct call that carried an
- * id is never folded away. Both Claude Code and Cursor send an id in practice, so this is
- * the rare degraded case; three seconds covers the ~1s gap between one call's two hook
+ * Only the FALLBACK path — an event with no `callId` — uses this. When a key is present
+ * the match is exact, so no window is applied and a distinct call that carried a key is
+ * never folded away. Claude Code and Cursor send a `tool_use_id`, and the Codex path
+ * builds a key of its own because one of its two events per action carries no id — so this
+ * is the rare degraded case; three seconds covers the ~1s gap between one call's two hook
  * invocations without merging two identical commands a user genuinely re-ran seconds apart.
  */
 export const DEDUP_WINDOW_MS = 3000;
@@ -268,13 +271,16 @@ export function createEventRecorder(io: GuardIO, now: () => number = Date.now): 
         const home = io.homedir();
 
         // ── One tool call → one record ────────────────────────────────────────
-        // Claude Code and Cursor can each invoke the hook TWICE for a single tool call,
-        // which without this writes the same decision twice, about a second apart. The
-        // key is the payload's `tool_use_id` when present — exact, and two distinct calls
-        // never share one, so this path can never drop a real call — and the event content
-        // within a short window otherwise. The key is hashed into a marker file so it
-        // survives across the fresh process each hook run is; the log line gains no id, so
-        // the record shape (and Cursor's "no id in the log" guarantee) is unchanged.
+        // All three apps can invoke the hook TWICE for a single tool call, which without
+        // this writes the same decision twice, about a second apart. The key is `callId`
+        // when the caller has one — exact, and two distinct calls never share one, so this
+        // path can never drop a real call — and the event content within a short window
+        // otherwise. Codex is why `callId` is not simply the payload's `tool_use_id`: only
+        // one of its two events per action carries an id, so its path supplies a key that
+        // both events produce (`core/codex-mapper.ts`). The key is hashed into a marker
+        // file so it survives across the fresh process each hook run is; the log line
+        // gains no id, so the record shape (and Cursor's "no id in the log" guarantee) is
+        // unchanged.
         const byId = callId !== undefined && callId.length > 0;
         const dedupKey = byId
           ? `id:${callId}`

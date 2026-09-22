@@ -1774,23 +1774,77 @@ var require_picomatch2 = __commonJS({
   }
 });
 
+// src/core/types.ts
+var AGENTS = ["claude", "cursor", "codex"];
+
 // src/core/agent.ts
+function unhandledAgent(agent) {
+  throw new Error(`agenttrail-guard: no branch for agent ${String(agent)}`);
+}
+function hookProtocolOf(agent) {
+  switch (agent) {
+    case "cursor":
+      return "cursor";
+    case "claude":
+      return "claude";
+    case "codex":
+      return "codex";
+    default:
+      return unhandledAgent(agent);
+  }
+}
 function agentNamed(value) {
-  return value === "claude" || value === "cursor" ? value : void 0;
+  return AGENTS.find((name) => name === value);
 }
 function agentFromArgv(argv) {
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
-    if (arg === "--agent") return agentNamed(argv[i + 1]) ?? "claude";
-    if (arg?.startsWith("--agent=")) return agentNamed(arg.slice("--agent=".length)) ?? "claude";
+    if (arg === "--agent") return agentNamed(argv[i + 1]);
+    if (arg?.startsWith("--agent=")) return agentNamed(arg.slice("--agent=".length));
   }
-  return "claude";
+  return void 0;
+}
+var CURSOR_EVENTS = /* @__PURE__ */ new Set([
+  "preToolUse",
+  "postToolUse",
+  "postToolUseFailure",
+  "beforeShellExecution",
+  "afterShellExecution",
+  "beforeMCPExecution",
+  "afterMCPExecution",
+  "beforeReadFile",
+  "beforeTabFileRead",
+  "afterFileEdit",
+  "subagentStart",
+  "beforeSubmitPrompt",
+  "stop"
+]);
+function isRecord(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 function isCursorPayload(payload) {
-  if (payload === null || typeof payload !== "object" || Array.isArray(payload)) return false;
+  if (!isRecord(payload)) return false;
   const { cursor_version, hook_event_name } = payload;
   if (typeof cursor_version === "string") return true;
-  return typeof hook_event_name === "string" && /^[a-z]/.test(hook_event_name);
+  return typeof hook_event_name === "string" && CURSOR_EVENTS.has(hook_event_name);
+}
+function isCodexPayload(payload) {
+  if (!isRecord(payload)) return false;
+  const { turn_id, model, tool_name } = payload;
+  if (typeof turn_id === "string" && typeof model === "string") return true;
+  return tool_name === "apply_patch";
+}
+function isClaudeCodePayload(payload) {
+  if (!isRecord(payload)) return false;
+  const event = payload.hook_event_name;
+  if (typeof event === "string") return /^[A-Z]/.test(event);
+  return typeof payload.tool_name === "string" || isRecord(payload.tool_input);
+}
+function detectAgent(payload) {
+  if (isCursorPayload(payload)) return "cursor";
+  if (isCodexPayload(payload)) return "codex";
+  if (isClaudeCodePayload(payload)) return "claude";
+  return void 0;
 }
 
 // node_modules/@agenttrail/guardrails/dist/chunk-3NDBRXP3.js
@@ -5208,68 +5262,6 @@ var RULES = PACKS.flatMap((pack) => RULES_BY_PACK[pack]);
 // src/core/catalog.ts
 var SHIPPED_CATALOG = RULES;
 
-// src/core/config.ts
-var VALID_ACTIONS = /* @__PURE__ */ new Set(["block", "require_approval", "warn"]);
-var DEFAULT_CONFIG = {
-  disabledGuardrails: [],
-  disabledPacks: [],
-  guardrailActionOverrides: {},
-  allowlist: [],
-  crashReports: false,
-  crashEndpoint: void 0
-};
-function parseAllowlist(raw) {
-  if (!Array.isArray(raw)) return [];
-  const out = [];
-  for (const item of raw) {
-    if (item === null || typeof item !== "object") continue;
-    const { guardrail, pattern } = item;
-    if (typeof guardrail === "string" && guardrail.length > 0 && typeof pattern === "string") {
-      out.push({ guardrail, pattern });
-    }
-  }
-  return out;
-}
-function parseDisabledRules(raw) {
-  if (!Array.isArray(raw)) return [];
-  return raw.filter((id) => typeof id === "string" && id.length > 0);
-}
-function parseDisabledPacks(raw) {
-  if (!Array.isArray(raw)) return [];
-  return raw.filter((p) => typeof p === "string" && p.length > 0);
-}
-function parseOverrides(raw) {
-  if (raw === null || typeof raw !== "object" || Array.isArray(raw)) return {};
-  const out = {};
-  for (const [id, action] of Object.entries(raw)) {
-    if (typeof action === "string" && VALID_ACTIONS.has(action)) {
-      out[id] = action;
-    }
-  }
-  return out;
-}
-function parseConfig(text) {
-  if (text === void 0) return DEFAULT_CONFIG;
-  let raw;
-  try {
-    raw = JSON.parse(text);
-  } catch {
-    return DEFAULT_CONFIG;
-  }
-  if (raw === null || typeof raw !== "object" || Array.isArray(raw)) return DEFAULT_CONFIG;
-  const obj = raw;
-  return {
-    disabledGuardrails: parseDisabledRules(obj.disabledGuardrails),
-    disabledPacks: parseDisabledPacks(obj.disabledPacks),
-    guardrailActionOverrides: parseOverrides(obj.guardrailActionOverrides),
-    allowlist: parseAllowlist(obj.allowlist),
-    crashReports: obj.crashReports === true,
-    // A non-string, or an empty string, is "not configured" — never a partial URL.
-    // `resolveEndpoint` re-validates the scheme; this only decides presence.
-    crashEndpoint: typeof obj.crashEndpoint === "string" && obj.crashEndpoint.length > 0 ? obj.crashEndpoint : void 0
-  };
-}
-
 // src/core/evaluate.ts
 var import_picomatch = __toESM(require_picomatch2(), 1);
 
@@ -5355,8 +5347,261 @@ function evaluateCall(catalog, context, mapped, allowlist) {
   };
 }
 
+// src/core/codex-emit.ts
+var NO_ANSWER = "";
+var CODEX_APPROVAL_LEAD = "agenttrail-guard needs a person to approve this, and Codex cannot ask, so it is blocked: ";
+function codexApprovalMessage(reason) {
+  const rest = reason.startsWith(APPROVAL_LEAD) ? reason.slice(APPROVAL_LEAD.length) : reason;
+  return `${CODEX_APPROVAL_LEAD}${rest}`;
+}
+function codexSystemMessage(message) {
+  return JSON.stringify({ systemMessage: message });
+}
+function preToolUseDeny(reason) {
+  return JSON.stringify({
+    hookSpecificOutput: {
+      hookEventName: "PreToolUse",
+      permissionDecision: "deny",
+      permissionDecisionReason: reason
+    }
+  });
+}
+function permissionRequestDeny(message) {
+  return JSON.stringify({
+    hookSpecificOutput: {
+      hookEventName: "PermissionRequest",
+      decision: { behavior: "deny", message }
+    }
+  });
+}
+function buildCodexAnswer({ event, decision }) {
+  if (decision.decision === "deny" || decision.decision === "ask") {
+    const message = decision.decision === "deny" ? decision.reason : codexApprovalMessage(decision.reason);
+    return {
+      output: event === "PermissionRequest" ? permissionRequestDeny(message) : preToolUseDeny(message),
+      record: true
+    };
+  }
+  const matched = decision.matches.length > 0;
+  const warn = matched && event === "PreToolUse";
+  return { output: warn ? codexSystemMessage(decision.reason) : NO_ANSWER, record: matched };
+}
+function createCodexEmitter(stdout) {
+  let done = false;
+  return {
+    emit(output) {
+      if (done) return;
+      done = true;
+      if (output !== NO_ANSWER) stdout.write(output);
+    },
+    hasEmitted() {
+      return done;
+    }
+  };
+}
+
+// src/core/mapper.ts
+var MAX_DETAIL_LEN = 8192;
+var TRUNCATION_MARKER = "\u2026[truncated]\u2026";
+var SHELL_TOOLS = /* @__PURE__ */ new Set(["Bash", "PowerShell"]);
+var FILE_TOOLS = /* @__PURE__ */ new Set(["Edit", "Write", "Read", "MultiEdit", "NotebookEdit"]);
+var SEARCH_GLOB_FIELD = /* @__PURE__ */ new Map([
+  ["Grep", "glob"],
+  ["Glob", "pattern"]
+]);
+function nonEmpty(value) {
+  return typeof value === "string" && value !== "" ? value : void 0;
+}
+function isAbsoluteGlob(glob) {
+  return /^(?:[\\/]|[A-Za-z]:[\\/])/.test(glob);
+}
+function joinSearchPath(dir, glob) {
+  return `${dir.replace(/[\\/]+$/, "")}/${glob}`;
+}
+function searchPath(tool, input) {
+  const field = SEARCH_GLOB_FIELD.get(tool);
+  const dir = nonEmpty(input.path);
+  const glob = field === void 0 ? void 0 : nonEmpty(input[field]);
+  if (glob === void 0) return dir;
+  if (dir === void 0 || isAbsoluteGlob(glob)) return glob;
+  return joinSearchPath(dir, glob);
+}
+function capEnd(s) {
+  return s.length > MAX_DETAIL_LEN ? s.slice(0, MAX_DETAIL_LEN) : s;
+}
+function capMiddle(s) {
+  if (s.length <= MAX_DETAIL_LEN) return s;
+  const budget = MAX_DETAIL_LEN - TRUNCATION_MARKER.length;
+  const head = Math.ceil(budget / 2);
+  const tail = budget - head;
+  return `${s.slice(0, head)}${TRUNCATION_MARKER}${s.slice(s.length - tail)}`;
+}
+function safeStringify(v) {
+  try {
+    return JSON.stringify(v) ?? "";
+  } catch {
+    return "";
+  }
+}
+function mapToolCall(payload) {
+  const tool = typeof payload.tool_name === "string" ? payload.tool_name : "";
+  const input = payload.tool_input !== null && typeof payload.tool_input === "object" ? payload.tool_input : {};
+  const args2 = {};
+  if (SHELL_TOOLS.has(tool)) {
+    if (typeof input.command === "string") args2.full_command = capEnd(input.command);
+  } else if (FILE_TOOLS.has(tool)) {
+    const fp = input.file_path ?? input.notebook_path;
+    if (typeof fp === "string") args2.file_path = fp;
+  } else if (SEARCH_GLOB_FIELD.has(tool)) {
+    const fp = searchPath(tool, input);
+    if (fp !== void 0) args2.file_path = fp;
+  } else if (tool === "WebSearch") {
+    if (typeof input.query === "string") args2.full_command = capEnd(input.query);
+  } else if (tool.startsWith("mcp__")) {
+    args2.full_command = capMiddle(safeStringify(input));
+  } else {
+    if (typeof input.command === "string") args2.full_command = capEnd(input.command);
+    if (typeof input.file_path === "string") args2.file_path = input.file_path;
+  }
+  return { tool, args: args2 };
+}
+
+// src/core/codex-mapper.ts
+var PATCH_MARKERS = [
+  { marker: "*** Add File:", tool: "Write" },
+  { marker: "*** Update File:", tool: "Edit" },
+  { marker: "*** Move to:", tool: "Edit" },
+  { marker: "*** Delete File:", tool: "Delete" }
+];
+function toolInput(payload) {
+  return payload.tool_input !== null && typeof payload.tool_input === "object" ? payload.tool_input : {};
+}
+function codexEvent(payload) {
+  const event = payload.hook_event_name;
+  if (event === "PermissionRequest") return "PermissionRequest";
+  if (event === "PreToolUse" || typeof event !== "string") return "PreToolUse";
+  return void 0;
+}
+function patchCandidates(patch) {
+  const candidates = [];
+  for (const line of patch.split("\n")) {
+    for (const { marker, tool } of PATCH_MARKERS) {
+      if (!line.startsWith(marker)) continue;
+      const filePath = line.slice(marker.length).trim();
+      if (filePath !== "") candidates.push({ tool, args: { file_path: filePath } });
+      break;
+    }
+  }
+  return candidates;
+}
+function codexCallKey(payload) {
+  const turnId = payload.turn_id;
+  if (typeof turnId !== "string" || turnId === "") return void 0;
+  const tool = typeof payload.tool_name === "string" ? payload.tool_name : "";
+  const input = toolInput(payload);
+  const action = typeof input.command === "string" ? input.command : safeStringify(input);
+  return `codex ${turnId} ${tool} ${capEnd(action)}`;
+}
+function mapCodexCall(payload) {
+  const event = codexEvent(payload);
+  if (event === void 0) return void 0;
+  const tool = typeof payload.tool_name === "string" ? payload.tool_name : "";
+  const input = toolInput(payload);
+  if (tool === "Bash") {
+    const args2 = {};
+    if (typeof input.command === "string") args2.full_command = capEnd(input.command);
+    return { event, candidates: [{ tool: "Bash", args: args2 }] };
+  }
+  if (tool === "apply_patch") {
+    const patch = typeof input.command === "string" ? input.command : "";
+    const [first, ...rest] = patchCandidates(patch);
+    return first === void 0 ? void 0 : { event, candidates: [first, ...rest] };
+  }
+  if (tool.startsWith("mcp__")) {
+    return {
+      event,
+      candidates: [{ tool, args: { full_command: capMiddle(safeStringify(input)) } }]
+    };
+  }
+  return void 0;
+}
+
+// src/core/config.ts
+var VALID_ACTIONS = /* @__PURE__ */ new Set(["block", "require_approval", "warn"]);
+var DEFAULT_CONFIG = {
+  disabledGuardrails: [],
+  disabledPacks: [],
+  guardrailActionOverrides: {},
+  allowlist: [],
+  crashReports: false,
+  crashEndpoint: void 0
+};
+function parseAllowlist(raw) {
+  if (!Array.isArray(raw)) return [];
+  const out = [];
+  for (const item of raw) {
+    if (item === null || typeof item !== "object") continue;
+    const { guardrail, pattern } = item;
+    if (typeof guardrail === "string" && guardrail.length > 0 && typeof pattern === "string") {
+      out.push({ guardrail, pattern });
+    }
+  }
+  return out;
+}
+function parseDisabledRules(raw) {
+  if (!Array.isArray(raw)) return [];
+  return raw.filter((id) => typeof id === "string" && id.length > 0);
+}
+function parseDisabledPacks(raw) {
+  if (!Array.isArray(raw)) return [];
+  return raw.filter((p) => typeof p === "string" && p.length > 0);
+}
+function parseOverrides(raw) {
+  if (raw === null || typeof raw !== "object" || Array.isArray(raw)) return {};
+  const out = {};
+  for (const [id, action] of Object.entries(raw)) {
+    if (typeof action === "string" && VALID_ACTIONS.has(action)) {
+      out[id] = action;
+    }
+  }
+  return out;
+}
+function parseConfig(text) {
+  if (text === void 0) return DEFAULT_CONFIG;
+  let raw;
+  try {
+    raw = JSON.parse(text);
+  } catch {
+    return DEFAULT_CONFIG;
+  }
+  if (raw === null || typeof raw !== "object" || Array.isArray(raw)) return DEFAULT_CONFIG;
+  const obj = raw;
+  return {
+    disabledGuardrails: parseDisabledRules(obj.disabledGuardrails),
+    disabledPacks: parseDisabledPacks(obj.disabledPacks),
+    guardrailActionOverrides: parseOverrides(obj.guardrailActionOverrides),
+    allowlist: parseAllowlist(obj.allowlist),
+    crashReports: obj.crashReports === true,
+    // A non-string, or an empty string, is "not configured" — never a partial URL.
+    // `resolveEndpoint` re-validates the scheme; this only decides presence.
+    crashEndpoint: typeof obj.crashEndpoint === "string" && obj.crashEndpoint.length > 0 ? obj.crashEndpoint : void 0
+  };
+}
+
 // src/core/cursor-emit.ts
 var NO_OPINION = "{}";
+function isGuardsCursorEntry(launchedAs) {
+  switch (launchedAs) {
+    case "cursor":
+      return true;
+    case "claude":
+    case "codex":
+    case void 0:
+      return false;
+    default:
+      return unhandledAgent(launchedAs);
+  }
+}
 var CURSOR_APPROVAL_LEAD = "agenttrail-guard needs a person to approve this, and Cursor cannot ask: ";
 function cursorApprovalMessage(reason) {
   const rest = reason.startsWith(APPROVAL_LEAD) ? reason.slice(APPROVAL_LEAD.length) : reason;
@@ -5377,7 +5622,7 @@ function buildCursorAnswer(input) {
   const { launchedAs, event, tool, decision } = input;
   const matched = decision.matches.length > 0;
   const approvalDeny = permission("deny", cursorApprovalMessage(decision.reason));
-  if (launchedAs === "claude") {
+  if (!isGuardsCursorEntry(launchedAs)) {
     const onlyCheckpoint = input.cursorEntryPresent !== true;
     if (decision.decision === "deny") {
       return { output: permission("deny", decision.reason), record: onlyCheckpoint };
@@ -5429,14 +5674,14 @@ function createCursorEmitter(stdout) {
 var GUARD_CURSOR_EVENTS = ["preToolUse", "beforeShellExecution"];
 var HOOK_SCRIPT = "guard-hook.mjs";
 var CURSOR_FLAG = /(?:^|\s)--agent cursor(?=\s|$)/;
-function isRecord(value) {
+function isRecord2(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 function isGuardCursorCommand(command) {
   return typeof command === "string" && command.includes(HOOK_SCRIPT) && CURSOR_FLAG.test(command);
 }
 function listHasGuardEntry(list) {
-  return Array.isArray(list) && list.some((entry) => isRecord(entry) && isGuardCursorCommand(entry.command));
+  return Array.isArray(list) && list.some((entry) => isRecord2(entry) && isGuardCursorCommand(entry.command));
 }
 function hasGuardCursorEntry(text) {
   if (typeof text !== "string") return false;
@@ -5446,72 +5691,27 @@ function hasGuardCursorEntry(text) {
   } catch {
     return false;
   }
-  if (!isRecord(parsed)) return false;
+  if (!isRecord2(parsed)) return false;
   const hooks = parsed.hooks;
-  if (!isRecord(hooks)) return false;
+  if (!isRecord2(hooks)) return false;
   return GUARD_CURSOR_EVENTS.every((event) => listHasGuardEntry(hooks[event]));
-}
-
-// src/core/mapper.ts
-var MAX_DETAIL_LEN = 8192;
-var TRUNCATION_MARKER = "\u2026[truncated]\u2026";
-var SHELL_TOOLS = /* @__PURE__ */ new Set(["Bash", "PowerShell"]);
-var FILE_TOOLS = /* @__PURE__ */ new Set(["Edit", "Write", "Read", "MultiEdit", "NotebookEdit"]);
-function capEnd(s) {
-  return s.length > MAX_DETAIL_LEN ? s.slice(0, MAX_DETAIL_LEN) : s;
-}
-function capMiddle(s) {
-  if (s.length <= MAX_DETAIL_LEN) return s;
-  const budget = MAX_DETAIL_LEN - TRUNCATION_MARKER.length;
-  const head = Math.ceil(budget / 2);
-  const tail = budget - head;
-  return `${s.slice(0, head)}${TRUNCATION_MARKER}${s.slice(s.length - tail)}`;
-}
-function safeStringify(v) {
-  try {
-    return JSON.stringify(v) ?? "";
-  } catch {
-    return "";
-  }
-}
-function mapToolCall(payload) {
-  const tool = typeof payload.tool_name === "string" ? payload.tool_name : "";
-  const input = payload.tool_input !== null && typeof payload.tool_input === "object" ? payload.tool_input : {};
-  const args2 = {};
-  if (SHELL_TOOLS.has(tool)) {
-    if (typeof input.command === "string") args2.full_command = capEnd(input.command);
-  } else if (FILE_TOOLS.has(tool)) {
-    const fp = input.file_path ?? input.notebook_path;
-    if (typeof fp === "string") args2.file_path = fp;
-  } else if (tool === "WebSearch") {
-    if (typeof input.query === "string") args2.full_command = capEnd(input.query);
-  } else if (tool.startsWith("mcp__")) {
-    args2.full_command = capMiddle(safeStringify(input));
-  } else {
-    if (typeof input.command === "string") args2.full_command = capEnd(input.command);
-    if (typeof input.file_path === "string") args2.file_path = input.file_path;
-  }
-  return { tool, args: args2 };
 }
 
 // src/core/cursor-mapper.ts
 var MCP_PREFIX = "MCP:";
 var CURSOR_FILE_TOOLS = /* @__PURE__ */ new Set(["Read", "Write", "Delete"]);
-function nonEmpty(value) {
+function nonEmpty2(value) {
   return typeof value === "string" && value !== "" ? value : void 0;
 }
-function isAbsoluteGlob(glob) {
-  return /^(?:[\\/]|[A-Za-z]:[\\/])/.test(glob);
-}
 function grepCandidates(folder, glob) {
-  const dir = nonEmpty(folder);
-  const pattern = nonEmpty(glob);
+  const dir = nonEmpty2(folder);
+  const pattern = nonEmpty2(glob);
   if (pattern !== void 0 && (dir === void 0 || isAbsoluteGlob(pattern))) {
     return [{ tool: "Grep", args: { file_path: pattern } }];
   }
   if (dir === void 0) return [{ tool: "Grep", args: {} }];
   if (pattern === void 0) return [{ tool: "Grep", args: { file_path: dir } }];
-  const joined = `${dir.replace(/[\\/]+$/, "")}/${pattern}`;
+  const joined = joinSearchPath(dir, pattern);
   return [
     { tool: "Grep", args: { file_path: joined } },
     { tool: "Grep", args: { file_path: dir } }
@@ -6293,6 +6493,12 @@ function parseUserRulesData(text) {
 
 // src/commands/hook.ts
 var NOT_CHECKED_MESSAGE = "agenttrail-guard could not evaluate this action; it was not checked.";
+var UnattributedPayload = class extends Error {
+  constructor() {
+    super("hook payload matched no supported app");
+    this.name = "UnattributedPayload";
+  }
+};
 function callIdOf(payload) {
   const id = payload.tool_use_id;
   return typeof id === "string" && id.length > 0 ? id : void 0;
@@ -6312,22 +6518,46 @@ function loadRules(io2, deps) {
   return { catalog, allowlist };
 }
 async function runHook(io2, deps = {}) {
-  const launchedAs = deps.agent === "cursor" ? "cursor" : "claude";
+  const launchedAs = deps.agent;
   const stdout = { write: (text) => io2.writeStdout(text) };
   const claudeEmitter = createEmitter(stdout);
   const cursorEmitter = createCursorEmitter(stdout);
-  let cursorAnswers = launchedAs === "cursor";
+  const codexEmitter = createCodexEmitter(stdout);
+  let sentBy = launchedAs ?? "claude";
+  let protocol = hookProtocolOf(sentBy);
   try {
     const payload = parsePayload(await io2.readStdin());
-    cursorAnswers = cursorAnswers || isCursorPayload(payload);
-    if (cursorAnswers) {
-      answerCursorCall(io2, deps, payload, launchedAs, cursorEmitter);
-    } else {
-      answerClaudeCodeCall(io2, deps, payload, claudeEmitter);
+    const detected = detectAgent(payload);
+    if (detected !== void 0 && (launchedAs === void 0 || detected !== "claude")) {
+      sentBy = detected;
+      protocol = hookProtocolOf(sentBy);
+    }
+    if (detected === void 0 && launchedAs === void 0) {
+      claudeEmitter.emit("allow", NOT_CHECKED_MESSAGE);
+      try {
+        deps.captureCrash?.(new UnattributedPayload());
+      } catch {
+      }
+      return;
+    }
+    switch (protocol) {
+      case "cursor":
+        answerCursorCall(io2, deps, payload, launchedAs, cursorEmitter);
+        break;
+      case "codex":
+        answerCodexCall(io2, deps, payload, codexEmitter);
+        break;
+      case "claude":
+        answerClaudeCodeCall(io2, deps, payload, sentBy, claudeEmitter);
+        break;
+      default:
+        unhandledAgent(protocol);
     }
   } catch (err) {
-    if (cursorAnswers) {
+    if (protocol === "cursor") {
       cursorEmitter.emit(NO_OPINION);
+    } else if (protocol === "codex") {
+      codexEmitter.emit(codexSystemMessage(NOT_CHECKED_MESSAGE));
     } else {
       claudeEmitter.emit("allow", NOT_CHECKED_MESSAGE);
     }
@@ -6337,7 +6567,7 @@ async function runHook(io2, deps = {}) {
     }
   }
 }
-function answerClaudeCodeCall(io2, deps, payload, emitter) {
+function answerClaudeCodeCall(io2, deps, payload, sentBy, emitter) {
   const mapped = mapToolCall(payload);
   const { catalog, allowlist } = loadRules(io2, deps);
   const decision = evaluateCall(catalog, buildGuardSpanContext(mapped), mapped, allowlist);
@@ -6346,7 +6576,7 @@ function answerClaudeCodeCall(io2, deps, payload, emitter) {
     (deps.recorder ?? createEventRecorder(io2)).record({
       mapped,
       decision,
-      agent: "claude",
+      agent: sentBy,
       callId: callIdOf(payload)
     });
   } catch {
@@ -6365,7 +6595,7 @@ function answerCursorCall(io2, deps, payload, launchedAs, emitter) {
   });
   const [first, ...rest] = call.candidates;
   const kept = strictestCandidate([evaluate(first), ...rest.map(evaluate)]);
-  const cursorEntryPresent = launchedAs === "claude" && hasGuardCursorEntry(io2.readFile(cursorHooksPath(io2.homedir())));
+  const cursorEntryPresent = !isGuardsCursorEntry(launchedAs) && hasGuardCursorEntry(io2.readFile(cursorHooksPath(io2.homedir())));
   const answer = buildCursorAnswer({
     launchedAs,
     event: call.event,
@@ -6381,6 +6611,33 @@ function answerCursorCall(io2, deps, payload, launchedAs, emitter) {
         decision: kept.decision,
         agent: "cursor",
         callId: callIdOf(payload)
+      });
+    } catch {
+    }
+  }
+}
+function answerCodexCall(io2, deps, payload, emitter) {
+  const call = mapCodexCall(payload);
+  if (call === void 0) {
+    emitter.emit(NO_ANSWER);
+    return;
+  }
+  const { catalog, allowlist } = loadRules(io2, deps);
+  const evaluate = (mapped) => ({
+    mapped,
+    decision: evaluateCall(catalog, buildGuardSpanContext(mapped), mapped, allowlist)
+  });
+  const [first, ...rest] = call.candidates;
+  const kept = strictestCandidate([evaluate(first), ...rest.map(evaluate)]);
+  const answer = buildCodexAnswer({ event: call.event, decision: kept.decision });
+  emitter.emit(answer.output);
+  if (answer.record) {
+    try {
+      (deps.recorder ?? createEventRecorder(io2)).record({
+        mapped: kept.mapped,
+        decision: kept.decision,
+        agent: "codex",
+        callId: codexCallKey(payload)
       });
     } catch {
     }
@@ -6532,7 +6789,7 @@ function captureCrash(err, deps) {
 var scrubSecrets = scrubText;
 
 // src/core/version.ts
-var VERSION = "0.3.0";
+var VERSION = "0.4.0";
 
 // src/io.ts
 import {

@@ -11,6 +11,7 @@
 
 import { CATALOG_VERSION } from "@agenttrail/guardrails/guardrails";
 import { describe, expect, it } from "vitest";
+import { agentChoiceMessage } from "../commands/agent-choice.js";
 import { type InitDeps, runInit } from "../commands/init.js";
 import {
   REPOINT_COMMAND,
@@ -26,6 +27,7 @@ import { VERSION } from "../core/version.js";
 import type { GuardIO } from "../io.js";
 import { AGENTTRAIL_PLUGIN_ID, GUARD_PLUGIN_ID } from "../plugin/install.js";
 import type { ClaudeRunner, ClaudeRunResult, SetupIO } from "../setup-io.js";
+import { type FakeCodexFilesOptions, fakeCodexFiles } from "./codex-files.js";
 import { type FakeCursorFilesOptions, fakeCursorFiles } from "./cursor-files.js";
 
 const HOME = "/home/test";
@@ -243,12 +245,14 @@ function fakeGuardIo(options: { files?: Record<string, string>; home?: string } 
 }
 
 /**
- * `status` with fakes for the two seams `SetupIO` does not cover, an empty `~/.cursor` and an
- * empty crash spool, unless a test passes its own. So no test here reads the real file system.
+ * `status` with fakes for the three seams `SetupIO` does not cover — an empty `~/.cursor`,
+ * an empty `~/.codex` and an empty crash spool — unless a test passes its own. So no test
+ * here reads the real file system.
  */
 function runStatus(io: SetupIO, deps: StatusDeps = {}): Promise<number> {
   return runStatusCommand(io, {
     cursorIo: fakeCursorFiles().io,
+    codexIo: fakeCodexFiles().io,
     guardIo: fakeGuardIo().io,
     ...deps,
   });
@@ -327,6 +331,27 @@ describe("init", () => {
     expect(h.out()).toContain("rm -rf /");
     expect(h.out()).toContain("BLOCKED");
     expect(h.out()).toContain("evaluated, not executed");
+  });
+
+  it("closes by pointing at the global install when run via npx, not a missing binary", async () => {
+    // A user who ran `npx @agenttrail/guard init` has no `agenttrail-guard` on PATH, so the
+    // default closing line — "run agenttrail-guard status" — would be `command not found`.
+    // An npx invocation resolves the CLI under the npm exec cache, whose path carries an
+    // `/_npx/` segment; that branch points at the install instead of naming the binary.
+    const h = harness();
+    const npxPath = `${HOME}/.npm/_npx/9a1b2c3d/node_modules/@agenttrail/guard/dist/cli.js`;
+    await runInit(h.io, CLAUDE, { ...initDeps, cliPath: npxPath });
+    expect(h.out()).toContain("npm i -g @agenttrail/guard");
+    expect(h.out()).not.toContain("Run `agenttrail-guard status`");
+  });
+
+  it("closes with the short command for a global install", async () => {
+    // A global install has `agenttrail-guard` on PATH, so it is named directly and the npx
+    // install line is not shown.
+    const h = harness();
+    await runInit(h.io, CLAUDE, { ...initDeps, cliPath: "/usr/local/bin/agenttrail-guard" });
+    expect(h.out()).toContain("Run `agenttrail-guard status`");
+    expect(h.out()).not.toContain("npm i -g @agenttrail/guard");
   });
 
   it("prints the BUNDLED catalog's version and its age", async () => {
@@ -869,6 +894,57 @@ describe("status", () => {
     expect(h.out()).toContain("not confirmation you were prompted");
   });
 
+  it("explains a codex `ask` as the block it actually was", async () => {
+    // Claude Code's caveat is about a prompt that may not have happened. On Codex the
+    // guard sent a block, so printing that caveat over a codex row states the opposite of
+    // what the user experienced.
+    const h = harness({
+      plugins: [{ id: GUARD_PLUGIN_ID }],
+      files: {
+        [eventsFile]: JSON.stringify({
+          ts: "2026-09-21T10:40:12Z",
+          tool: "Bash",
+          decision: "ask",
+          ruleId: "ps.permission-widen",
+          command: "chmod 777 note.txt",
+          agent: "codex",
+        }),
+      },
+    });
+    await runStatus(h.io);
+    expect(h.out()).toContain("was sent as a block");
+    expect(h.out()).not.toContain("not confirmation you were prompted");
+  });
+
+  it("gives each app its own sentence when both kinds of ask are logged", async () => {
+    const h = harness({
+      plugins: [{ id: GUARD_PLUGIN_ID }],
+      files: {
+        [eventsFile]: [
+          JSON.stringify({
+            ts: "2026-09-21T10:00:00Z",
+            tool: "Bash",
+            decision: "ask",
+            ruleId: "sh.hold",
+            command: "rm -rf $DIR",
+            agent: "claude",
+          }),
+          JSON.stringify({
+            ts: "2026-09-21T10:40:12Z",
+            tool: "Bash",
+            decision: "ask",
+            ruleId: "ps.permission-widen",
+            command: "chmod 777 note.txt",
+            agent: "codex",
+          }),
+        ].join("\n"),
+      },
+    });
+    await runStatus(h.io);
+    expect(h.out()).toContain("not confirmation you were prompted");
+    expect(h.out()).toContain("was sent as a block");
+  });
+
   it("omits the ask caveat when no decision in the log was an ask", async () => {
     const h = harness({
       plugins: [{ id: GUARD_PLUGIN_ID }],
@@ -1345,7 +1421,7 @@ describe("uninstall", () => {
   });
 });
 
-describe("init and uninstall require --agent claude or --agent cursor", () => {
+describe("init and uninstall require an --agent they can act on", () => {
   /**
    * What `parseArgs` hands on for no flag, a lone `--agent`, `--agent x` and
    * `--agent --print`, plus near misses and `--print` alone.
@@ -1400,7 +1476,7 @@ describe("init and uninstall require --agent claude or --agent cursor", () => {
   )("init with %s: the choice, exit 1, nothing read, written or run", async (_l, argv) => {
     const { h, io, touched } = recorded();
     expect(await runInit(io, argv, untouchable as InitDeps)).toBe(1);
-    expect(h.out()).toContain("choose --agent claude or --agent cursor");
+    expect(h.out()).toContain("choose --agent claude, --agent cursor or --agent codex");
     expect(h.out()).toContain("agenttrail-guard init --agent cursor");
     expect(h.writes).toEqual([]);
     expect(h.calls).toEqual([]);
@@ -1412,11 +1488,44 @@ describe("init and uninstall require --agent claude or --agent cursor", () => {
   )("uninstall with %s: the choice, exit 1, nothing read, written or run", async (_l, argv) => {
     const { h, io, touched } = recorded();
     expect(await runUninstall(io, argv, untouchable as UninstallDeps)).toBe(1);
-    expect(h.out()).toContain("choose --agent claude or --agent cursor");
+    expect(h.out()).toContain("choose --agent claude, --agent cursor or --agent codex");
     expect(h.out()).toContain("agenttrail-guard uninstall --agent claude");
     expect(h.writes).toEqual([]);
     expect(h.calls).toEqual([]);
     expect(touched).toEqual([]);
+  });
+});
+
+describe("--agent codex names an app both commands act on", () => {
+  it("offers codex in the choice message, and the menu agrees with what the commands do", () => {
+    // The two have to agree: a menu that hides `codex` while `chosenAgent` accepts it, or
+    // one that offers it with no branch behind it, are both lies.
+    expect(agentChoiceMessage("init")).toContain("--agent codex");
+    expect(agentChoiceMessage("init")).toContain("for Codex CLI");
+  });
+
+  it("init --agent codex does not fall through to the Claude Code path", async () => {
+    // The failure the checked switch exists to prevent: installing a Claude Code plugin
+    // and reporting success for an app that has none.
+    const h = harness();
+    const codex = fakeCodexFiles({
+      files: { [`${SCAFFOLD}/scripts/guard-hook.mjs`]: "// hook\n" },
+    });
+    expect(
+      await runInit(h.io, { agent: "codex" }, { ...initDeps, codexIo: codex.io, nodePath: "/n" }),
+    ).toBe(0);
+    expect(h.calls).toEqual([]);
+    expect(h.out()).not.toContain(GUARD_PLUGIN_ID);
+    expect(h.out()).toContain("Installed for Codex CLI");
+  });
+
+  it("uninstall --agent codex removes nothing of Claude Code's", async () => {
+    const h = harness();
+    const codex = fakeCodexFiles();
+    expect(await runUninstall(h.io, { agent: "codex" }, { codexIo: codex.io })).toBe(0);
+    expect(h.calls).toEqual([]);
+    expect(h.out()).toContain("Guard is not installed for Codex CLI — nothing to remove.");
+    expect(h.out()).not.toContain(GUARD_PLUGIN_ID);
   });
 });
 
@@ -1472,6 +1581,60 @@ describe("--agent cursor writes only guard's folder and Cursor's user hooks file
   });
 });
 
+describe("--agent codex writes only guard's folder and Codex's user hooks file", () => {
+  const HOOKS = `${HOME}/.codex/hooks.json`;
+  const GUARD = `${HOME}/.agenttrail/guard/`;
+
+  it("init NEVER writes outside ~/.agenttrail/guard/ except ~/.codex/hooks.json, and runs no claude", async () => {
+    const h = harness();
+    const codex = fakeCodexFiles({
+      files: { [`${SCAFFOLD}/scripts/guard-hook.mjs`]: "// hook\n" },
+    });
+    const deps = { ...initDeps, codexIo: codex.io, nodePath: "/usr/local/bin/node" };
+    expect(await runInit(h.io, { agent: "codex" }, deps)).toBe(0);
+
+    const paths = [...h.writes.map((w) => w.path), ...codex.writes.map((w) => w.path)];
+    // Both places were written, so the loop below is not checking an empty list.
+    expect(paths).toContain(HOOKS);
+    expect(paths.filter((p) => p.startsWith(GUARD)).length).toBeGreaterThan(0);
+    for (const path of paths) {
+      expect(path.startsWith(GUARD) || path === HOOKS, path).toBe(true);
+    }
+    // Never Codex's other hooks layer: the two AGGREGATE, so an entry in both would run
+    // guard twice for one tool call.
+    expect(paths.some((p) => p.includes("config.toml"))).toBe(false);
+    expect(paths.some((p) => p.includes(".cursor"))).toBe(false);
+    expect(h.calls).toEqual([]);
+  });
+
+  it("closes by naming the approval step, without which Codex never runs the hook", async () => {
+    const h = harness();
+    const codex = fakeCodexFiles({
+      files: { [`${SCAFFOLD}/scripts/guard-hook.mjs`]: "// hook\n" },
+    });
+    await runInit(h.io, { agent: "codex" }, { ...initDeps, codexIo: codex.io, nodePath: "/n" });
+    expect(h.out()).toContain("NEXT STEP — until you do this, guard checks nothing:");
+    expect(h.out()).toContain("run /hooks");
+  });
+
+  it("uninstall changes nothing outside those two places either, and runs no claude", async () => {
+    const h = harness();
+    const codex = fakeCodexFiles({
+      files: { [`${SCAFFOLD}/scripts/guard-hook.mjs`]: "// hook\n" },
+    });
+    await runInit(h.io, { agent: "codex" }, { ...initDeps, codexIo: codex.io, nodePath: "/n" });
+    const before = codex.writes.length;
+
+    expect(await runUninstall(h.io, { agent: "codex" }, { codexIo: codex.io })).toBe(0);
+    const changed = [...codex.writes.slice(before).map((w) => w.path), ...codex.deletes];
+    expect(changed).toContain(HOOKS);
+    for (const path of changed) {
+      expect(path.startsWith(GUARD) || path === HOOKS, path).toBe(true);
+    }
+    expect(h.calls).toEqual([]);
+  });
+});
+
 // ── status: one section per app ──────────────────────────────────────────────
 
 const CURSOR_HOOKS = `${HOME}/.cursor/hooks.json`;
@@ -1482,15 +1645,40 @@ const NODE = "/usr/local/bin/node";
 /** The command `init --agent cursor` writes for `NODE` and `HOOK_COPY`. */
 const GUARD_COMMAND = `"${NODE}" "${HOOK_COPY}" --agent cursor`;
 
+const CODEX_HOOKS = `${HOME}/.codex/hooks.json`;
+const CODEX_COPY = `${HOME}/.agenttrail/guard/codex/guard-hook.mjs`;
+const CODEX_RECORD = `${HOME}/.agenttrail/guard/codex/install.json`;
+/** The command `init --agent codex` writes for `NODE` and `CODEX_COPY`. */
+const CODEX_COMMAND = `"${NODE}" "${CODEX_COPY}" --agent codex`;
+
 const CLAUDE_NOT_INSTALLED =
   "Enforcement: NOT INSTALLED — run `agenttrail-guard init --agent claude`.";
 const CURSOR_NOT_INSTALLED =
   "Enforcement: NOT INSTALLED — run `agenttrail-guard init --agent cursor`.";
 const CURSOR_AGAIN = "Run `agenttrail-guard init --agent cursor` again.";
 const AGENT_WINDOW = "Cursor's Agent Window can skip hooks";
+const CODEX_NOT_INSTALLED =
+  "Enforcement: NOT INSTALLED — run `agenttrail-guard init --agent codex`.";
+const CODEX_AGAIN = "Run `agenttrail-guard init --agent codex` again.";
+const CODEX_APPROVE_AGAIN = "Approve it again in Codex's /hooks screen.";
+const TRUST_NOTE = "Codex runs a hook only once you approve it in Codex's /hooks screen";
 
 function hooksText(hooks: unknown): string {
   return JSON.stringify({ version: 1, hooks });
+}
+
+/** Codex's file, which carries no `version`. */
+function codexHooksText(hooks: unknown): string {
+  return JSON.stringify({ hooks });
+}
+
+/** The entry `init --agent codex` writes, with a field changed to break it. */
+function codexEntry(over: Record<string, unknown> = {}, handler: Record<string, unknown> = {}) {
+  return {
+    matcher: ".*",
+    hooks: [{ type: "command", command: CODEX_COMMAND, timeout: 10, ...handler }],
+    ...over,
+  };
 }
 
 function hookEntry(command: string = GUARD_COMMAND): { command: string; timeout: number } {
@@ -1509,6 +1697,26 @@ function workingWithout(path: string): Record<string, string> {
   return Object.fromEntries(Object.entries(WORKING).filter(([key]) => key !== path));
 }
 
+/** Codex's files with guard installed, working, and still where it was installed. */
+const CODEX_WORKING: Record<string, string> = {
+  [CODEX_HOOKS]: codexHooksText({
+    PreToolUse: [codexEntry()],
+    PermissionRequest: [codexEntry()],
+  }),
+  [NODE]: "",
+  [CODEX_COPY]: "// hook\n",
+};
+
+/** `CODEX_WORKING` without one file. */
+function codexWorkingWithout(path: string): Record<string, string> {
+  return Object.fromEntries(Object.entries(CODEX_WORKING).filter(([key]) => key !== path));
+}
+
+/** `CODEX_WORKING` with another `hooks.json`. */
+function codexWith(hooks: unknown): Record<string, string> {
+  return { ...CODEX_WORKING, [CODEX_HOOKS]: codexHooksText(hooks) };
+}
+
 /** `install.json` recording `guardVersion`. */
 function installRecord(guardVersion: string): string {
   return JSON.stringify({
@@ -1516,6 +1724,20 @@ function installRecord(guardVersion: string): string {
     hookPath: HOOK_COPY,
     nodePath: NODE,
     guardVersion,
+  });
+}
+
+/** Codex's `install.json`, which also records where each entry was written. */
+function codexInstallRecord(
+  guardVersion: string = VERSION,
+  groupIndex: Record<string, number> = { PreToolUse: 0, PermissionRequest: 0 },
+): string {
+  return JSON.stringify({
+    installedAt: "2026-09-01T00:00:00.000Z",
+    hookPath: CODEX_COPY,
+    nodePath: NODE,
+    guardVersion,
+    groupIndex,
   });
 }
 
@@ -1527,6 +1749,13 @@ function claudeSection(out: string): string {
 /** The Cursor section: its heading, to the blank line that ends it. */
 function cursorSection(out: string): string {
   const start = out.indexOf("\nCursor\n");
+  expect(start, out).toBeGreaterThanOrEqual(0);
+  return out.slice(start + 1).split("\n\n")[0] ?? "";
+}
+
+/** The Codex CLI section: its heading, to the blank line that ends it. */
+function codexSection(out: string): string {
+  const start = out.indexOf("\nCodex CLI\n");
   expect(start, out).toBeGreaterThanOrEqual(0);
   return out.slice(start + 1).split("\n\n")[0] ?? "";
 }
@@ -1557,12 +1786,13 @@ const SPOOL: Record<string, string> = {
   [`${CRASHES}/notes.json`]: crashRecord("hook", "2026-09-16T00:00:00.000Z"),
 };
 const CRASH_LINE =
-  "Crash records from guard's hook (shared by Claude Code and Cursor): 3, newest 2026-09-14T08:30:00.000Z.";
+  "Crash records from guard's hook (shared by Claude Code, Cursor and Codex): 3, newest 2026-09-14T08:30:00.000Z.";
 
 /** `status` over every seam's fake, with each read of `SetupIO` recorded. */
 async function statusOver(
   options: {
     cursor?: FakeCursorFilesOptions;
+    codex?: FakeCodexFilesOptions;
     spool?: Record<string, string>;
     setup?: Parameters<typeof harness>[0];
     runClaude?: (h: Harness) => ClaudeRunner;
@@ -1579,9 +1809,10 @@ async function statusOver(
     runClaude: options.runClaude?.(h) ?? h.io.runClaude,
   };
   const cursor = fakeCursorFiles(options.cursor);
+  const codex = fakeCodexFiles(options.codex);
   const guard = fakeGuardIo({ files: options.spool });
-  const code = await runStatus(io, { cursorIo: cursor.io, guardIo: guard.io });
-  return { code, out: h.out(), h, setupReads, cursor, guard };
+  const code = await runStatus(io, { cursorIo: cursor.io, codexIo: codex.io, guardIo: guard.io });
+  return { code, out: h.out(), h, setupReads, cursor, codex, guard };
 }
 
 /** A `claude` that cannot be started, recording what was asked of it. */
@@ -1612,8 +1843,9 @@ describe("status: the Claude Code section", () => {
     expect(out).not.toContain(CLAUDE_NOT_INSTALLED);
     expect(out).not.toContain("Enforcement: ON");
     expect(out).not.toContain("plugin source is missing");
-    // The Cursor section is still reported.
+    // The other two sections are still reported.
     expect(cursorSection(out)).toBe(`Cursor\n${CURSOR_NOT_INSTALLED}`);
+    expect(codexSection(out)).toBe(`Codex CLI\n${CODEX_NOT_INSTALLED}`);
   });
 
   it("an older `claude` still goes through today's plugin reads", async () => {
@@ -1840,12 +2072,246 @@ describe("status: the Cursor section", () => {
   });
 });
 
+describe("status: the Codex CLI section", () => {
+  it("is ON when both entries are the entry guard writes, the files exist and nothing has moved", async () => {
+    const { code, out } = await statusOver({
+      codex: { files: { ...CODEX_WORKING, [CODEX_RECORD]: codexInstallRecord() } },
+    });
+    expect(code).toBe(0);
+    const section = codexSection(out);
+    expect(section).toMatch(/^Codex CLI\nEnforcement: ON · \d+ guardrails/);
+    expect(section).toContain(TRUST_NOTE);
+    expect(section).not.toContain("BROKEN");
+    expect(section).not.toContain("Installed by guard");
+  });
+
+  it.each<[string, Record<string, string>]>([
+    ["there is no hooks.json", {}],
+    [
+      "hooks.json has no guard entry",
+      { [CODEX_HOOKS]: codexHooksText({ PreToolUse: [{ matcher: ".*", hooks: [] }] }) },
+    ],
+    ["hooks.json has an empty hooks object", { [CODEX_HOOKS]: codexHooksText({}) }],
+    [
+      "guard's two lists are empty",
+      { [CODEX_HOOKS]: codexHooksText({ PreToolUse: [], PermissionRequest: [] }) },
+    ],
+  ])("is NOT INSTALLED, with nothing else in the section, when %s", async (_label, files) => {
+    const { out } = await statusOver({ codex: { files: { ...files, [NODE]: "" } } });
+    expect(codexSection(out)).toBe(`Codex CLI\n${CODEX_NOT_INSTALLED}`);
+  });
+
+  it.each<[string, FakeCodexFilesOptions, string]>([
+    [
+      "only the PreToolUse entry is there",
+      { files: codexWith({ PreToolUse: [codexEntry()] }) },
+      `${CODEX_HOOKS} has guard's PreToolUse entry but not its PermissionRequest entry`,
+    ],
+    [
+      "only the PermissionRequest entry is there",
+      { files: codexWith({ PermissionRequest: [codexEntry()] }) },
+      `${CODEX_HOOKS} has guard's PermissionRequest entry but not its PreToolUse entry`,
+    ],
+    [
+      "the Node is missing",
+      { files: codexWorkingWithout(NODE) },
+      `the Node that guard's PreToolUse entry runs is missing: ${NODE}`,
+    ],
+    [
+      "the hook copy is missing",
+      { files: codexWorkingWithout(CODEX_COPY) },
+      `the hook copy that guard's PreToolUse entry runs is missing: ${CODEX_COPY}`,
+    ],
+    [
+      "hooks.json is not valid JSON",
+      { files: { ...CODEX_WORKING, [CODEX_HOOKS]: "{ not json" } },
+      `${CODEX_HOOKS} is not valid JSON`,
+    ],
+    [
+      "an event list is not an array",
+      {
+        files: codexWith({ PreToolUse: codexEntry(), PermissionRequest: [codexEntry()] }),
+      },
+      `${CODEX_HOOKS} has a "PreToolUse" hook list that is not an array`,
+    ],
+    [
+      "a hook group is not an object",
+      { files: codexWith({ PreToolUse: ["./x.sh"], PermissionRequest: [codexEntry()] }) },
+      `${CODEX_HOOKS} has a "PreToolUse" hook that is not an object`,
+    ],
+    [
+      "a guard entry's command is not quoted the way guard writes it",
+      {
+        files: codexWith({
+          PreToolUse: [
+            {
+              matcher: ".*",
+              hooks: [
+                {
+                  type: "command",
+                  command: `${NODE} ${CODEX_COPY} --agent codex`,
+                  timeout: 10,
+                },
+              ],
+            },
+          ],
+          PermissionRequest: [codexEntry()],
+        }),
+      },
+      `guard's PreToolUse entry in ${CODEX_HOOKS} runs a command in a form guard does not write`,
+    ],
+    [
+      "hooks.json cannot be read",
+      { files: CODEX_WORKING, failReads: [CODEX_HOOKS] },
+      `could not read ${CODEX_HOOKS} — EACCES`,
+    ],
+    [
+      "the Node cannot be checked",
+      { files: CODEX_WORKING, failReads: [NODE] },
+      `could not check ${NODE} — EACCES`,
+    ],
+    [
+      "install.json records an install whose hooks.json is gone",
+      { files: { [CODEX_RECORD]: codexInstallRecord(), [NODE]: "" } },
+      `guard is recorded as installed for Codex CLI, but there is no ${CODEX_HOOKS}`,
+    ],
+    [
+      "install.json records an install whose entries are gone",
+      {
+        files: {
+          [CODEX_HOOKS]: codexHooksText({ Stop: [{ matcher: ".*", hooks: [] }] }),
+          [CODEX_RECORD]: codexInstallRecord(),
+          [NODE]: "",
+        },
+      },
+      `guard is recorded as installed for Codex CLI, but ${CODEX_HOOKS} holds no guard entry`,
+    ],
+  ])("is BROKEN, with the reason and the fix, when %s", async (_label, codex, reason) => {
+    const { code, out } = await statusOver({ codex });
+    expect(code).toBe(0);
+    const section = codexSection(out);
+    expect(section).toContain(`\nEnforcement: BROKEN — ${reason}`);
+    expect(section).toContain(`\n  ${CODEX_AGAIN}`);
+    expect(section).toContain(TRUST_NOTE);
+    expect(section).not.toContain("Enforcement: ON");
+    expect(section).not.toContain("NOT INSTALLED");
+  });
+
+  it.each<[string, Record<string, unknown>]>([
+    ["a matcher guard does not write", codexEntry({ matcher: "Bash" })],
+    ["a timeout guard does not write", codexEntry({}, { timeout: 11 })],
+    ["a handler type guard does not write", codexEntry({}, { type: "shell" })],
+    [
+      "a second handler beside guard's, which moves guard's handler index",
+      {
+        matcher: ".*",
+        hooks: [
+          { type: "command", command: "./mine.sh" },
+          { type: "command", command: CODEX_COMMAND, timeout: 10 },
+        ],
+      },
+    ],
+  ])(// Codex hashes the whole entry, so any of these is an entry no approval matches — the
+  // hook is installed and not running, which nothing else reports.
+  "is BROKEN when guard's entry has %s", async (_label, entry) => {
+    const { out } = await statusOver({
+      codex: { files: codexWith({ PreToolUse: [entry], PermissionRequest: [codexEntry()] }) },
+    });
+    expect(codexSection(out)).toContain(
+      `Enforcement: BROKEN — guard's PreToolUse entry in ${CODEX_HOOKS} is not the entry guard writes, so Codex's approval of it no longer applies.`,
+    );
+  });
+
+  it("is BROKEN when guard's entry has moved, and says to approve it again rather than to re-init", async () => {
+    // Another tool put a hook ahead of guard's. Codex's approval is recorded by position,
+    // so guard's no longer matches and it is silently not running. `init` cannot repair
+    // this — it never moves an entry — so it is not what the fix line says.
+    const moved = codexHooksText({
+      PreToolUse: [
+        { matcher: ".*", hooks: [{ type: "command", command: "./theirs.sh" }] },
+        codexEntry(),
+      ],
+      PermissionRequest: [codexEntry()],
+    });
+    const { out } = await statusOver({
+      codex: {
+        files: { ...CODEX_WORKING, [CODEX_HOOKS]: moved, [CODEX_RECORD]: codexInstallRecord() },
+      },
+    });
+    const section = codexSection(out);
+    expect(section).toContain(
+      `Enforcement: BROKEN — guard's PreToolUse entry in ${CODEX_HOOKS} has moved from position 0 to position 1 since it was installed.`,
+    );
+    expect(section).toContain(CODEX_APPROVE_AGAIN);
+    expect(section).not.toContain(CODEX_AGAIN);
+  });
+
+  it("says nothing about a move when install.json records no position, as an older guard's would not", async () => {
+    const { out } = await statusOver({
+      codex: {
+        files: {
+          ...CODEX_WORKING,
+          [CODEX_RECORD]: JSON.stringify({ guardVersion: VERSION, hookPath: CODEX_COPY }),
+        },
+      },
+    });
+    expect(codexSection(out)).toMatch(/^Codex CLI\nEnforcement: ON · /);
+  });
+
+  it("says when install.json records another guard version, and how to refresh", async () => {
+    const { out } = await statusOver({
+      codex: { files: { ...CODEX_WORKING, [CODEX_RECORD]: codexInstallRecord("0.0.1") } },
+    });
+    expect(VERSION).not.toBe("0.0.1");
+    expect(codexSection(out)).toContain(
+      `\n  Installed by guard 0.0.1; this is guard ${VERSION}. Refresh it: \`agenttrail-guard init --agent codex\``,
+    );
+  });
+
+  it("never suggests an init that would downgrade a NEWER Codex install", async () => {
+    const { out } = await statusOver({
+      codex: { files: { ...CODEX_WORKING, [CODEX_RECORD]: codexInstallRecord("99.0.0") } },
+    });
+    const section = codexSection(out);
+    expect(section).toContain(
+      `Installed by guard 99.0.0, newer than this guard ${VERSION} — this command is out of date.`,
+    );
+    expect(section).toContain("npm install -g @agenttrail/guard@latest");
+    expect(section).not.toContain("Refresh it:");
+  });
+
+  it.each<[string, boolean, Record<string, string>]>([
+    ["ON", true, CODEX_WORKING],
+    ["BROKEN", true, codexWorkingWithout(CODEX_COPY)],
+    ["NOT INSTALLED", false, {}],
+  ])(// The one thing guard cannot check is the one that decides whether any of it runs, so
+  // it is said whenever the entries are there — and never implied when they are not.
+  "when Codex is %s, the approval note is shown: %s", async (_state, shown, files) => {
+    const { out } = await statusOver({ codex: { files } });
+    expect(out.split(TRUST_NOTE).length - 1).toBe(shown ? 1 : 0);
+    expect(codexSection(out).includes(TRUST_NOTE)).toBe(shown);
+  });
+
+  it("never claims to know whether the hook is approved", async () => {
+    const { out } = await statusOver({ codex: { files: CODEX_WORKING } });
+    const section = codexSection(out);
+    expect(section).toContain("Guard cannot tell whether you have");
+    expect(section).toContain("config.toml");
+    expect(section).not.toMatch(/\bapproved\b(?!.*cannot)/);
+  });
+});
+
 describe("status: crash records", () => {
-  it("counts the hook's records in both sections, with the newest time, labelled as shared", async () => {
-    const { out } = await statusOver({ cursor: { files: WORKING }, spool: SPOOL });
+  it("counts the hook's records in every section, with the newest time, labelled as shared", async () => {
+    const { out } = await statusOver({
+      cursor: { files: WORKING },
+      codex: { files: CODEX_WORKING },
+      spool: SPOOL,
+    });
     expect(claudeSection(out)).toContain(`\n  ${CRASH_LINE}`);
     expect(cursorSection(out)).toContain(`\n  ${CRASH_LINE}`);
-    expect(out.split(CRASH_LINE).length - 1).toBe(2);
+    expect(codexSection(out)).toContain(`\n  ${CRASH_LINE}`);
+    expect(out.split(CRASH_LINE).length - 1).toBe(3);
   });
 
   it("prints no crash line when no record is from the hook", async () => {
@@ -1862,7 +2328,11 @@ describe("status: crash records", () => {
   it("reads the spool under the home folder status was given, not the hook IO's own", async () => {
     const h = harness();
     const guard = fakeGuardIo({ files: SPOOL, home: "/somewhere/else" });
-    await runStatus(h.io, { cursorIo: fakeCursorFiles().io, guardIo: guard.io });
+    await runStatus(h.io, {
+      cursorIo: fakeCursorFiles().io,
+      codexIo: fakeCodexFiles().io,
+      guardIo: guard.io,
+    });
     expect(h.out()).toContain(CRASH_LINE);
     expect(guard.listed).toEqual([CRASHES]);
     expect(guard.read.length).toBeGreaterThan(0);
@@ -1893,6 +2363,49 @@ describe("status: recent decisions name the app", () => {
     });
     expect(out).toMatch(/^ {2}deny {2}claude wt\.reset-hard +x$/m);
     expect(out).toMatch(/^ {2}ask {3}cursor ti\.dep-install +x$/m);
+  });
+});
+
+describe("status: a multi-line command stays one row", () => {
+  const eventsFile = `${HOME}/.agenttrail/guard/events.jsonl`;
+
+  it("flattens a heredoc-bearing command to one line and declines an unusable silence", async () => {
+    const heredoc = "python3 - <<'PY'\nimport os\nos.system('rm -rf /tmp/x')\nPY";
+    const rows = Array.from({ length: 3 }, () =>
+      JSON.stringify({
+        ts: "2026-09-07T00:00:00Z",
+        tool: "Bash",
+        decision: "deny",
+        ruleId: "sh.hold",
+        command: heredoc,
+        agent: "claude",
+      }),
+    );
+    const { out } = await statusOver({ setup: { files: { [eventsFile]: rows.join("\n") } } });
+
+    // The heredoc body never lands on its own line — neither in the decision row nor in the
+    // most-frequent-match display; the whole command is flattened onto one line.
+    expect(out).not.toMatch(/^import os$/m);
+    expect(out).toMatch(/^ {2}deny {2}claude sh\.hold\s+python3 - <<'PY' import os/m);
+    // The `guardrails allow` suggester cannot express a multi-line command as a single line
+    // to paste, so it declines and says why rather than emitting a broken multi-line paste.
+    expect(out).toContain("spans multiple lines");
+    expect(out).not.toMatch(/guardrails allow sh\.hold 'python3/);
+  });
+
+  it("distinguishes how many decisions are displayed from how many are recorded", async () => {
+    const rows = Array.from({ length: 9 }, (_, i) =>
+      JSON.stringify({
+        ts: "2026-09-07T00:00:00Z",
+        tool: "Bash",
+        decision: "deny",
+        ruleId: "wt.reset-hard",
+        command: `git reset --hard # ${i}`,
+        agent: "claude",
+      }),
+    );
+    const { out } = await statusOver({ setup: { files: { [eventsFile]: rows.join("\n") } } });
+    expect(out).toContain("Recent decisions (latest 5 of 9):");
   });
 });
 
@@ -1940,22 +2453,28 @@ describe("status writes nothing", () => {
       },
     ],
   ])("%s: no write on any seam, and file contents read only under the home folder", async (_label, options) => {
-    const { code, h, setupReads, cursor, guard } = await statusOver(options);
+    const { code, h, setupReads, cursor, codex, guard } = await statusOver({
+      ...options,
+      codex: { files: CODEX_WORKING },
+    });
     expect(code).toBe(0);
     expect(h.writes).toEqual([]);
     expect(cursor.writes).toEqual([]);
     expect(cursor.deletes).toEqual([]);
+    expect(codex.writes).toEqual([]);
+    expect(codex.deletes).toEqual([]);
     expect(guard.writes).toEqual([]);
 
     // Each seam was read, so the loops below are not checking empty lists.
     expect(setupReads.length).toBeGreaterThan(0);
     expect(cursor.reads.length).toBeGreaterThan(0);
+    expect(codex.reads.length).toBeGreaterThan(0);
     expect(guard.read.length).toBeGreaterThan(0);
     for (const path of setupReads) expect(path.startsWith(`${HOME}/`), path).toBe(true);
     for (const path of guard.read) expect(path.startsWith(`${HOME}/`), path).toBe(true);
-    // `cursor.reads` also holds existence checks; the Node guard's entries run is the only
+    // Each app's reads also hold existence checks; the Node its entries run is the only
     // path outside the home folder.
-    for (const path of cursor.reads) {
+    for (const path of [...cursor.reads, ...codex.reads]) {
       expect(path.startsWith(`${HOME}/`) || path === NODE, path).toBe(true);
     }
   });
@@ -1981,5 +2500,30 @@ describe("status agrees with init and uninstall for Cursor", () => {
     from = h.out().length;
     expect(await runStatus(h.io, { cursorIo: cursor.io, guardIo })).toBe(0);
     expect(cursorSection(h.out().slice(from))).toBe(`Cursor\n${CURSOR_NOT_INSTALLED}`);
+  });
+});
+
+describe("status agrees with init and uninstall for Codex", () => {
+  it("reports ON after init --agent codex, and NOT INSTALLED after uninstall --agent codex", async () => {
+    // The install writes the entry AND the position; `status` reads both back. A record
+    // that disagreed with the file would show as BROKEN right after a clean install.
+    const h = harness();
+    const codex = fakeCodexFiles({
+      files: { [`${SCAFFOLD}/scripts/guard-hook.mjs`]: "// hook\n", [NODE]: "" },
+    });
+    const guardIo = fakeGuardIo().io;
+    const deps = { ...initDeps, codexIo: codex.io, nodePath: NODE };
+    expect(await runInit(h.io, { agent: "codex" }, deps)).toBe(0);
+
+    let from = h.out().length;
+    expect(await runStatus(h.io, { codexIo: codex.io, guardIo })).toBe(0);
+    const installed = codexSection(h.out().slice(from));
+    expect(installed).toMatch(/^Codex CLI\nEnforcement: ON · /);
+    expect(installed).not.toContain("Installed by guard");
+
+    expect(await runUninstall(h.io, { agent: "codex" }, { codexIo: codex.io })).toBe(0);
+    from = h.out().length;
+    expect(await runStatus(h.io, { codexIo: codex.io, guardIo })).toBe(0);
+    expect(codexSection(h.out().slice(from))).toBe(`Codex CLI\n${CODEX_NOT_INSTALLED}`);
   });
 });

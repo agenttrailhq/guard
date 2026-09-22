@@ -1,6 +1,16 @@
 /**
- * Where the guard keeps its state, `~/.agenttrail/guard/`, and where it finds Cursor's
- * hooks file.
+ * Where the guard keeps its state, `~/.agenttrail/guard/`, and where it finds each other
+ * app's hooks file.
+ *
+ * ── Every path here is load-bearing for REMOVAL, not just for install ────────
+ * `uninstall` deletes what these name and `status --clear-history` empties what
+ * `eventsPath` names. A path that drifts does not fail loudly: the install still works,
+ * and the uninstall quietly leaves a live hook entry behind pointing at a script the user
+ * believes is gone. `paths.test.ts` pins every exported path for every app for that
+ * reason.
+ *
+ * Nothing here touches the filesystem. Each function is `join` over a home directory the
+ * caller supplies, so the tests need no real home.
  */
 
 import { join } from "node:path";
@@ -87,4 +97,52 @@ export function cursorHooksAbsentPath(homedir: string): string {
 /** `cursor/install.json` — `{installedAt, hookPath, nodePath, guardVersion}`. */
 export function cursorInstallRecordPath(homedir: string): string {
   return join(guardCursorDir(homedir), "install.json");
+}
+
+/**
+ * `~/.codex/hooks.json` — Codex CLI's user hooks file, which holds guard's Codex entry.
+ *
+ * Codex owns this file. Guard registers in it and NOWHERE ELSE: Codex also reads a
+ * `[hooks]` table in `~/.codex/config.toml`, and the two layers AGGREGATE rather than
+ * override, so an entry in both fires the hook twice for one tool call. JSON is also the
+ * only one of the two guard can read back — it has no TOML parser and must not grow one.
+ */
+export function codexHooksPath(homedir: string): string {
+  return join(homedir, ".codex", "hooks.json");
+}
+
+/**
+ * `codex/` — what `init --agent codex` keeps. The hook never reads anything in it.
+ *
+ * Deliberately parallel to `cursor/`, file for file, so uninstall and status have one
+ * shape to handle rather than one per app.
+ */
+export function guardCodexDir(homedir: string): string {
+  return join(guardDir(homedir), "codex");
+}
+
+/**
+ * `codex/guard-hook.mjs` — the copy of the hook that guard's Codex entry runs.
+ *
+ * A COPY, as for Cursor, not a reference into the Claude Code plugin's cache: Claude Code
+ * deletes that cache on uninstall, which would leave Codex running a hook command whose
+ * file no longer exists.
+ */
+export function codexHookCopyPath(homedir: string): string {
+  return join(guardCodexDir(homedir), "guard-hook.mjs");
+}
+
+/** `codex/hooks.json.backup` — `~/.codex/hooks.json` as it was before the first install. */
+export function codexHooksBackupPath(homedir: string): string {
+  return join(guardCodexDir(homedir), "hooks.json.backup");
+}
+
+/** `codex/hooks.json.was-absent` — present when there was no `~/.codex/hooks.json` before the first install. */
+export function codexHooksAbsentPath(homedir: string): string {
+  return join(guardCodexDir(homedir), "hooks.json.was-absent");
+}
+
+/** `codex/install.json` — `{installedAt, hookPath, nodePath, guardVersion}`, as Cursor's. */
+export function codexInstallRecordPath(homedir: string): string {
+  return join(guardCodexDir(homedir), "install.json");
 }

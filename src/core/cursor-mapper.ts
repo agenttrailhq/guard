@@ -46,7 +46,7 @@
  * path stays relative: it is never resolved against a directory.
  */
 
-import { capEnd, capMiddle, safeStringify } from "./mapper.js";
+import { capEnd, capMiddle, isAbsoluteGlob, joinSearchPath, safeStringify } from "./mapper.js";
 import type { CursorHookPayload, MappedCall } from "./types.js";
 
 /** The Cursor events the guard evaluates. Every other event gets no opinion. */
@@ -78,11 +78,6 @@ function nonEmpty(value: unknown): string | undefined {
   return typeof value === "string" && value !== "" ? value : undefined;
 }
 
-/** A glob rooted at `/`, `\`, or a drive letter, which a folder cannot prefix. */
-function isAbsoluteGlob(glob: string): boolean {
-  return /^(?:[\\/]|[A-Za-z]:[\\/])/.test(glob);
-}
-
 /**
  * The paths a `Grep` is evaluated on. See "Grep" in the header.
  *
@@ -96,8 +91,9 @@ export function grepCandidates(folder: unknown, glob: unknown): CursorCandidates
   }
   if (dir === undefined) return [{ tool: "Grep", args: {} }];
   if (pattern === undefined) return [{ tool: "Grep", args: { file_path: dir } }];
-  // One `/` between the two, whatever separator the folder ended with.
-  const joined = `${dir.replace(/[\\/]+$/, "")}/${pattern}`;
+  // One `/` between the two, whatever separator the folder ended with. Shared with
+  // `mapper.ts`, which joins a Claude Code `Grep`/`Glob` the same way.
+  const joined = joinSearchPath(dir, pattern);
   return [
     { tool: "Grep", args: { file_path: joined } },
     { tool: "Grep", args: { file_path: dir } },

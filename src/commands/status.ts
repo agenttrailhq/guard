@@ -24,7 +24,8 @@
  *    find the syntax, uninstalls instead.
  *
  * ── One section per app ──────────────────────────────────────────────────────
- * `status` takes no `--agent`: it reports Claude Code and Cursor, one section each.
+ * `status` takes no `--agent`: it reports Claude Code, Cursor and Codex CLI, one section
+ * each.
  *
  * - **Claude Code.** `claude --version` runs first. When `claude` cannot be started, the
  *   section says Claude Code was not found and reads no plugin state, because a failed
@@ -35,14 +36,22 @@
  *   hook copy that command names must exist. Anything short of that, once any guard entry
  *   is there, is `BROKEN`, with the reason. A Cursor hook that cannot run lets every call
  *   through and shows nothing, so this section is the only place that is visible.
+ * - **Codex CLI.** Read from `~/.codex/hooks.json`, and held to more than Cursor's test,
+ *   because Codex approves a hook by hashing its whole entry AND by its position in the
+ *   file. So `ON` also needs the matcher and the timeout guard writes, guard's handler
+ *   alone in its group, and the entry still at the position `codex/install.json` recorded.
+ *   An entry that has moved, or that guard did not write, is `BROKEN` — Codex stops running
+ *   it and says nothing. What `status` will NOT do is claim to know whether the hook was
+ *   approved: that state is in Codex's `config.toml`, guard has no TOML parser and must not
+ *   grow one, so the section says where the answer lives instead of inventing one.
  * - **Crash records.** Each section counts the hook's records in the crash spool. A record
- *   does not say which app launched the hook, so both sections show the same count and say
+ *   does not say which app launched the hook, so every section shows the same count and says
  *   it is shared.
  *
  * Apart from `--clear-history`, `status` writes nothing, through any of its IO seams. It
  * reads file contents only under the home folder its `SetupIO` names. Beyond that it only
  * checks that some paths exist: Claude Code's recorded plugin source, and the Node and hook
- * copy that guard's Cursor entries run.
+ * copy that guard's Cursor and Codex entries run.
  *
  * ── The printed command is now real, and single-quoted ──────────────────────
  * The line this prints is a line that works — `guardrails allow` really accepts it. It
@@ -69,6 +78,19 @@
  */
 
 import { join } from "node:path";
+import { type CodexFileIO, createRealCodexFileIO } from "../codex/codex-io.js";
+import {
+  CODEX_HOOK_MATCHER,
+  CODEX_HOOK_TIMEOUT,
+  CODEX_TRUST_NOTE,
+  type CodexInstallRecord,
+  codexHookCommand,
+  GUARD_CODEX_EVENTS,
+  guardGroupIndex,
+  isGuardCodexCommand,
+  parseCodexInstallRecord,
+  readCodexHooksFile,
+} from "../codex/install.js";
 import { checkAllowPattern } from "../core/allow-guard.js";
 import { SHIPPED_CATALOG } from "../core/catalog.js";
 import { catalogStamp, formatCatalogStamp } from "../core/catalog-stamp.js";
@@ -83,6 +105,8 @@ import { readSpool } from "../core/crash-store.js";
 import { GUARD_CURSOR_EVENTS, isGuardCursorCommand } from "../core/cursor-entry.js";
 import { mostFrequentMatch, parseDecisionLog } from "../core/decision-log.js";
 import {
+  codexHooksPath,
+  codexInstallRecordPath,
   configPath,
   cursorHooksPath,
   cursorInstallRecordPath,
@@ -93,6 +117,7 @@ import { isRedacted, PATTERN_PLACEHOLDER } from "../core/redaction.js";
 import { blockFixtureCommands } from "../core/rule-fixtures.js";
 import { buildRuleViews } from "../core/rule-view.js";
 import { compileCatalog } from "../core/rules.js";
+import { oneLineForDisplay } from "../core/scan-report.js";
 import type { GuardRule } from "../core/types.js";
 import { loadUserRules } from "../core/user-rules.js";
 import { parseUserRulesData } from "../core/user-rules-data.js";
@@ -164,6 +189,9 @@ const RECENT_LIMIT = 5;
 /** The command that installs guard for Cursor, or puts a broken install right. */
 const CURSOR_INIT = "agenttrail-guard init --agent cursor";
 
+/** The command that installs guard for Codex CLI, or puts a broken install right. */
+const CODEX_INIT = "agenttrail-guard init --agent codex";
+
 /** The command that refreshes Claude Code's cached copy of the plugin to this version. */
 const CLAUDE_INIT = "agenttrail-guard init --agent claude";
 
@@ -196,6 +224,8 @@ export interface StatusDeps {
   readonly clearHistory?: boolean;
   /** Reads `~/.cursor/hooks.json` and guard's Cursor files. The real file system when omitted. */
   readonly cursorIo?: CursorFileIO;
+  /** Reads `~/.codex/hooks.json` and guard's Codex files. The real file system when omitted. */
+  readonly codexIo?: CodexFileIO;
   /** Reads the crash spool, which the hook writes. The real one when omitted. */
   readonly guardIo?: GuardIO;
   /**
@@ -305,6 +335,166 @@ function readCursorState(home: string, files: CursorFileIO): CursorState {
   return { kind: "on" };
 }
 
+/** What `status` found for guard's Codex install. */
+type CodexState =
+  | { readonly kind: "on" }
+  | { readonly kind: "not-installed" }
+  | { readonly kind: "broken"; readonly reason: string; readonly fix: string };
+
+/** The fix for a Codex install `init` can put right. */
+const CODEX_AGAIN = `Run \`${CODEX_INIT}\` again.`;
+
+/**
+ * The fix for the one Codex state `init` CANNOT put right.
+ *
+ * Re-running `init` would leave the entry where it is — guard never moves one — and only
+ * re-record the new position, so the report would go quiet without anything being approved.
+ * The one action that restores enforcement is the user's, in Codex.
+ */
+const CODEX_APPROVE_AGAIN =
+  "Codex approves a hook by its position, so guard's is no longer approved and is not running. Approve it again in Codex's /hooks screen.";
+
+/** A guard entry's command: the Node and the hook copy, each in double quotes. */
+const GUARD_CODEX_COMMAND = /^"([^"]+)" "([^"]+)" --agent codex$/;
+
+/**
+ * The Node and hook copy a guard entry's command runs, when the command is exactly what
+ * `codexHookCommand` writes for them. `undefined` for any other spelling.
+ */
+function parseGuardCodexCommand(command: string): { node: string; copy: string } | undefined {
+  const match = GUARD_CODEX_COMMAND.exec(command);
+  const node = match?.[1];
+  const copy = match?.[2];
+  if (node === undefined || copy === undefined) return undefined;
+  return codexHookCommand(node, copy) === command ? { node, copy } : undefined;
+}
+
+/**
+ * The command in a hook group, when the group is the entry guard writes: guard's matcher,
+ * guard's handler alone in the group, `type: "command"`, and guard's timeout.
+ *
+ * Every one of those is checked because Codex's approval covers all of them. An entry that
+ * differs anywhere is an entry no approval matches, so it is not running — which is a
+ * broken install, however healthy the file looks.
+ *
+ * Keys Codex does not hash are not counted, so a comment field someone added is not a fault.
+ */
+function guardCodexEntryCommand(group: unknown): string | undefined {
+  if (!isRecord(group) || group.matcher !== CODEX_HOOK_MATCHER) return undefined;
+  // One handler, so guard's handler index is 0 — the other half of the approval's key.
+  if (!Array.isArray(group.hooks) || group.hooks.length !== 1) return undefined;
+  const handler = group.hooks[0];
+  if (!isRecord(handler)) return undefined;
+  if (handler.type !== "command" || handler.timeout !== CODEX_HOOK_TIMEOUT) return undefined;
+  return typeof handler.command === "string" && isGuardCodexCommand(handler.command)
+    ? handler.command
+    : undefined;
+}
+
+/** `codex/install.json` as far as it can be read. Never throws. */
+function readCodexRecord(home: string, files: CodexFileIO): CodexInstallRecord | undefined {
+  try {
+    return parseCodexInstallRecord(files.readFile(codexInstallRecordPath(home)));
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Guard's Codex install, as `~/.codex/hooks.json`, `codex/install.json` and the files the
+ * entries name show it.
+ *
+ * Reads only, and never throws: a read that fails is a `broken` reason.
+ */
+function readCodexState(
+  home: string,
+  files: CodexFileIO,
+  record: CodexInstallRecord | undefined,
+): CodexState {
+  const hooksPath = codexHooksPath(home);
+  const broken = (reason: string, fix: string = CODEX_AGAIN): CodexState => ({
+    kind: "broken",
+    reason,
+    fix,
+  });
+  // `install.json` is guard's own record that it installed. With it there and the entries
+  // gone, "not installed" would hide the fact that something removed them.
+  const gone = (what: string): CodexState =>
+    record === undefined
+      ? { kind: "not-installed" }
+      : broken(`guard is recorded as installed for Codex CLI, but ${what}`);
+
+  let text: string | undefined;
+  try {
+    text = files.readFile(hooksPath);
+  } catch (error) {
+    return broken(`could not read ${hooksPath} — ${messageOf(error)}`);
+  }
+  if (text === undefined) return gone(`there is no ${hooksPath}`);
+
+  const read = readCodexHooksFile(text);
+  if (!read.ok) return broken(`${hooksPath} ${read.reason}`);
+
+  const lists = GUARD_CODEX_EVENTS.map((event) => {
+    const list = read.hooks[event] ?? [];
+    return { event, list, at: guardGroupIndex(list) };
+  });
+  const present = lists.find((entry) => entry.at >= 0);
+  if (present === undefined) return gone(`${hooksPath} holds no guard entry`);
+  const absent = lists.find((entry) => entry.at < 0);
+  if (absent !== undefined) {
+    return broken(
+      `${hooksPath} has guard's ${present.event} entry but not its ${absent.event} entry`,
+    );
+  }
+
+  const found = new Set<string>();
+  for (const { event, list, at } of lists) {
+    const command = guardCodexEntryCommand(list[at]);
+    if (command === undefined) {
+      return broken(
+        `guard's ${event} entry in ${hooksPath} is not the entry guard writes, so Codex's approval of it no longer applies`,
+      );
+    }
+    const parsed = parseGuardCodexCommand(command);
+    if (parsed === undefined) {
+      return broken(
+        `guard's ${event} entry in ${hooksPath} runs a command in a form guard does not write`,
+      );
+    }
+    const named = [
+      ["the Node", parsed.node],
+      ["the hook copy", parsed.copy],
+    ] as const;
+    for (const [what, path] of named) {
+      if (found.has(path)) continue;
+      let mode: number | undefined;
+      try {
+        mode = files.fileMode(path);
+      } catch (error) {
+        return broken(`could not check ${path} — ${messageOf(error)}`);
+      }
+      if (mode === undefined) {
+        return broken(`${what} that guard's ${event} entry runs is missing: ${path}`);
+      }
+      found.add(path);
+    }
+  }
+
+  // Last, because it is the one fault `init` cannot repair, and the least likely: it means
+  // another tool put a hook ahead of guard's since the install.
+  for (const { event, at } of lists) {
+    const recorded = record?.groupIndex[event];
+    if (recorded !== undefined && recorded !== at) {
+      return broken(
+        `guard's ${event} entry in ${hooksPath} has moved from position ${recorded} to position ${at} since it was installed`,
+        CODEX_APPROVE_AGAIN,
+      );
+    }
+  }
+  return { kind: "on" };
+}
+
 /** The guard version `install.json` records, or `undefined` when it cannot be read. */
 function recordedCursorVersion(home: string, files: CursorFileIO): string | undefined {
   try {
@@ -339,7 +529,7 @@ function hookCrashLine(spoolIo: GuardIO): string | undefined {
     return typeof ts === "string" && (latest === undefined || ts > latest) ? ts : latest;
   }, undefined);
   return (
-    `  Crash records from guard's hook (shared by Claude Code and Cursor): ${hook.length}` +
+    `  Crash records from guard's hook (shared by Claude Code, Cursor and Codex): ${hook.length}` +
     `${newest === undefined ? "" : `, newest ${newest}`}. See \`agenttrail-guard crash-report\`.`
   );
 }
@@ -555,6 +745,33 @@ export async function runStatus(io: SetupIO, deps: StatusDeps = {}): Promise<num
   }
   if (crashLine !== undefined) out.push(crashLine);
 
+  // ── Codex CLI ──────────────────────────────────────────────────────────────
+  const codexIo = deps.codexIo ?? createRealCodexFileIO();
+  const codexRecord = readCodexRecord(home, codexIo);
+  const codex = readCodexState(home, codexIo, codexRecord);
+  out.push("", "Codex CLI");
+  if (codex.kind === "not-installed") {
+    out.push(`Enforcement: NOT INSTALLED — run \`${CODEX_INIT}\`.`);
+  } else {
+    if (codex.kind === "on") {
+      out.push(enforcing);
+    } else {
+      out.push(`Enforcement: BROKEN — ${codex.reason}.`, `  ${codex.fix}`);
+    }
+    const recorded = codexRecord?.guardVersion;
+    if (recorded !== undefined && recorded !== VERSION) {
+      out.push(
+        isNewerThan(recorded, VERSION)
+          ? `  Installed by guard ${recorded}, newer than this guard ${VERSION} — this command is out of date. ${UPDATE_CLI}`
+          : `  Installed by guard ${recorded}; this is guard ${VERSION}. Refresh it: \`${CODEX_INIT}\``,
+      );
+    }
+    // Shown even when everything guard can check is right, because the one thing it cannot
+    // check is the one that decides whether any of this runs.
+    out.push(`  ${CODEX_TRUST_NOTE}`);
+  }
+  if (crashLine !== undefined) out.push(crashLine);
+
   // ── Invalid user rules — FIRST, and loud. See the docblock. ────────────────
   if (userRules.invalid.length > 0) {
     out.push(
@@ -606,10 +823,20 @@ export async function runStatus(io: SetupIO, deps: StatusDeps = {}): Promise<num
     out.push("", "No decisions recorded yet.");
   } else {
     const recent = records.slice(-RECENT_LIMIT).reverse();
-    out.push("", `Recent decisions (${records.length} recorded):`);
+    // Distinguish what is DISPLAYED from what is RECORDED: the table is capped at
+    // RECENT_LIMIT, so a bare "(N recorded)" beside fewer rows reads as if some went
+    // missing. Each command is flattened to one line and truncated, so a heredoc or a
+    // `&&`-chained script cannot spill its whole body across the table (the command is the
+    // last column, so one-lining it also keeps every row column-aligned).
+    out.push(
+      "",
+      records.length > recent.length
+        ? `Recent decisions (latest ${recent.length} of ${records.length}):`
+        : `Recent decisions (${records.length} recorded):`,
+    );
     for (const r of recent) {
       out.push(
-        `  ${r.decision.padEnd(5)} ${r.agent.padEnd(6)} ${r.ruleId.padEnd(24)} ${r.command}`,
+        `  ${r.decision.padEnd(5)} ${r.agent.padEnd(6)} ${r.ruleId.padEnd(24)} ${oneLineForDisplay(r.command)}`,
       );
     }
 
@@ -618,10 +845,22 @@ export async function runStatus(io: SetupIO, deps: StatusDeps = {}): Promise<num
     // actually asked, and a matching settings.json allow rule runs the tool with no
     // prompt (see the enforcement stanza above). So the log cannot mark "was pre-permitted"
     // apart from "held" — the honest thing is to say the log records the verdict, not the outcome.
-    if (records.some((r) => r.decision === "ask")) {
+    // The two explanations are different facts, so an agent that cannot ask gets its own.
+    // On Claude Code and Cursor an `ask` may or may not have reached a person; on Codex it
+    // certainly did not, because the answer guard sent was a block. Printing Claude Code's
+    // sentence over a Codex row states the opposite of what happened.
+    const asked = records.filter((r) => r.decision === "ask");
+    if (asked.some((r) => r.agent !== "codex")) {
       out.push(
         "  An `ask` above is the guard's decision, not confirmation you were prompted:",
         "  the hook cannot see whether a settings.json allow rule let the tool run anyway.",
+      );
+    }
+    if (asked.some((r) => r.agent === "codex")) {
+      out.push(
+        "  An `ask` on a codex row was sent as a block: Codex has no way to ask, so the",
+        "  action was stopped. The log keeps the guardrail's own decision, which is what",
+        "  makes one guardrail comparable across apps.",
       );
     }
 
@@ -630,7 +869,12 @@ export async function runStatus(io: SetupIO, deps: StatusDeps = {}): Promise<num
       // The rule and the count are printed either way. Only the PATTERN is
       // withheld when the shape was redacted — going quiet instead would read as
       // "no noisy rule", which is the same silent failure in a new place.
-      out.push("", "Most frequent match", `  ${top.ruleId}   ${top.count}x   ${top.command}`, "");
+      out.push(
+        "",
+        "Most frequent match",
+        `  ${top.ruleId}   ${top.count}x   ${oneLineForDisplay(top.command)}`,
+        "",
+      );
 
       if (isRedacted(top.command)) {
         // A placeholder is not a shape. It is also a picomatch BRACKET EXPRESSION,
@@ -641,6 +885,17 @@ export async function runStatus(io: SetupIO, deps: StatusDeps = {}): Promise<num
           "placeholder cannot be used as a match pattern. Write the pattern against the",
           "real command yourself:",
           `  ${silenceCommand(top.ruleId, PATTERN_PLACEHOLDER)}`,
+        );
+      } else if (/[\r\n]/.test(top.command)) {
+        // The `guardrails allow` line exists to be COPY-PASTED. A multi-line command
+        // single-quotes into a value that spans lines with its inner quotes re-escaped —
+        // unusable as a paste, which is the only thing it is for. Decline rather than emit
+        // one, and say why: a one-line pattern against the real shape is the safe fix.
+        out.push(
+          "That command spans multiple lines, so it cannot be offered as a one-line",
+          "silence pattern — pasted back it would span lines with its quotes re-escaped.",
+          "If a shorter, single-line shape of it is the one firing on something legitimate,",
+          "write a `guardrails allow` pattern against that shape yourself.",
         );
       } else {
         // Never suggest a line `guardrails allow` would refuse. The one that matters here:

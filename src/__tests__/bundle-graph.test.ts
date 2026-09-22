@@ -187,7 +187,7 @@ describe("the colour helper is unreachable from the hook", () => {
   });
 });
 
-describe("the Cursor modules are in the hook graph", () => {
+describe("the per-app modules are in the hook graph", () => {
   // Named, so every fence in this file is known to cover them: a module that fell out of
   // the graph would pass every fence without being checked.
   it.each([
@@ -195,6 +195,8 @@ describe("the Cursor modules are in the hook graph", () => {
     "core/cursor-mapper.ts",
     "core/cursor-emit.ts",
     "core/cursor-entry.ts",
+    "core/codex-mapper.ts",
+    "core/codex-emit.ts",
   ])("%s is inlined into the hook bundle", (module) => {
     expect(hookBundleGraph()).toContain(join(PKG_ROOT, "src", ...module.split("/")));
   });
@@ -282,12 +284,14 @@ describe("the scan-only plugin bundle carries scan and nothing else", () => {
   });
 });
 
-describe("the Cursor install is outside the hook graph", () => {
-  // `init --agent cursor` and `uninstall --agent cursor` write files, which the file Claude Code
-  // and Cursor run before every tool call has no reason to do.
+describe("the installers are outside the hook graph", () => {
+  // `init` and `uninstall` write files, which the file Claude Code, Cursor and Codex run
+  // before every tool call has no reason to do.
   it.each([
     "cursor/install.ts",
     "cursor/cursor-io.ts",
+    "codex/install.ts",
+    "codex/codex-io.ts",
     "commands/agent-choice.ts",
     "commands/init.ts",
     "commands/uninstall.ts",

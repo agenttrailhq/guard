@@ -26,7 +26,9 @@ const entry = hooks.hooks.PreToolUse[0] as NonNullable<(typeof hooks.hooks.PreTo
 
 describe("the PreToolUse matcher", () => {
   it("is exactly the documented matcher", () => {
-    expect(entry.matcher).toBe("Bash|PowerShell|Edit|Write|Read|NotebookEdit|WebSearch|mcp__.*");
+    expect(entry.matcher).toBe(
+      "Bash|PowerShell|Edit|Write|Read|NotebookEdit|Grep|Glob|WebSearch|mcp__.*",
+    );
   });
 
   it.each([
@@ -36,6 +38,8 @@ describe("the PreToolUse matcher", () => {
     "Write",
     "Read",
     "NotebookEdit",
+    "Grep",
+    "Glob",
     "WebSearch",
   ])("intercepts %s", (tool) => {
     expect(new RegExp(entry.matcher).test(tool)).toBe(true);

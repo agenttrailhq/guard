@@ -1,11 +1,14 @@
 // cspell:words upsert repointed
 /**
- * `agenttrail-guard init --agent claude|cursor` — install the hook, seed the config, prove it
- * works.
+ * `agenttrail-guard init --agent claude|cursor|codex` — install the hook, seed the config,
+ * prove it works.
  *
  * `--agent` is required, and checked before anything is read, written or run. `--agent
  * cursor` is `cursor/install.ts`: it writes guard's entries into `~/.cursor/hooks.json` and
- * never runs `claude`. Everything below this paragraph describes `--agent claude`.
+ * never runs `claude`. `--agent codex` is `codex/install.ts`, the same shape over
+ * `~/.codex/hooks.json`, and it closes by naming the one step guard cannot do for the user:
+ * approving the hook in Codex's `/hooks` screen, without which Codex never runs it.
+ * Everything below this paragraph describes `--agent claude`.
  *
  * ── It installs via the PLUGIN system, and never writes settings.json ────────
  * `init` writes exactly two files, both under `~/.agenttrail/guard/`, and then shells
@@ -20,6 +23,9 @@
  * the mapper.
  */
 
+import { type CodexFileIO, createRealCodexFileIO } from "../codex/codex-io.js";
+import { applyCodexInstall, describeCodexInstall, planCodexInstall } from "../codex/install.js";
+import { unhandledAgent } from "../core/agent.js";
 import { SHIPPED_CATALOG } from "../core/catalog.js";
 import { catalogStamp, formatCatalogStamp } from "../core/catalog-stamp.js";
 import {
@@ -70,7 +76,9 @@ export interface InitDeps {
   readonly now?: Date;
   /** `--agent cursor`'s file seam. Overridden in tests, so none touches a real `~/.cursor`. */
   readonly cursorIo?: CursorFileIO;
-  /** The Node that guard's Cursor entries run. Defaults to the Node running this command. */
+  /** `--agent codex`'s file seam. Overridden in tests, so none touches a real `~/.codex`. */
+  readonly codexIo?: CodexFileIO;
+  /** The Node that guard's Cursor and Codex entries run. Defaults to the Node running this command. */
   readonly nodePath?: string;
   /**
    * Path to Claude Code's `settings.json`, for the approval-override check. Defaults to
@@ -78,6 +86,13 @@ export interface InitDeps {
    * a test need not depend on the runner's environment.
    */
   readonly settingsPath?: string;
+  /**
+   * Path to the running CLI entry. Used only to tell an `npx` invocation — whose path
+   * carries an `/_npx/` cache segment — from a global install, so `init`'s closing line
+   * names a command the user actually has on PATH. Injectable, so a test drives both
+   * branches without depending on how the runner was started.
+   */
+  readonly cliPath?: string;
 }
 
 /** What `init` was asked for. `agent` is the raw `--agent` value, checked by `runInit`. */
@@ -178,16 +193,29 @@ function dryRunReport(io: SetupIO, home: string, scaffoldDir: string, deps: Init
 /**
  * The demo command as the app's hook receives it: a Claude Code `Bash` call, or the command
  * at Cursor's `beforeShellExecution` checkpoint.
+ *
+ * A checked switch, so an app added to `AGENTS` cannot silently demonstrate another app's
+ * payload shape and reassure the user about a call their app never makes.
  */
 function demoCall(agent: AgentSource): MappedCall {
-  const cursor =
-    agent === "cursor"
-      ? mapCursorCall({ hook_event_name: "beforeShellExecution", command: DEMO_COMMAND })
-      : undefined;
-  return (
-    cursor?.candidates[0] ??
-    mapToolCall({ tool_name: "Bash", tool_input: { command: DEMO_COMMAND } })
-  );
+  const asBashCall = (): MappedCall =>
+    mapToolCall({ tool_name: "Bash", tool_input: { command: DEMO_COMMAND } });
+  switch (agent) {
+    case "cursor":
+      return (
+        mapCursorCall({ hook_event_name: "beforeShellExecution", command: DEMO_COMMAND })
+          ?.candidates[0] ?? asBashCall()
+      );
+    case "codex":
+      // Measured on codex-cli 0.154.0: a shell call reaches the hook as `tool_name: "Bash"`
+      // with the raw command in `tool_input.command` — Claude Code's own shape, and not the
+      // `/bin/zsh -lc '…'` wrapper Codex runs it through. So this IS the call Codex makes.
+      return asBashCall();
+    case "claude":
+      return asBashCall();
+    default:
+      return unhandledAgent(agent);
+  }
 }
 
 /**
@@ -195,21 +223,36 @@ function demoCall(agent: AgentSource): MappedCall {
  *
  * `overrideBlock` is the settings.json approval-override disclosure, already formatted with a
  * trailing newline per line, or empty. It only applies to Claude Code (whose `permissions.allow`
- * can silence a hold), so the Cursor path leaves it empty.
+ * can silence a hold), so the Cursor and Codex paths leave it empty.
  */
 function closing(
   catalog: readonly GuardRule[],
   agent: AgentSource,
   now: Date,
+  viaNpx: boolean,
   overrideBlock = "",
 ): string {
+  // The hook is installed and enforcing either way — but the `agenttrail-guard` binary is
+  // only on PATH after a global install. Told to run it while it does not exist, a user who
+  // arrived via `npx` gets `command not found` from the one command they were just handed;
+  // so that path is pointed at the install instead of naming a binary it lacks.
+  const pointer = viaNpx
+    ? "The guard is installed and enforcing. To use its commands — status, scan,\n" +
+      "guardrails — install the CLI:\n\n" +
+      "  npm i -g @agenttrail/guard\n"
+    : "Run `agenttrail-guard status` any time to see what it has been doing.\n";
   return (
     "Here it is working — a dangerous command, evaluated, not run:\n\n" +
     `${demonstrate(catalog, agent)}\n` +
     `${formatCatalogStamp(catalogStamp(), now)}\n` +
     overrideBlock +
-    "Run `agenttrail-guard status` any time to see what it has been doing.\n"
+    pointer
   );
+}
+
+/** An `npx` run resolves the CLI under the npm exec cache, whose path carries `/_npx/`. */
+function invokedViaNpx(cliPath: string | undefined): boolean {
+  return cliPath?.includes("/_npx/") ?? false;
 }
 
 /** Run the demo through the real evaluator and describe the outcome. */
@@ -274,7 +317,54 @@ function initCursor(
   // The Cursor analogue of the Claude path's approval-override disclosure: Cursor's own run
   // mode can auto-run a shell command before the guard's approval card shows.
   io.writeStdout(
-    `${applied.value.join("\n")}\n\n${closing(catalog, "cursor", now, `${CURSOR_RUN_MODE_NOTE}\n`)}`,
+    `${applied.value.join("\n")}\n\n${closing(catalog, "cursor", now, invokedViaNpx(deps.cliPath), `${CURSOR_RUN_MODE_NOTE}\n`)}`,
+  );
+  return 0;
+}
+
+/**
+ * `init --agent codex`: plan by reading, then either describe the plan (`--print`) or carry
+ * it out. Never runs `claude`.
+ *
+ * The same three steps as Cursor's, over `~/.codex/hooks.json`. What differs is what the
+ * lines say, and `codex/install.ts` supplies that: the approval step Codex requires before
+ * the install does anything at all.
+ */
+function initCodex(
+  io: SetupIO,
+  dryRun: boolean,
+  scaffoldDir: string,
+  deps: InitDeps,
+  catalog: readonly GuardRule[],
+  now: Date,
+): number {
+  const request = {
+    setup: io,
+    files: deps.codexIo ?? createRealCodexFileIO(),
+    scaffoldDir,
+    nodePath: deps.nodePath ?? process.execPath,
+    guardVersion: VERSION,
+    now,
+  };
+  const planned = planCodexInstall(request);
+  if (dryRun) {
+    io.writeStdout(describeCodexInstall(planned));
+    return 0;
+  }
+  if (!planned.ok) {
+    io.writeStdout(`agenttrail-guard: ${planned.message}\n`);
+    return 1;
+  }
+  const applied = applyCodexInstall(request, planned.value);
+  if (!applied.ok) {
+    io.writeStdout(`agenttrail-guard: ${applied.message}\n`);
+    return 1;
+  }
+  // No approval-override block: Codex has no `permissions.allow` equivalent that beats the
+  // hook, and the one thing that does stop guard running — an unapproved hook — is already
+  // said above, in the step `applyCodexInstall` prints.
+  io.writeStdout(
+    `${applied.value.join("\n")}\n\n${closing(catalog, "codex", now, invokedViaNpx(deps.cliPath))}`,
   );
   return 0;
 }
@@ -282,8 +372,8 @@ function initCursor(
 /**
  * Run `init`. Returns a process exit code; never throws, never calls `process.exit`.
  *
- * `--agent` must be exactly `claude` or `cursor`. Anything else, including no flag, prints
- * the choice and exits 1 before any read, write or spawn.
+ * `--agent` must name an app `AGENTS` holds. A name it does not, including no flag at
+ * all, prints the choice and exits 1 before any read, write or spawn.
  *
  * `--print` performs every READ — version gate, coexistence check, marketplace state —
  * and then describes what it would do, writing no file and running no mutating command.
@@ -312,7 +402,19 @@ export async function runInit(
     return 1;
   }
 
-  if (agent === "cursor") return initCursor(io, dryRun, scaffoldDir, deps, catalog, now);
+  // Which installer runs. A checked switch, not `agent === "cursor" ? … : …`: an app with
+  // no branch here would have fallen through to Claude Code's installer, written a Claude
+  // Code plugin and reported success for an app that has none.
+  switch (agent) {
+    case "cursor":
+      return initCursor(io, dryRun, scaffoldDir, deps, catalog, now);
+    case "codex":
+      return initCodex(io, dryRun, scaffoldDir, deps, catalog, now);
+    case "claude":
+      break;
+    default:
+      return unhandledAgent(agent);
+  }
 
   // Coexistence FIRST, before any write or any spawn. The agenttrail plugin already does
   // what this hook does, and two hooks would mean two decisions, two prompts and twice
@@ -448,6 +550,8 @@ export async function runInit(
     .map((line) => `${line}\n`)
     .join("");
 
-  io.writeStdout(`${lines.join("\n")}\n\n${closing(catalog, "claude", now, overrideBlock)}`);
+  io.writeStdout(
+    `${lines.join("\n")}\n\n${closing(catalog, "claude", now, invokedViaNpx(deps.cliPath), overrideBlock)}`,
+  );
   return 0;
 }

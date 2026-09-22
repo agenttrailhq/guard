@@ -2,8 +2,8 @@
 
 # `@agenttrail/guard`
 
-Local guardrails for Claude Code and Cursor. Before your AI agent runs a command or touches a
-file, the guard checks it against a guardrail library and answers one of three things:
+Local guardrails for Claude Code, Cursor and Codex CLI. Before your AI agent runs a command or
+touches a file, the guard checks it against a guardrail library and answers one of three things:
 **go ahead**, **ask the human**, or **no**.
 
 **No account, no sign-up.** Out of the box the guard makes no network calls and sends
@@ -13,14 +13,22 @@ reporting](#crash-reporting).)
 
 ## Install
 
-Choose the app. Each install is separate, and you can have both.
+Install the CLI once, globally. The guard is a machine-level control: it keeps its config
+in `~/.agenttrail/guard/`, and its commands (`status`, `scan`, `guardrails`) are run again
+and again — so it belongs on your PATH, at a version you chose, rather than re-resolved on
+every run.
 
 ```sh
-npx @agenttrail/guard@latest init --agent claude   # Claude Code
-npx @agenttrail/guard@latest init --agent cursor   # Cursor
+npm i -g @agenttrail/guard
 ```
 
-`@latest` makes `npx` fetch the newest release rather than reuse a copy it cached earlier.
+Then set it up for each app you use. Each install is separate, and you can have all three:
+
+```sh
+agenttrail-guard init --agent claude   # Claude Code
+agenttrail-guard init --agent cursor   # Cursor
+agenttrail-guard init --agent codex    # Codex CLI
+```
 
 `--agent` is required on `init`, `uninstall` and `scan`. Without it, or with any other
 name, the command says so and changes nothing.
@@ -47,12 +55,40 @@ Cursor reloads `hooks.json` by itself. If the guard's entries do not show in Cur
 Hooks tab, restart Cursor. Use Cursor's agent in an editor window, and read
 [Cursor's limits](#cursors-limits) before you rely on it.
 
+**Codex CLI.** `init --agent codex` writes the same two files, copies the hook to
+`~/.agenttrail/guard/codex/guard-hook.mjs`, and adds the guard's entries to Codex's
+user hooks file, `~/.codex/hooks.json`: one for the pre-tool event and one for the
+permission-request event. Each runs the copy with the Node that ran `init`, named by
+its absolute path. It does not run Codex.
+
+- Every other key and entry in `~/.codex/hooks.json` is kept, in order, and the
+  guard's entries are **appended, never inserted**. Codex identifies an approval by
+  an entry's position in the file, so moving one would revoke it.
+- The guard registers there and **nowhere else**. Codex also reads a `[hooks]` table
+  in `~/.codex/config.toml`, and the two sources add together rather than override,
+  so an entry in both would run the guard twice on every call.
+- It refuses, and changes nothing, when that file is not a JSON object, has a hook
+  list that is not an array, or is read-only. It never reads or writes a project's
+  `.codex/hooks.json` or an enterprise-managed hooks file.
+- If that Node is later moved or removed, `status` reports the install as `BROKEN`; run
+  `init --agent codex` again.
+
+**Then approve the guard inside Codex, or none of this runs.** Start Codex, type
+`/hooks`, and approve each `agenttrail-guard` entry — Codex reviews each one
+separately. Until you do, the install is complete and **completely inert**: the hook
+never fires, every command goes through unchecked, and neither Codex nor the guard
+says a word about it. The guard cannot approve itself, because writing Codex's trust
+record for it would defeat the review that record exists for. Measured on codex-cli
+0.154.0, and it applies again after any change to an entry — read
+[Codex's limits](#codexs-limits) before you rely on it.
+
 `init` finishes by running a synthetic `rm -rf /` through the real guardrail engine and
 showing you it being blocked. Nothing is executed; it is a demonstration, so you can
 see it work before anything real runs through it.
 
 Want to look before you leap? `npx @agenttrail/guard@latest init --agent claude --print`
-(or `--agent cursor --print`) shows you exactly what it would do and changes nothing.
+(or `--agent cursor --print`, or `--agent codex --print`) shows you exactly what it
+would do and changes nothing.
 
 ### Updating
 
@@ -66,18 +102,26 @@ The update itself is two steps, for each app you use:
    ```sh
    npx @agenttrail/guard@latest init --agent claude   # Claude Code
    npx @agenttrail/guard@latest init --agent cursor   # Cursor
+   npx @agenttrail/guard@latest init --agent codex    # Codex CLI
    ```
 
    If you installed the command globally, run `npm install -g @agenttrail/guard@latest`,
-   then `agenttrail-guard init --agent claude` and `agenttrail-guard init --agent cursor`.
+   then `agenttrail-guard init --agent claude`, `agenttrail-guard init --agent cursor` and
+   `agenttrail-guard init --agent codex`.
 2. Restart the app. Claude Code runs its own cached copy of the plugin and keeps running
    the old one until it restarts; restart Cursor too if the guard's entries do not show in
    its Hooks tab.
 
+**A new release does not cost you a second Codex approval.** Codex trusts the *entry* —
+the command, its timeout and its matcher — and not the script that entry runs, so a
+release that ships a new hook keeps the approval you already gave. That is also why the
+entry is frozen: changing it would silently revoke the approval and leave you unguarded
+until you noticed. See [Codex's limits](#codexs-limits).
+
 `status` tells you when a step was missed: it names the version Claude Code is running when
-that differs from the guard you have installed, and says when the Cursor install was made
-by a different version. If the app is running a newer guard than the command you ran
-`status` with, it says that command is the one out of date, rather than suggesting an
+that differs from the guard you have installed, and says when the Cursor or Codex install
+was made by a different version. If the app is running a newer guard than the command you
+ran `status` with, it says that command is the one out of date, rather than suggesting an
 `init` that would downgrade the app.
 
 ### Uninstall
@@ -85,29 +129,37 @@ by a different version. If the app is running a newer guard than the command you
 ```sh
 npx @agenttrail/guard@latest uninstall --agent claude
 npx @agenttrail/guard@latest uninstall --agent cursor
+npx @agenttrail/guard@latest uninstall --agent codex
 ```
 
 For Claude Code it removes the guard's plugin, and only that. For Cursor it removes only
-the guard's two entries from `~/.cursor/hooks.json`:
+the guard's two entries from `~/.cursor/hooks.json`, and for Codex only the guard's
+entries from `~/.codex/hooks.json`:
 
 - if the rest of the file still matches what was there before the install, the earlier
   file is put back exactly;
 - if there was no file before and nothing else is left, the file is deleted;
 - otherwise every other hook stays as it is.
 
-It then deletes the hook copy and the other files under `~/.agenttrail/guard/cursor/`.
-Both are safe to re-run, and both leave your settings in `~/.agenttrail/guard/`.
+It then deletes the hook copy and the other files under `~/.agenttrail/guard/cursor/` or
+`~/.agenttrail/guard/codex/`. All three are safe to re-run, and all three leave your
+settings in `~/.agenttrail/guard/`.
+
+One thing to know before uninstalling from Codex: removing the guard's entries moves
+every entry after them up the file, and Codex identifies an approval by position. Any
+other tool's hook that sat below the guard's therefore needs approving again in
+`/hooks`. `uninstall` says so when there is one.
 
 ## The commands
 
 | | |
 |---|---|
-| `agenttrail-guard init --agent <claude\|cursor>` | Install the hook for Claude Code or Cursor, seed the config, demonstrate itself. Safe to re-run. |
-| `agenttrail-guard status` | What is enforcing in Claude Code and in Cursor, what it has been doing, and — if one guardrail keeps firing on something legitimate — the one line that silences just that guardrail. `--clear-history` empties the decision log. |
+| `agenttrail-guard init --agent <claude\|cursor\|codex>` | Install the hook for Claude Code, Cursor or Codex CLI, seed the config, demonstrate itself. Safe to re-run. |
+| `agenttrail-guard status` | What is enforcing in each app, what it has been doing, and — if one guardrail keeps firing on something legitimate — the one line that silences just that guardrail. `--clear-history` empties the decision log. |
 | `agenttrail-guard guardrails` | See and change what the guard enforces. |
-| `agenttrail-guard scan --agent <claude\|cursor>` | Read the sessions already on your disk and say what your agent has been doing. |
+| `agenttrail-guard scan --agent <claude\|cursor\|codex>` | Read the sessions already on your disk and say what your agent has been doing. |
 | `agenttrail-guard crash-report` | See, enable, send or clear opt-in crash reports (off by default). |
-| `agenttrail-guard uninstall --agent <claude\|cursor>` | Remove our plugin, or our Cursor entries, and only ours. Safe to re-run. Your settings stay in `~/.agenttrail/guard/` until you delete them. |
+| `agenttrail-guard uninstall --agent <claude\|cursor\|codex>` | Remove our plugin, or our Cursor or Codex entries, and only ours. Safe to re-run. Your settings stay in `~/.agenttrail/guard/` until you delete them. |
 
 If you already have the agenttrail plugin installed, `init --agent claude` will tell you
 so and stop. Two hooks deciding on every tool call means two prompts and twice the
@@ -118,8 +170,8 @@ latency, for no benefit.
 
 ## What `status` shows
 
-`status` takes no `--agent`. It prints a section for Claude Code, a section for Cursor,
-and then what applies to both.
+`status` takes no `--agent`. It prints a section for Claude Code, one for Cursor, one
+for Codex CLI, and then what applies to all three.
 
 **Claude Code**
 
@@ -150,17 +202,37 @@ and then what applies to both.
   different guard version from the one running `status`, and a reminder to use an
   editor window, because Cursor's Agent Window can skip hooks.
 
-**Both**
+**Codex CLI**
+
+- `Enforcement: ON` when the guard's entries are in `~/.codex/hooks.json`, and the
+  Node and the hook copy they run both exist.
+- `NOT INSTALLED` when there is no guard entry, with the command that installs it.
+- `BROKEN` when only some of the guard's entries are there, an entry runs a command in
+  a form the guard does not write, the Node or the hook copy is missing, or the file
+  cannot be read as a hooks file. It names the first problem it finds and tells you to
+  run `init --agent codex` again.
+- A warning when a guard entry has moved from where `init` put it. Codex identifies an
+  approval by an entry's position in the file, so an entry another tool pushed down
+  reads perfectly and is no longer trusted.
+- **It cannot tell you whether Codex trusts the guard**, and says so rather than
+  guessing. Approval is recorded in `~/.codex/config.toml`, which the guard does not
+  read — it ships no TOML parser and will not grow one to read a file it never writes.
+  `ON` here means installed and well-formed; whether it is *running* is answered only
+  by Codex's own `/hooks` screen.
+- When the guard is installed, `ON` or `BROKEN`: a line when the install was made by a
+  different guard version from the one running `status`.
+
+**All three**
 
 - In each section, when there is at least one, the number of crash records from the
   guard's hook and the newest one's time. A record does not say which app ran the hook,
-  so both sections show the same count, labelled as shared.
+  so every section shows the same count, labelled as shared.
 - Your own guardrails that are invalid, and settings in `config.json` that were ignored —
   including a pack name in `disabledPacks` that matches no pack, and an `enabledPacks`
   key left by an older release, which is no longer read.
-- The last five decisions, each with the decision, the app that sent the call (`claude`
-  or `cursor`), the guardrail id and the command; then the guardrail that fired most,
-  with the one line that silences it for that command.
+- The last five decisions, each with the decision, the app that sent the call (`claude`,
+  `cursor` or `codex`), the guardrail id and the command; then the guardrail that fired
+  most, with the one line that silences it for that command.
 
 ## When a guardrail is wrong
 
@@ -291,13 +363,13 @@ transcript; the report carries no risk-in-dollars number, not even one labelled
 "estimated", because that is a count multiplied by an assumption.
 
 ```
-scan --agent <claude|cursor>   required: whose sessions to read
-scan --dir <root>              read from somewhere other than ~/.claude/projects or ~/.cursor/projects
-scan --out <file>              write the report to this file (or into this directory)
-scan --no-open                 do not open the report in your browser
-scan --artifact                write the report as page content only, for publishing as a Claude artifact
-scan --review                  print every line the report will contain, and ask before writing it
-scan --json                    print the result as JSON and write no file
+scan --agent <claude|cursor|codex>   required: whose sessions to read
+scan --dir <root>                    read from somewhere other than ~/.claude/projects or ~/.cursor/projects
+scan --out <file>                    write the report to this file (or into this directory)
+scan --no-open                       do not open the report in your browser
+scan --artifact                      write the report as page content only, for publishing as a Claude artifact
+scan --review                        print every line the report will contain, and ask before writing it
+scan --json                          print the result as JSON and write no file
 ```
 
 ### Share a report from Claude Code
@@ -321,7 +393,7 @@ Artifacts need a claude.ai sign-in on a Pro, Max, Team or Enterprise plan. Signe
 an API key, on Bedrock, Vertex AI or Foundry, or with artifacts turned off, the skill
 gives you the path to the local file instead. Cursor scans are not published this way:
 `scan --agent cursor` writes the report and opens it in your browser. The skill ships
-with plugin 0.3.0; to get it, run `npx @agenttrail/guard@latest init --agent claude`.
+with plugin 0.3.0; to get it, run `agenttrail-guard init --agent claude`.
 
 ## Crash reporting
 
@@ -358,9 +430,11 @@ worse than one that names the hole.
   work, v1 leaves web traffic out and says so here. `WebSearch` **is** covered,
   because a search query is ordinary text on the command channel.
 - **It does not stop an action it cannot see.** The guard runs as a Claude Code
-  `PreToolUse` hook, and as Cursor `preToolUse` and `beforeShellExecution` hooks.
-  Anything the agent does outside a hooked tool is invisible to it, and Cursor has more
-  of these gaps: see [Cursor's limits](#cursors-limits).
+  `PreToolUse` hook, as Cursor `preToolUse` and `beforeShellExecution` hooks, and as
+  Codex `PreToolUse` and permission-request hooks. Anything the agent does outside a
+  hooked tool is invisible to it, and the other two apps have more of these gaps than
+  Claude Code: see [Cursor's limits](#cursors-limits) and
+  [Codex's limits](#codexs-limits).
 - **A file guardrail matches the PATH, not the file's contents.** The engine reads a
   command string and a file path; it has no matcher for what a write PUTS in a file. So a
   guardrail on `Write` or `Edit` decides only by where the write lands, never by what it
@@ -482,15 +556,83 @@ blocks.
   this, and Cursor cannot ask: " and the guardrail's title and id, and it logs every
   decision itself.
 
+### Codex's limits
+
+A deny reaches Codex intact: the command never runs, and Codex prints the guard's own
+reason on screen and the model repeats it. What differs is what the hook can see, what
+it can ask for, and what happens before you approve it. Everything below is measured on
+**codex-cli 0.154.0**.
+
+- **Nothing runs until you approve the guard in `/hooks`.** An installed-but-unapproved
+  entry never fires. The command runs normally, no decision is recorded, and neither
+  Codex nor the guard mentions it — the only symptom of an unguarded machine is
+  silence. `status` cannot close this gap for you, because approval is recorded in a
+  file the guard does not read.
+- **Changing an installed entry silently un-approves it.** Codex trusts the entry's
+  content, so editing the command, the timeout or the matcher by as little as one
+  character stops the hook firing, with no warning and no log line, until you approve
+  it again. That is why the installed entry is frozen and pinned by a test, and why a
+  guard release ships a new *script* rather than a new entry. Putting the entry back
+  exactly as it was restores the approval by itself.
+- **An approval becomes a block.** Codex parses a hook that asks for human approval,
+  marks the hook run as failed, and **runs the action anyway** — so asking would be the
+  same as saying nothing. The guard therefore refuses a call it would have held on
+  Claude Code, and says in the reason that a person has to approve it. 50 of the 74
+  bundled guardrails ask rather than block, so this is the difference you will meet
+  most often. Downgrade any of them in `~/.agenttrail/guard/config.json`, or with
+  `guardrails set-action <id> warn`, if a block is too strong for your work.
+- **Reads fire no hook at all.** Codex has no read tool: it reads files by running
+  shell commands. A guardrail on a *file path* therefore never sees a read, and the
+  read is only checked as far as its command text goes. The paths a file guardrail does
+  see are the ones inside an edit.
+- **An edit written through the shell carries no path.** Codex's editing tool sends the
+  patch, and the guard reads the paths out of it. An edit the agent writes as a shell
+  command instead — a heredoc into `cat`, a `sed -i`, a redirect — arrives as an
+  ordinary command with no path field anywhere, so only the command guardrails apply to
+  it. Every app here has this gap; it is wider on Codex because the shell is the route
+  for more of what the agent does.
+- **Every failure lets the action through, and there is no switch for that.** A crash,
+  a non-zero exit other than 2, output that is not JSON, one field Codex does not
+  recognise, or a hook that runs past its timeout: each is recorded as a failed hook
+  run and the tool call proceeds. Codex offers no fail-closed setting, so a guard that
+  cannot answer is a guard that is not there. It is also why the hook answers with
+  exactly three fields and waits on nothing.
+- **A warning is invisible in `codex exec`.** In Codex's terminal UI a warning shows as
+  a hook line above the command. In a scripted `codex exec` run the text appears
+  nowhere at all — only that the hook completed. The match is still written to
+  `events.jsonl` and counted by `status`, which is where a warning is reliably read.
+- **MCP tool calls are unverified here.** The guard checks a Codex MCP call by the same
+  `mcp__server__tool` name Claude Code uses, taken from Codex's own source. No MCP
+  server was configured on the machine these measurements come from, so that path is
+  reasoned rather than observed.
+- **Windows and Codex Desktop are unverified.** Both appear in open reports of denies
+  being ignored, and neither was exercised here.
+- **A shell tool under another name is seen but not read.** The guard's entry matches
+  every tool, so the hook does run — but the guard understands three shapes on Codex:
+  the shell tool named `Bash`, an edit through `apply_patch`, and an MCP call named
+  `mcp__server__tool`. Anything else yields no verdict and **no line in the decision
+  log**, so it is neither checked nor recorded. This is not hypothetical: Codex Desktop
+  reports its shell tool as `shell_command`, which means the guard would not check
+  commands there at all.
+- **Codex Cloud is not covered.** It runs on OpenAI's machines and not yours, so it
+  never reads `~/.codex/hooks.json` and the guard is not in the loop at all.
+- **An enterprise-managed config can switch user hooks off entirely.** With
+  `allow_managed_hooks_only = true` set in a managed configuration, Codex runs only the
+  hooks that configuration provides and skips yours, the guard's included. There is no
+  message about it; the guard simply never fires.
+- **0.154.0 is the tested floor.** Every behaviour above was measured on that version.
+  Codex's hook surface is young and moving, so treat a newer release as unverified
+  until a deny, an approval and a warning have each been seen on it.
+
 ## Rules of the runtime
 
 Three properties hold on every single invocation, and each has a test that fails the
 build if it stops holding:
 
 1. **It always exits 0, and can never exit 2.** Exit 2 is Claude Code's blocking
-   signal and overrides the JSON decision, including `allow`. In Cursor, exit 2 blocks
-   the call as a deny would. The hook bundle contains no `process.exit` at all, so this
-   is structural rather than a pattern someone remembered to grep for.
+   signal and overrides the JSON decision, including `allow`. In Cursor and in Codex,
+   exit 2 blocks the call as a deny would. The hook bundle contains no `process.exit`
+   at all, so this is structural rather than a pattern someone remembered to grep for.
 2. **It writes at most one JSON object to stdout and nothing else.**
    - For Claude Code: exactly one JSON object when it blocks, asks or warns, and no
      output when nothing matches. Output that does not start `{` and end `}` is
@@ -499,6 +641,10 @@ build if it stops holding:
    - For Cursor: exactly one JSON object on every call. `{"permission":"deny",…}`
      blocks, `{"permission":"ask",…}` asks (at `beforeShellExecution` only), and `{}` is
      no opinion, the answer to a warning and to a call nothing matches.
+   - For Codex: one JSON object when it blocks or warns, and no output otherwise — and
+     that object carries exactly the fields Codex documents, never one more. Codex
+     rejects a whole answer for a single field it does not recognise, and then runs the
+     action, so one extra key would turn every block into a no-op.
 3. **It fails open, and never answers `allow`.**
    - For Claude Code: a PreToolUse `allow` skips Claude Code's own permission prompt,
      so the guard leaves every call it does not block or hold to Claude Code's normal
@@ -509,17 +655,23 @@ build if it stops holding:
      internal throw answers `{}` and writes a crash record, which `status` counts. The
      guard's entries do not set `failClosed`, so a hook that cannot run, or runs past its
      timeout, lets the call through.
+   - For Codex: the guard never answers `allow`, which would skip Codex's own approval
+     card, and never asks, because Codex rejects an answer that asks and runs the action
+     — so a guardrail that would hold a call blocks it there instead. Where it has no
+     opinion it writes nothing. Codex itself fails open on a crash, a non-zero exit, bad
+     output and a timeout, and has no setting that changes that.
 
    If our code has a bug, your command goes through the app's normal permission flow.
 
 ## Files it keeps
 
 Four files, all under `~/.agenttrail/guard/`, all written at mode `0600`, plus a
-`cursor/` folder there and two entries in Cursor's hooks file once you install for
-Cursor. The guard writes nothing else anywhere — not in your project, not in your Claude
-Code settings — with exactly one exception: `scan` writes `agenttrail-guard-report.html`
-into the directory you run it from, or to the path you give `--out`, because that file is
-for you to read and share.
+`cursor/` folder and a `codex/` folder there, entries in Cursor's hooks file once you
+install for Cursor, and entries in Codex's hooks file once you install for Codex. The
+guard writes nothing else anywhere — not in your project, not in your Claude Code
+settings, not in Codex's `config.toml` — with exactly one exception: `scan` writes
+`agenttrail-guard-report.html` into the directory you run it from, or to the path you
+give `--out`, because that file is for you to read and share.
 
 - `config.json` — the packs you turned off (`disabledPacks`), the guardrails you turned off
   one at a time, per-guardrail action overrides, and the per-guardrail allowlist. It records
@@ -533,8 +685,9 @@ for you to read and share.
   entirely is ignored, and the bundled guardrails keep working.
 - `events.jsonl` — the guard's own record of what it decided. One line per tool call
   that matched a guardrail: the time, the tool, the decision, the guardrail id, the
-  command, and last `agent`, the app that sent the call (`claude` or `cursor`). A Cursor
-  terminal command passes two checkpoints and is still written once. It is what lets
+  command, and last `agent`, the app that sent the call (`claude`, `cursor` or `codex`).
+  A Cursor terminal command passes two checkpoints and is still written once, and so
+  does a Codex action that reaches both of the guard's Codex entries. It is what lets
   `status` tell you which guardrail is the noisy one.
 
   We say we send you nothing, and separately we keep a file listing commands your
@@ -557,17 +710,39 @@ for you to read and share.
     runs and the guard version, so `status` can tell when a different version made it.
 
   Running `init --agent cursor` again when nothing would change writes nothing.
+- `codex/` — only after `init --agent codex`, and deliberately the same four files as
+  `cursor/`, so uninstall and `status` have one shape to handle:
+  - `guard-hook.mjs`, the copy of the hook that Codex runs;
+  - `hooks.json.backup`, your `~/.codex/hooks.json` as it was before the first install,
+    or an empty `hooks.json.was-absent` when there was no such file;
+  - `install.json`, which records when the install was made, the hook copy, the Node it
+    runs and the guard version — and, because Codex identifies an approval by an entry's
+    position, where in the file the guard's entries were written, so `status` can tell
+    you when something has moved them.
+
+  Running `init --agent codex` again when nothing would change writes nothing. Nothing
+  in here is the approval itself: that lives in Codex's own `config.toml`, which the
+  guard neither reads nor writes.
 
 In `~/.cursor/hooks.json`, which belongs to Cursor, the guard adds one entry under
 `preToolUse` and one under `beforeShellExecution`, and keeps every other key and entry.
 The file keeps its mode, and a file the guard creates gets `0600`. A project's
 `.cursor/hooks.json` and enterprise hooks files are never touched.
 
-`uninstall`, for either app, deliberately leaves `config.json`, `guardrails.json`,
-`events.jsonl` and `crashes/` in place. They are your settings, and finding them
-silently gone after a reinstall would be worse than finding them there.
+In `~/.codex/hooks.json`, which belongs to Codex, the guard appends one entry for the
+pre-tool event and one for the permission-request event, and keeps every other key and
+entry where it was. The file keeps its mode, and a file the guard creates gets `0600`.
+A project's `.codex/hooks.json`, an enterprise-managed hooks file, and Codex's
+`~/.codex/config.toml` are never touched — the last of those matters, because Codex
+adds the two hook sources together and an entry in both would run the guard twice on
+every call.
+
+`uninstall`, for any of the three apps, deliberately leaves `config.json`,
+`guardrails.json`, `events.jsonl` and `crashes/` in place. They are your settings, and
+finding them silently gone after a reinstall would be worse than finding them there.
 `uninstall --agent cursor` removes the guard's entries from `~/.cursor/hooks.json` and
-deletes the files in `cursor/`.
+deletes the files in `cursor/`; `uninstall --agent codex` does the same for
+`~/.codex/hooks.json` and `codex/`.
 
 ## Building this from source
 

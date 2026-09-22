@@ -10,88 +10,26 @@
  * The session files under `projects/` are built from the key shapes of Cursor's session
  * files, not from real sessions. They are checked the same way, and so are their folder
  * names, since Cursor names a project folder after its path.
+ *
+ * The patterns themselves are shared with the other apps' fixture suites; see
+ * `fixture-hygiene.ts`.
  */
 
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { filesUnder, LEAKS, PLACEHOLDER_ID, scanned } from "./fixture-hygiene.js";
 
 const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), "fixtures", "cursor");
 const FILES = readdirSync(FIXTURES)
   .filter((f) => f.endsWith(".json"))
   .sort();
 
-/** Every file under `fixtures/cursor/`, by its path from there, sorted. */
-function filesUnder(dir: string, prefix = ""): string[] {
-  return readdirSync(dir)
-    .sort()
-    .flatMap((entry) => {
-      const path = prefix === "" ? entry : `${prefix}/${entry}`;
-      return statSync(join(dir, entry)).isDirectory() ? filesUnder(join(dir, entry), path) : [path];
-    });
-}
-
 const ALL_FILES = filesUnder(FIXTURES);
 
 /** The session files `scan --agent cursor` reads, in Cursor's folder layout. */
 const SESSION_FILES = ALL_FILES.filter((f) => f.endsWith(".jsonl"));
-
-/** A placeholder id. Removed before scanning, so any id left is a real one. */
-const PLACEHOLDER_ID = /00000000-0000-4000-8000-\d{12}/g;
-
-/** The text the patterns scan: a file with its placeholder ids removed. */
-function scanned(text: string): string {
-  return text.replace(PLACEHOLDER_ID, "<id>");
-}
-
-interface Leak {
-  readonly name: string;
-  readonly pattern: RegExp;
-  /** Text the pattern must match. Without it, a broken pattern would pass every fixture. */
-  readonly leaked: string;
-  /** The redacted form, which the pattern must not match. */
-  readonly redacted: string;
-}
-
-const LEAKS: readonly Leak[] = [
-  {
-    name: "a macOS home folder",
-    pattern: /\/Users\//,
-    leaked: '"/Users/someone/project"',
-    redacted: '"/home/user/project"',
-  },
-  {
-    name: "a Windows home folder",
-    pattern: /[A-Za-z]:(?:\\\\|\\|\/)Users(?:\\\\|\\|\/)/i,
-    leaked: String.raw`"C:\\Users\\someone\\project"`,
-    redacted: String.raw`"C:\\project"`,
-  },
-  {
-    name: "a home folder other than /home/user/",
-    pattern: /\/home\/(?!user\/)[^/"\s]+\//,
-    leaked: '"/home/someone/project"',
-    redacted: '"/home/user/project"',
-  },
-  {
-    name: "a home folder in a Cursor project folder name",
-    pattern: /Users-[^-/"\s]+-/,
-    leaked: '".cursor/projects/Users-someone-project/agent-transcripts"',
-    redacted: '".cursor/projects/home-user-project/agent-transcripts"',
-  },
-  {
-    name: "an email address",
-    pattern: /[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}/,
-    leaked: '"user_email": "someone@example.com"',
-    redacted: '"user_email": "<redacted>"',
-  },
-  {
-    name: "a session, generation or tool id",
-    pattern: /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i,
-    leaked: '"session_id": "3f2a9c1e-7b4d-4e8a-9c2f-1a2b3c4d5e6f"',
-    redacted: '"session_id": "00000000-0000-4000-8000-000000000001"',
-  },
-];
 
 /** A fixture, parsed. */
 function load(file: string): Record<string, unknown> {

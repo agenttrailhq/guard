@@ -189,11 +189,13 @@ describe("flag parsing", () => {
     ["--agent claude", ["--agent", "claude"], "claude"],
     ["--agent cursor", ["--agent", "cursor"], "cursor"],
     ["--agent=cursor", ["--agent=cursor"], "cursor"],
+    ["--agent codex", ["--agent", "codex"], "codex"],
+    ["--agent=codex", ["--agent=codex"], "codex"],
     ["the same app twice", ["--agent", "cursor", "--agent=cursor"], "cursor"],
     ["no --agent", [], undefined],
     ["a lone --agent", ["--agent"], undefined],
     ["--agent followed by a flag", ["--agent", "--json"], undefined],
-    ["an unknown app", ["--agent", "codex"], undefined],
+    ["an unknown app", ["--agent", "windsurf"], undefined],
     ["a capitalized app", ["--agent", "Claude"], undefined],
     ["an empty value", ["--agent="], undefined],
     ["two different apps", ["--agent", "claude", "--agent", "cursor"], undefined],
@@ -204,7 +206,7 @@ describe("flag parsing", () => {
 
   it("--agent never swallows the flag after it, nor leaves its value as an unknown argument", () => {
     expect(parseScanFlags(["--agent", "--json"])).toMatchObject({ json: true, unknown: undefined });
-    expect(parseScanFlags(["--agent", "codex", "--no-open"])).toMatchObject({
+    expect(parseScanFlags(["--agent", "windsurf", "--no-open"])).toMatchObject({
       noOpen: true,
       unknown: undefined,
     });
@@ -793,7 +795,7 @@ describe("failure directions", () => {
     const { io, recorded } = fakeIO(diskWith(TRANSCRIPT));
     expect(await runScan(["--help"], io, DEPS)).toBe(0);
     expect(recorded.written.size).toBe(0);
-    expect(recorded.stdout.join("")).toContain("scan --agent <claude|cursor>");
+    expect(recorded.stdout.join("")).toContain("scan --agent <claude|cursor|codex>");
   });
 });
 
@@ -886,6 +888,74 @@ function cursorDisk(root = "/home/test/.cursor/projects", session = CURSOR_SESSI
   };
 }
 
+/**
+ * One Codex shim fragment: the JavaScript Codex records in place of the command itself.
+ */
+function codexExec(command: string, cwd = "/home/user/project"): string {
+  return (
+    `const r = await tools.exec_command({cmd:${JSON.stringify(command)},` +
+    `workdir:${JSON.stringify(cwd)},yield_time_ms:10000,max_output_tokens:1000});` +
+    " text(r.output);\n"
+  );
+}
+
+/** One Codex session-file line. */
+function codexLine(type: string, payload: Record<string, unknown>): string {
+  return JSON.stringify({ timestamp: "2026-09-21T09:44:38.000Z", ordinal: 0, type, payload });
+}
+
+/** A Codex session: a delete, a patch, and a shim function this reader does not know. */
+const CODEX_SESSION = [
+  codexLine("session_meta", {
+    session_id: "00000000-0000-4000-8000-000000000061",
+    cwd: "/home/user/project",
+    cli_version: "0.154.0",
+  }),
+  codexLine("response_item", { type: "message", role: "user", content: [] }),
+  codexLine("response_item", {
+    type: "custom_tool_call",
+    name: "exec",
+    call_id: "call_1",
+    input: codexExec("rm -rf /Users/priya/clients/acme/build"),
+  }),
+  codexLine("token_usage_record", {
+    usage: {
+      input_tokens: 1200,
+      cached_input_tokens: 900,
+      cache_write_input_tokens: 0,
+      output_tokens: 50,
+    },
+  }),
+  codexLine("response_item", {
+    type: "custom_tool_call",
+    name: "exec",
+    call_id: "call_2",
+    input:
+      'await tools.apply_patch("*** Begin Patch\\n*** Add File: /home/user/a.txt\\n+hi\\n*** End Patch");',
+  }),
+  codexLine("response_item", {
+    type: "custom_tool_call",
+    name: "exec",
+    call_id: "call_3",
+    input: "const r = await tools.unknown_tool({});",
+  }),
+];
+
+/** A Codex sessions root holding that session, filed by date as Codex files it. */
+function codexDisk(root = "/home/test/.codex/sessions", session = CODEX_SESSION): FakeDisk {
+  const day = `${root}/2026/09/21`;
+  const name = "rollout-2026-09-21T09-44-38-00000000-0000-4000-8000-000000000061.jsonl";
+  return {
+    dirs: {
+      [root]: ["2026"],
+      [`${root}/2026`]: ["09"],
+      [`${root}/2026/09`]: ["21"],
+      [day]: [name],
+    },
+    files: { [`${day}/${name}`]: session.join("\n") },
+  };
+}
+
 /** One disk holding every directory and file of each. */
 function mergeDisks(...disks: readonly FakeDisk[]): FakeDisk {
   return {
@@ -894,13 +964,22 @@ function mergeDisks(...disks: readonly FakeDisk[]): FakeDisk {
   };
 }
 
+/**
+ * All three apps' histories on one disk.
+ *
+ * Every `--agent` case below runs against it, so "reads the right one" is a real
+ * assertion: a reader pointed at another app's root would find that app's sessions
+ * sitting there and report them.
+ */
+const ALL_THREE = mergeDisks(diskWith(TRANSCRIPT), cursorDisk(), codexDisk());
+
 describe("--agent is required, and names whose sessions are read", () => {
   it.each([
     ["no --agent", []],
     ["a lone --agent", ["--agent"]],
     ["--agent followed by another flag", ["--agent", "--json"]],
-    ["an unknown app", ["--agent", "codex"]],
-    ["an unknown app after an equals sign", ["--agent=codex"]],
+    ["an unknown app", ["--agent", "windsurf"]],
+    ["an unknown app after an equals sign", ["--agent=windsurf"]],
     ["an empty value", ["--agent="]],
     ["a capitalized app", ["--agent", "Claude"]],
     ["two different apps", ["--agent", "claude", "--agent", "cursor"]],
@@ -937,8 +1016,8 @@ describe("--agent is required, and names whose sessions are read", () => {
     expect(recorded.opened).toEqual([]);
   });
 
-  it("--agent claude reads Claude Code's transcripts and not Cursor's", async () => {
-    const { io, recorded } = fakeIO(mergeDisks(diskWith(TRANSCRIPT), cursorDisk()));
+  it("--agent claude reads Claude Code's transcripts and nobody else's", async () => {
+    const { io, recorded } = fakeIO(ALL_THREE);
     expect(await runScan(["--agent", "claude", "--json"], io, DEPS)).toBe(0);
     const { result } = JSON.parse(recorded.stdout.join(""));
     expect(result.agent).toBe("claude");
@@ -948,8 +1027,32 @@ describe("--agent is required, and names whose sessions are read", () => {
     expect(result).not.toHaveProperty("skipped");
   });
 
-  it("--agent cursor reads Cursor's session files and not Claude Code's", async () => {
-    const { io, recorded } = fakeIO(mergeDisks(diskWith(TRANSCRIPT), cursorDisk()));
+  it("--agent codex reads Codex CLI's session files and nobody else's", async () => {
+    const { io, recorded } = fakeIO(ALL_THREE);
+    expect(await runScan(["--agent", "codex", "--json"], io, DEPS)).toBe(0);
+    const { result } = JSON.parse(recorded.stdout.join(""));
+    expect(result.agent).toBe("codex");
+    expect(result.sessions).toBe(1);
+    // One working directory, so one project — Codex files its sessions by date.
+    expect(result.projects).toBe(1);
+    // The delete and the patch; the shim function this reader does not know is neither.
+    expect(result.toolCalls).toBe(2);
+    expect(result.riskyActions).toBe(1);
+    // Codex's session files record token counts, so the total is real, not withheld.
+    expect(result.tokens).toMatchObject({ input: 300, output: 50, cacheRead: 900 });
+    expect(result.skipped).toEqual({
+      unparseableLines: 0,
+      truncatedLastLines: 0,
+      unknownRecords: 0,
+      turnsEndedWithError: 0,
+      unreadableFiles: 0,
+      notActions: 0,
+      unmappedTools: [{ name: "unknown_tool", count: 1 }],
+    });
+  });
+
+  it("--agent cursor reads Cursor's session files and nobody else's", async () => {
+    const { io, recorded } = fakeIO(ALL_THREE);
     expect(await runScan(["--agent", "cursor", "--json"], io, DEPS)).toBe(0);
     const { result } = JSON.parse(recorded.stdout.join(""));
     expect(result.agent).toBe("cursor");

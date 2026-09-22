@@ -53,6 +53,56 @@ describe("mapper — the channel table", () => {
   });
 });
 
+describe("mapper — Grep and Glob reach files, so they map to file_path", () => {
+  it.each([
+    ["Grep with a folder and a glob", { path: "/repo", glob: "*.env" }, "/repo/*.env"],
+    ["Glob with a folder and a pattern", { path: "/repo", pattern: "**/.env" }, "/repo/**/.env"],
+    ["a folder with no glob", { path: "/repo/secrets" }, "/repo/secrets"],
+    ["a glob with no folder", { glob: "**/.env" }, "**/.env"],
+    ["an absolute glob, which a folder cannot prefix", { path: "/repo", glob: "/etc/*" }, "/etc/*"],
+    ["a trailing separator, collapsed to one", { path: "/repo/", glob: "*.env" }, "/repo/*.env"],
+    ["an empty folder, which counts as absent", { path: "", glob: "*.env" }, "*.env"],
+  ])("%s", (_label, input, expected) => {
+    // One call, most specific form: this mapper yields a single call, unlike Cursor's,
+    // which carries candidates. See the header's stated residual.
+    const tool = "glob" in input ? "Grep" : "Glob";
+    expect(mapToolCall({ tool_name: tool, tool_input: input })).toEqual({
+      tool,
+      args: { file_path: expected },
+    });
+  });
+
+  it("never reads Grep's own pattern, which is a regex over file CONTENT", () => {
+    // `pattern` is the glob for `Glob` and the search expression for `Grep`. Reading
+    // Grep's as a path would evaluate the user's search string against file rules.
+    const out = mapToolCall({
+      tool_name: "Grep",
+      tool_input: { pattern: "AWS_SECRET_ACCESS_KEY", path: "/repo" },
+    });
+    expect(out.args.file_path).toBe("/repo");
+  });
+
+  it("carries no command channel, whatever else is in the payload", () => {
+    const out = mapToolCall({
+      tool_name: "Grep",
+      tool_input: { path: "/repo", glob: "*.env", command: "rm -rf /" },
+    });
+    expect(out.args.full_command).toBeUndefined();
+  });
+
+  it.each(["Grep", "Glob"])("%s with neither field yields no channel", (tool) => {
+    expect(mapToolCall({ tool_name: tool, tool_input: {} }).args).toEqual({});
+  });
+
+  it("is intercepted by the shipped matcher — mapping without that changes nothing", () => {
+    // The mapper and the matcher are two halves of one fix: a branch here for a tool the
+    // hook never receives is dead code. `plugin.test.ts` pins the matcher itself.
+    const matcher = /Bash|PowerShell|Edit|Write|Read|NotebookEdit|Grep|Glob|WebSearch|mcp__.*/;
+    expect(matcher.test("Grep")).toBe(true);
+    expect(matcher.test("Glob")).toBe(true);
+  });
+});
+
 describe("mapper — WebFetch is NOT intercepted", () => {
   it("yields no channel at all, so nothing can match and the call is allowed", () => {
     expect(mapToolCall({ tool_name: "WebFetch", tool_input: { url: "http://x.test/" } })).toEqual({
@@ -98,9 +148,9 @@ describe("mapper — MultiEdit stays classified as a file tool", () => {
   it("is still intercepted by the matcher, because Edit substring-matches it", () => {
     // This is why dropping MultiEdit from FILE_TOOLS would be a bug even though it
     // is absent from the matcher's literal alternatives.
-    expect(/Bash|PowerShell|Edit|Write|Read|NotebookEdit|WebSearch|mcp__.*/.test("MultiEdit")).toBe(
-      true,
-    );
+    expect(
+      /Bash|PowerShell|Edit|Write|Read|NotebookEdit|Grep|Glob|WebSearch|mcp__.*/.test("MultiEdit"),
+    ).toBe(true);
   });
 });
 

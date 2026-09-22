@@ -378,5 +378,15 @@ export async function readCursorCorpus(root: string, io: CursorTranscriptIO): Pr
   }
 
   const skipped: ReaderSkips = { ...counts, unreadableFiles };
-  return { agent: "cursor", sessions, quarantined, notRead, projects, skipped };
+  return {
+    agent: "cursor",
+    // No record in a session file carries a token count, so a total would be a zero
+    // nobody measured; what the reader could not use is counted and listed instead.
+    capabilities: { tokens: false, skips: true },
+    sessions,
+    quarantined,
+    notRead,
+    projects,
+    skipped,
+  };
 }

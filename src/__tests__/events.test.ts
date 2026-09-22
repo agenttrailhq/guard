@@ -29,7 +29,7 @@ import {
 import { eventsPath } from "../core/paths.js";
 import { isRedacted } from "../core/redaction.js";
 import { scrubText } from "../core/scrub.js";
-import type { GuardDecision, MappedCall } from "../core/types.js";
+import { AGENTS, type GuardDecision, type MappedCall } from "../core/types.js";
 import type { GuardIO } from "../io.js";
 import type { SetupIO } from "../setup-io.js";
 import { POSITIVE_FIXTURES } from "./scrub-corpus.js";
@@ -107,8 +107,10 @@ describe("the record shape", () => {
 
   it("writes the event's agent, not a fixed value", () => {
     // The caller decides the app; the writer copies it. A writer that always wrote
-    // `claude` would still pass the test above.
-    for (const agent of ["claude", "cursor"] as const) {
+    // `claude` would still pass the test above. Driven off `AGENTS`, so an app added
+    // there is covered here without anyone remembering to extend a literal list — which
+    // is how `codex` would otherwise have been written to the log untested.
+    for (const agent of AGENTS) {
       const { io, files } = fakeFs();
       createEventRecorder(io).record({ mapped: call("x"), decision: denied(), agent });
       expect(JSON.parse(lines(files.get(LOG))[0] as string).agent).toBe(agent);

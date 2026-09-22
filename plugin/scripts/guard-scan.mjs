@@ -935,13 +935,13 @@ var require_parse = __commonJS({
         consume(token.value);
       };
       const negate = () => {
-        let count = 1;
+        let count2 = 1;
         while (peek() === "!" && (peek(2) !== "(" || peek(3) === "?")) {
           advance();
           state.start++;
-          count++;
+          count2++;
         }
-        if (count % 2 === 0) {
+        if (count2 % 2 === 0) {
           return false;
         }
         state.negated = true;
@@ -1775,8 +1775,28 @@ var require_picomatch2 = __commonJS({
 });
 
 // src/commands/scan.ts
-import { basename as basename2, dirname, join as join4, resolve } from "path";
+import { basename as basename2, dirname, join as join5, resolve } from "path";
 import { pathToFileURL } from "url";
+
+// src/core/types.ts
+var AGENTS = ["claude", "cursor", "codex"];
+
+// src/core/agent.ts
+function unhandledAgent(agent) {
+  throw new Error(`agenttrail-guard: no branch for agent ${String(agent)}`);
+}
+function agentDisplayName(agent) {
+  switch (agent) {
+    case "claude":
+      return "Claude Code";
+    case "cursor":
+      return "Cursor";
+    case "codex":
+      return "Codex CLI";
+    default:
+      return unhandledAgent(agent);
+  }
+}
 
 // node_modules/@agenttrail/guardrails/dist/chunk-3NDBRXP3.js
 var SHELL_AND_MCP = "{Bash,PowerShell,mcp__*}";
@@ -5195,6 +5215,641 @@ var RULES = PACKS.flatMap((pack) => RULES_BY_PACK[pack]);
 // src/core/catalog.ts
 var SHIPPED_CATALOG = RULES;
 
+// src/core/codex-transcript/scan.ts
+import { join } from "path";
+
+// src/core/mapper.ts
+var MAX_DETAIL_LEN = 8192;
+var TRUNCATION_MARKER = "\u2026[truncated]\u2026";
+var SHELL_TOOLS = /* @__PURE__ */ new Set(["Bash", "PowerShell"]);
+var FILE_TOOLS = /* @__PURE__ */ new Set(["Edit", "Write", "Read", "MultiEdit", "NotebookEdit"]);
+var SEARCH_GLOB_FIELD = /* @__PURE__ */ new Map([
+  ["Grep", "glob"],
+  ["Glob", "pattern"]
+]);
+function nonEmpty(value) {
+  return typeof value === "string" && value !== "" ? value : void 0;
+}
+function isAbsoluteGlob(glob) {
+  return /^(?:[\\/]|[A-Za-z]:[\\/])/.test(glob);
+}
+function joinSearchPath(dir, glob) {
+  return `${dir.replace(/[\\/]+$/, "")}/${glob}`;
+}
+function searchPath(tool, input) {
+  const field = SEARCH_GLOB_FIELD.get(tool);
+  const dir = nonEmpty(input.path);
+  const glob = field === void 0 ? void 0 : nonEmpty(input[field]);
+  if (glob === void 0) return dir;
+  if (dir === void 0 || isAbsoluteGlob(glob)) return glob;
+  return joinSearchPath(dir, glob);
+}
+function capEnd(s) {
+  return s.length > MAX_DETAIL_LEN ? s.slice(0, MAX_DETAIL_LEN) : s;
+}
+function capMiddle(s) {
+  if (s.length <= MAX_DETAIL_LEN) return s;
+  const budget = MAX_DETAIL_LEN - TRUNCATION_MARKER.length;
+  const head = Math.ceil(budget / 2);
+  const tail = budget - head;
+  return `${s.slice(0, head)}${TRUNCATION_MARKER}${s.slice(s.length - tail)}`;
+}
+function safeStringify(v) {
+  try {
+    return JSON.stringify(v) ?? "";
+  } catch {
+    return "";
+  }
+}
+function mapToolCall(payload) {
+  const tool = typeof payload.tool_name === "string" ? payload.tool_name : "";
+  const input = payload.tool_input !== null && typeof payload.tool_input === "object" ? payload.tool_input : {};
+  const args2 = {};
+  if (SHELL_TOOLS.has(tool)) {
+    if (typeof input.command === "string") args2.full_command = capEnd(input.command);
+  } else if (FILE_TOOLS.has(tool)) {
+    const fp = input.file_path ?? input.notebook_path;
+    if (typeof fp === "string") args2.file_path = fp;
+  } else if (SEARCH_GLOB_FIELD.has(tool)) {
+    const fp = searchPath(tool, input);
+    if (fp !== void 0) args2.file_path = fp;
+  } else if (tool === "WebSearch") {
+    if (typeof input.query === "string") args2.full_command = capEnd(input.query);
+  } else if (tool.startsWith("mcp__")) {
+    args2.full_command = capMiddle(safeStringify(input));
+  } else {
+    if (typeof input.command === "string") args2.full_command = capEnd(input.command);
+    if (typeof input.file_path === "string") args2.file_path = input.file_path;
+  }
+  return { tool, args: args2 };
+}
+
+// src/core/codex-mapper.ts
+var PATCH_MARKERS = [
+  { marker: "*** Add File:", tool: "Write" },
+  { marker: "*** Update File:", tool: "Edit" },
+  { marker: "*** Move to:", tool: "Edit" },
+  { marker: "*** Delete File:", tool: "Delete" }
+];
+function patchCandidates(patch) {
+  const candidates = [];
+  for (const line of patch.split("\n")) {
+    for (const { marker, tool } of PATCH_MARKERS) {
+      if (!line.startsWith(marker)) continue;
+      const filePath = line.slice(marker.length).trim();
+      if (filePath !== "") candidates.push({ tool, args: { file_path: filePath } });
+      break;
+    }
+  }
+  return candidates;
+}
+
+// src/core/codex-transcript/parse.ts
+var NO_LINE_COUNTS = {
+  unparseableLines: 0,
+  truncatedLastLines: 0,
+  unknownRecords: 0,
+  turnsEndedWithError: 0
+};
+function addLineCounts(a, b) {
+  return {
+    unparseableLines: a.unparseableLines + b.unparseableLines,
+    truncatedLastLines: a.truncatedLastLines + b.truncatedLastLines,
+    unknownRecords: a.unknownRecords + b.unknownRecords,
+    turnsEndedWithError: a.turnsEndedWithError + b.turnsEndedWithError
+  };
+}
+var RESPONSE_ITEM = "response_item";
+var KNOWN_RESPONSE_ITEMS = /* @__PURE__ */ new Set([
+  "message",
+  "reasoning",
+  "custom_tool_call",
+  "custom_tool_call_output"
+]);
+var IGNORED_RECORDS = /* @__PURE__ */ new Set([
+  "event_msg",
+  "turn_context",
+  "world_state",
+  "compacted"
+]);
+function isRecord(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+function nonEmptyString(value) {
+  return typeof value === "string" && value !== "" ? value : void 0;
+}
+function count(value) {
+  return typeof value === "number" && Number.isFinite(value) && value > 0 ? Math.floor(value) : 0;
+}
+function codexUsage(usage) {
+  if (!isRecord(usage)) return {};
+  const cached = count(usage.cached_input_tokens);
+  const written = count(usage.cache_write_input_tokens);
+  return {
+    input_tokens: Math.max(0, count(usage.input_tokens) - cached - written),
+    output_tokens: count(usage.output_tokens),
+    cache_read_input_tokens: cached,
+    cache_creation_input_tokens: written
+  };
+}
+async function readCodexFile(path, source, options) {
+  const turns = [];
+  const userPrompts = [];
+  let sessionId = null;
+  let version = null;
+  let cwd = null;
+  let firstTimestamp = "";
+  let lastTimestamp = "";
+  let model = "";
+  let unparseableLines = 0;
+  let unknownRecords = 0;
+  let pendingUnparseable = false;
+  let lineNumber = 0;
+  let pending = [];
+  let pendingStamp = "";
+  const closeTurn = (timestamp, usage) => {
+    turns.push({
+      messageUuid: "",
+      timestamp,
+      model,
+      usage,
+      text: "",
+      toolUses: pending,
+      isSidechain: false,
+      promptUuid: ""
+    });
+    pending = [];
+  };
+  for await (const raw of source.readLines(path)) {
+    lineNumber++;
+    const line = raw.trim();
+    if (line.length === 0) continue;
+    if (pendingUnparseable) {
+      unparseableLines++;
+      pendingUnparseable = false;
+    }
+    let record;
+    try {
+      record = JSON.parse(line);
+    } catch {
+      pendingUnparseable = true;
+      continue;
+    }
+    if (!isRecord(record) || typeof record.type !== "string") {
+      unknownRecords++;
+      continue;
+    }
+    const timestamp = nonEmptyString(record.timestamp) ?? options.timestamp;
+    if (firstTimestamp === "") firstTimestamp = timestamp;
+    lastTimestamp = timestamp;
+    const payload = isRecord(record.payload) ? record.payload : {};
+    if (record.type === "session_meta") {
+      sessionId ??= nonEmptyString(payload.session_id) ?? null;
+      version ??= nonEmptyString(payload.cli_version) ?? null;
+      cwd ??= nonEmptyString(payload.cwd) ?? null;
+      continue;
+    }
+    if (record.type === "token_usage_record") {
+      closeTurn(timestamp, codexUsage(payload.usage));
+      continue;
+    }
+    if (record.type === "turn_context") {
+      model = nonEmptyString(payload.model) ?? model;
+      continue;
+    }
+    if (IGNORED_RECORDS.has(record.type)) continue;
+    if (record.type !== RESPONSE_ITEM || typeof payload.type !== "string") {
+      unknownRecords++;
+      continue;
+    }
+    if (payload.type === "custom_tool_call") {
+      pendingStamp = timestamp;
+      pending.push({
+        toolUseId: `${options.idPrefix}:${lineNumber}`,
+        // A call with no name is kept under `""`, so `scan` counts it as unrecognized
+        // rather than dropping it.
+        name: typeof payload.name === "string" ? payload.name : "",
+        // The shim's JavaScript, verbatim. `codex-transcript/scan.ts` recovers the command
+        // from it; nothing here interprets it.
+        input: { input: payload.input }
+      });
+      continue;
+    }
+    if (payload.type === "message" && payload.role === "user") {
+      userPrompts.push({
+        messageUuid: "",
+        timestamp,
+        text: "",
+        isSidechain: false
+      });
+      continue;
+    }
+    if (!KNOWN_RESPONSE_ITEMS.has(payload.type)) unknownRecords++;
+  }
+  if (pending.length > 0) closeTurn(pendingStamp === "" ? options.timestamp : pendingStamp, {});
+  return {
+    sessionId,
+    version,
+    cwd,
+    firstTimestamp,
+    lastTimestamp,
+    turns,
+    userPrompts,
+    counts: {
+      unparseableLines,
+      truncatedLastLines: pendingUnparseable ? 1 : 0,
+      unknownRecords,
+      turnsEndedWithError: 0
+    }
+  };
+}
+
+// src/core/codex-transcript/scan.ts
+function defaultCodexSessionsRoot(home) {
+  return join(home, ".codex", "sessions");
+}
+var CODEX_SHIM_TOOL = "exec";
+var EXEC_COMMAND = "exec_command";
+var APPLY_PATCH = "apply_patch";
+var CMD_KEY = "cmd";
+var TOOLS_PREFIX = "tools.";
+var MAX_SHIM_SOURCE = 128 * 1024;
+var MAX_WALK_DEPTH = 8;
+var SESSION_DEPTH = 3;
+function isIdentPart(code2) {
+  return code2 >= 48 && code2 <= 57 || code2 >= 65 && code2 <= 90 || code2 >= 97 && code2 <= 122 || code2 === 95 || code2 === 36;
+}
+function isIdentStart(code2) {
+  return code2 >= 65 && code2 <= 90 || code2 >= 97 && code2 <= 122 || code2 === 95 || code2 === 36;
+}
+function readEscape(source, at) {
+  const ch = source[at + 1];
+  if (ch === void 0) return void 0;
+  switch (ch) {
+    case "n":
+      return { text: "\n", end: at + 2 };
+    case "t":
+      return { text: "	", end: at + 2 };
+    case "r":
+      return { text: "\r", end: at + 2 };
+    case "b":
+      return { text: "\b", end: at + 2 };
+    case "f":
+      return { text: "\f", end: at + 2 };
+    case "v":
+      return { text: "\v", end: at + 2 };
+    case "0":
+      return { text: "\0", end: at + 2 };
+    case "x": {
+      const hex = source.slice(at + 2, at + 4);
+      if (!/^[0-9a-fA-F]{2}$/.test(hex)) return void 0;
+      return { text: String.fromCharCode(Number.parseInt(hex, 16)), end: at + 4 };
+    }
+    case "u":
+      return readUnicodeEscape(source, at);
+    default:
+      return { text: ch, end: at + 2 };
+  }
+}
+function readUnicodeEscape(source, at) {
+  if (source[at + 2] === "{") {
+    const close = source.indexOf("}", at + 3);
+    if (close === -1) return void 0;
+    const digits = source.slice(at + 3, close);
+    if (!/^[0-9a-fA-F]{1,6}$/.test(digits)) return void 0;
+    const code2 = Number.parseInt(digits, 16);
+    if (code2 > 1114111) return void 0;
+    return { text: String.fromCodePoint(code2), end: close + 1 };
+  }
+  const hex = source.slice(at + 2, at + 6);
+  if (!/^[0-9a-fA-F]{4}$/.test(hex)) return void 0;
+  return { text: String.fromCharCode(Number.parseInt(hex, 16)), end: at + 6 };
+}
+function readQuoted(source, open) {
+  const quote = source[open];
+  if (quote !== '"' && quote !== "'") return void 0;
+  let value = "";
+  let i = open + 1;
+  while (i < source.length) {
+    const ch = source[i];
+    if (ch === "\\") {
+      const decoded = readEscape(source, i);
+      if (decoded === void 0) return void 0;
+      value += decoded.text;
+      i = decoded.end;
+      continue;
+    }
+    if (ch === quote) return { value, end: i + 1 };
+    value += ch;
+    i += 1;
+  }
+  return void 0;
+}
+function skipTrivia(source, at) {
+  let i = at;
+  while (i < source.length) {
+    const ch = source[i];
+    if (ch === " " || ch === "	" || ch === "\n" || ch === "\r") {
+      i += 1;
+      continue;
+    }
+    if (ch === "/" && source[i + 1] === "/") {
+      const newline = source.indexOf("\n", i + 2);
+      i = newline === -1 ? source.length : newline + 1;
+      continue;
+    }
+    if (ch === "/" && source[i + 1] === "*") {
+      const close = source.indexOf("*/", i + 2);
+      i = close === -1 ? source.length : close + 2;
+      continue;
+    }
+    return i;
+  }
+  return i;
+}
+function skipValue(source, at) {
+  let depth = 0;
+  let i = at;
+  while (i < source.length) {
+    const ch = source[i];
+    if (ch === '"' || ch === "'") {
+      const quoted2 = readQuoted(source, i);
+      if (quoted2 === void 0) return void 0;
+      i = quoted2.end;
+      continue;
+    }
+    if (ch === "`") return void 0;
+    if (ch === "{" || ch === "[" || ch === "(") {
+      depth += 1;
+      i += 1;
+      continue;
+    }
+    if (ch === "}" || ch === "]" || ch === ")") {
+      if (depth === 0) return ch === "}" ? i : void 0;
+      depth -= 1;
+      i += 1;
+      continue;
+    }
+    if (ch === "," && depth === 0) return i;
+    i += 1;
+  }
+  return void 0;
+}
+function readKey(source, at) {
+  const ch = source[at];
+  if (ch === '"' || ch === "'") {
+    const quoted2 = readQuoted(source, at);
+    if (quoted2 === void 0) return void 0;
+    return { name: quoted2.value, end: quoted2.end };
+  }
+  if (!isIdentStart(source.charCodeAt(at))) return void 0;
+  let i = at + 1;
+  while (i < source.length && isIdentPart(source.charCodeAt(i))) i += 1;
+  return { name: source.slice(at, i), end: i };
+}
+function readObjectLiteral(source, open, key) {
+  if (source[open] !== "{") return void 0;
+  let value;
+  let i = skipTrivia(source, open + 1);
+  if (source[i] === "}") return { value, end: i + 1 };
+  for (; ; ) {
+    const found = readKey(source, i);
+    if (found === void 0) return void 0;
+    i = skipTrivia(source, found.end);
+    if (source[i] !== ":") return void 0;
+    i = skipTrivia(source, i + 1);
+    const ch = source[i];
+    if (ch === '"' || ch === "'") {
+      const quoted2 = readQuoted(source, i);
+      if (quoted2 === void 0) return void 0;
+      if (found.name === key) {
+        if (value !== void 0) return void 0;
+        value = quoted2.value;
+      }
+      i = quoted2.end;
+    } else {
+      if (found.name === key) return void 0;
+      const end = skipValue(source, i);
+      if (end === void 0) return void 0;
+      i = end;
+    }
+    i = skipTrivia(source, i);
+    if (source[i] === ",") {
+      i = skipTrivia(source, i + 1);
+      if (source[i] === "}") return { value, end: i + 1 };
+      continue;
+    }
+    if (source[i] === "}") return { value, end: i + 1 };
+    return void 0;
+  }
+}
+function readShimCall(source, at) {
+  const nameStart = at + TOOLS_PREFIX.length;
+  if (!isIdentStart(source.charCodeAt(nameStart))) return { end: nameStart };
+  let i = nameStart + 1;
+  while (i < source.length && isIdentPart(source.charCodeAt(i))) i += 1;
+  const fn = source.slice(nameStart, i);
+  const paren = skipTrivia(source, i);
+  if (source[paren] !== "(") return { end: i };
+  const argument = skipTrivia(source, paren + 1);
+  const ch = source[argument];
+  if (ch === "{") {
+    const object = readObjectLiteral(source, argument, CMD_KEY);
+    if (object === void 0) return void 0;
+    const call = object.value === void 0 ? { fn } : { fn, cmd: object.value };
+    return { call, end: object.end };
+  }
+  if (ch === '"' || ch === "'") {
+    const quoted2 = readQuoted(source, argument);
+    if (quoted2 === void 0) return void 0;
+    return { call: { fn, text: quoted2.value }, end: quoted2.end };
+  }
+  if (ch === ")") return { call: { fn }, end: argument + 1 };
+  return void 0;
+}
+function readShimCalls(source) {
+  if (source.length > MAX_SHIM_SOURCE) return void 0;
+  const calls = [];
+  let i = 0;
+  while (i < source.length) {
+    const ch = source[i];
+    if (ch === '"' || ch === "'") {
+      const quoted2 = readQuoted(source, i);
+      if (quoted2 === void 0) return void 0;
+      i = quoted2.end;
+      continue;
+    }
+    if (ch === "`") return void 0;
+    if (ch === "/" && source[i + 1] === "/") {
+      const newline = source.indexOf("\n", i + 2);
+      i = newline === -1 ? source.length : newline + 1;
+      continue;
+    }
+    if (ch === "/" && source[i + 1] === "*") {
+      const close = source.indexOf("*/", i + 2);
+      if (close === -1) return void 0;
+      i = close + 2;
+      continue;
+    }
+    if (ch === "t" && source.startsWith(TOOLS_PREFIX, i) && (i === 0 || !isIdentPart(source.charCodeAt(i - 1)) && source[i - 1] !== ".")) {
+      const read = readShimCall(source, i);
+      if (read === void 0) return void 0;
+      if (read.call !== void 0) calls.push(read.call);
+      i = read.end;
+      continue;
+    }
+    i += 1;
+  }
+  return calls;
+}
+function unmapped(name) {
+  return { kind: "unmapped", name };
+}
+function mapShimCall(call) {
+  switch (call.fn) {
+    case EXEC_COMMAND:
+      return call.cmd === void 0 ? unmapped(EXEC_COMMAND) : {
+        kind: "action",
+        candidates: [{ tool: "Bash", args: { full_command: capEnd(call.cmd) } }]
+      };
+    case APPLY_PATCH: {
+      const candidates = call.text === void 0 ? [] : patchCandidates(call.text);
+      const [first, ...rest] = candidates;
+      return first === void 0 ? unmapped(APPLY_PATCH) : { kind: "action", candidates: [first, ...rest] };
+    }
+    default:
+      return unmapped(call.fn);
+  }
+}
+function mapCodexSessionTool(use) {
+  if (use.name !== CODEX_SHIM_TOOL) return [unmapped(use.name)];
+  const source = use.input.input;
+  if (typeof source !== "string") return [unmapped(CODEX_SHIM_TOOL)];
+  const calls = readShimCalls(source);
+  if (calls === void 0 || calls.length === 0) return [unmapped(CODEX_SHIM_TOOL)];
+  return calls.map(mapShimCall);
+}
+function* codexSessionCalls(session) {
+  for (const turn of session.turns) {
+    for (const use of turn.toolUses) yield* mapCodexSessionTool(use);
+  }
+}
+function listFolder(io, path) {
+  try {
+    return [...io.readdir(path)].sort();
+  } catch {
+    return void 0;
+  }
+}
+function isFolder(io, path) {
+  try {
+    return io.stat(path).isDirectory();
+  } catch {
+    return false;
+  }
+}
+function findSessionFiles(io, root) {
+  const files = [];
+  let unreadableFiles = 0;
+  const walk = (folder, depth) => {
+    for (const entry of listFolder(io, folder) ?? []) {
+      const path = join(folder, entry);
+      if (depth < SESSION_DEPTH) {
+        if (isFolder(io, path)) walk(path, depth + 1);
+        continue;
+      }
+      if (!entry.endsWith(".jsonl")) continue;
+      try {
+        const stat2 = io.stat(path);
+        if (stat2.isDirectory()) continue;
+        files.push({ path, id: entry.slice(0, -".jsonl".length), mtimeMs: stat2.mtimeMs });
+      } catch {
+        unreadableFiles++;
+      }
+    }
+  };
+  walk(root, 0);
+  return { files, unreadableFiles };
+}
+function countSessionFiles(io, path, depth = 0) {
+  if (depth > MAX_WALK_DEPTH) return 0;
+  let total = 0;
+  for (const entry of listFolder(io, path) ?? []) {
+    const child = join(path, entry);
+    try {
+      if (io.stat(child).isDirectory()) total += countSessionFiles(io, child, depth + 1);
+      else if (entry.endsWith(".jsonl")) total++;
+    } catch {
+    }
+  }
+  return total;
+}
+function isoTime(ms) {
+  try {
+    return new Date(ms).toISOString();
+  } catch {
+    return "";
+  }
+}
+function toSession(file2, records) {
+  const turns = records.turns;
+  const userPrompts = records.userPrompts;
+  const hasCalls = turns.some((turn) => turn.toolUses.length > 0);
+  if (!hasCalls && userPrompts.length === 0) return void 0;
+  const stamp = isoTime(file2.mtimeMs);
+  return {
+    sessionId: records.sessionId ?? file2.id,
+    version: records.version,
+    gitBranch: null,
+    cwd: records.cwd,
+    turns,
+    userPrompts,
+    toolResults: /* @__PURE__ */ new Map(),
+    firstTimestamp: records.firstTimestamp === "" ? stamp : records.firstTimestamp,
+    lastTimestamp: records.lastTimestamp === "" ? stamp : records.lastTimestamp,
+    skippedLines: records.counts.unparseableLines + records.counts.truncatedLastLines
+  };
+}
+async function readCodexCorpus(root, io) {
+  const sessions = [];
+  const workingDirectories = /* @__PURE__ */ new Set();
+  let quarantined = 0;
+  let counts = NO_LINE_COUNTS;
+  const found = findSessionFiles(io, root);
+  let unreadableFiles = found.unreadableFiles;
+  for (const file2 of found.files) {
+    let records;
+    try {
+      records = await readCodexFile(file2.path, io, {
+        timestamp: isoTime(file2.mtimeMs),
+        idPrefix: file2.id
+      });
+    } catch {
+      unreadableFiles++;
+      continue;
+    }
+    counts = addLineCounts(counts, records.counts);
+    const session = toSession(file2, records);
+    if (session === void 0) {
+      quarantined++;
+      continue;
+    }
+    sessions.push(session);
+    if (session.cwd !== null) workingDirectories.add(session.cwd);
+  }
+  const notRead = Math.max(0, countSessionFiles(io, root) - found.files.length);
+  const skipped = { ...counts, unreadableFiles };
+  return {
+    agent: "codex",
+    capabilities: { tokens: true, skips: true },
+    sessions,
+    quarantined,
+    notRead,
+    projects: workingDirectories.size,
+    skipped
+  };
+}
+
 // src/core/color.ts
 var CODES = {
   reset: "\x1B[0m",
@@ -5295,66 +5950,21 @@ function parseConfig(text) {
 }
 
 // src/core/cursor-transcript/scan.ts
-import { join } from "path";
-
-// src/core/mapper.ts
-var MAX_DETAIL_LEN = 8192;
-var TRUNCATION_MARKER = "\u2026[truncated]\u2026";
-var SHELL_TOOLS = /* @__PURE__ */ new Set(["Bash", "PowerShell"]);
-var FILE_TOOLS = /* @__PURE__ */ new Set(["Edit", "Write", "Read", "MultiEdit", "NotebookEdit"]);
-function capEnd(s) {
-  return s.length > MAX_DETAIL_LEN ? s.slice(0, MAX_DETAIL_LEN) : s;
-}
-function capMiddle(s) {
-  if (s.length <= MAX_DETAIL_LEN) return s;
-  const budget = MAX_DETAIL_LEN - TRUNCATION_MARKER.length;
-  const head = Math.ceil(budget / 2);
-  const tail = budget - head;
-  return `${s.slice(0, head)}${TRUNCATION_MARKER}${s.slice(s.length - tail)}`;
-}
-function safeStringify(v) {
-  try {
-    return JSON.stringify(v) ?? "";
-  } catch {
-    return "";
-  }
-}
-function mapToolCall(payload) {
-  const tool = typeof payload.tool_name === "string" ? payload.tool_name : "";
-  const input = payload.tool_input !== null && typeof payload.tool_input === "object" ? payload.tool_input : {};
-  const args2 = {};
-  if (SHELL_TOOLS.has(tool)) {
-    if (typeof input.command === "string") args2.full_command = capEnd(input.command);
-  } else if (FILE_TOOLS.has(tool)) {
-    const fp = input.file_path ?? input.notebook_path;
-    if (typeof fp === "string") args2.file_path = fp;
-  } else if (tool === "WebSearch") {
-    if (typeof input.query === "string") args2.full_command = capEnd(input.query);
-  } else if (tool.startsWith("mcp__")) {
-    args2.full_command = capMiddle(safeStringify(input));
-  } else {
-    if (typeof input.command === "string") args2.full_command = capEnd(input.command);
-    if (typeof input.file_path === "string") args2.file_path = input.file_path;
-  }
-  return { tool, args: args2 };
-}
+import { join as join2 } from "path";
 
 // src/core/cursor-mapper.ts
-function nonEmpty(value) {
+function nonEmpty2(value) {
   return typeof value === "string" && value !== "" ? value : void 0;
 }
-function isAbsoluteGlob(glob) {
-  return /^(?:[\\/]|[A-Za-z]:[\\/])/.test(glob);
-}
 function grepCandidates(folder, glob) {
-  const dir = nonEmpty(folder);
-  const pattern = nonEmpty(glob);
+  const dir = nonEmpty2(folder);
+  const pattern = nonEmpty2(glob);
   if (pattern !== void 0 && (dir === void 0 || isAbsoluteGlob(pattern))) {
     return [{ tool: "Grep", args: { file_path: pattern } }];
   }
   if (dir === void 0) return [{ tool: "Grep", args: {} }];
   if (pattern === void 0) return [{ tool: "Grep", args: { file_path: dir } }];
-  const joined = `${dir.replace(/[\\/]+$/, "")}/${pattern}`;
+  const joined = joinSearchPath(dir, pattern);
   return [
     { tool: "Grep", args: { file_path: joined } },
     { tool: "Grep", args: { file_path: dir } }
@@ -5362,13 +5972,13 @@ function grepCandidates(folder, glob) {
 }
 
 // src/core/cursor-transcript/parse.ts
-var NO_LINE_COUNTS = {
+var NO_LINE_COUNTS2 = {
   unparseableLines: 0,
   truncatedLastLines: 0,
   unknownRecords: 0,
   turnsEndedWithError: 0
 };
-function addLineCounts(a, b) {
+function addLineCounts2(a, b) {
   return {
     unparseableLines: a.unparseableLines + b.unparseableLines,
     truncatedLastLines: a.truncatedLastLines + b.truncatedLastLines,
@@ -5376,7 +5986,7 @@ function addLineCounts(a, b) {
     turnsEndedWithError: a.turnsEndedWithError + b.turnsEndedWithError
   };
 }
-function isRecord(value) {
+function isRecord2(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 function contentItems(content) {
@@ -5407,7 +6017,7 @@ async function readCursorFile(path, source, options) {
       pendingUnparseable = true;
       continue;
     }
-    if (!isRecord(record)) {
+    if (!isRecord2(record)) {
       unknownRecords++;
       continue;
     }
@@ -5416,7 +6026,7 @@ async function readCursorFile(path, source, options) {
       continue;
     }
     const message = record.message;
-    if (record.role !== "user" && record.role !== "assistant" || !isRecord(message)) {
+    if (record.role !== "user" && record.role !== "assistant" || !isRecord2(message)) {
       unknownRecords++;
       continue;
     }
@@ -5431,13 +6041,13 @@ async function readCursorFile(path, source, options) {
     }
     const toolUses = [];
     contentItems(message.content).forEach((item, index) => {
-      if (!isRecord(item) || item.type !== "tool_use") return;
+      if (!isRecord2(item) || item.type !== "tool_use") return;
       toolUses.push({
         toolUseId: `${options.idPrefix}:${lineNumber}:${index}`,
         // A tool call with no name is kept under `""`, so `scan` counts it as unrecognized
         // rather than dropping it.
         name: typeof item.name === "string" ? item.name : "",
-        input: isRecord(item.input) ? item.input : {}
+        input: isRecord2(item.input) ? item.input : {}
       });
     });
     turns.push({
@@ -5466,9 +6076,9 @@ async function readCursorFile(path, source, options) {
 // src/core/cursor-transcript/scan.ts
 var TRANSCRIPTS_FOLDER = "agent-transcripts";
 var SUBAGENTS_FOLDER = "subagents";
-var MAX_WALK_DEPTH = 8;
+var MAX_WALK_DEPTH2 = 8;
 function defaultCursorProjectsRoot(home) {
-  return join(home, ".cursor", "projects");
+  return join2(home, ".cursor", "projects");
 }
 var CURSOR_NOT_ACTIONS = /* @__PURE__ */ new Set([
   "GetDynamicTools",
@@ -5488,7 +6098,7 @@ var FILE_TOOLS2 = /* @__PURE__ */ new Map([
   ["StrReplace", "Edit"],
   ["Delete", "Delete"]
 ]);
-function isRecord2(value) {
+function isRecord3(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 function stringOr(value) {
@@ -5498,7 +6108,7 @@ function commandCall(tool, value) {
   return typeof value === "string" ? { tool, args: { full_command: capEnd(value) } } : { tool, args: {} };
 }
 function mcpCall(group, toolName, args2) {
-  const raw = typeof args2 === "string" ? args2 : safeStringify(isRecord2(args2) ? args2 : {});
+  const raw = typeof args2 === "string" ? args2 : safeStringify(isRecord3(args2) ? args2 : {});
   return {
     tool: `mcp__${stringOr(group)}__${stringOr(toolName)}`,
     args: { full_command: capMiddle(raw) }
@@ -5510,7 +6120,7 @@ function globCandidates(folder, glob) {
   return [asGlob(first), ...rest.map(asGlob)];
 }
 function mapCursorSessionTool(use) {
-  const input = isRecord2(use.input) ? use.input : {};
+  const input = isRecord3(use.input) ? use.input : {};
   const action = (candidates) => ({
     kind: "action",
     candidates
@@ -5542,14 +6152,14 @@ function* cursorSessionCalls(session) {
     for (const use of turn.toolUses) yield mapCursorSessionTool(use);
   }
 }
-function listFolder(io, path) {
+function listFolder2(io, path) {
   try {
     return [...io.readdir(path)].sort();
   } catch {
     return void 0;
   }
 }
-function isFolder(io, path) {
+function isFolder2(io, path) {
   try {
     return io.stat(path).isDirectory();
   } catch {
@@ -5568,20 +6178,20 @@ function findSessions(io, folder) {
       return void 0;
     }
   };
-  for (const entry of listFolder(io, folder) ?? []) {
-    const path = join(folder, entry);
-    if (!isFolder(io, path)) continue;
+  for (const entry of listFolder2(io, folder) ?? []) {
+    const path = join2(folder, entry);
+    if (!isFolder2(io, path)) continue;
     const files = [];
-    const inside = listFolder(io, path) ?? [];
+    const inside = listFolder2(io, path) ?? [];
     if (inside.includes(`${entry}.jsonl`)) {
-      const file2 = sessionFile(join(path, `${entry}.jsonl`), false);
+      const file2 = sessionFile(join2(path, `${entry}.jsonl`), false);
       if (file2 !== void 0) files.push(file2);
     }
     if (inside.includes(SUBAGENTS_FOLDER)) {
-      const subagents = join(path, SUBAGENTS_FOLDER);
-      for (const name of listFolder(io, subagents) ?? []) {
+      const subagents = join2(path, SUBAGENTS_FOLDER);
+      for (const name of listFolder2(io, subagents) ?? []) {
         if (!name.endsWith(".jsonl")) continue;
-        const file2 = sessionFile(join(subagents, name), true);
+        const file2 = sessionFile(join2(subagents, name), true);
         if (file2 !== void 0) files.push(file2);
       }
     }
@@ -5589,20 +6199,20 @@ function findSessions(io, folder) {
   }
   return { sessions, unreadableFiles };
 }
-function countSessionFiles(io, path, depth = 0) {
-  if (depth > MAX_WALK_DEPTH) return 0;
+function countSessionFiles2(io, path, depth = 0) {
+  if (depth > MAX_WALK_DEPTH2) return 0;
   let total = 0;
-  for (const entry of listFolder(io, path) ?? []) {
-    const child = join(path, entry);
+  for (const entry of listFolder2(io, path) ?? []) {
+    const child = join2(path, entry);
     try {
-      if (io.stat(child).isDirectory()) total += countSessionFiles(io, child, depth + 1);
+      if (io.stat(child).isDirectory()) total += countSessionFiles2(io, child, depth + 1);
       else if (entry.endsWith(".jsonl")) total++;
     } catch {
     }
   }
   return total;
 }
-function isoTime(ms) {
+function isoTime2(ms) {
   try {
     return new Date(ms).toISOString();
   } catch {
@@ -5613,18 +6223,18 @@ async function readSession(io, found) {
   const turns = [];
   const userPrompts = [];
   const times = [];
-  let counts = NO_LINE_COUNTS;
+  let counts = NO_LINE_COUNTS2;
   let unreadableFiles = 0;
   for (const [index, file2] of found.files.entries()) {
     try {
       const records = await readCursorFile(file2.path, io, {
-        timestamp: isoTime(file2.mtimeMs),
+        timestamp: isoTime2(file2.mtimeMs),
         isSidechain: file2.isSidechain,
         idPrefix: `${found.id}:${index}`
       });
       for (const turn of records.turns) turns.push(turn);
       for (const prompt of records.userPrompts) userPrompts.push(prompt);
-      counts = addLineCounts(counts, records.counts);
+      counts = addLineCounts2(counts, records.counts);
       times.push(file2.mtimeMs);
     } catch {
       unreadableFiles++;
@@ -5643,8 +6253,8 @@ async function readSession(io, found) {
       turns,
       userPrompts,
       toolResults: /* @__PURE__ */ new Map(),
-      firstTimestamp: isoTime(Math.min(...times)),
-      lastTimestamp: isoTime(Math.max(...times)),
+      firstTimestamp: isoTime2(Math.min(...times)),
+      lastTimestamp: isoTime2(Math.max(...times)),
       skippedLines: counts.unparseableLines + counts.truncatedLastLines
     },
     readable,
@@ -5658,10 +6268,10 @@ async function readCursorCorpus(root, io) {
   let projects = 0;
   let notRead = 0;
   let unreadableFiles = 0;
-  let counts = NO_LINE_COUNTS;
-  for (const project of listFolder(io, root) ?? []) {
-    const folder = join(root, project, TRANSCRIPTS_FOLDER);
-    if (!isFolder(io, folder)) continue;
+  let counts = NO_LINE_COUNTS2;
+  for (const project of listFolder2(io, root) ?? []) {
+    const folder = join2(root, project, TRANSCRIPTS_FOLDER);
+    if (!isFolder2(io, folder)) continue;
     const found = findSessions(io, folder);
     unreadableFiles += found.unreadableFiles;
     let opened = 0;
@@ -5670,7 +6280,7 @@ async function readCursorCorpus(root, io) {
       opened += item.files.length;
       const result = await readSession(io, item);
       unreadableFiles += result.unreadableFiles;
-      counts = addLineCounts(counts, result.counts);
+      counts = addLineCounts2(counts, result.counts);
       if (result.session !== void 0) {
         sessions.push(result.session);
         read++;
@@ -5678,11 +6288,21 @@ async function readCursorCorpus(root, io) {
         quarantined++;
       }
     }
-    notRead += Math.max(0, countSessionFiles(io, folder) - opened);
+    notRead += Math.max(0, countSessionFiles2(io, folder) - opened);
     if (read > 0) projects++;
   }
   const skipped = { ...counts, unreadableFiles };
-  return { agent: "cursor", sessions, quarantined, notRead, projects, skipped };
+  return {
+    agent: "cursor",
+    // No record in a session file carries a token count, so a total would be a zero
+    // nobody measured; what the reader could not use is counted and listed instead.
+    capabilities: { tokens: false, skips: true },
+    sessions,
+    quarantined,
+    notRead,
+    projects,
+    skipped
+  };
 }
 
 // src/core/evaluate.ts
@@ -5771,15 +6391,15 @@ function evaluateCall(catalog, context, mapped, allowlist) {
 }
 
 // src/core/paths.ts
-import { join as join2 } from "path";
+import { join as join3 } from "path";
 function guardDir(homedir3) {
-  return join2(homedir3, ".agenttrail", "guard");
+  return join3(homedir3, ".agenttrail", "guard");
 }
 function configPath(homedir3) {
-  return join2(guardDir(homedir3), "config.json");
+  return join3(guardDir(homedir3), "config.json");
 }
 function userRulesPath(homedir3) {
-  return join2(guardDir(homedir3), "guardrails.json");
+  return join3(guardDir(homedir3), "guardrails.json");
 }
 
 // src/core/catalog-stamp.ts
@@ -6308,12 +6928,12 @@ function matchTally(result) {
     byAction.set(finding.action, (byAction.get(finding.action) ?? 0) + finding.count);
   }
   return {
-    bySeverity: [...bySeverity].map(([severity, count]) => ({ severity, count })).sort(
+    bySeverity: [...bySeverity].map(([severity, count2]) => ({ severity, count: count2 })).sort(
       (a, b) => severityRank(a.severity) - severityRank(b.severity) || b.count - a.count || a.severity.localeCompare(b.severity)
     ),
     byAction: ACTION_ORDER.flatMap((action) => {
-      const count = byAction.get(action) ?? 0;
-      return count > 0 ? [{ action, count }] : [];
+      const count2 = byAction.get(action) ?? 0;
+      return count2 > 0 ? [{ action, count: count2 }] : [];
     })
   };
 }
@@ -6328,7 +6948,7 @@ function escapeHtml(value) {
   return String(value).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 }
 function agentName(agent) {
-  return agent === "cursor" ? "Cursor" : "Claude Code";
+  return agentDisplayName(agent);
 }
 function counted(n, one, many) {
   return `${formatCount(n)} ${n === 1 ? one : many}`;
@@ -6426,10 +7046,16 @@ function heroSection(result) {
 ${cells.join("\n")}
 </section>`;
 }
+function askOnCodexNote(result, byAction) {
+  if (result.agent !== "codex") return "";
+  if (!byAction.some((a) => a.action === "require_approval")) return "";
+  return `
+<p class="note"><strong>On Codex, &ldquo;would ask&rdquo; means the action would have been stopped.</strong> Codex gives a guardrail no way to ask you, so the guard sends those as a block. The label above is the guardrail&#39;s own decision, kept the same across apps so one guardrail reads the same way everywhere.</p>`;
+}
 function tallySection(result) {
   if (result.findings.length === 0) return "";
   const { bySeverity, byAction } = matchTally(result);
-  const item = (label, count) => `<li>${label}<span class="tally-count">${escapeHtml(formatCount(count))}</span></li>`;
+  const item = (label, count2) => `<li>${label}<span class="tally-count">${escapeHtml(formatCount(count2))}</span></li>`;
   const severities = bySeverity.map((s) => item(severityBadge(s.severity), s.count)).join("\n");
   const actions = byAction.map((a) => item(actionChip(a.action), a.count)).join("\n");
   return `<section class="tally" aria-label="Guardrail matches">
@@ -6439,7 +7065,7 @@ ${severities}
 <div class="tally-group"><p class="tally-label">What the guard would have done</p><ul class="pills">
 ${actions}
 </ul></div>
-<p class="note">Each guardrail counts its own matches, so a tool call that matched two guardrails is counted under both, and these totals can be larger than the number of risky actions.</p>
+<p class="note">Each guardrail counts its own matches, so a tool call that matched two guardrails is counted under both, and these totals can be larger than the number of risky actions.</p>${askOnCodexNote(result, byAction)}
 </section>`;
 }
 function tokensSection(result) {
@@ -6522,6 +7148,23 @@ ${rows}
 </table></div>
 </section>`;
 }
+function coverageNote(result) {
+  if (result.notRead === 0) return "";
+  const notRead = `${escapeHtml(formatCount(result.notRead))} further transcript file${result.notRead === 1 ? "" : "s"}`;
+  const was = result.notRead === 1 ? "was" : "were";
+  const tail = `Every count above is of what was read, not of everything that exists.`;
+  const open = `<p class="note"><strong>Coverage limit.</strong>`;
+  switch (result.agent) {
+    case "cursor":
+      return `${open} This reader opens each session&#39;s file, and the files of the sub-agents that session started, in each project&#39;s <code>agent-transcripts</code> folder. ${notRead} in those folders ${was} not read. ${tail}</p>`;
+    case "codex":
+      return `${open} This reader opens the session files Codex files by date, in <code>~/.codex/sessions/&lt;year&gt;/&lt;month&gt;/&lt;day&gt;/</code>. ${notRead} elsewhere under the sessions root ${was} not read. ${tail}</p>`;
+    case "claude":
+      return `${open} This reader opens each session&#39;s transcript and the sub-agent transcripts in its <code>subagents</code> folder, folding a sub-agent&#39;s actions into the session that started it. ${notRead} elsewhere under the projects root &mdash; a stray file, or one nested somewhere it does not walk &mdash; ${was} not read. ${tail}</p>`;
+    default:
+      return unhandledAgent(result.agent);
+  }
+}
 function corpusSection(result) {
   const lines = [];
   lines.push(
@@ -6542,13 +7185,7 @@ function corpusSection(result) {
       `${escapeHtml(agentName(result.agent))}&#39;s session files record no token counts, so this report shows none.`
     );
   }
-  const notRead = `${escapeHtml(formatCount(result.notRead))} further transcript file${result.notRead === 1 ? "" : "s"}`;
-  let coverage = "";
-  if (result.notRead > 0 && result.agent === "cursor") {
-    coverage = `<p class="note"><strong>Coverage limit.</strong> This reader opens each session&#39;s file, and the files of the sub-agents that session started, in each project&#39;s <code>agent-transcripts</code> folder. ${notRead} in those folders ${result.notRead === 1 ? "was" : "were"} not read. Every count above is of what was read, not of everything that exists.</p>`;
-  } else if (result.notRead > 0) {
-    coverage = `<p class="note"><strong>Coverage limit.</strong> This reader opens each session&#39;s transcript and the sub-agent transcripts in its <code>subagents</code> folder, folding a sub-agent&#39;s actions into the session that started it. ${notRead} elsewhere under the projects root &mdash; a stray file, or one nested somewhere it does not walk &mdash; ${result.notRead === 1 ? "was" : "were"} not read. Every count above is of what was read, not of everything that exists.</p>`;
-  }
+  const coverage = coverageNote(result);
   return `<section><h2>What was scanned</h2>
 <p class="note">${lines.join(" ")}</p>${coverage === "" ? "" : `
 ${coverage}`}
@@ -8012,6 +8649,7 @@ function displayTextOf(mapped) {
   }
   return mapped.tool;
 }
+var DEFAULT_CAPABILITIES = { tokens: true, skips: false };
 var NO_READER_SKIPS = {
   unparseableLines: 0,
   truncatedLastLines: 0,
@@ -8032,6 +8670,18 @@ function* claudeSessionCalls(session) {
     yield { kind: "action", candidates: [mapToolCall(payload)] };
   }
 }
+function sessionCallsFor(agent) {
+  switch (agent) {
+    case "cursor":
+      return cursorSessionCalls;
+    case "claude":
+      return claudeSessionCalls;
+    case "codex":
+      return codexSessionCalls;
+    default:
+      return unhandledAgent(agent);
+  }
+}
 var PLAIN_TOOL_NAME = /^[A-Za-z][A-Za-z0-9_]{0,63}$/;
 function unmappedToolName(raw) {
   if (raw === "") return "<unnamed>";
@@ -8042,6 +8692,8 @@ function byCountThenText(a, b) {
 }
 function aggregateScan(corpus, catalog, allowlist) {
   const agent = corpus.agent ?? "claude";
+  const capabilities = corpus.capabilities ?? DEFAULT_CAPABILITIES;
+  const sessionCalls = sessionCallsFor(agent);
   const byRule = /* @__PURE__ */ new Map();
   const ruleOf = /* @__PURE__ */ new Map();
   for (const entry of catalog) ruleOf.set(entry.rule.id, entry);
@@ -8049,12 +8701,12 @@ function aggregateScan(corpus, catalog, allowlist) {
   let riskyActions = 0;
   let skippedLines = 0;
   let notActions = 0;
-  const unmapped = /* @__PURE__ */ new Map();
+  const unmapped2 = /* @__PURE__ */ new Map();
   let tokens = EMPTY_TOKEN_TOTALS;
   for (const session of corpus.sessions) {
     skippedLines += session.skippedLines;
     for (const turn of session.turns) tokens = addUsage(tokens, turn.usage);
-    const calls = agent === "cursor" ? cursorSessionCalls(session) : claudeSessionCalls(session);
+    const calls = sessionCalls(session);
     for (const call of calls) {
       if (call.kind === "not-action") {
         notActions++;
@@ -8062,7 +8714,7 @@ function aggregateScan(corpus, catalog, allowlist) {
       }
       if (call.kind === "unmapped") {
         const name = unmappedToolName(call.name);
-        unmapped.set(name, (unmapped.get(name) ?? 0) + 1);
+        unmapped2.set(name, (unmapped2.get(name) ?? 0) + 1);
         continue;
       }
       toolCalls++;
@@ -8088,7 +8740,7 @@ function aggregateScan(corpus, catalog, allowlist) {
     const title = redactTitle(entry?.rule.title ?? ruleId);
     const severity = entry?.rule.severity ?? "unknown";
     const action = entry?.action ?? "warn";
-    const examples = [...acc.shapes].map(([text, count]) => ({ text, count })).sort(byCountThenText);
+    const examples = [...acc.shapes].map(([text, count2]) => ({ text, count: count2 })).sort(byCountThenText);
     findings.push({ ruleId, title, severity, action, count: acc.count, examples });
     for (const example of examples) {
       if (example.count >= 2) {
@@ -8109,10 +8761,12 @@ function aggregateScan(corpus, catalog, allowlist) {
     riskyActions,
     findings,
     recurring,
-    tokens: agent === "cursor" ? null : tokens
+    // Withheld, not zeroed, when the records carry no counts: a total of 0 is a
+    // measurement nobody made.
+    tokens: capabilities.tokens ? tokens : null
   };
-  if (agent !== "cursor") return result;
-  const unmappedTools = [...unmapped].map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+  if (!capabilities.skips) return result;
+  const unmappedTools = [...unmapped2].map(([name, count2]) => ({ name, count: count2 })).sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
   return {
     ...result,
     skipped: { ...corpus.skipped ?? NO_READER_SKIPS, notActions, unmappedTools }
@@ -8121,10 +8775,11 @@ function aggregateScan(corpus, catalog, allowlist) {
 var MAX_MCP_DISCLOSURES = 50;
 function mcpReviewDisclosures(corpus, catalog, allowlist) {
   const agent = corpus.agent ?? "claude";
+  const sessionCalls = sessionCallsFor(agent);
   const seen = /* @__PURE__ */ new Set();
   const out = [];
   for (const session of corpus.sessions) {
-    const calls = agent === "cursor" ? cursorSessionCalls(session) : claudeSessionCalls(session);
+    const calls = sessionCalls(session);
     for (const call of calls) {
       if (call.kind !== "action") continue;
       const { mapped, decision } = evaluateAction(catalog, allowlist, call.candidates);
@@ -8295,9 +8950,9 @@ async function parseSession(path, fallbackSessionId, source = fileLineSource) {
 // src/core/transcript/scan.ts
 import { readdirSync, statSync } from "fs";
 import { homedir } from "os";
-import { basename, isAbsolute, join as join3, relative } from "path";
+import { basename, isAbsolute, join as join4, relative } from "path";
 function defaultProjectsRoot(home = homedir()) {
-  return join3(home, ".claude", "projects");
+  return join4(home, ".claude", "projects");
 }
 var SNIFF_LINE_CAP = 40;
 async function sniff(path, source) {
@@ -8345,7 +9000,7 @@ async function scanTranscripts(projectsRoot = defaultProjectsRoot(), projectRoot
   const projects = [];
   let totalSessions = 0;
   for (const project of projectDirs.sort()) {
-    const dir = join3(projectsRoot, project);
+    const dir = join4(projectsRoot, project);
     let entries;
     try {
       if (!stat2(dir).isDirectory()) continue;
@@ -8356,7 +9011,7 @@ async function scanTranscripts(projectsRoot = defaultProjectsRoot(), projectRoot
     const sessions = [];
     for (const entry of entries.sort()) {
       if (!entry.endsWith(".jsonl")) continue;
-      const file2 = join3(dir, entry);
+      const file2 = join4(dir, entry);
       let size = 0;
       let mtimeMs = 0;
       try {
@@ -8437,18 +9092,27 @@ function parseUserRulesData(text) {
 }
 
 // src/core/version.ts
-var VERSION = "0.3.0";
+var VERSION = "0.4.0";
 
 // src/commands/agent-choice.ts
 function chosenAgent(value) {
-  return value === "claude" || value === "cursor" ? value : void 0;
+  return AGENTS.find((name) => name === value);
+}
+function agentList() {
+  const flags = AGENTS.map((name) => `--agent ${name}`);
+  const head = flags.slice(0, -1).join(", ");
+  const tail = flags.slice(-1).join("");
+  return head === "" ? tail : `${head} or ${tail}`;
 }
 function agentChoiceMessage(command) {
-  return `agenttrail-guard ${command}: choose --agent claude or --agent cursor.
+  const width = Math.max(...AGENTS.map((name) => name.length));
+  const lines = AGENTS.map(
+    (name) => `  agenttrail-guard ${command} --agent ${name.padEnd(width)}   for ${agentDisplayName(name)}
+`
+  );
+  return `agenttrail-guard ${command}: choose ${agentList()}.
 
-  agenttrail-guard ${command} --agent claude   for Claude Code
-  agenttrail-guard ${command} --agent cursor   for Cursor
-`;
+${lines.join("")}`;
 }
 
 // src/commands/scan.ts
@@ -8457,12 +9121,13 @@ var TOP_FINDINGS = 5;
 var SCAN_USAGE = `agenttrail-guard scan \u2014 what your agent has been doing
 
 Usage:
-  agenttrail-guard scan --agent <claude|cursor> [--dir <root>] [--out <file>]
+  agenttrail-guard scan --agent <claude|cursor|codex> [--dir <root>] [--out <file>]
                         [--artifact] [--no-open] [--review] [--json]
 
   --agent <app>  Whose sessions to read, and it is required: claude reads Claude Code's
                  transcripts in ~/.claude/projects, cursor reads Cursor's session files
-                 in ~/.cursor/projects
+                 in ~/.cursor/projects, codex reads Codex CLI's session files in
+                 ~/.codex/sessions
   --dir <root>   Read from this directory instead of the one --agent names
   --out <file>   Write the report to this file instead of the working directory. Given
                  a directory, the report is written inside it
@@ -8550,17 +9215,17 @@ function shouldOpen(flags, env) {
   return (env.CI ?? "") === "";
 }
 function reportPathFor(out, filename, io) {
-  if (out === void 0) return join4(io.cwd(), filename);
+  if (out === void 0) return join5(io.cwd(), filename);
   const target = resolve(io.cwd(), out);
   try {
-    if (io.stat(target).isDirectory()) return join4(target, filename);
+    if (io.stat(target).isDirectory()) return join5(target, filename);
   } catch {
   }
   return target;
 }
-var MAX_WALK_DEPTH2 = 8;
+var MAX_WALK_DEPTH3 = 8;
 function countTranscriptFiles(io, dir, depth = 0) {
-  if (depth > MAX_WALK_DEPTH2) return 0;
+  if (depth > MAX_WALK_DEPTH3) return 0;
   let entries;
   try {
     entries = io.readdir(dir);
@@ -8587,7 +9252,7 @@ async function readClaudeSession(io, item) {
     return { opened: 1 };
   }
   let opened = 1;
-  const subDir = join4(dirname(item.file), basename2(item.file, ".jsonl"), "subagents");
+  const subDir = join5(dirname(item.file), basename2(item.file, ".jsonl"), "subagents");
   let names;
   try {
     names = io.readdir(subDir);
@@ -8601,7 +9266,7 @@ async function readClaudeSession(io, item) {
   let skippedLines = session.skippedLines;
   for (const name of [...names].sort()) {
     if (!name.endsWith(".jsonl")) continue;
-    const subPath = join4(subDir, name);
+    const subPath = join5(subDir, name);
     try {
       if (io.stat(subPath).isDirectory()) continue;
     } catch {
@@ -8627,6 +9292,34 @@ async function readClaudeSession(io, item) {
     }
   }
   return { session: { ...session, turns, userPrompts, skippedLines }, opened };
+}
+function sessionRootFor(agent, home) {
+  switch (agent) {
+    case "cursor":
+      return defaultCursorProjectsRoot(home);
+    case "claude":
+      return defaultProjectsRoot(home);
+    case "codex":
+      return defaultCodexSessionsRoot(home);
+    default:
+      return unhandledAgent(agent);
+  }
+}
+async function readCorpusFor(agent, root, io) {
+  switch (agent) {
+    case "cursor":
+      return await readCursorCorpus(root, io);
+    case "codex":
+      return await readCodexCorpus(root, io);
+    case "claude":
+      return {
+        agent: "claude",
+        capabilities: { tokens: true, skips: false },
+        ...await readCorpus(io, root)
+      };
+    default:
+      return unhandledAgent(agent);
+  }
 }
 async function readCorpus(io, root) {
   const inventory = await scanTranscripts(root, void 0, {
@@ -8727,9 +9420,9 @@ function renderSummary(result, colorsEnabled, reportPath) {
     for (const finding of shown) {
       const severity = severityTone(finding.severity, finding.severity.padEnd(severityWidth));
       const action = actionTone(finding.action, actionLabel(finding.action).padEnd(11));
-      const count = `${formatCount(finding.count)}x`.padStart(countWidth);
+      const count2 = `${formatCount(finding.count)}x`.padStart(countWidth);
       out.push(
-        `  ${severity}  ${action}  ${count}  ${terminalText(finding.title)}  ${c.dim(finding.ruleId)}`
+        `  ${severity}  ${action}  ${count2}  ${terminalText(finding.title)}  ${c.dim(finding.ruleId)}`
       );
     }
     if (result.findings.length > shown.length) {
@@ -8832,13 +9525,13 @@ ${SCAN_USAGE}`);
     return 1;
   }
   const home = io.homedir();
-  const root = flags.dir ?? (agent === "cursor" ? defaultCursorProjectsRoot(home) : defaultProjectsRoot(home));
+  const root = flags.dir ?? sessionRootFor(agent, home);
   const now = deps.now ?? /* @__PURE__ */ new Date();
   const config = parseConfig(io.readFile(configPath(home)));
   const userRules = parseUserRulesData(io.readFile(userRulesPath(home)));
   const catalog = compileCatalog([...deps.catalog ?? SHIPPED_CATALOG, ...userRules], config);
   const allowlist = compileAllowlist(config.allowlist);
-  const corpus = agent === "cursor" ? await readCursorCorpus(root, io) : { agent: "claude", ...await readCorpus(io, root) };
+  const corpus = await readCorpusFor(agent, root, io);
   const result = aggregateScan(corpus, catalog, allowlist);
   const meta = { version: VERSION, generatedAt: now };
   if (flags.json) {

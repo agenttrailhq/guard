@@ -25,8 +25,8 @@
  *
  * ── FOUR IO objects, and the split is structural ────────────────────────────
  * `hook` takes `GuardIO`; `init`/`status`/`uninstall`/`guardrails` take `SetupIO`; `scan`
- * takes `ScanIO`; `init --agent cursor`, `uninstall --agent cursor` and `status` also take
- * `CursorFileIO`, for Cursor's hooks file, and `status` reads the crash spool through
+ * takes `ScanIO`; `init`, `uninstall` and `status` also take `CursorFileIO` and
+ * `CodexFileIO`, for those two apps' hooks files, and `status` reads the crash spool through
  * `GuardIO`. They are separate because `io.ts` is inside the hook bundle graph, so
  * teaching it to spawn a process would ship a process spawner into the file Claude Code
  * runs on every tool call — and `scan` needs one, to open the report. This module is
@@ -40,7 +40,9 @@
  * `hook-entry.ts` — can import `src/net/**`.
  */
 
+import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
+import type { CodexFileIO } from "./codex/codex-io.js";
 import { runCrashReport } from "./commands/crash-report.js";
 import { runHook } from "./commands/hook.js";
 import { runInit } from "./commands/init.js";
@@ -55,18 +57,18 @@ import { createRealIO, type GuardIO } from "./io.js";
 import { createRealScanIO, type ScanIO } from "./scan-io.js";
 import { createRealSetupIO, type SetupIO } from "./setup-io.js";
 
-const USAGE = `agenttrail-guard — local guardrails for Claude Code and Cursor
+const USAGE = `agenttrail-guard — local guardrails for Claude Code, Cursor and Codex CLI
 
 Usage:
-  agenttrail-guard init --agent <claude|cursor>        Install the hook for Claude Code or Cursor, and seed config
-  agenttrail-guard status                              Show what is enforcing, and what it has been doing
-  agenttrail-guard uninstall --agent <claude|cursor>   Remove the hook from Claude Code or Cursor (only ours)
-  agenttrail-guard hook                                Evaluate a hook payload on stdin (used by Claude Code and Cursor)
-  agenttrail-guard guardrails                          See and change what the guard enforces
-  agenttrail-guard scan --agent <claude|cursor>        Read your transcripts; write a shareable report
-  agenttrail-guard crash-report                        Show, enable, disable, send or clear crash reports
-  agenttrail-guard --help                              Show this message
-  agenttrail-guard --version                           Show the version
+  agenttrail-guard init --agent <claude|cursor|codex>        Install the hook for one of them, and seed config
+  agenttrail-guard status                                    Show what is enforcing, and what it has been doing
+  agenttrail-guard uninstall --agent <claude|cursor|codex>   Remove the hook from one of them (only ours)
+  agenttrail-guard hook                                      Evaluate a hook payload on stdin (used by all three)
+  agenttrail-guard guardrails                                See and change what the guard enforces
+  agenttrail-guard scan --agent <claude|cursor|codex>        Read your transcripts; write a shareable report
+  agenttrail-guard crash-report                              Show, enable, disable, send or clear crash reports
+  agenttrail-guard --help                                    Show this message
+  agenttrail-guard --version                                 Show the version
 
 crash-report flags: --status (default) --enable --disable --send [--endpoint <url>] --clear
 Crash reporting is OFF by default and sends stack traces only. It is the one network
@@ -75,7 +77,7 @@ call this tool can make, and only when you turn it on and run --send yourself.
 guardrails subcommands: list  show  enable  disable  set-action  add  remove  allow
                         reset  validate  (run "agenttrail-guard guardrails --help")
 
-scan flags: --agent <claude|cursor> (required) --dir <root> --out <file> --artifact
+scan flags: --agent <claude|cursor|codex> (required) --dir <root> --out <file> --artifact
             --no-open --review --json
 scan reads transcripts already on your disk, writes one self-contained HTML file, and
 opens it in your browser (--no-open to skip).
@@ -102,6 +104,7 @@ export async function runCli(
   setupIo?: SetupIO,
   scanIo?: ScanIO,
   cursorIo?: CursorFileIO,
+  codexIo?: CodexFileIO,
 ): Promise<number> {
   let positionals: string[];
   let values: {
@@ -182,19 +185,32 @@ export async function runCli(
   // for the setup IO, and so a test can drive them with a fake.
   if (command === "init" || command === "status" || command === "uninstall") {
     const setup = setupIo ?? createRealSetupIO();
-    // Omitted rather than `undefined`, so each command builds the real Cursor seam itself.
-    const cursorDeps = cursorIo === undefined ? {} : { cursorIo };
+    // Omitted rather than `undefined`, so each command builds the real seam itself.
+    const appDeps = {
+      ...(cursorIo === undefined ? {} : { cursorIo }),
+      ...(codexIo === undefined ? {} : { codexIo }),
+    };
     if (command === "init") {
-      return runInit(setup, { print: values.print === true, agent: values.agent }, cursorDeps);
+      // `cliPath` lets `init` tell an `npx` run (its path carries `/_npx/`) from a global
+      // install, so its closing line names a command the user actually has. This is the
+      // real entry path; a direct unit-test call omits it and gets the global-install line.
+      return runInit(
+        setup,
+        { print: values.print === true, agent: values.agent },
+        {
+          ...appDeps,
+          cliPath: fileURLToPath(import.meta.url),
+        },
+      );
     }
     if (command === "status") {
       return runStatus(setup, {
         clearHistory: values["clear-history"] === true,
         guardIo: io,
-        ...cursorDeps,
+        ...appDeps,
       });
     }
-    return runUninstall(setup, { agent: values.agent }, cursorDeps);
+    return runUninstall(setup, { agent: values.agent }, appDeps);
   }
 
   io.writeStdout(`agenttrail-guard: unknown command "${command}".\n\n${USAGE}`);

@@ -169,7 +169,9 @@ describe("no network — the sender is unreachable from `hook`", () => {
     "core/cursor-mapper.ts",
     "core/cursor-emit.ts",
     "core/cursor-entry.ts",
-  ])("the Cursor module %s is in the hook graph, so the two fences above cover it", (module) => {
+    "core/codex-mapper.ts",
+    "core/codex-emit.ts",
+  ])("the per-app module %s is in the hook graph, so the two fences above cover it", (module) => {
     const file = join(SRC, ...module.split("/"));
     expect(graphFrom(HOOK_ENTRY)).toContain(file);
     expect(NETWORK.test(code(file))).toBe(false);

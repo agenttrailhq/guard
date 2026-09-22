@@ -16,6 +16,7 @@ import { hasGuardCursorEntry } from "../core/cursor-entry.js";
 import type { GuardIO } from "../io.js";
 import { resolvePluginScaffoldDir } from "../plugin/install.js";
 import type { SetupIO } from "../setup-io.js";
+import { fakeCodexFiles } from "./codex-files.js";
 import { fakeCursorFiles } from "./cursor-files.js";
 
 function harness(stdin = "{}") {
@@ -232,9 +233,10 @@ describe("other commands", () => {
     expect(writes).toHaveLength(0);
   });
 
-  it("gives status the Cursor file seam and the hook IO it was handed", async () => {
-    // `status` reads `~/.cursor/hooks.json` through `cursorIo` and the crash spool through
-    // the hook's `GuardIO`. Checked by what each seam was asked to read, not by the output.
+  it("gives status the app file seams and the hook IO it was handed", async () => {
+    // `status` reads `~/.cursor/hooks.json` through `cursorIo`, `~/.codex/hooks.json`
+    // through `codexIo`, and the crash spool through the hook's `GuardIO`. Checked by what
+    // each seam was asked to read, not by the output.
     const h = harness();
     const listed: string[] = [];
     const io: GuardIO = {
@@ -257,11 +259,16 @@ describe("other commands", () => {
         stderr: "",
       }),
     };
-    expect(await runCli(["status"], io, setupIo, undefined, cursor.io)).toBe(0);
+    const codex = fakeCodexFiles();
+    expect(await runCli(["status"], io, setupIo, undefined, cursor.io, codex.io)).toBe(0);
     expect(cursor.reads).toContain(join("/home/test", ".cursor", "hooks.json"));
+    expect(codex.reads).toContain(join("/home/test", ".codex", "hooks.json"));
     expect(listed).toEqual([join("/home/test", ".agenttrail", "guard", "crashes")]);
     expect(h.out()).toContain(
       "Enforcement: NOT INSTALLED — run `agenttrail-guard init --agent cursor`.",
+    );
+    expect(h.out()).toContain(
+      "Enforcement: NOT INSTALLED — run `agenttrail-guard init --agent codex`.",
     );
   });
 
@@ -334,7 +341,9 @@ describe("other commands", () => {
       isTTY: () => false,
     };
     expect(await runCli(["scan"], h.io, undefined, scanIo)).toBe(1);
-    expect(h.out()).toContain("agenttrail-guard scan: choose --agent claude or --agent cursor.");
+    expect(h.out()).toContain(
+      "agenttrail-guard scan: choose --agent claude, --agent cursor or --agent codex.",
+    );
     expect(touched).toEqual([]);
   });
 
@@ -355,22 +364,22 @@ describe("other commands", () => {
 describe("usage and the README name the same commands that take --agent", () => {
   /** The three commands `--agent` is required on, as usage spells them. */
   const SPELLINGS = [
-    "init --agent <claude|cursor>",
-    "scan --agent <claude|cursor>",
-    "uninstall --agent <claude|cursor>",
+    "init --agent <claude|cursor|codex>",
+    "scan --agent <claude|cursor|codex>",
+    "uninstall --agent <claude|cursor|codex>",
   ];
 
-  /** `<command> --agent <claude|cursor>`, wherever a line starts with `start` then the bin name. */
+  /** `<command> --agent <claude|cursor|codex>`, wherever a line starts with `start` then the bin name. */
   function agentCommands(lines: readonly string[], start: string): string[] {
     const prefix = `${start}agenttrail-guard `;
     return lines
       .filter((line) => line.startsWith(prefix))
       .map((line) => line.slice(prefix.length))
-      .flatMap((rest) => /^(\S+ --agent <claude\|cursor>)/.exec(rest)?.[1] ?? [])
+      .flatMap((rest) => /^(\S+ --agent <claude\|cursor\|codex>)/.exec(rest)?.[1] ?? [])
       .sort();
   }
 
-  it("--help lists init, uninstall and scan with --agent <claude|cursor>", async () => {
+  it("--help lists init, uninstall and scan with --agent <claude|cursor|codex>", async () => {
     const h = harness();
     await runCli(["--help"], h.io);
     expect(agentCommands(h.out().split("\n"), "  ")).toEqual(SPELLINGS);
@@ -458,7 +467,7 @@ describe("--agent on init and uninstall, through the CLI's own parser", () => {
     const h = harness();
     const { setupIo, cursor, touched } = recordingSeams(h.io.writeStdout);
     expect(await runCli(argv, h.io, setupIo, undefined, cursor.io)).toBe(1);
-    expect(h.out()).toContain("choose --agent claude or --agent cursor");
+    expect(h.out()).toContain("choose --agent claude, --agent cursor or --agent codex");
     expect(touched).toEqual([]);
     expect(cursor.reads).toEqual([]);
     expect(cursor.writes).toEqual([]);
@@ -509,6 +518,53 @@ describe("--agent on init and uninstall, through the CLI's own parser", () => {
     expect(h.out()).toContain("init --agent cursor --print — this is what would happen");
     expect(cursor.writes).toEqual([]);
     expect(touched.filter((t) => t.startsWith("write ") || t.startsWith("claude "))).toEqual([]);
+  });
+
+  it("`init --agent codex` writes guard's entries, and `uninstall --agent=codex` removes them", async () => {
+    // Also the proof that the Codex seam is threaded through: with it not passed on, these
+    // would reach for the real `~/.codex/hooks.json`.
+    const hookSource = join(resolvePluginScaffoldDir(), "scripts", "guard-hook.mjs");
+    const hooksPath = join("/home/test", ".codex", "hooks.json");
+    const codex = fakeCodexFiles({ files: { [hookSource]: "// hook\n" } });
+    const claudeCalls: string[][] = [];
+    const seams = (out: (text: string) => void): SetupIO => ({
+      writeStdout: out,
+      readFile: () => undefined,
+      exists: () => true,
+      writeFileAtomic: () => {},
+      homedir: () => "/home/test",
+      runClaude: (args) => {
+        claudeCalls.push([...args]);
+        return { code: 0, stdout: "[]", stderr: "" };
+      },
+    });
+
+    const installed = harness();
+    expect(
+      await runCli(
+        ["init", "--agent", "codex"],
+        installed.io,
+        seams(installed.io.writeStdout),
+        undefined,
+        undefined,
+        codex.io,
+      ),
+    ).toBe(0);
+    expect(codex.files.get(hooksPath)?.text).toContain("--agent codex");
+
+    const removed = harness();
+    expect(
+      await runCli(
+        ["uninstall", "--agent=codex"],
+        removed.io,
+        seams(removed.io.writeStdout),
+        undefined,
+        undefined,
+        codex.io,
+      ),
+    ).toBe(0);
+    expect(codex.files.has(hooksPath)).toBe(false);
+    expect(claudeCalls).toEqual([]);
   });
 });
 

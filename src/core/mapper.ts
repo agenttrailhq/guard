@@ -5,8 +5,27 @@
  * |----------------------------------------|----------------|-----------------------------|
  * | `Bash`, `PowerShell`                   | `full_command` | `tool_input.command`        |
  * | `Edit`, `Write`, `Read`, `NotebookEdit`| `file_path`    | `file_path`/`notebook_path` |
+ * | `Grep`, `Glob`                         | `file_path`    | the searched path, see below|
  * | `WebSearch`                            | `full_command` | `tool_input.query`          |
  * | `mcp__*`                               | `full_command` | the serialized input        |
+ *
+ * ── Search reads files, so `Grep` and `Glob` are file tools ──────────────────
+ * Both were absent from the matcher in `plugin/hooks/hooks.json` and fell to the
+ * unknown-tool branch, which finds no `command` and no `file_path` and yields no channel.
+ * So a guardrail on `**​/.env` stopped `Read` on the file and said nothing about
+ * `Grep` `-n AWS_SECRET --glob .env` over the folder that holds it — the same content,
+ * through a tool nobody was checking. Cursor's mapper already intercepts its `Grep`; this
+ * is the Claude Code half of the same hole.
+ *
+ * The searched path is the FOLDER and the GLOB joined, most specific form only, because
+ * this mapper yields one call: `path` + `glob` (`Grep`) or `path` + `pattern` (`Glob`).
+ * `Grep`'s own `pattern` is the regex it searches file CONTENT for and is never read as a
+ * path. A folder with no glob is evaluated as the folder.
+ *
+ * Residual, stated rather than discovered: with both a folder and a glob, only the joined
+ * form is evaluated, so a rule written against the bare folder does not fire on a search
+ * that narrowed to a glob inside it. Cursor's mapper evaluates both forms because its
+ * path carries candidates (`cursor-mapper.ts`); the Claude Code hook path does not.
  *
  * ── There is no `url` channel, and `WebFetch` is NOT intercepted ──────────────
  * The engine reads only `detail` and `file_path` (`engine/matchers.ts`), and
@@ -59,6 +78,54 @@ const SHELL_TOOLS = new Set(["Bash", "PowerShell"]);
  */
 const FILE_TOOLS = new Set(["Edit", "Write", "Read", "MultiEdit", "NotebookEdit"]);
 
+/**
+ * Search tools, and which of their fields holds the GLOB.
+ *
+ * Two different fields, which is why this is a map and not a set. `Glob`'s `pattern` is
+ * the glob itself; `Grep`'s `pattern` is a regular expression matched against file
+ * contents, and reading it as a path would evaluate a user's search string against file
+ * rules — noise at best, and a rule matching on it would block a read of nothing.
+ */
+const SEARCH_GLOB_FIELD = new Map([
+  ["Grep", "glob"],
+  ["Glob", "pattern"],
+]);
+
+/** The value when it is a non-empty string. An empty string counts as absent. */
+function nonEmpty(value: unknown): string | undefined {
+  return typeof value === "string" && value !== "" ? value : undefined;
+}
+
+/**
+ * A glob rooted at `/`, `\`, or a drive letter, which a folder cannot prefix.
+ *
+ * Shared with `cursor-mapper.ts` so the two mappers cannot disagree about what "already
+ * absolute" means.
+ */
+export function isAbsoluteGlob(glob: string): boolean {
+  return /^(?:[\\/]|[A-Za-z]:[\\/])/.test(glob);
+}
+
+/** A folder and a relative glob, with exactly one `/` between them. Shared, as above. */
+export function joinSearchPath(dir: string, glob: string): string {
+  return `${dir.replace(/[\\/]+$/, "")}/${glob}`;
+}
+
+/**
+ * The path a search actually reaches: the folder narrowed by the glob, when there is one.
+ *
+ * Total, and never throws. `undefined` when the payload names neither — which yields no
+ * channel and therefore no opinion, as an unmapped tool does.
+ */
+function searchPath(tool: string, input: Record<string, unknown>): string | undefined {
+  const field = SEARCH_GLOB_FIELD.get(tool);
+  const dir = nonEmpty(input.path);
+  const glob = field === undefined ? undefined : nonEmpty(input[field]);
+  if (glob === undefined) return dir;
+  if (dir === undefined || isAbsoluteGlob(glob)) return glob;
+  return joinSearchPath(dir, glob);
+}
+
 /** Keep the FIRST `MAX_DETAIL_LEN` chars. */
 export function capEnd(s: string): string {
   return s.length > MAX_DETAIL_LEN ? s.slice(0, MAX_DETAIL_LEN) : s;
@@ -107,6 +174,9 @@ export function mapToolCall(payload: PreToolUsePayload): MappedCall {
   } else if (FILE_TOOLS.has(tool)) {
     const fp = input.file_path ?? input.notebook_path;
     if (typeof fp === "string") args.file_path = fp;
+  } else if (SEARCH_GLOB_FIELD.has(tool)) {
+    const fp = searchPath(tool, input);
+    if (fp !== undefined) args.file_path = fp;
   } else if (tool === "WebSearch") {
     if (typeof input.query === "string") args.full_command = capEnd(input.query);
   } else if (tool.startsWith("mcp__")) {

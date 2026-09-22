@@ -2,10 +2,11 @@
  * `agenttrail-guard scan` — read the transcripts already on disk, and say what the
  * agent has been doing.
  *
- * `--agent claude` reads Claude Code's transcripts under `~/.claude/projects`, and
+ * `--agent claude` reads Claude Code's transcripts under `~/.claude/projects`,
  * `--agent cursor` reads Cursor's session files under `~/.cursor/projects` (see
- * `core/cursor-transcript/scan.ts`). The flag is required, as it is on `init` and
- * `uninstall`, and only the exact names `claude` and `cursor` count.
+ * `core/cursor-transcript/scan.ts`), and `--agent codex` reads Codex CLI's session files
+ * under `~/.codex/sessions` (see `core/codex-transcript/scan.ts`). The flag is required,
+ * as it is on `init` and `uninstall`, and only the names in `AGENTS` count.
  *
  * Read with no account, no credentials and no network —
  * opt-in crash reporting is the one exception anywhere in this tool, it is off by
@@ -42,7 +43,9 @@
 
 import { basename, dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
+import { unhandledAgent } from "../core/agent.js";
 import { SHIPPED_CATALOG } from "../core/catalog.js";
+import { defaultCodexSessionsRoot, readCodexCorpus } from "../core/codex-transcript/scan.js";
 import { createColors, hyperlink, shouldUseColor } from "../core/color.js";
 import { parseConfig } from "../core/config.js";
 import { defaultCursorProjectsRoot, readCursorCorpus } from "../core/cursor-transcript/scan.js";
@@ -89,12 +92,13 @@ const TOP_FINDINGS = 5;
 export const SCAN_USAGE = `agenttrail-guard scan — what your agent has been doing
 
 Usage:
-  agenttrail-guard scan --agent <claude|cursor> [--dir <root>] [--out <file>]
+  agenttrail-guard scan --agent <claude|cursor|codex> [--dir <root>] [--out <file>]
                         [--artifact] [--no-open] [--review] [--json]
 
   --agent <app>  Whose sessions to read, and it is required: claude reads Claude Code's
                  transcripts in ~/.claude/projects, cursor reads Cursor's session files
-                 in ~/.cursor/projects
+                 in ~/.cursor/projects, codex reads Codex CLI's session files in
+                 ~/.codex/sessions
   --dir <root>   Read from this directory instead of the one --agent names
   --out <file>   Write the report to this file instead of the working directory. Given
                  a directory, the report is written inside it
@@ -116,9 +120,9 @@ Commands and paths are redacted before anything is displayed or written.
 /** Parsed `scan` flags. */
 export interface ScanFlags {
   /**
-   * The app named by `--agent`, when every `--agent` names the same one of `claude` and
-   * `cursor`. `undefined` for a missing flag, a lone `--agent`, any other value, or two
-   * different apps.
+   * The app named by `--agent`, when every `--agent` names the same one of `AGENTS`.
+   * `undefined` for a missing flag, a lone `--agent`, any other value, or two different
+   * apps.
    */
   readonly agent?: AgentSource | undefined;
   readonly dir?: string | undefined;
@@ -369,6 +373,49 @@ async function readClaudeSession(
   }
 
   return { session: { ...session, turns, userPrompts, skippedLines }, opened };
+}
+
+/**
+ * Where an app keeps its sessions, when `--dir` did not say.
+ *
+ * A checked switch, so an app added to `AGENTS` fails to compile until someone says where
+ * its sessions live. As a ternary defaulting to Claude Code's root, a new app would have
+ * scanned `~/.claude/projects` and reported another app's history as its own.
+ */
+function sessionRootFor(agent: AgentSource, home: string): string {
+  switch (agent) {
+    case "cursor":
+      return defaultCursorProjectsRoot(home);
+    case "claude":
+      return defaultProjectsRoot(home);
+    case "codex":
+      return defaultCodexSessionsRoot(home);
+    default:
+      return unhandledAgent(agent);
+  }
+}
+
+/**
+ * Read one app's sessions into a corpus, stamped with the app that wrote them.
+ *
+ * The stamp is what `aggregateScan` and the report dispatch on, so it is set HERE, beside
+ * the reader that produced it, and never inferred further down.
+ */
+async function readCorpusFor(agent: AgentSource, root: string, io: ScanIO): Promise<ScanCorpus> {
+  switch (agent) {
+    case "cursor":
+      return await readCursorCorpus(root, io);
+    case "codex":
+      return await readCodexCorpus(root, io);
+    case "claude":
+      return {
+        agent: "claude",
+        capabilities: { tokens: true, skips: false },
+        ...(await readCorpus(io, root)),
+      };
+    default:
+      return unhandledAgent(agent);
+  }
 }
 
 /** Read and parse every transcript under `root`, counting what could not be read. */
@@ -685,8 +732,7 @@ export async function runScan(
   }
 
   const home = io.homedir();
-  const root =
-    flags.dir ?? (agent === "cursor" ? defaultCursorProjectsRoot(home) : defaultProjectsRoot(home));
+  const root = flags.dir ?? sessionRootFor(agent, home);
   const now = deps.now ?? new Date();
 
   // The same three inputs the hook reads, so the report describes THIS machine's
@@ -696,10 +742,7 @@ export async function runScan(
   const catalog = compileCatalog([...(deps.catalog ?? SHIPPED_CATALOG), ...userRules], config);
   const allowlist = compileAllowlist(config.allowlist);
 
-  const corpus: ScanCorpus =
-    agent === "cursor"
-      ? await readCursorCorpus(root, io)
-      : { agent: "claude", ...(await readCorpus(io, root)) };
+  const corpus: ScanCorpus = await readCorpusFor(agent, root, io);
   const result = aggregateScan(corpus, catalog, allowlist);
   const meta: ReportMeta = { version: VERSION, generatedAt: now };
 

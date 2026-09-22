@@ -45,7 +45,7 @@
  * - an approval at `beforeShellExecution`, where it is asked;
  * - a warning at `preToolUse`, and not again at `beforeShellExecution`.
  *
- * ── Launched by guard's Claude Code plugin ───────────────────────────────────
+ * ── Launched by another app's copy of guard ──────────────────────────────────
  * Cursor can also run guard's Claude Code plugin, handing it Cursor's payload. That copy
  * has no `beforeShellExecution` entry, so it cannot leave an approval for later.
  * - With guard's Cursor entry installed, the Cursor entry answers approvals and warnings
@@ -56,6 +56,7 @@
  *   logs every decision.
  */
 
+import { unhandledAgent } from "./agent.js";
 import type { CursorCheckedEvent } from "./cursor-mapper.js";
 import type { StdoutSink } from "./emit.js";
 import { APPROVAL_LEAD } from "./evaluate.js";
@@ -63,6 +64,32 @@ import type { AgentSource, GuardDecision, MappedCall } from "./types.js";
 
 /** Cursor's no-opinion answer. */
 export const NO_OPINION = "{}";
+
+/**
+ * Is this run guard's own Cursor entry, rather than another app's copy of guard that has
+ * been handed a Cursor payload?
+ *
+ * Only guard's Cursor install writes `--agent cursor`, so the flag answers it. A checked
+ * switch rather than `launchedAs === "claude"`, which is what it used to be: Codex can
+ * import Claude Code hooks and load Claude-style plugins, so a third app arriving here
+ * would have been read as guard's own Cursor entry — the branch that assumes a
+ * `beforeShellExecution` checkpoint exists to hold an approval, which in that case there
+ * is not. Anything that is not `cursor`, including no flag, is the other-copy case.
+ *
+ * Pure, and never throws for any member of the union.
+ */
+export function isGuardsCursorEntry(launchedAs: AgentSource | undefined): boolean {
+  switch (launchedAs) {
+    case "cursor":
+      return true;
+    case "claude":
+    case "codex":
+    case undefined:
+      return false;
+    default:
+      return unhandledAgent(launchedAs);
+  }
+}
 
 /** What an approval reads as when Cursor has no way to ask, and the guard denies instead. */
 export const CURSOR_APPROVAL_LEAD =
@@ -105,8 +132,11 @@ export function agentMessage(message: string): string {
 
 /** What decides Cursor's answer for one call. */
 export interface CursorAnswerInput {
-  /** The app whose hook configuration launched the hook. */
-  readonly launchedAs: AgentSource;
+  /**
+   * The app whose hook configuration launched the hook, or `undefined` when its command
+   * line named none. Only `cursor` is guard's own Cursor entry — see `isGuardsCursorEntry`.
+   */
+  readonly launchedAs: AgentSource | undefined;
   readonly event: CursorCheckedEvent;
   /** Cursor's tool name at `preToolUse` (`Shell`, `Read`, …). Not read at `beforeShellExecution`. */
   readonly tool: string;
@@ -145,7 +175,7 @@ export function buildCursorAnswer(input: CursorAnswerInput): CursorAnswer {
   const matched = decision.matches.length > 0;
   const approvalDeny = permission("deny", cursorApprovalMessage(decision.reason));
 
-  if (launchedAs === "claude") {
+  if (!isGuardsCursorEntry(launchedAs)) {
     const onlyCheckpoint = input.cursorEntryPresent !== true;
     if (decision.decision === "deny") {
       return { output: permission("deny", decision.reason), record: onlyCheckpoint };

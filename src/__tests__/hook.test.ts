@@ -21,9 +21,11 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { type HookDeps, NOT_CHECKED_MESSAGE, runHook } from "../commands/hook.js";
+import { CODEX_APPROVAL_LEAD } from "../core/codex-emit.js";
 import { agentMessage, CURSOR_APPROVAL_LEAD } from "../core/cursor-emit.js";
 import { APPROVAL_LEAD } from "../core/evaluate.js";
 import type { DecisionEvent, EventRecorder } from "../core/events.js";
+import { dedupMarkerPath, eventsPath } from "../core/paths.js";
 import type { GuardRule } from "../core/types.js";
 import type { GuardIO } from "../io.js";
 
@@ -244,7 +246,12 @@ describe("the hook never touches the exit code", () => {
 describe("the config is read from ~/.agenttrail/guard/config.json", () => {
   it("looks in the right place", async () => {
     const readFile = vi.fn(() => undefined);
-    const h = harness({ readFile }, "{}");
+    // A real Claude Code payload, not `{}`: a payload no app claims is now answered and
+    // recorded without reading anything at all, which would make this assert nothing.
+    const h = harness(
+      { readFile },
+      JSON.stringify({ tool_name: "Bash", tool_input: { command: "safe" } }),
+    );
     await runHook(h.io, { catalog: [BLOCKING_RULE] });
     expect(readFile).toHaveBeenCalledWith("/home/test/.agenttrail/guard/config.json");
   });
@@ -1698,5 +1705,425 @@ describe("the shipped rules, through guard's Claude Code plugin receiving Cursor
     });
     expect(soleCursorAnswer(present.written)).toEqual({});
     expect(present.events).toEqual([]);
+  });
+});
+
+/**
+ * Codex — the app whose payload looks like Claude Code's and whose ANSWERS are not.
+ *
+ * Measured on codex-cli 0.154.0: Codex sends Claude Code's `PreToolUse` shape plus
+ * `turn_id` and `model`, names its edit tool `apply_patch`, and fires a second event,
+ * `PermissionRequest`, for the same action. It rejects `ask` and runs the action, so an
+ * approval is answered as a deny; it discards an answer carrying one unknown field; and
+ * it sends no `tool_use_id` on the second event, which is why that path keys its log line
+ * on the turn and the command instead.
+ */
+describe("the Codex path answers in Codex's terms", () => {
+  const TURN = "01a0c22e-0000-4000-8000-000000000001";
+
+  /** One Codex call, in the shape measured on a live session. */
+  function codexCall(tool: string, command: string, event = "PreToolUse"): string {
+    return JSON.stringify({
+      hook_event_name: event,
+      tool_name: tool,
+      tool_input: { command },
+      turn_id: TURN,
+      model: "gpt-5.6-luna",
+      permission_mode: event === "PreToolUse" ? "bypassPermissions" : "default",
+      // Only `PreToolUse` carries one. That is the whole reason for the Codex log key.
+      ...(event === "PreToolUse" ? { tool_use_id: "exec-1" } : {}),
+    });
+  }
+
+  const shell = (command: string, event?: string) => codexCall("Bash", command, event);
+  const edit = (path: string, event?: string) =>
+    codexCall("apply_patch", `*** Begin Patch\n*** Add File: ${path}\n+x\n*** End Patch`, event);
+
+  /** The catalog these cases are judged against: one rule per verdict, on both channels. */
+  const CODEX_CATALOG = [
+    BLOCKING_RULE,
+    ASKING_RULE,
+    WARNING_RULE,
+    FILE_BLOCKING_RULE,
+    FILE_ASKING_RULE,
+    FILE_WARNING_RULE,
+  ];
+
+  /** Run one payload, collecting what was decided, what was logged and what was read. */
+  async function run(stdin: string, deps: Partial<HookDeps> = {}) {
+    const events: DecisionEvent[] = [];
+    const crashes: unknown[] = [];
+    const readPaths: string[] = [];
+    const h = harness(
+      {
+        readFile: (path) => {
+          readPaths.push(path);
+          return undefined;
+        },
+      },
+      stdin,
+    );
+    await runHook(h.io, {
+      catalog: CODEX_CATALOG,
+      recorder: { record: (event) => void events.push(event) },
+      captureCrash: (err) => void crashes.push(err),
+      ...deps,
+    });
+    return { written: h.written, events, crashes, readPaths };
+  }
+
+  /** The one object written, parsed — or `undefined` when nothing was written. */
+  function answer(written: readonly string[]): Record<string, never> | undefined {
+    expect(written.length).toBeLessThanOrEqual(1);
+    return written.length === 0 ? undefined : JSON.parse(written[0] as string);
+  }
+
+  it.each([
+    ["no flag at all", {}],
+    ["--agent codex", { agent: "codex" as const }],
+    ["--agent claude, which Codex can genuinely launch", { agent: "claude" as const }],
+  ])("answers and logs as Codex under %s", async (_label, deps) => {
+    // The payload overrules the flag. Codex can import Claude Code hooks and load
+    // Claude-style plugins, so guard's Claude Code entry really can run inside Codex —
+    // and that copy has to answer in Codex's terms, not Claude Code's.
+    const r = await run(shell("danger --now"), deps);
+    expect(answer(r.written)).toEqual({
+      hookSpecificOutput: {
+        hookEventName: "PreToolUse",
+        permissionDecision: "deny",
+        permissionDecisionReason:
+          "agenttrail-guard blocked this: blocks danger (guardrail t.block)",
+      },
+    });
+    expect(r.events.map((e) => e.agent)).toEqual(["codex"]);
+  });
+
+  it("an approval is a deny, because Codex rejects ask and runs the action", async () => {
+    const r = await run(shell("approve-me"));
+    expect(answer(r.written)).toEqual({
+      hookSpecificOutput: {
+        hookEventName: "PreToolUse",
+        permissionDecision: "deny",
+        permissionDecisionReason: `${CODEX_APPROVAL_LEAD}blocks danger (guardrail t.ask)`,
+      },
+    });
+    expect(r.events.map((e) => e.decision.decision)).toEqual(["ask"]);
+  });
+
+  it("a warning is a message with no decision, and only at PreToolUse", async () => {
+    const pre = await run(shell("caution"));
+    expect(answer(pre.written)).toEqual({
+      systemMessage: "agenttrail-guard is warning about this: blocks danger (guardrail t.warn)",
+    });
+    expect(pre.events).toHaveLength(1);
+
+    const permission = await run(shell("caution", "PermissionRequest"));
+    expect(permission.written).toEqual([]);
+    expect(permission.events).toHaveLength(1);
+  });
+
+  it("a PermissionRequest block denies the escalation, in that event's own shape", async () => {
+    const r = await run(shell("danger --now", "PermissionRequest"));
+    expect(answer(r.written)).toEqual({
+      hookSpecificOutput: {
+        hookEventName: "PermissionRequest",
+        decision: {
+          behavior: "deny",
+          message: "agenttrail-guard blocked this: blocks danger (guardrail t.block)",
+        },
+      },
+    });
+    expect(r.events.map((e) => e.agent)).toEqual(["codex"]);
+  });
+
+  it("the edit Codex shows a card for is denied at PermissionRequest as well", async () => {
+    // The measured case: an edit outside the project fired both events, and a deny at the
+    // second is honoured even when an automatic reviewer is answering the card.
+    const r = await run(edit("/tmp/blocked.txt", "PermissionRequest"));
+    expect(answer(r.written)).toEqual({
+      hookSpecificOutput: {
+        hookEventName: "PermissionRequest",
+        decision: {
+          behavior: "deny",
+          message: "agenttrail-guard blocked this: blocks danger (guardrail t.file-block)",
+        },
+      },
+    });
+    expect(r.events.map((e) => e.mapped.args.file_path)).toEqual(["/tmp/blocked.txt"]);
+  });
+
+  it.each([
+    ["a command that matches nothing", () => shell("ls -la")],
+    ["a tool with no channel", () => codexCall("shell_command", "rm -rf /")],
+    ["a patch naming no path", () => codexCall("apply_patch", "I could not build the patch")],
+    ["an event the guard does not answer", () => shell("danger --now", "PostToolUse")],
+  ])("%s writes nothing and logs nothing", async (_label, stdin) => {
+    const r = await run(stdin());
+    expect(r.written).toEqual([]);
+    expect(r.events).toEqual([]);
+  });
+
+  it.each([
+    ["a tool with no channel", () => codexCall("shell_command", "rm -rf /")],
+    ["an event the guard does not answer", () => shell("danger --now", "PostToolUse")],
+  ])("%s reads no file at all", async (_label, stdin) => {
+    // No rule is compiled and no config is read to decide there is nothing to judge.
+    expect((await run(stdin())).readPaths).toEqual([]);
+  });
+
+  it("an apply_patch is judged on its paths, and recognised with no identity fields", async () => {
+    const r = await run(
+      JSON.stringify({
+        hook_event_name: "PreToolUse",
+        tool_name: "apply_patch",
+        tool_input: {
+          command: "*** Begin Patch\n*** Add File: /tmp/blocked.txt\n+x\n*** End Patch",
+        },
+      }),
+    );
+    expect(answer(r.written)?.hookSpecificOutput).toMatchObject({ permissionDecision: "deny" });
+    expect(r.events.map((e) => [e.agent, e.mapped.tool, e.mapped.args.file_path])).toEqual([
+      ["codex", "Write", "/tmp/blocked.txt"],
+    ]);
+  });
+
+  it("a patch touching several files is answered on the strictest of them", async () => {
+    const patch = [
+      "*** Begin Patch",
+      "*** Add File: docs/notes.md",
+      "+x",
+      "*** Update File: /tmp/blocked.txt",
+      "@@",
+      "-a",
+      "+b",
+      "*** End Patch",
+    ].join("\n");
+    const r = await run(codexCall("apply_patch", patch));
+    expect(answer(r.written)?.hookSpecificOutput).toMatchObject({ permissionDecision: "deny" });
+    // One call, one line — the file that decided it.
+    expect(r.events.map((e) => e.mapped.args.file_path)).toEqual(["/tmp/blocked.txt"]);
+  });
+
+  it("the patch text is never evaluated as a command", async () => {
+    // `danger` would block on the command channel. Writing it into a file is not running it.
+    const patch = "*** Begin Patch\n*** Add File: notes.md\n+danger --now\n*** End Patch";
+    const r = await run(codexCall("apply_patch", patch));
+    expect(r.written).toEqual([]);
+    expect(r.events).toEqual([]);
+  });
+
+  it("leaves a real Claude Code payload as claude", async () => {
+    // The negative control: detection must not claim everything.
+    const r = await run(
+      JSON.stringify({
+        hook_event_name: "PreToolUse",
+        tool_name: "Bash",
+        tool_input: { command: "danger --now" },
+        session_id: "s",
+      }),
+    );
+    expect(r.events.map((e) => e.agent)).toEqual(["claude"]);
+  });
+
+  it("records nothing extra for a payload an app does claim", async () => {
+    expect((await run(shell("danger --now"))).crashes).toEqual([]);
+  });
+
+  /** The fail-open answer on this path: a message, no decision, and a crash record. */
+  async function expectNotCheckedAsCodex(h: Harness): Promise<void> {
+    const crashes: unknown[] = [];
+    await runHook(h.io, {
+      catalog: CODEX_CATALOG,
+      agent: "codex",
+      captureCrash: (err) => void crashes.push(err),
+    });
+    // Never a deny: a broken guard must not stop the agent. Codex accepts a bare
+    // `systemMessage` on every event and decides nothing by it.
+    expect(h.written).toEqual([JSON.stringify({ systemMessage: NOT_CHECKED_MESSAGE })]);
+    expect(crashes).toHaveLength(1);
+  }
+
+  it("fails open when a file read throws, and spools the crash", async () => {
+    await expectNotCheckedAsCodex(
+      harness(
+        {
+          readFile: () => {
+            throw new Error("home is on fire");
+          },
+        },
+        shell("danger --now"),
+      ),
+    );
+  });
+
+  it("fails open on input that is not a payload at all", async () => {
+    await expectNotCheckedAsCodex(harness({}, "not json at all"));
+  });
+
+  it("still answers, and answers once, when the recorder throws", async () => {
+    const h = harness({}, shell("danger --now"));
+    await runHook(h.io, {
+      catalog: CODEX_CATALOG,
+      recorder: {
+        record: () => {
+          throw new Error("the log cannot be written");
+        },
+      },
+    });
+    expect(answer(h.written)?.hookSpecificOutput).toMatchObject({ permissionDecision: "deny" });
+  });
+});
+
+/**
+ * One Codex ACTION, one decision-log line.
+ *
+ * Measured: `PreToolUse` and `PermissionRequest` both fire for one action, in the same
+ * second, and only the first carries a `tool_use_id`. Keying on that id writes the same
+ * decision twice; keying on the turn and the command folds the pair. This drives the REAL
+ * recorder against an in-memory home, because the marker file is the mechanism.
+ */
+describe("a Codex action is logged once, across its two events", () => {
+  const TURN = "01a0c22e-0000-4000-8000-000000000001";
+
+  function payload(command: string, event: string, turn = TURN): string {
+    return JSON.stringify({
+      hook_event_name: event,
+      tool_name: "Bash",
+      tool_input: { command },
+      turn_id: turn,
+      model: "gpt-5.6-luna",
+      ...(event === "PreToolUse" ? { tool_use_id: "exec-1" } : {}),
+    });
+  }
+
+  /** An in-memory home shared across runs, so the dedupe marker survives between them. */
+  function fakeHome() {
+    const files = new Map<string, string>();
+    const io = (stdin: string): GuardIO => ({
+      readStdin: async () => stdin,
+      writeStdout: () => undefined,
+      readFile: (p) => files.get(p),
+      homedir: () => "/home/test",
+      mkdirp: () => true,
+      writeFileAtomic: (p, text) => {
+        files.set(p, text);
+        return true;
+      },
+      listDir: () => [],
+      deleteFile: (p) => files.delete(p),
+      appendFile: (p, text) => {
+        files.set(p, (files.get(p) ?? "") + text);
+        return true;
+      },
+      fileSize: (p) => Buffer.byteLength(files.get(p) ?? "", "utf8"),
+    });
+    const lines = () =>
+      (files.get(eventsPath("/home/test")) ?? "").split("\n").filter((l) => l.trim().length > 0);
+    return { files, io, lines };
+  }
+
+  /** Run one payload against the shared home, with the real recorder wired. */
+  async function record(home: ReturnType<typeof fakeHome>, stdin: string): Promise<void> {
+    await runHook(home.io(stdin), { catalog: [BLOCKING_RULE] });
+  }
+
+  it("folds the two events of one action into one line", async () => {
+    const home = fakeHome();
+    await record(home, payload("danger --now", "PreToolUse"));
+    await record(home, payload("danger --now", "PermissionRequest"));
+    expect(home.lines()).toHaveLength(1);
+  });
+
+  it("keeps two different commands in the same turn apart", async () => {
+    const home = fakeHome();
+    await record(home, payload("danger --now", "PreToolUse"));
+    await record(home, payload("danger --later", "PreToolUse"));
+    expect(home.lines()).toHaveLength(2);
+  });
+
+  it("keeps the same command in a different turn apart", async () => {
+    const home = fakeHome();
+    await record(home, payload("danger --now", "PreToolUse"));
+    await record(home, payload("danger --now", "PreToolUse", "a-second-turn"));
+    expect(home.lines()).toHaveLength(2);
+  });
+
+  it("stores only a hash: the command text never reaches the marker", async () => {
+    const home = fakeHome();
+    await record(home, payload("danger --now", "PreToolUse"));
+    const marker = home.files.get(dedupMarkerPath("/home/test")) as string;
+    expect(marker).not.toContain("danger");
+    expect(Object.keys(JSON.parse(marker)).sort()).toEqual(["h", "t"]);
+  });
+
+  it("writes the usual record shape, with no id in it", async () => {
+    const home = fakeHome();
+    await record(home, payload("danger --now", "PreToolUse"));
+    const line = JSON.parse(home.lines()[0] as string);
+    expect(Object.keys(line)).toEqual(["ts", "tool", "decision", "ruleId", "command", "agent"]);
+    expect(line.agent).toBe("codex");
+    expect(home.files.get(eventsPath("/home/test"))).not.toContain("exec-1");
+  });
+});
+
+describe("a payload no app claims is answered fail-open AND recorded", () => {
+  /** Run one payload with no `--agent`, so nothing but the payload can attribute it. */
+  async function run(stdin: string) {
+    const crashes: unknown[] = [];
+    const h = harness({}, stdin);
+    await runHook(h.io, {
+      catalog: [BLOCKING_RULE],
+      captureCrash: (err) => void crashes.push(err),
+    });
+    return { written: h.written, crashes };
+  }
+
+  it.each([
+    ["an empty object", "{}"],
+    ["an object with nothing recognizable", JSON.stringify({ some: "thing" })],
+    ["a camelCase event no app here uses", JSON.stringify({ hook_event_name: "toolCallStarted" })],
+  ])("%s: not checked, and one record", async (_label, stdin) => {
+    // The answer is unchanged — fail-open, no decision, a message naming no content.
+    // What is new is that something on disk says guard saw it. Before this, the moment
+    // was answered and then gone: nobody could find out their hook was mis-wired.
+    const r = await run(stdin);
+    expectNotChecked(r.written);
+    expect(r.crashes).toHaveLength(1);
+    expect((r.crashes[0] as Error).name).toBe("UnattributedPayload");
+  });
+
+  it("names no content in the record, which carries only a constructor name", async () => {
+    // `core/crash-record.ts` drops an error's MESSAGE precisely because a message is
+    // where a slice of the user's command ends up. This record has nothing to drop.
+    const r = await run(JSON.stringify({ some: "thing", command: "rm -rf /" }));
+    const err = r.crashes[0] as Error;
+    expect(err.message).not.toContain("rm -rf");
+    expect(err.name).toBe("UnattributedPayload");
+  });
+
+  it("records nothing when the flag named the app, even if the payload is unrecognizable", async () => {
+    // `--agent cursor` on an event guard does not check is not a mystery: the app is
+    // known, and the event was understood well enough to have no opinion on. Recording
+    // those would fill the spool with Cursor's ordinary lifecycle traffic.
+    const crashes: unknown[] = [];
+    const h = harness({}, JSON.stringify({ hook_event_name: "afterFileEdit" }));
+    await runHook(h.io, {
+      catalog: [BLOCKING_RULE],
+      agent: "cursor",
+      captureCrash: (err) => void crashes.push(err),
+    });
+    expect(h.written).toEqual(["{}"]);
+    expect(crashes).toEqual([]);
+  });
+
+  it("still answers, and answers only once, when the recorder throws", async () => {
+    const h = harness({}, "{}");
+    await runHook(h.io, {
+      catalog: [BLOCKING_RULE],
+      captureCrash: () => {
+        throw new Error("spool is broken");
+      },
+    });
+    expectNotChecked(h.written);
   });
 });

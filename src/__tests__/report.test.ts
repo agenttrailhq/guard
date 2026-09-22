@@ -82,16 +82,24 @@ const POPULATED = resultOf({
 
 const HTML = renderReport(POPULATED, META);
 const ARTIFACT = renderReport(POPULATED, META, { variant: "artifact" });
-const CURSOR = resultOf({ agent: "cursor" });
+// Each app's corpus declares what its own reader's records support, as the reader does:
+// Cursor's session files carry no token counts, Codex's do, and both readers count what
+// they could not use.
+const CURSOR = resultOf({ agent: "cursor", capabilities: { tokens: false, skips: true } });
 const CURSOR_HTML = renderReport(CURSOR, META);
 const CURSOR_ARTIFACT = renderReport(CURSOR, META, { variant: "artifact" });
+const CODEX = resultOf({ agent: "codex", capabilities: { tokens: true, skips: true } });
+const CODEX_HTML = renderReport(CODEX, META);
+const CODEX_ARTIFACT = renderReport(CODEX, META, { variant: "artifact" });
 
-/** Every form the file can take: both apps, both variants. */
+/** Every form the file can take: each app, both variants. */
 const RENDERINGS: readonly [string, string][] = [
   ["a Claude Code document", HTML],
   ["a Claude Code artifact", ARTIFACT],
   ["a Cursor document", CURSOR_HTML],
   ["a Cursor artifact", CURSOR_ARTIFACT],
+  ["a Codex document", CODEX_HTML],
+  ["a Codex artifact", CODEX_ARTIFACT],
 ];
 
 /** Every `href` value in a page, in document order, whatever the quoting. */
@@ -736,10 +744,36 @@ describe("the report names the app whose sessions it read", () => {
     expect(HTML).toContain("<code>agenttrail-guard scan --agent claude --review</code>");
   });
 
-  it("a Claude Code report keeps its token section and has no Cursor-only section", () => {
+  it("a Claude Code report keeps its token section and lists nothing as unevaluated", () => {
     expect(HTML).toContain("<h2>Tokens</h2>");
     expect(HTML).not.toContain("What was not evaluated");
     expect(POPULATED).not.toHaveProperty("skipped");
+  });
+
+  it("a Cursor report says so, and its review hint names --agent cursor", () => {
+    expect(CURSOR.agent).toBe("cursor");
+    expect(CURSOR_HTML).toContain('<p class="agent">Agent: Cursor</p>');
+    expect(CURSOR_HTML).toContain("<code>agenttrail-guard scan --agent cursor --review</code>");
+  });
+
+  it("a Codex report says so, and its review hint names --agent codex", () => {
+    expect(CODEX.agent).toBe("codex");
+    expect(CODEX_HTML).toContain('<p class="agent">Agent: Codex CLI</p>');
+    expect(CODEX_HTML).toContain("<code>agenttrail-guard scan --agent codex --review</code>");
+  });
+
+  it("what the report carries follows the reader's records, not the app's name", () => {
+    // Both readers count what they could not use, so both list it; only Cursor's records
+    // lack token counts, so only Cursor's report withholds the token section.
+    for (const html of [CURSOR_HTML, CODEX_HTML]) {
+      expect(html).toContain("<h2>What was not evaluated</h2>");
+    }
+    expect(CURSOR.tokens).toBeNull();
+    expect(CURSOR_HTML).not.toContain("<h2>Tokens</h2>");
+    expect(CURSOR_HTML).toContain("Cursor&#39;s session files record no token counts");
+    expect(CODEX.tokens).not.toBeNull();
+    expect(CODEX_HTML).toContain("<h2>Tokens</h2>");
+    expect(CODEX_HTML).not.toContain("record no token counts");
   });
 
   it("labels the cache-read total as cumulative, so it is not read as fresh input", () => {
@@ -844,5 +878,54 @@ describe("the pre-flight review lists exactly what the file carries", () => {
   it("de-duplicates, so a shape that is both a finding and a repeat is read once", () => {
     const lines = reviewStrings(POPULATED).flatMap((g) => g.lines);
     expect(new Set(lines).size).toBe(lines.length);
+  });
+});
+
+describe("an app that cannot ask says so", () => {
+  // The label stays "would ask" on every app, because it names the guardrail's own
+  // decision. On Codex that decision cannot be carried out, so the report has to say the
+  // action was stopped — otherwise it claims a person was asked on the one app where
+  // nobody is.
+  const approvalFinding = {
+    ruleId: "ps.permission-widen",
+    title: "Making a file writable by everyone",
+    severity: "high",
+    action: "require_approval",
+    count: 1,
+    examples: [{ text: "chmod 777 note.txt", when: "2026-09-21T10:40:12.000Z" }],
+  };
+
+  function reportFor(agent: "claude" | "cursor" | "codex", findings: unknown[]): string {
+    return renderReport(
+      {
+        agent,
+        sessions: 1,
+        toolCalls: 1,
+        riskyActions: findings.length,
+        projects: 1,
+        notRead: 0,
+        findings,
+        recurring: [],
+        tokens: null,
+      } as never,
+      META,
+    );
+  }
+
+  it("tells a Codex reader that would-ask meant stopped", () => {
+    const html = reportFor("codex", [approvalFinding]);
+    expect(html).toContain("would ask");
+    expect(html).toContain("would have been stopped");
+  });
+
+  it("says nothing of the kind for an app that can ask", () => {
+    for (const agent of ["claude", "cursor"] as const) {
+      expect(reportFor(agent, [approvalFinding])).not.toContain("would have been stopped");
+    }
+  });
+
+  it("stays quiet when no guardrail asked for approval", () => {
+    const blocking = { ...approvalFinding, action: "block", ruleId: "dd.rm-rf-absolute" };
+    expect(reportFor("codex", [blocking])).not.toContain("would have been stopped");
   });
 });

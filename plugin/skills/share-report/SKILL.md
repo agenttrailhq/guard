@@ -36,4 +36,4 @@ A session signed in with an API key, on Bedrock, Vertex AI or Foundry, or with a
 
 ## Cursor
 
-Only Claude Code scans are published this way. For a Cursor scan, tell the user to run `npx @agenttrail/guard scan --agent cursor`, which writes the report and opens it in their browser.
+Only Claude Code scans are published this way. For a Cursor scan, tell the user to run `agenttrail-guard scan --agent cursor`, which writes the report and opens it in their browser.

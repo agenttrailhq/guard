@@ -1,4 +1,4 @@
-// cspell:words backticked hellip middot noopener noreferrer waitlist
+// cspell:words backticked hellip middot noopener noreferrer waitlist ldquo rdquo
 /**
  * `agenttrail-guard-report.html` — one self-contained file.
  *
@@ -55,6 +55,7 @@
  * "this one is safe" exception to copy.
  */
 
+import { agentDisplayName, unhandledAgent } from "./agent.js";
 import { catalogStamp, formatCatalogStamp } from "./catalog-stamp.js";
 import { LOGO_LOCKUP_SVG, LOGO_MARK_SVG, REPORT_STYLES } from "./report-brand.js";
 import type { ScanFinding, ScanResult, ScanSkipped } from "./scan-report.js";
@@ -192,9 +193,15 @@ export function escapeHtml(value: string | number): string {
     .replace(/'/g, "&#39;");
 }
 
-/** The app whose sessions a scan read, as the report and the summary name it. */
+/**
+ * The app whose sessions a scan read, as the report and the summary name it.
+ *
+ * Delegates to `core/agent.ts`, which holds the one switch: the report's heading and the
+ * CLI's `--agent` menu now cannot call the same app two different things, and a new app
+ * fails to compile there rather than being titled "Claude Code" here.
+ */
 export function agentName(agent: AgentSource): string {
-  return agent === "cursor" ? "Cursor" : "Claude Code";
+  return agentDisplayName(agent);
 }
 
 /** A count and a noun phrase that agrees with it. */
@@ -203,7 +210,7 @@ function counted(n: number, one: string, many: string): string {
 }
 
 /**
- * What a Cursor scan read but could not use, as counted phrases. Empty when there is none.
+ * What a scan read but could not use, as counted phrases. Empty when there is none.
  *
  * Shared by the report and the terminal summary, so both say the same thing. Tool calls
  * that are not actions, and turns that ended with an error, are not listed: every long
@@ -301,7 +308,7 @@ function stat(value: string, label: string, note?: string): string {
   return `<div class="stat"><div class="stat-value">${escapeHtml(value)}</div><div class="stat-label">${escapeHtml(label)}</div>${noteHtml}</div>`;
 }
 
-/** The hero strip. No token cell when the sessions record no token counts (Cursor's). */
+/** The hero strip. No token cell when the sessions record no token counts, as Cursor's do not. */
 function heroSection(result: ScanResult): string {
   const t = result.tokens;
   const cells = [
@@ -323,6 +330,22 @@ function heroSection(result: ScanResult): string {
 }
 
 /**
+ * What "would ask" meant on an app that cannot ask.
+ *
+ * The label names the guardrail's own action, which is what lets one guardrail be compared
+ * across apps — so it stays "would ask" everywhere. On Codex that action cannot be carried
+ * out: a hook has no way to reach a person, so the answer sent is a block. Without this
+ * line the report says a person would have been asked, on the one app where nobody is.
+ *
+ * Only when a require-approval guardrail actually matched; otherwise it explains nothing.
+ */
+function askOnCodexNote(result: ScanResult, byAction: readonly { action: string }[]): string {
+  if (result.agent !== "codex") return "";
+  if (!byAction.some((a) => a.action === "require_approval")) return "";
+  return `\n<p class="note"><strong>On Codex, &ldquo;would ask&rdquo; means the action would have been stopped.</strong> Codex gives a guardrail no way to ask you, so the guard sends those as a block. The label above is the guardrail&#39;s own decision, kept the same across apps so one guardrail reads the same way everywhere.</p>`;
+}
+
+/**
  * Matches by severity and by action, over every finding. Absent when nothing matched —
  * the Findings section already says so, and a strip of zeroes would say it twice.
  */
@@ -340,7 +363,7 @@ ${severities}
 <div class="tally-group"><p class="tally-label">What the guard would have done</p><ul class="pills">
 ${actions}
 </ul></div>
-<p class="note">Each guardrail counts its own matches, so a tool call that matched two guardrails is counted under both, and these totals can be larger than the number of risky actions.</p>
+<p class="note">Each guardrail counts its own matches, so a tool call that matched two guardrails is counted under both, and these totals can be larger than the number of risky actions.</p>${askOnCodexNote(result, byAction)}
 </section>`;
 }
 
@@ -472,6 +495,34 @@ ${rows}
 </section>`;
 }
 
+/**
+ * The reader's own coverage limit, stated rather than left to be discovered.
+ *
+ * A report that silently covers a quarter of the corpus is the same class of failure as
+ * one that over-claims, pointed the other way — and this one reads as good news. Each app
+ * gets its own sentence because each reader walks a different shape of folder, and naming
+ * the wrong one would send a reader looking in a directory their agent does not use. A
+ * checked switch, so a new app cannot inherit another app's description of where it looked.
+ */
+function coverageNote(result: ScanResult): string {
+  if (result.notRead === 0) return "";
+  const notRead = `${escapeHtml(formatCount(result.notRead))} further transcript file${result.notRead === 1 ? "" : "s"}`;
+  const was = result.notRead === 1 ? "was" : "were";
+  const tail = `Every count above is of what was read, not of everything that exists.`;
+  const open = `<p class="note"><strong>Coverage limit.</strong>`;
+
+  switch (result.agent) {
+    case "cursor":
+      return `${open} This reader opens each session&#39;s file, and the files of the sub-agents that session started, in each project&#39;s <code>agent-transcripts</code> folder. ${notRead} in those folders ${was} not read. ${tail}</p>`;
+    case "codex":
+      return `${open} This reader opens the session files Codex files by date, in <code>~/.codex/sessions/&lt;year&gt;/&lt;month&gt;/&lt;day&gt;/</code>. ${notRead} elsewhere under the sessions root ${was} not read. ${tail}</p>`;
+    case "claude":
+      return `${open} This reader opens each session&#39;s transcript and the sub-agent transcripts in its <code>subagents</code> folder, folding a sub-agent&#39;s actions into the session that started it. ${notRead} elsewhere under the projects root &mdash; a stray file, or one nested somewhere it does not walk &mdash; ${was} not read. ${tail}</p>`;
+    default:
+      return unhandledAgent(result.agent);
+  }
+}
+
 /** What was read, and what could not be. */
 function corpusSection(result: ScanResult): string {
   const lines: string[] = [];
@@ -483,7 +534,7 @@ function corpusSection(result: ScanResult): string {
       `${escapeHtml(formatCount(result.quarantined))} file${result.quarantined === 1 ? "" : "s"} yielded no session and ${result.quarantined === 1 ? "was" : "were"} skipped &mdash; a transcript holding no messages, such as a session started and abandoned, has nothing to report.`,
     );
   }
-  // A Cursor result lists its skipped lines by kind in its own section instead.
+  // A reader that counts its skips lists them by kind in its own section instead.
   if (result.skippedLines > 0 && result.skipped === undefined) {
     lines.push(
       `${escapeHtml(formatCount(result.skippedLines))} individual line${result.skippedLines === 1 ? "" : "s"} could not be parsed and ${result.skippedLines === 1 ? "was" : "were"} skipped.`,
@@ -495,16 +546,7 @@ function corpusSection(result: ScanResult): string {
     );
   }
 
-  // The reader's own coverage limit, stated rather than left to be discovered. A
-  // report that silently covers a quarter of the corpus is the same class of failure
-  // as one that over-claims, pointed the other way — and this one reads as good news.
-  const notRead = `${escapeHtml(formatCount(result.notRead))} further transcript file${result.notRead === 1 ? "" : "s"}`;
-  let coverage = "";
-  if (result.notRead > 0 && result.agent === "cursor") {
-    coverage = `<p class="note"><strong>Coverage limit.</strong> This reader opens each session&#39;s file, and the files of the sub-agents that session started, in each project&#39;s <code>agent-transcripts</code> folder. ${notRead} in those folders ${result.notRead === 1 ? "was" : "were"} not read. Every count above is of what was read, not of everything that exists.</p>`;
-  } else if (result.notRead > 0) {
-    coverage = `<p class="note"><strong>Coverage limit.</strong> This reader opens each session&#39;s transcript and the sub-agent transcripts in its <code>subagents</code> folder, folding a sub-agent&#39;s actions into the session that started it. ${notRead} elsewhere under the projects root &mdash; a stray file, or one nested somewhere it does not walk &mdash; ${result.notRead === 1 ? "was" : "were"} not read. Every count above is of what was read, not of everything that exists.</p>`;
-  }
+  const coverage = coverageNote(result);
 
   // ── Two claims, stated separately ──────────────────────────────────────────
   //   - paths and working directories: redacted structurally, so "appear nowhere" holds;
@@ -526,7 +568,7 @@ function corpusSection(result: ScanResult): string {
 }
 
 /**
- * What a Cursor scan read but did not evaluate. Absent from a Claude Code report.
+ * What a scan read but did not evaluate. Absent from a report whose reader counts none.
  *
  * Every kind is listed with its count, and each tool name the reader does not recognize is
  * shown, so a reader can tell a quiet report from a report over files it could not read.

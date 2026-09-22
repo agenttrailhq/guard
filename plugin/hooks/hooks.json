@@ -2,7 +2,7 @@
   "hooks": {
     "PreToolUse": [
       {
-        "matcher": "Bash|PowerShell|Edit|Write|Read|NotebookEdit|WebSearch|mcp__.*",
+        "matcher": "Bash|PowerShell|Edit|Write|Read|NotebookEdit|Grep|Glob|WebSearch|mcp__.*",
         "hooks": [
           {
             "type": "command",
