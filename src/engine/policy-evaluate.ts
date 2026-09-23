@@ -1,3 +1,4 @@
+import type { AgentVendor } from "./agent-vendor.js";
 import type { Severity } from "./common.js";
 import type { Action, PolicyPredicate } from "./policy-predicate.js";
 import type { SpanKind } from "./trace.js";
@@ -13,6 +14,8 @@ export interface PolicyEvaluateScope {
   readonly project_id?: string;
 
   readonly developer_id?: string | null;
+
+  readonly vendor?: AgentVendor;
 }
 
 export interface PolicyEvaluateRequest {
@@ -23,6 +26,24 @@ export interface PolicyEvaluateRequest {
   readonly kind?: SpanKind;
 
   readonly scope?: PolicyEvaluateScope;
+}
+
+export const POLICY_HOLD_MAX_WINDOW_SECONDS = 590;
+
+export interface PolicyHoldRequest extends PolicyEvaluateRequest {
+  readonly correlation_id: string;
+
+  readonly max_window_seconds?: number;
+}
+
+export type PolicyHoldOutcome = "approved" | "denied" | "unanswered";
+
+export interface PolicyHoldResponse {
+  readonly outcome: PolicyHoldOutcome;
+
+  readonly approval_id: string | null;
+
+  readonly reason: string;
 }
 
 export interface PolicyMatchedPolicy {

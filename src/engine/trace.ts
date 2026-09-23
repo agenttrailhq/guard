@@ -2,6 +2,8 @@ import type { Timestamp, UUID } from "./common.js";
 
 export type TraceStatus = "success" | "failure" | "in_progress";
 
+export type CostState = "priced" | "partial" | "unpriced" | "not_reported";
+
 export type SpanKind = "llm" | "execute_tool" | "retrieval" | "embedding" | "agent" | "internal";
 
 export interface Trace {
