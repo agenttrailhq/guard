@@ -1,101 +1,34 @@
-# Publishes to npm when a `v*` tag is pushed.
+# cspell:words akarshtechsuite
 name: release
-
 on:
   push:
-    tags: ["v*"]
-
+    branches: [main]
 permissions:
-  contents: read
-  id-token: write # npm provenance
-
-# One run per tag at a time. A second run for the same tag waits instead of cancelling the first.
+  contents: write   # commit the version bump + tag, push, create the release
+  id-token: write   # npm OIDC trusted publishing + provenance
+  issues: write
+  pull-requests: write
 concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: false
-
 jobs:
-  publish:
+  release:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
-
-      # The pnpm version comes from `packageManager` in package.json.
-      - uses: pnpm/action-setup@v4
-
+        with:
+          fetch-depth: 0        # full history + tags for version analysis
+      - uses: pnpm/action-setup@v3
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: pnpm
-          registry-url: https://registry.npmjs.org
-
-      # Fails if the pinned @agenttrail/guardrails version is not on npm.
+      - run: npm install -g npm@latest   # OIDC trusted publishing needs npm >= 11.5.1
       - run: pnpm install --frozen-lockfile
-
-      - name: Tag matches package version
-        run: |
-          tag="${GITHUB_REF_NAME#v}"
-          pkg=$(node -p "require('./package.json').version")
-          if [ "$tag" != "$pkg" ]; then
-            echo "error: tag is $tag but package.json version is $pkg" >&2
-            exit 1
-          fi
-          echo "  ok  version $pkg"
-
-      - run: pnpm lint
-      - run: pnpm spell
-      - run: pnpm typecheck
-
-      - name: Build and compare the committed hook bundle
-        run: |
-          pnpm build
-          git diff --exit-code -- plugin/scripts/guard-hook.mjs
-
-      - run: pnpm test
-
-      - name: Pack
-        run: |
-          mkdir -p /tmp/pack
-          pnpm pack --pack-destination /tmp/pack
-
-      - name: Check tarball contents
-        run: |
-          v=$(node -p "require('./package.json').version")
-          python3 scripts/check-tarball.py /tmp/pack/*.tgz \
-            --package @agenttrail/guard --version "$v"
-
-      - name: Install and run the tarball
-        run: bash scripts/smoke-test.sh /tmp/pack/*.tgz
-
-      # If this version is already on npm: same shasum skips publishing, a different shasum fails.
-      - name: Check registry for this version
-        run: |
-          v=$(node -p "require('./package.json').version")
-          published=$(npm view "@agenttrail/guard@$v" dist.shasum 2>/dev/null || true)
-          if [ -z "$published" ]; then
-            echo "  ok  $v is not published yet"
-            exit 0
-          fi
-          local_sha=$(shasum -a 1 /tmp/pack/*.tgz | cut -d' ' -f1)
-          if [ "$published" = "$local_sha" ]; then
-            echo "  ok  $v is already published with the same shasum; skipping publish"
-            echo "ALREADY_PUBLISHED=1" >> "$GITHUB_ENV"
-          else
-            echo "error: $v is already published with shasum $published; this build is $local_sha" >&2
-            exit 1
-          fi
-
-      # Publishes the tarball checked above. Versions containing "-" publish under the `next` dist-tag.
-      - name: Publish
-        if: env.ALREADY_PUBLISHED != '1'
-        run: |
-          v=$(node -p "require('./package.json').version")
-          case "$v" in
-            *-*) tag=next ;;
-            *)   tag=latest ;;
-          esac
-          echo "  publishing $v under dist-tag $tag"
-          npm publish /tmp/pack/*.tgz --provenance --access public --tag "$tag"
+      - run: pnpm exec semantic-release
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Author + committer for the generated release commit.
+          GIT_AUTHOR_NAME: akarshtechsuite
+          GIT_AUTHOR_EMAIL: akarsh@techsuite.io
+          GIT_COMMITTER_NAME: akarshtechsuite
+          GIT_COMMITTER_EMAIL: akarsh@techsuite.io
