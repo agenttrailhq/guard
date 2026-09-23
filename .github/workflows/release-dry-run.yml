@@ -1,0 +1,21 @@
+name: release-dry-run
+on:
+  workflow_dispatch:
+permissions:
+  contents: write   # semantic-release verifies push permission even in --dry-run (it pushes nothing here)
+jobs:
+  dry-run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v3
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec semantic-release --dry-run
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}   # SR verifies npm auth even in --dry-run; live will use OIDC (TEC-1131)

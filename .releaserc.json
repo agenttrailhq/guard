@@ -1,0 +1,41 @@
+{
+  "branches": ["main"],
+  "plugins": [
+    [
+      "@semantic-release/commit-analyzer",
+      {
+        "preset": "conventionalcommits",
+        "releaseRules": [
+          { "breaking": true, "release": "minor" },
+          { "type": "feat", "release": "patch" },
+          { "type": "fix", "release": "patch" },
+          { "type": "perf", "release": "patch" }
+        ]
+      }
+    ],
+    ["@semantic-release/release-notes-generator", { "preset": "conventionalcommits" }],
+    [
+      "@semantic-release/exec",
+      {
+        "prepareCmd": "node scripts/sr-stamp.mjs ${nextRelease.version} && pnpm build"
+      }
+    ],
+    ["@semantic-release/changelog", { "changelogFile": "CHANGELOG.md" }],
+    ["@semantic-release/npm", { "npmPublish": true }],
+    [
+      "@semantic-release/git",
+      {
+        "assets": [
+          "package.json",
+          "src/core/version.ts",
+          "plugin/.claude-plugin/plugin.json",
+          "CHANGELOG.md",
+          "plugin/scripts/guard-hook.mjs",
+          "plugin/scripts/guard-scan.mjs"
+        ],
+        "message": "Release ${nextRelease.version}\n\n${nextRelease.notes}\n\nCo-Authored-By: Claude <noreply@anthropic.com>"
+      }
+    ],
+    "@semantic-release/github"
+  ]
+}
