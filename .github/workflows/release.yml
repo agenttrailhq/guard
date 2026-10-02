@@ -1,4 +1,4 @@
-# cspell:words akarshtechsuite
+# cspell:words Corso
 name: release
 on:
   push:
@@ -27,8 +27,8 @@ jobs:
       - run: pnpm exec semantic-release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Author + committer for the generated release commit.
-          GIT_AUTHOR_NAME: akarshtechsuite
-          GIT_AUTHOR_EMAIL: akarsh@techsuite.io
-          GIT_COMMITTER_NAME: akarshtechsuite
-          GIT_COMMITTER_EMAIL: akarsh@techsuite.io
+          # Author + committer for the generated release commit (GitHub noreply address).
+          GIT_AUTHOR_NAME: Samuel Corso
+          GIT_AUTHOR_EMAIL: 38767335+samc621@users.noreply.github.com
+          GIT_COMMITTER_NAME: Samuel Corso
+          GIT_COMMITTER_EMAIL: 38767335+samc621@users.noreply.github.com
