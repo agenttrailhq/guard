@@ -195,7 +195,9 @@ prevent, not the technique used to spot it. By default, 13 guardrails block, 50 
 
 Run `agenttrail-guard guardrails list` for every rule with its current action, or
 `guardrails show <guardrail-id>` for one rule in full. The source for every rule is in
-[agenttrailhq/guardrails](https://github.com/agenttrailhq/guardrails#the-eleven-packs).
+[agenttrailhq/guardrails](https://github.com/agenttrailhq/guardrails#the-eleven-packs). To browse
+every rule online, or paste a command and see which rules match it, use the
+[guardrail library](https://www.agenttrail.sh/guardrails).
 
 ### Guard and Guardrails
 
