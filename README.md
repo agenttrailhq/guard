@@ -101,6 +101,11 @@ Prefer a guided walkthrough? See the
 
 ## Why AgentTrail Guard?
 
+![A Claude Code session: asked to split a name column and push the schema, the agent edits the Prisma schema and seed, then runs npx prisma db push --force-reset to wipe the database. AgentTrail Guard blocks it with the guardrail dd.accept-data-loss, and the agent stops](.github/assets/guard-blocks-force-reset.gif)
+
+<sub>A real Claude Code session. The agent decides to reset the database to get a schema push
+through; Guard blocks `prisma db push --force-reset` with `dd.accept-data-loss` before it runs.</sub>
+
 Your coding agent runs shell commands and edits files all day, faster than you can review
 each one. Most of those calls are exactly what you want. The ones that aren't, like
 `git reset --hard` over a day of uncommitted work, `rm -rf` on the wrong path,
