@@ -1,3 +1,9 @@
+## [0.4.1](https://github.com/agenttrailhq/guard/compare/v0.4.0...v0.4.1) (2026-10-05)
+
+### Documentation
+
+* **readme:** publish the refreshed README to npm ([378cd7c](https://github.com/agenttrailhq/guard/commit/378cd7c19f325ec7298ee7fdfa8ee88eadff93b2)), closes [#4](https://github.com/agenttrailhq/guard/issues/4) [#6](https://github.com/agenttrailhq/guard/issues/6) [#5](https://github.com/agenttrailhq/guard/issues/5)
+
 # Changelog
 
 All notable changes to `@agenttrail/guard` are recorded here, in the

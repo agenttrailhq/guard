@@ -6789,7 +6789,7 @@ function captureCrash(err, deps) {
 var scrubSecrets = scrubText;
 
 // src/core/version.ts
-var VERSION = "0.4.0";
+var VERSION = "0.4.1";
 
 // src/io.ts
 import {
