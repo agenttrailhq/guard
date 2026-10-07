@@ -451,8 +451,9 @@ worse than one that names the hole.
   argument, with no `=` or `:` between the name and the value: the patterns are
   anchored to an assignment, so `--token abc123` reads as two ordinary words. Treat
   the log as scrubbed, not sanitized. (The `scan` **report** goes further and does
-  redact a secret handed to a long flag such as `--token`, `--password` or `--key`; the
-  decision log does not.)
+  redact a secret handed to a long flag such as `--token`, `--password`, `--key` or
+  `--vendor-key`, a value after a name ending in `_KEY` or `-key`, an `Authorization`
+  header, and any long random-looking string; the decision log does not.)
 - **The `scan` report's name redaction is a deny-list for shell commands and an
   allow-list for MCP.** Paths are redacted structurally, so that rule is total. Shell
   names are not; the identifier redactor knows a fixed list of tools: container
@@ -461,14 +462,31 @@ worse than one that names the hole.
   settings, 1Password's `op` (item and vault names), and `gh` titles and bodies; and it
   also redacts, in any command, a secret handed as a flag value (`--token`,
   `--password`, `--key`), a UUID, a heredoc body (which becomes `<message>`), and the text
-  of a `#` comment. A bare
+  of a `#` comment. Cloud account identifiers are redacted where a name or flag gives
+  them away: `CLOUDFLARE_ACCOUNT_ID` and `--account-id`, any 32-hex operand of a
+  `wrangler` command, an AWS account number after `--account` or inside an ARN,
+  `--project` for `gcloud`, `gsutil`, `bq` and `firebase`, and the login in
+  `ssh -o User=`. A bare
   operand naming a resource for a tool *not* on the list
   survives, and a branch or tag given as a plain `git` operand (`git checkout my-branch`,
-  `git tag -a v1`) is kept readable on purpose. A **glued** short-flag password
+  `git tag -a v1`) is kept readable on purpose, as is a bare folder name (`cd my-app`,
+  `git -C my-app`). A **glued** short-flag password
   (`mysql -pSECRET`) is not caught: only long secret flags and `.env`-style assignments
   are. An `mcp__…` payload is handled the opposite way: every value is redacted to
   `<value>` by default and only the field names are kept, so no raw payload value reaches
   the file.
+- **A secret in the `scan` report is caught by format, by name and by shape, and the last two
+  are guesses.** After the known formats, a value that follows a name ending in `_KEY` or
+  `-key`, a raw `Authorization` header, and any run of 32 or more letters, digits, `-` and
+  `_` that looks random is masked, the last as `[REDACTED:secret:generic]`. A secret
+  shorter than 32 characters with no revealing name, a secret that is only hexadecimal
+  (a hex key looks like a commit hash or a digest, so hex is masked only under a name or
+  flag), a secret split by `+ / .`, an unnamed secret followed by a `.`, an unnamed secret
+  that ends in `=`, and an unnamed lower-case key written as short dashed groups (four or
+  five characters each) can survive; a run that spells out a pod or release name (three or
+  more deployment words such as `prod`, `canary` or `west`, every segment short) is left
+  readable. Redaction is best effort, not a guarantee: read the report, or run
+  `scan --review`, before you share it.
 - **A guardrail's id and title are printed as their author wrote them.** For the shipped
   library that is our words. For a guardrail *you* added to `guardrails.json` it is yours,
   and nothing redacts it: a title reading "AcmeCorp internal audit" appears in the report

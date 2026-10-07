@@ -551,3 +551,153 @@ describe("a 1Password setting passed through the environment", () => {
     );
   });
 });
+
+describe("cloud account identifiers", () => {
+  const CF = "0123456789abcdef0123456789abcdef";
+  const AWS = "123456789012";
+  const CASES: readonly (readonly [string, string, string])[] = [
+    [
+      "a Cloudflare account id in the environment",
+      `CLOUDFLARE_ACCOUNT_ID=${CF} npx wrangler deploy`,
+      "CLOUDFLARE_ACCOUNT_ID=<name> npx wrangler deploy",
+    ],
+    [
+      "a Cloudflare account id as --account-id",
+      `wrangler deploy --account-id ${CF}`,
+      "wrangler deploy --account-id <name>",
+    ],
+    [
+      "a Cloudflare account id as --account-id=value",
+      `wrangler deploy --account-id=${CF} --env prod`,
+      "wrangler deploy --account-id=<name> --env prod",
+    ],
+    [
+      "an account_id config line",
+      `echo 'account_id = "${CF}"' >> wrangler.toml`,
+      `echo 'account_id = "<name>"' >> wrangler.toml`,
+    ],
+    [
+      "a prefixed Terraform variable for the account id",
+      `TF_VAR_cloudflare_account_id=${CF} terraform plan`,
+      "TF_VAR_cloudflare_account_id=<name> terraform plan",
+    ],
+    ["an SSO account id", `SSO_ACCOUNT_ID=${AWS} ./login.sh`, "SSO_ACCOUNT_ID=<name> <path>"],
+    [
+      "a CF_ACCOUNT variable",
+      `CF_ACCOUNT=${CF} wrangler whoami`,
+      "CF_ACCOUNT=<name> wrangler whoami",
+    ],
+    [
+      "a bare 32-hex wrangler operand",
+      `npx wrangler kv namespace list ${CF}`,
+      "npx wrangler kv namespace list <name>",
+    ],
+    [
+      "an AWS account number as --account",
+      `aws s3 ls --account ${AWS} --region us-east-1`,
+      "aws s3 ls --account <name> --region us-east-1",
+    ],
+    [
+      "an AWS account number as --account-id",
+      `aws sts get-caller-identity --account-id=${AWS}`,
+      "aws sts get-caller-identity --account-id=<name>",
+    ],
+    [
+      "an AWS account number in a slashless ARN",
+      `aws sns publish --topic-arn arn:aws:sns:us-east-1:${AWS}:alerts`,
+      "aws sns publish --topic-arn arn:aws:sns:us-east-1:<name>:alerts",
+    ],
+    [
+      "an AWS account environment variable",
+      `AWS_ACCOUNT_ID=${AWS} ./deploy.sh`,
+      "AWS_ACCOUNT_ID=<name> <path>",
+    ],
+    [
+      "a GCP project as --project",
+      "gcloud run deploy api --project northwind-prod-481516",
+      "gcloud run deploy api --project <name>",
+    ],
+    [
+      "a GCP project as --project=value",
+      "bq ls --project=northwind-prod-481516",
+      "bq ls --project=<name>",
+    ],
+    [
+      "a GCP project for gsutil",
+      "gsutil ls --project northwind-prod-481516 gs://",
+      "gsutil ls --project <name> <path>",
+    ],
+    [
+      "a GCP project for firebase",
+      "firebase deploy --project northwind-prod-481516",
+      "firebase deploy --project <name>",
+    ],
+    [
+      "a GCP project environment variable",
+      "GOOGLE_CLOUD_PROJECT=northwind-prod-481516 node deploy.js",
+      "GOOGLE_CLOUD_PROJECT=<name> node deploy.js",
+    ],
+    [
+      "the login of ssh -o User=",
+      "ssh -o User=svcdeploy7 build-01 uptime",
+      "ssh -o User=<user> <host> uptime",
+    ],
+    [
+      "the login of a quoted ssh -o option",
+      'ssh -o "User=svcdeploy7" build-01 uptime',
+      'ssh -o "User=<user>" <host> uptime',
+    ],
+    [
+      "the login of a glued ssh -oUser=",
+      "ssh -oUser=svcdeploy7 build-01 uptime",
+      "ssh -oUser=<user> <host> uptime",
+    ],
+  ];
+
+  it.each(CASES)("redacts %s", (_name, input, expected) => {
+    expect(redactForReport(input)).toBe(expected);
+  });
+
+  it.each(CASES)("is idempotent for %s", (_name, input) => {
+    const once = redactForReport(input);
+    expect(redactForReport(once)).toBe(once);
+  });
+
+  it.each([
+    ["a bare 12-digit number", "echo 123456789012 > counter.txt"],
+    ["a bare 32-hex string", "echo 0123456789abcdef0123456789abcdef > digest.txt"],
+    [
+      "a --project on a tool outside the Google Cloud family",
+      "mytool build --project my-local-folder",
+    ],
+    ["an --account value that is not account-shaped", "mytool login --account acme-billing"],
+    ["a 12-digit number inside an unrelated word", "echo order-123456789012-confirmed"],
+    ["a git sha", "git show 3b8390f6a1c2d4e5f60718293a4b5c6d7e8f9012"],
+  ])("leaves %s alone", (_name, input) => {
+    expect(redactForReport(input)).toBe(input);
+  });
+
+  it("keeps an ssh option other than User", () => {
+    expect(redactForReport("ssh -o StrictHostKeyChecking=no build-01 uptime")).toBe(
+      "ssh -o StrictHostKeyChecking=no <host> uptime",
+    );
+  });
+
+  it("redacts a secret handed to a flag whose name ends in -key", () => {
+    expect(redactForReport("vendorcli sync --vendor-key abc123def456ghi")).toBe(
+      "vendorcli sync --vendor-key [REDACTED:secret:arg]",
+    );
+  });
+});
+
+describe("names kept readable on purpose", () => {
+  it.each([
+    ["a branch given as a plain operand", "git push origin acme-billing-fix"],
+    ["a branch created with switch -c", "git switch -c acme-billing-fix"],
+    ["a branch deleted with -D", "git branch -D acme-billing-fix"],
+    ["a folder after cd", "cd clientco-app && ls"],
+    ["a folder given to git -C", "git -C clientco-app status"],
+  ])("%s", (_name, input) => {
+    expect(redactForReport(input)).toBe(input);
+  });
+});
