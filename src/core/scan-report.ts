@@ -55,6 +55,7 @@ import { buildGuardSpanContext } from "./normalize.js";
 import { redactIdentifiers } from "./redact-identifiers.js";
 import { redactMcpPayload } from "./redact-mcp.js";
 import { redactPaths } from "./redact-path.js";
+import { redactSecrets } from "./redact-secrets.js";
 import type { CompiledRule } from "./rules.js";
 import { scrubText } from "./scrub.js";
 import { addUsage, EMPTY_TOKEN_TOTALS, type TokenTotals } from "./tokens.js";
@@ -63,14 +64,16 @@ import { toolCallsOf } from "./transcripts.js";
 import type { AgentSource, GuardAction, MappedCall } from "./types.js";
 
 /**
- * The three redactors, composed in the one order that is correct.
+ * The four redactors, composed in the one order that is correct.
  *
  * `scrubText` first: it matches VALUE SHAPES, and a token replaced early would hide a
  * secret embedded in it and under-report the tally. `redactPaths` second: it matches
  * STRUCTURE, and is built so it cannot damage the placeholders the first pass just
  * inserted. `redactIdentifiers` last: it matches POSITION within a known command, so it
  * has to see a string whose paths are already `<path>` or it would read an image path as
- * an object name. Each one's header states its half of this; changing the order is a
+ * an object name. `redactSecrets` sits between the path pass and the identifier pass: it masks
+ * values a secret NAME gives away and long random-looking strings, and after the path pass a
+ * file path is already `<path>`, so it never reaches that guess. Each one's header states its half of this; changing the order is a
  * correctness change, not a style one.
  *
  * Exported so tests can drive the composition directly rather than inferring it from
@@ -78,7 +81,7 @@ import type { AgentSource, GuardAction, MappedCall } from "./types.js";
  * convention to trust.
  */
 export function redactForReport(text: string): string {
-  return redactIdentifiers(redactPaths(scrubText(text).text));
+  return redactIdentifiers(redactSecrets(redactPaths(scrubText(text).text)));
 }
 
 /**
@@ -116,7 +119,7 @@ export function redactTitle(text: string): string {
   // words are not resource names. The container-name redaction is KEPT — a title such as
   // "Audit docker exec acme-prod-db" carries a real name — and `scan-report.test.ts`
   // asserts both directions over the shipped catalog.
-  return redactIdentifiers(scrubText(text).text, { kubeResourceOperands: false });
+  return redactIdentifiers(redactSecrets(scrubText(text).text), { kubeResourceOperands: false });
 }
 
 /**

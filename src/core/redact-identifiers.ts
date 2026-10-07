@@ -8,9 +8,9 @@
  * `scan` displays or writes.
  *
  * ── The order, and why it is load-bearing ────────────────────────────────────
- * Three passes compose at one call site (`core/scan-report.ts`), in exactly this order:
+ * Four passes compose at one call site (`core/scan-report.ts`), in exactly this order:
  *
- *     redactIdentifiers(redactPaths(scrubText(text).text))
+ *     redactIdentifiers(redactSecrets(redactPaths(scrubText(text).text)))
  *
  * `scrubText` FIRST — it matches VALUE SHAPES (a key looks like a key), and a token
  * replaced before it runs would hide a secret embedded in that token and under-report
@@ -20,7 +20,9 @@
  * `docker run … ghcr.io/clientco/internal` offers it a path in an image-name position
  * and it would mistake one for the other. Running last also means every one of its
  * inputs is either the user's own text or a placeholder it can recognize and leave
- * alone, which is what makes it idempotent.
+ * alone, which is what makes it idempotent. `redactSecrets` (`redact-secrets.ts`) runs between the
+ * path pass and this one: it masks values a secret name gives away and long random-looking
+ * strings.
  *
  * ── Why it is a THIRD module and not a fifteenth scrubbing pattern ───────────
  * `core/scrub.ts` holds the standard secret patterns and nothing guard-specific, so
@@ -55,7 +57,7 @@
  * **It misses the command nobody thought of.** Everything below is per-command
  * knowledge: a word has to be in {@link COMMANDS} before any rule looks at its
  * operands, so a tool that is not on that list passes through completely untouched. The
- * list does not cover `helm`, `oc`, `aws`, `gcloud`, `az`, `terraform`, `flyctl`,
+ * list does not cover `helm`, `oc`, `aws`, `az`, `terraform`, `flyctl`,
  * `heroku`, `systemctl`, `pm2`, or the next tool somebody installs. The report's own
  * copy says so, and it is why `scan --review` exists: a bounded human review is the only
  * thing that catches the shape a deny-list has never seen.
@@ -148,7 +150,7 @@ const SECRET_ARG_PLACEHOLDER = `${REDACTION_PREFIX}secret:arg]`;
  * `--dbname`, `--message` or `--name`: none of those contain a secret word.
  */
 const SECRET_FLAG =
-  /^--(?:[a-z0-9-]*(?:password|passwd|secret|token|api-?key|apikey|access-?key|access-?token|auth-?token|credentials?)[a-z0-9-]*|key|pass|pwd)$/i;
+  /^--(?:[a-z0-9-]*(?:password|passwd|secret|token|api-?key|apikey|access-?key|access-?token|auth-?token|credentials?)[a-z0-9-]*|[a-z0-9-]+-key|key|pass|pwd)$/i;
 
 /**
  * A UUID, anywhere in a word — an account, organization or record id.
@@ -166,7 +168,7 @@ const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
 const HEREDOC_OPERATOR = /(?<!<)<<(?!<)(-?)[ \t]*\\?(['"]?)([A-Za-z_][A-Za-z0-9_]*)\2/g;
 
 /** Which rule set a command word turns on. */
-type Family = "container" | "kube" | "db" | "ssh" | "git" | "op" | "gh";
+type Family = "container" | "kube" | "db" | "ssh" | "git" | "op" | "gh" | "cloudflare" | "gcp";
 
 /**
  * The commands whose operands are inspected at all. Everything else is untouched.
@@ -199,6 +201,11 @@ const COMMANDS: ReadonlyMap<string, Family> = new Map<string, Family>([
   ["git", "git"],
   ["op", "op"],
   ["gh", "gh"],
+  ["wrangler", "cloudflare"],
+  ["gcloud", "gcp"],
+  ["gsutil", "gcp"],
+  ["bq", "gcp"],
+  ["firebase", "gcp"],
 ]);
 
 /**
@@ -549,6 +556,55 @@ const OP_KEPT_VALUE_FLAGS = new Set(["--fields", "--field", "--format"]);
  */
 const GH_MESSAGE_FLAGS = new Set(["--title", "-t", "--body", "-b", "--notes"]);
 
+/**
+ * Cloud account identifiers, redacted as identifiers: they name an account without being a
+ * credential.
+ *
+ * Anchored to a NAME, a flag or a command, never to a shape alone, because a bare 12-digit
+ * number or 32-hex string is also a timestamp, a counter or a content hash.
+ *
+ *  - an environment variable or config key that names one (`CLOUDFLARE_ACCOUNT_ID=…`,
+ *    `account_id = "…"`, `GOOGLE_CLOUD_PROJECT=…`);
+ *  - an account flag whose value has an account's shape (`--account-id`, `--account`,
+ *    `--owner-id`: 12 digits or 32 hex);
+ *  - the account field of an `arn:` (`arn:aws:sns:us-east-1:<12 digits>:topic`) — an ARN with
+ *    a slash is already `<path>` before this pass;
+ *  - a bare 32-hex operand of a `wrangler` command, and the value of `--project` for the
+ *    `gcloud` / `gsutil` / `bq` / `firebase` family ({@link CLOUD_PROJECT_FLAGS}).
+ */
+const CLOUD_ID_ENV =
+  /(?<![A-Za-z0-9_])([A-Za-z0-9_]*(?:ACCOUNT[_-]?ID|CF_ACCOUNT|CLOUDFLARE_ACCOUNT|AWS_ACCOUNT|GOOGLE_CLOUD_PROJECT|GCLOUD_PROJECT|GCP_PROJECT|CORE_PROJECT))(["']?\s*[=:]\s*)(["']?)(?![<[])([^\s"',;]+)\3/gi;
+const CLOUD_ID_FLAG =
+  /(--(?:account-id|account|owner-id|account-number))(=|\s+)(["']?)(\d{12}|[0-9a-f]{32})\3(?![A-Za-z0-9])/gi;
+const AWS_ARN_ACCOUNT = /(?<=\barn:aws[a-z-]*:[a-z0-9-]*:[a-z0-9-]*:)\d{12}(?![A-Za-z0-9])/g;
+const HEX_ACCOUNT = /^[0-9a-f]{32}$/i;
+
+/** The `--project` spellings of the Google Cloud command-line tools. */
+const CLOUD_PROJECT_FLAGS = new Set(["--project", "--project_id", "--project-id"]);
+
+/** Replace the cloud account identifiers that are findable without knowing the command. */
+function redactCloudIds(text: string): string {
+  return text
+    .replace(
+      CLOUD_ID_ENV,
+      (_m, name: string, sep: string, quote: string) =>
+        `${name}${sep}${quote}${NAME_PLACEHOLDER}${quote}`,
+    )
+    .replace(
+      CLOUD_ID_FLAG,
+      (_m, flag: string, join: string, quote: string) =>
+        `${flag}${join}${quote}${NAME_PLACEHOLDER}${quote}`,
+    )
+    .replace(AWS_ARN_ACCOUNT, NAME_PLACEHOLDER);
+}
+
+/** `User=<login>` handed to `ssh -o`, with the login redacted. */
+function sshUserOption(word: string): string | undefined {
+  const option = /^(["']?)(User)=(.+?)\1$/i.exec(word);
+  if (option === null || isRedactedWord(word)) return undefined;
+  return `${option[1]}${option[2]}=${USER_PLACEHOLDER}${option[1]}`;
+}
+
 /** A `--flag=value` or `KEY=value` word, split at the FIRST `=`. */
 const ASSIGNMENT = /^([^=]+)=(.+)$/;
 
@@ -898,7 +954,11 @@ function classify(
 
     case "ssh": {
       if (isFlag) {
-        if (SSH_VALUE_FLAGS.has(word)) {
+        const glued = /^-o(User=.+)$/i.exec(word);
+        if (glued !== null)
+          return isRedactedWord(word) ? undefined : `-o${sshUserOption(glued[1] as string)}`;
+        if (word === "-o") state.pending = { placeholder: undefined, rewrite: sshUserOption };
+        else if (SSH_VALUE_FLAGS.has(word)) {
           state.pending = { placeholder: SSH_VALUE_KIND.get(word) };
         }
         return undefined;
@@ -915,6 +975,22 @@ function classify(
       if (state.command === "scp") return undefined;
       state.sshDestinationSeen = true;
       return replaceValue(word, HOST_PLACEHOLDER);
+    }
+
+    case "cloudflare": {
+      // An account id is the one bare operand of a `wrangler` command with a 32-hex shape.
+      const bare = word.replace(/^["']|["']$/g, "");
+      return !isFlag && HEX_ACCOUNT.test(bare) ? replaceValue(word, NAME_PLACEHOLDER) : undefined;
+    }
+
+    case "gcp": {
+      const assignment = ASSIGNMENT.exec(word);
+      if (assignment !== null) {
+        const flag = assignment[1] as string;
+        return CLOUD_PROJECT_FLAGS.has(flag) ? `${flag}=${NAME_PLACEHOLDER}` : undefined;
+      }
+      if (CLOUD_PROJECT_FLAGS.has(word)) state.pending = { placeholder: NAME_PLACEHOLDER };
+      return undefined;
     }
 
     case "git": {
@@ -992,7 +1068,7 @@ export function redactIdentifiers(input: string, options: RedactIdentifiersOptio
 
   // Heredoc bodies first: they are free text, and once collapsed nothing inside them can
   // be mistaken for a command word or a comment by the word pass below.
-  const text = redactHeredocBodies(input);
+  const text = redactCloudIds(redactHeredocBodies(input));
   const pieces = tokenize(text);
   const edits: { start: number; end: number; text: string }[] = [];
   let state = freshState(undefined);
