@@ -228,6 +228,23 @@ different subset, so the same action can land differently:
 
 Every match is recorded in the local decision log, which `agenttrail-guard status` reads.
 
+### OWASP Top 10 coverage
+
+The guardrails address risks from the OWASP Top 10 for Agentic Applications and the OWASP Top 10
+for LLM Applications (2026 editions) at the point where a risk becomes a command or a file change.
+The pack-to-risk table, with each pack's default action, is in the
+[guardrails README](https://github.com/agenttrailhq/guardrails#owasp-coverage). Two things to read
+before relying on it:
+
+- **The default action decides whether anything stops.** A `warn` guardrail lets the action run and
+  records it. Most `secret-exposure` guardrails warn, because reading a secret is a normal part of a
+  normal day, and a dependency install is flagged, not held. Only `ask` and `block` stop an action.
+  You can change any guardrail's action: see [Tune a guardrail](#tune-a-guardrail).
+- **Guard sees commands and file paths, not prompts or file contents.** It does not address prompt
+  injection (LLM01), data and model poisoning (LLM05), hidden context exposure (LLM08), vector and
+  embedding weaknesses (LLM09), or insecure communication between agents (ASI07). It has no rate,
+  cost or budget limits, because a guardrail sees one command at a time.
+
 ## Tune a guardrail
 
 A guardrail that fires on something legitimate should get narrower, not switched off.
