@@ -1,3 +1,13 @@
+## [0.4.2](https://github.com/agenttrailhq/guard/compare/v0.4.1...v0.4.2) (2026-10-07)
+
+### Bug Fixes
+
+* mask generic secrets and cloud account ids in scan reports ([747c867](https://github.com/agenttrailhq/guard/commit/747c86730bfadc90b3e4181710e15c0491b8f5fc))
+
+### Reverts
+
+* Revert "docs: add an OWASP coverage note to the README" ([da3f083](https://github.com/agenttrailhq/guard/commit/da3f08386ddcf3ec62f80af8056e144b2c73b9e2))
+
 ## [0.4.1](https://github.com/agenttrailhq/guard/compare/v0.4.0...v0.4.1) (2026-10-05)
 
 ### Documentation
