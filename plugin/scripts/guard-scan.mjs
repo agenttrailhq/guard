@@ -7191,6 +7191,8 @@ function corpusSection(result) {
 ${coverage}`}
 <p class="note">Working directories and file paths appear nowhere in this file, and the projects these sessions came from are carried as a count and never as names.</p>
 <p class="note"><strong>Identifying names are a weaker claim than paths, and the difference is worth knowing.</strong> Shell commands go through an identifier redactor keyed to a fixed list of tools &mdash; container runtimes, <code>kubectl</code> (including resource names), the database clients (host, database, and the SQL handed to <code>-c</code> / <code>-e</code>), <code>ssh</code>, <code>git</code> commit messages and identity settings, 1Password&#39;s <code>op</code> (item and vault names), and <code>gh</code> titles and bodies &mdash; plus, in any command, a secret passed as a flag value (<code>--token</code>, <code>--password</code>, <code>--key</code>), a UUID, the body of a heredoc, and the text of a <code>#</code> comment. That list is a deny-list and will miss the tool nobody thought of, so a bare operand naming a resource for a tool not on it can survive.</p>
+<p class="note">Cloud account identifiers are redacted where a name or flag gives them away: <code>CLOUDFLARE_ACCOUNT_ID</code> and <code>--account-id</code>, <code>wrangler</code> commands, AWS account numbers after <code>--account</code> or inside an ARN, and <code>--project</code> for <code>gcloud</code>, <code>gsutil</code>, <code>bq</code> and <code>firebase</code>.</p>
+<p class="note"><strong>Secrets without a known format are caught by name and by shape, and both are guesses.</strong> A value after a name ending in <code>_KEY</code> or <code>-key</code>, an <code>Authorization</code> header, and any long random-looking string of 32 or more characters is masked. A secret that is shorter, that is only hexadecimal and has no revealing name, that is split by punctuation, or that has no name and is followed by a <code>.</code>, ends in <code>=</code> or is written as short dashed groups can survive. Branch names, folder names and git branch operands are kept readable and are not redacted.</p>
 <p class="note"><strong>MCP tool calls are handled the other way round:</strong> a call to an MCP server arrives as a structured payload, and rather than deny-listing known-sensitive fields, every value in it is redacted to <code>&lt;value&gt;</code> by default and only the field names and the shape are kept.</p>
 <p class="note">Guardrail ids and titles are shown as their author wrote them &mdash; which for any guardrail you added yourself means your own words, unredacted. Redaction is thorough but not a guarantee. Read the commands and guardrail names above before posting this anywhere public.</p>
 </section>`;
@@ -7238,12 +7240,12 @@ function shareSection(result, variant) {
   const check = variant === "artifact" ? `Redaction is thorough but not a guarantee. Read the findings before passing this page on; the person who published it can check every line with ${review} before the file is written.` : `Redaction is thorough but not a guarantee. Read the findings before posting this anywhere public, and run ${review} to see every line before the file is written.`;
   return `<section class="callout">
 <h2>Before you share this</h2>
-<p class="note">Every command below has been through a secret scrubber, a path redactor and an identifier redactor, and every MCP tool call has had its payload values structurally redacted. Redaction runs before anything is written, so this file has never held the original text.</p>
+<p class="note">Every command below has been through a secret scrubber, a path redactor, a pass for secret-named values and long random-looking strings, and an identifier redactor, and every MCP tool call has had its payload values structurally redacted. Redaction runs before anything is written, so this file has never held the original text.</p>
 <dl class="legend">
 <div><dt><code>&lt;path&gt;</code></dt><dd>stands for a redacted filesystem path or URL</dd></div>
 <div><dt><code>&lt;name&gt;</code> <code>&lt;host&gt;</code> <code>&lt;user&gt;</code> <code>&lt;message&gt;</code> <code>&lt;comment&gt;</code></dt><dd>stand for an identifying operand of a command &mdash; a container, a namespace, a machine, a login, a commit message or heredoc body, a shell comment</dd></div>
 <div><dt><code>&lt;value&gt;</code></dt><dd>stands for a redacted MCP payload value</dd></div>
-<div><dt><code>[REDACTED:&hellip;]</code></dt><dd>stands for a redacted secret</dd></div>
+<div><dt><code>[REDACTED:&hellip;]</code></dt><dd>stands for a redacted secret; <code>[REDACTED:secret:generic]</code> marks a long random-looking string masked on a best guess</dd></div>
 </dl>
 <p class="warning">${check}</p>
 </section>`;
@@ -7754,7 +7756,7 @@ var USER_PLACEHOLDER = "<user>";
 var MESSAGE_PLACEHOLDER = "<message>";
 var COMMENT_PLACEHOLDER = "<comment>";
 var SECRET_ARG_PLACEHOLDER = `${REDACTION_PREFIX}secret:arg]`;
-var SECRET_FLAG = /^--(?:[a-z0-9-]*(?:password|passwd|secret|token|api-?key|apikey|access-?key|access-?token|auth-?token|credentials?)[a-z0-9-]*|key|pass|pwd)$/i;
+var SECRET_FLAG = /^--(?:[a-z0-9-]*(?:password|passwd|secret|token|api-?key|apikey|access-?key|access-?token|auth-?token|credentials?)[a-z0-9-]*|[a-z0-9-]+-key|key|pass|pwd)$/i;
 var UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
 var HEREDOC_OPERATOR = /(?<!<)<<(?!<)(-?)[ \t]*\\?(['"]?)([A-Za-z_][A-Za-z0-9_]*)\2/g;
 var COMMANDS = /* @__PURE__ */ new Map([
@@ -7781,7 +7783,12 @@ var COMMANDS = /* @__PURE__ */ new Map([
   ["sftp", "ssh"],
   ["git", "git"],
   ["op", "op"],
-  ["gh", "gh"]
+  ["gh", "gh"],
+  ["wrangler", "cloudflare"],
+  ["gcloud", "gcp"],
+  ["gsutil", "gcp"],
+  ["bq", "gcp"],
+  ["firebase", "gcp"]
 ]);
 var CONTAINER_KEYWORDS = /* @__PURE__ */ new Set([
   "attach",
@@ -8021,6 +8028,25 @@ var OP_KEYWORDS = /* @__PURE__ */ new Set([
 var OP_NAME_FLAGS = /* @__PURE__ */ new Set(["--vault", "--account"]);
 var OP_KEPT_VALUE_FLAGS = /* @__PURE__ */ new Set(["--fields", "--field", "--format"]);
 var GH_MESSAGE_FLAGS = /* @__PURE__ */ new Set(["--title", "-t", "--body", "-b", "--notes"]);
+var CLOUD_ID_ENV = /(?<![A-Za-z0-9_])([A-Za-z0-9_]*(?:ACCOUNT[_-]?ID|CF_ACCOUNT|CLOUDFLARE_ACCOUNT|AWS_ACCOUNT|GOOGLE_CLOUD_PROJECT|GCLOUD_PROJECT|GCP_PROJECT|CORE_PROJECT))(["']?\s*[=:]\s*)(["']?)(?![<[])([^\s"',;]+)\3/gi;
+var CLOUD_ID_FLAG = /(--(?:account-id|account|owner-id|account-number))(=|\s+)(["']?)(\d{12}|[0-9a-f]{32})\3(?![A-Za-z0-9])/gi;
+var AWS_ARN_ACCOUNT = /(?<=\barn:aws[a-z-]*:[a-z0-9-]*:[a-z0-9-]*:)\d{12}(?![A-Za-z0-9])/g;
+var HEX_ACCOUNT = /^[0-9a-f]{32}$/i;
+var CLOUD_PROJECT_FLAGS = /* @__PURE__ */ new Set(["--project", "--project_id", "--project-id"]);
+function redactCloudIds(text) {
+  return text.replace(
+    CLOUD_ID_ENV,
+    (_m, name, sep, quote) => `${name}${sep}${quote}${NAME_PLACEHOLDER}${quote}`
+  ).replace(
+    CLOUD_ID_FLAG,
+    (_m, flag, join6, quote) => `${flag}${join6}${quote}${NAME_PLACEHOLDER}${quote}`
+  ).replace(AWS_ARN_ACCOUNT, NAME_PLACEHOLDER);
+}
+function sshUserOption(word) {
+  const option = /^(["']?)(User)=(.+?)\1$/i.exec(word);
+  if (option === null || isRedactedWord(word)) return void 0;
+  return `${option[1]}${option[2]}=${USER_PLACEHOLDER}${option[1]}`;
+}
 var ASSIGNMENT = /^([^=]+)=(.+)$/;
 var USER_AT_HOST = /^([^@\s]+)@([^@\s]+)$/;
 var BREAK_CHARS = /* @__PURE__ */ new Set(["&", "|", ";", "(", ")"]);
@@ -8202,7 +8228,11 @@ function classify(word, state, options) {
     }
     case "ssh": {
       if (isFlag) {
-        if (SSH_VALUE_FLAGS.has(word)) {
+        const glued = /^-o(User=.+)$/i.exec(word);
+        if (glued !== null)
+          return isRedactedWord(word) ? void 0 : `-o${sshUserOption(glued[1])}`;
+        if (word === "-o") state.pending = { placeholder: void 0, rewrite: sshUserOption };
+        else if (SSH_VALUE_FLAGS.has(word)) {
           state.pending = { placeholder: SSH_VALUE_KIND.get(word) };
         }
         return void 0;
@@ -8216,6 +8246,19 @@ function classify(word, state, options) {
       if (state.command === "scp") return void 0;
       state.sshDestinationSeen = true;
       return replaceValue(word, HOST_PLACEHOLDER);
+    }
+    case "cloudflare": {
+      const bare = word.replace(/^["']|["']$/g, "");
+      return !isFlag && HEX_ACCOUNT.test(bare) ? replaceValue(word, NAME_PLACEHOLDER) : void 0;
+    }
+    case "gcp": {
+      const assignment = ASSIGNMENT.exec(word);
+      if (assignment !== null) {
+        const flag = assignment[1];
+        return CLOUD_PROJECT_FLAGS.has(flag) ? `${flag}=${NAME_PLACEHOLDER}` : void 0;
+      }
+      if (CLOUD_PROJECT_FLAGS.has(word)) state.pending = { placeholder: NAME_PLACEHOLDER };
+      return void 0;
     }
     case "git": {
       const assignment = ASSIGNMENT.exec(word);
@@ -8274,7 +8317,7 @@ function classify(word, state, options) {
 }
 function redactIdentifiers(input, options = {}) {
   if (input.length === 0) return input;
-  const text = redactHeredocBodies(input);
+  const text = redactCloudIds(redactHeredocBodies(input));
   const pieces = tokenize(text);
   const edits = [];
   let state = freshState(void 0);
@@ -8439,6 +8482,123 @@ function redactPaths(text) {
     return containsPath(inner) ? `${quote}${PATH_PLACEHOLDER}${quote}` : region;
   });
   return collapsed.replace(TOKEN_RUN, (run) => isPathShaped(run) ? PATH_PLACEHOLDER : run);
+}
+
+// src/core/redact-secrets.ts
+var NAME_RULE_PLACEHOLDER = "[REDACTED:secret:env]";
+var GENERIC_PLACEHOLDER = "[REDACTED:secret:generic]";
+var FALLBACK_MIN_LENGTH = 32;
+var NAME_SEGMENT_MAX = 12;
+var WORDLIKE_SHARE = 0.7;
+var FALLBACK_MIN_ENTROPY = 4;
+var KEY_NAME = "[A-Za-z0-9]+(?:[_-][A-Za-z0-9]+)*[_-]key";
+var UNQUOTED_VALUE = `[^\\s"',;\\[<]`;
+var KEY_NAME_ASSIGNMENT = new RegExp(
+  `(?<![A-Za-z0-9_-])(${KEY_NAME})(["']?\\s*[=:]\\s*)(?:(")(?!\\[REDACTED:|<)[^"]{4,}"|(')(?!\\[REDACTED:|<)[^']{4,}'|${UNQUOTED_VALUE}{4,})`,
+  "gi"
+);
+var AUTHORIZATION = new RegExp(
+  `(?<![A-Za-z0-9_-])(Authorization["']?\\s*[=:]\\s*["']?)((?:Basic|Token|Digest|Negotiate|ApiKey|Api-Key)\\s+)?(?!Bearer\\s|\\[REDACTED:|<)(${UNQUOTED_VALUE}{8,})`,
+  "gi"
+);
+var UUID_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+var CANDIDATE = new RegExp(
+  `(?<![A-Za-z0-9_+/.%-])(?<!==)(?<!sha(?:1|224|256|384|512)[-:])(?<!base64,)[A-Za-z0-9_-]{${FALLBACK_MIN_LENGTH},}(?![A-Za-z0-9_+/=.%-])`,
+  "g"
+);
+function entropyOf(value) {
+  const counts = /* @__PURE__ */ new Map();
+  for (const ch of value) counts.set(ch, (counts.get(ch) ?? 0) + 1);
+  let bits = 0;
+  for (const n of counts.values()) {
+    const p = n / value.length;
+    bits -= p * Math.log2(p);
+  }
+  return bits;
+}
+var WORD = /[A-Z][a-z]{3,}|[a-z]{4,}|[A-Z]{4,}/g;
+function looksLikeWords(candidate) {
+  let wordChars = 0;
+  for (const word of candidate.match(WORD) ?? []) wordChars += word.length;
+  return wordChars / candidate.replace(/[-_]/g, "").length >= WORDLIKE_SHARE;
+}
+var NAME_WORDS = /* @__PURE__ */ new Set([
+  "api",
+  "app",
+  "auth",
+  "backend",
+  "billing",
+  "blue",
+  "build",
+  "canary",
+  "checkout",
+  "cluster",
+  "controller",
+  "default",
+  "deploy",
+  "deployment",
+  "dev",
+  "east",
+  "frontend",
+  "gateway",
+  "green",
+  "ingest",
+  "ingress",
+  "internal",
+  "job",
+  "main",
+  "migration",
+  "north",
+  "prod",
+  "production",
+  "release",
+  "replica",
+  "rollout",
+  "service",
+  "south",
+  "staging",
+  "stage",
+  "test",
+  "web",
+  "west",
+  "worker"
+]);
+function looksLikeSegmentedName(candidate) {
+  const segments = candidate.split(/[-_]/);
+  if (segments.length < 5 || segments.some((segment) => segment.length > NAME_SEGMENT_MAX)) {
+    return false;
+  }
+  return segments.filter((segment) => NAME_WORDS.has(segment.toLowerCase())).length >= 3;
+}
+function looksRandom(candidate) {
+  if (UUID_SHAPE.test(candidate)) return false;
+  if (/^sha(?:1|224|256|384|512)-/i.test(candidate)) return false;
+  if (looksLikeWords(candidate) || looksLikeSegmentedName(candidate)) return false;
+  if (/\d{8,}/.test(candidate)) return false;
+  if (candidate.split(/[-_]/).some((segment) => segment.length >= 32 && /^[0-9a-fA-F]+$/.test(segment)))
+    return false;
+  if (/^[0-9a-fA-F]+$/.test(candidate)) return false;
+  if (!/[A-Za-z]/.test(candidate) || !/[0-9]/.test(candidate)) return false;
+  return entropyOf(candidate) >= FALLBACK_MIN_ENTROPY;
+}
+function redactSecrets(input) {
+  if (input.length === 0) return input;
+  let out = input.replace(
+    KEY_NAME_ASSIGNMENT,
+    (_m, name, sep, dq, sq) => {
+      const quote = dq ?? sq ?? "";
+      return `${name}${sep}${quote}${NAME_RULE_PLACEHOLDER}${quote}`;
+    }
+  );
+  out = out.replace(
+    AUTHORIZATION,
+    (_m, head, scheme) => `${head}${scheme ?? ""}${NAME_RULE_PLACEHOLDER}`
+  );
+  out = out.replace(
+    CANDIDATE,
+    (candidate) => looksRandom(candidate) ? GENERIC_PLACEHOLDER : candidate
+  );
+  return out;
 }
 
 // src/core/scrub.ts
@@ -8621,10 +8781,10 @@ function toolCallsOf(session) {
 
 // src/core/scan-report.ts
 function redactForReport(text) {
-  return redactIdentifiers(redactPaths(scrubText(text).text));
+  return redactIdentifiers(redactSecrets(redactPaths(scrubText(text).text)));
 }
 function redactTitle(text) {
-  return redactIdentifiers(scrubText(text).text, { kubeResourceOperands: false });
+  return redactIdentifiers(redactSecrets(scrubText(text).text), { kubeResourceOperands: false });
 }
 var MAX_DISPLAY_LEN = 160;
 function flatten(s) {
