@@ -1099,6 +1099,246 @@ describe("a guardrail that would match everything is named, not silently accepte
   });
 });
 
+describe("a one-element brace alternation in `label` is named, not left inert", () => {
+  // `{Bash,PowerShell}` is an alternation. `{Bash}` is not: picomatch reads a brace group
+  // with no comma as literal braces, so the label only matches a tool literally named
+  // `{Bash}`, and the guardrail never fires.
+  const BRACED = {
+    ...USER_RULE,
+    match: {
+      any_of: [{ kind: "execute_tool", label: "{Bash}", detail_contains: ["./deploy.sh"] }],
+    },
+  };
+  const BRACED_CORPUS_RULE = {
+    ...BRACED,
+    description: "Synthetic, with a one-element brace alternation.",
+    fixtures: {
+      block: [{ tool: "Bash", command: "./deploy.sh prod" }],
+      allow: [{ tool: "Bash", command: "ls -la" }],
+    },
+  };
+
+  it("validate with a file warns on `{Bash}` and gives the corrected spelling", async () => {
+    const h = harness({ "/tmp/b.json": JSON.stringify(BRACED_CORPUS_RULE) });
+    // The block fixture is a matching command, and the braced label still misses it.
+    expect(await runRules(["validate", "/tmp/b.json"], h.io)).toBe(1);
+    expect(h.out()).toContain("block fixture   ./deploy.sh prod");
+    expect(h.out()).toContain("FAIL");
+    expect(h.out()).toContain("`{Bash}`");
+    expect(h.out()).toContain('write `"Bash"`');
+    expect(h.out()).toContain("match.any_of[0].label");
+  });
+
+  it("validate with a file reports the warning under --json", async () => {
+    const h = harness({ "/tmp/b.json": JSON.stringify(BRACED_CORPUS_RULE) });
+    await runRules(["validate", "/tmp/b.json", "--json"], h.io);
+    const j = JSON.parse(h.out()) as Record<string, unknown>;
+    expect(j.warnings).toEqual([
+      { path: "match.any_of[0].label", label: "{Bash}", corrected: "Bash", rewrite: true },
+    ]);
+  });
+
+  it("validate with no file warns on an installed guardrail that uses it", async () => {
+    const h = harness({ [RULES]: JSON.stringify([BRACED]) });
+    expect(await runRules(["validate"], h.io)).toBe(0);
+    expect(h.out()).toContain("local.no-deploy-friday");
+    expect(h.out()).toContain("`{Bash}`");
+    expect(h.out()).toContain('write `"Bash"`');
+  });
+
+  it("validate with no file still warns when another installed guardrail is invalid", async () => {
+    const h = harness({
+      [RULES]: JSON.stringify([BRACED, { ...USER_RULE_OWN_CATEGORY, defaultAction: "ask" }]),
+    });
+    expect(await runRules(["validate"], h.io)).toBe(1);
+    expect(h.out()).toContain("require_approval");
+    expect(h.out()).toContain("`{Bash}`");
+  });
+
+  it("validate with no file keeps the warning under --json when another guardrail is invalid", async () => {
+    const h = harness({
+      [RULES]: JSON.stringify([BRACED, { ...USER_RULE_OWN_CATEGORY, defaultAction: "ask" }]),
+    });
+    expect(await runRules(["validate", "--json"], h.io)).toBe(1);
+    const j = JSON.parse(h.out()) as Record<string, unknown>;
+    expect(j.warnings).toEqual([
+      {
+        guardrail: "local.no-deploy-friday",
+        path: "match.any_of[0].label",
+        label: "{Bash}",
+        corrected: "Bash",
+        rewrite: true,
+      },
+    ]);
+  });
+
+  it("add rewrites `{Bash}` to `Bash` and says so", async () => {
+    const h = harness({ "/tmp/b.json": JSON.stringify(BRACED) });
+    expect(await runRules(["add", "/tmp/b.json"], h.io)).toBe(0);
+    const stored = JSON.parse(h.raw(RULES) as string) as (typeof USER_RULE)[];
+    expect(stored[0]?.match.any_of[0]?.label).toBe("Bash");
+    expect(stored).toEqual([USER_RULE]);
+    expect(h.out()).toContain("Rewrote");
+    expect(h.out()).toContain("`{Bash}` to `Bash`");
+  });
+
+  it("add reports the rewrite under --json", async () => {
+    const h = harness({ "/tmp/b.json": JSON.stringify(BRACED) });
+    await runRules(["add", "/tmp/b.json", "--json"], h.io);
+    const j = JSON.parse(h.out()) as Record<string, unknown>;
+    expect(j).toMatchObject({ ok: true, changed: true, guardrail: "local.no-deploy-friday" });
+    expect(j.rewrote).toEqual([
+      { path: "match.any_of[0].label", label: "{Bash}", corrected: "Bash", rewrite: true },
+    ]);
+  });
+
+  describe("a wildcard in one-value braces is warned about and never rewritten", () => {
+    // Unwrapping `{*}` would turn a guardrail that never fires into one that matches every
+    // tool call, so it is left as written.
+    const STAR = {
+      ...USER_RULE,
+      match: {
+        any_of: [{ kind: "execute_tool", label: "{*}", detail_contains: ["./deploy.sh"] }],
+      },
+    };
+    const STAR_CORPUS_RULE = {
+      ...STAR,
+      description: "Synthetic, with a wildcard in one-value braces.",
+      fixtures: {
+        block: [{ tool: "Bash", command: "./deploy.sh prod" }],
+        allow: [{ tool: "Bash", command: "ls -la" }],
+      },
+    };
+    const WARNING = {
+      path: "match.any_of[0].label",
+      label: "{*}",
+      corrected: "*",
+      rewrite: false,
+    };
+
+    it("add writes `{*}` unchanged and warns with the spelling", async () => {
+      const h = harness({ "/tmp/s.json": JSON.stringify(STAR) });
+      expect(await runRules(["add", "/tmp/s.json"], h.io)).toBe(0);
+      expect(JSON.parse(h.raw(RULES) as string)).toEqual([STAR]);
+      expect(h.out()).not.toContain("Rewrote");
+      expect(h.out()).toContain("WARNING");
+      expect(h.out()).toContain("`{*}`");
+      expect(h.out()).toContain('`"*"`');
+      expect(h.out()).toContain("not rewritten");
+    });
+
+    it("add still prints the warning under --quiet", async () => {
+      const h = harness({ "/tmp/s.json": JSON.stringify(STAR) });
+      expect(await runRules(["add", "/tmp/s.json", "--quiet"], h.io)).toBe(0);
+      expect(h.out()).toContain("WARNING");
+      expect(h.out()).toContain("`{*}`");
+      expect(h.out()).not.toContain("Validated.");
+    });
+
+    it("add writes a negation in one-value braces unchanged and warns", async () => {
+      const negated = {
+        ...USER_RULE,
+        match: {
+          any_of: [{ kind: "execute_tool", label: "{!Bash}", detail_contains: ["./deploy.sh"] }],
+        },
+      };
+      const h = harness({ "/tmp/n.json": JSON.stringify(negated) });
+      expect(await runRules(["add", "/tmp/n.json"], h.io)).toBe(0);
+      expect(JSON.parse(h.raw(RULES) as string)).toEqual([negated]);
+      expect(h.out()).not.toContain("Rewrote");
+      expect(h.out()).toContain("WARNING");
+    });
+
+    it("add reports it under --json as a warning, not a rewrite", async () => {
+      const h = harness({ "/tmp/s.json": JSON.stringify(STAR) });
+      expect(await runRules(["add", "/tmp/s.json", "--json"], h.io)).toBe(0);
+      expect(JSON.parse(h.raw(RULES) as string)).toEqual([STAR]);
+      const j = JSON.parse(h.out()) as Record<string, unknown>;
+      expect(j).not.toHaveProperty("rewrote");
+      expect(j.warnings).toEqual([WARNING]);
+    });
+
+    it("add rewrites `{Bash}` and only warns on `{*}` in the same guardrail", async () => {
+      const mixed = {
+        ...USER_RULE,
+        match: {
+          any_of: [
+            { kind: "execute_tool", label: "{*}", detail_contains: ["./deploy.sh"] },
+            { kind: "execute_tool", label: "{Bash}", detail_contains: ["./release.sh"] },
+          ],
+        },
+      };
+      const h = harness({ "/tmp/m.json": JSON.stringify(mixed) });
+      expect(await runRules(["add", "/tmp/m.json", "--json"], h.io)).toBe(0);
+      const stored = JSON.parse(h.raw(RULES) as string) as (typeof mixed)[];
+      expect(stored[0]?.match.any_of.map((c) => c.label)).toEqual(["{*}", "Bash"]);
+      const j = JSON.parse(h.out()) as Record<string, unknown>;
+      expect((j.rewrote as { label: string }[]).map((f) => f.label)).toEqual(["{Bash}"]);
+      expect((j.warnings as { label: string }[]).map((f) => f.label)).toEqual(["{*}"]);
+    });
+
+    it("validate with a file warns and leaves the file unchanged", async () => {
+      const text = JSON.stringify(STAR_CORPUS_RULE);
+      const h = harness({ "/tmp/s.json": text });
+      await runRules(["validate", "/tmp/s.json"], h.io);
+      expect(h.out()).toContain("WARNING");
+      expect(h.out()).toContain("`{*}`");
+      expect(h.raw("/tmp/s.json")).toBe(text);
+      expect(h.writes).toEqual([]);
+    });
+
+    it("validate with a file reports it under --json", async () => {
+      const h = harness({ "/tmp/s.json": JSON.stringify(STAR_CORPUS_RULE) });
+      await runRules(["validate", "/tmp/s.json", "--json"], h.io);
+      expect((JSON.parse(h.out()) as Record<string, unknown>).warnings).toEqual([WARNING]);
+    });
+
+    it("validate with no file warns on an installed guardrail and leaves it unchanged", async () => {
+      const text = JSON.stringify([STAR]);
+      const h = harness({ [RULES]: text });
+      expect(await runRules(["validate"], h.io)).toBe(0);
+      expect(h.out()).toContain("WARNING local.no-deploy-friday");
+      expect(h.out()).toContain("`{*}`");
+      expect(h.raw(RULES)).toBe(text);
+      expect(h.writes).toEqual([]);
+    });
+
+    it("validate with no file reports it under --json", async () => {
+      const h = harness({ [RULES]: JSON.stringify([STAR]) });
+      expect(await runRules(["validate", "--json"], h.io)).toBe(0);
+      expect((JSON.parse(h.out()) as Record<string, unknown>).warnings).toEqual([
+        { guardrail: "local.no-deploy-friday", ...WARNING },
+      ]);
+    });
+  });
+
+  it("leaves a real alternation alone, in add and in validate", async () => {
+    const alternation = {
+      ...USER_RULE,
+      match: {
+        any_of: [
+          { kind: "execute_tool", label: "{Bash,PowerShell}", detail_contains: ["./deploy.sh"] },
+        ],
+      },
+    };
+    const added = harness({ "/tmp/a.json": JSON.stringify(alternation) });
+    expect(await runRules(["add", "/tmp/a.json"], added.io)).toBe(0);
+    expect(JSON.parse(added.raw(RULES) as string)).toEqual([alternation]);
+    expect(added.out()).not.toContain("Rewrote");
+
+    const installed = harness({ [RULES]: JSON.stringify([alternation]) });
+    expect(await runRules(["validate"], installed.io)).toBe(0);
+    expect(installed.out()).not.toContain("WARNING");
+  });
+
+  it("a rejected rule's example says what `label` accepts", async () => {
+    const h = harness({ "/tmp/x.json": JSON.stringify({ ...USER_RULE, category: "made-up" }) });
+    expect(await runRules(["add", "/tmp/x.json"], h.io)).toBe(1);
+    expect(h.out()).toContain("`label` is one tool name");
+    expect(h.out()).toContain("{Bash,PowerShell}");
+  });
+});
+
 /**
  * The `--json` KEY CONTRACT.
  *
