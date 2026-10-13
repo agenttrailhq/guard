@@ -19,6 +19,7 @@ import { compileCatalog } from "../core/rules.js";
 import { aggregateScan, redactForReport, type ScanCorpus } from "../core/scan-report.js";
 import type { GuardRule } from "../core/types.js";
 import { session, toolUse, turn } from "./scan-fixtures.js";
+import { ESCAPE_BOUNDARY_FIXTURES } from "./scrub-corpus.js";
 
 const META: ReportMeta = { version: "0.1.0", generatedAt: new Date("2026-10-01T09:00:00.000Z") };
 
@@ -287,6 +288,16 @@ describe("end to end through the HTML and JSON surfaces", () => {
   )("%s: the value reaches neither surface", (_name, secret) => {
     expect(html).not.toContain(secret);
     expect(json).not.toContain(secret);
+  });
+});
+
+describe("a secret after an escape sequence or a control code", () => {
+  // The report keeps the secret's own label: the format pass catches it, not only the
+  // generic fallback that masks a random-looking run together with its neighbours.
+  it.each(ESCAPE_BOUNDARY_FIXTURES)("$name", ({ input, secret, kind }) => {
+    const out = redactForReport(input);
+    expect(out).not.toContain(secret);
+    expect(out).toContain(`[REDACTED:secret:${kind}`);
   });
 });
 

@@ -8605,28 +8605,41 @@ function redactSecrets(input) {
 function redacted(kind, hint) {
   return hint ? `[REDACTED:${kind}:${hint}]` : `[REDACTED:${kind}]`;
 }
-var AWS_ACCESS_KEY_ID = /\b((?:AKIA|ABIA|ACCA|AGPA|AIDA|AIPA|ANPA|ANVA|AROA|ASCA|ASIA)[A-Z0-9]{16})\b/g;
+var LEAD2 = String.raw`(?:\b|(?<=\\[nrtfb])|(?<=\\u[0-9A-Fa-f]{4})|(?<=\x1b\[[0-9;:?]{0,32}[@-~])|(?<=\\(?:u001[bB]|x1[bB]|033)\[[0-9;:?]{0,32}[@-~])|(?<=\x1b\([0-9A-Za-z])|(?<=\\(?:u001[bB]|x1[bB]|033)\([0-9A-Za-z]))`;
+function led(source, flags) {
+  return new RegExp(`${LEAD2}${source}`, flags);
+}
+var AWS_ACCESS_KEY_ID = led(
+  String.raw`((?:AKIA|ABIA|ACCA|AGPA|AIDA|AIPA|ANPA|ANVA|AROA|ASCA|ASIA)[A-Z0-9]{16})\b`,
+  "g"
+);
 var AWS_SECRET_ACCESS_KEY = new RegExp(
   `((?:aws[_-]?)?secret[_-]?access[_-]?key)(["']?\\s*[=:]\\s*["']?)((?![0-9a-f]{40}(?![A-Za-z0-9/+=]))[A-Za-z0-9/+]{40})(?![A-Za-z0-9/+=])`,
   "gi"
 );
-var OPENAI_KEY = /\bsk-(?:proj-)?[A-Za-z0-9_-]{20,64}\b/g;
-var GITHUB_TOKEN = /\b(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{36,255}\b|\bgithub_pat_[A-Za-z0-9_]{22,255}\b/g;
-var SLACK_TOKEN = /\bxox[baprs]-[A-Za-z0-9-]{10,255}\b/g;
-var BEARER_TOKEN = /\bBearer\s+([A-Za-z0-9._~+/-]{8,})=*/gi;
-var CONNECTION_STRING = /\b(postgres(?:ql)?|mysql|mongodb(?:\+srv)?|redis|rediss|amqp|amqps):\/\/[^\s/@:]+:[^\s]*@([^\s/:@]+)/gi;
-var JWT = /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{4,}\.[A-Za-z0-9_-]{4,}\b/g;
+var OPENAI_KEY = led(String.raw`sk-(?:proj-)?[A-Za-z0-9_-]{20,64}\b`, "g");
+var GITHUB_TOKEN = led(
+  String.raw`(?:(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{36,255}\b|github_pat_[A-Za-z0-9_]{22,255}\b)`,
+  "g"
+);
+var SLACK_TOKEN = led(String.raw`xox[baprs]-[A-Za-z0-9-]{10,255}\b`, "g");
+var BEARER_TOKEN = led(String.raw`Bearer\s+([A-Za-z0-9._~+/-]{8,})=*`, "gi");
+var CONNECTION_STRING = led(
+  String.raw`(postgres(?:ql)?|mysql|mongodb(?:\+srv)?|redis|rediss|amqp|amqps):\/\/[^\s/@:]+:[^\s]*@([^\s/:@]+)`,
+  "gi"
+);
+var JWT = led(String.raw`eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{4,}\.[A-Za-z0-9_-]{4,}\b`, "g");
 var PEM_PRIVATE_KEY = /-----BEGIN (?:RSA |EC |DSA |OPENSSH |PGP |ENCRYPTED )?PRIVATE KEY-----[\s\S]{0,8192}?-----END (?:RSA |EC |DSA |OPENSSH |PGP |ENCRYPTED )?PRIVATE KEY-----/g;
-var BASIC_AUTH_URL = /\b(https?|ftp|wss?):\/\/[^\s/@:]+:[^\s]*@(?=[^\s/:@])/gi;
+var BASIC_AUTH_URL = led(String.raw`(https?|ftp|wss?):\/\/[^\s/@:]+:[^\s]*@(?=[^\s/:@])`, "gi");
 var ENV_SECRET_ASSIGNMENT = (() => {
   const sentinel2 = String.fromCharCode(57344);
   const key = "([A-Z0-9_]*(?:PASSWORD|PASSWD|SECRET|TOKEN|API[_-]?KEY|APIKEY|ACCESS[_-]?KEY|PRIVATE[_-]?KEY|CLIENT[_-]?SECRET|AUTH[_-]?TOKEN|CREDENTIALS?)[A-Z0-9_]*)";
   const value = `(?:"([^"${sentinel2}]{4,})"|'([^'${sentinel2}]{4,})'|([^\\s"',;${sentinel2}]{4,}))`;
-  return new RegExp(`\\b${key}(["']?\\s*[=:]\\s*)${value}`, "gi");
+  return new RegExp(`${LEAD2}${key}(["']?\\s*[=:]\\s*)${value}`, "gi");
 })();
-var EMAIL = /\b[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9.-]{1,255}\.[A-Za-z]{2,24}\b/g;
-var SSN = /\b(?!000|666|9\d\d)\d{3}[- ](?!00)\d{2}[- ](?!0000)\d{4}\b/g;
-var CREDIT_CARD = /\b\d{13,19}\b|\b\d{3,6}([ -])\d{3,6}(?:\1\d{3,6}){1,3}\b/g;
+var EMAIL = led(String.raw`[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9.-]{1,255}\.[A-Za-z]{2,24}\b`, "g");
+var SSN = led(String.raw`(?!000|666|9\d\d)\d{3}[- ](?!00)\d{2}[- ](?!0000)\d{4}\b`, "g");
+var CREDIT_CARD = led(String.raw`(?:\d{13,19}\b|\d{3,6}([ -])\d{3,6}(?:\1\d{3,6}){1,3}\b)`, "g");
 var PATTERNS = [
   {
     id: "aws-access-key-id",

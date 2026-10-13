@@ -10,7 +10,13 @@
 
 import { describe, expect, it } from "vitest";
 import { PATTERN_IDS, scrubText } from "../core/scrub.js";
-import { INTERACTION_FIXTURES, NEGATIVE_FIXTURES, POSITIVE_FIXTURES } from "./scrub-corpus.js";
+import {
+  ESCAPE_BOUNDARY_FIXTURES,
+  GLUED_TO_A_WORD,
+  INTERACTION_FIXTURES,
+  NEGATIVE_FIXTURES,
+  POSITIVE_FIXTURES,
+} from "./scrub-corpus.js";
 
 const SENTINEL = String.fromCharCode(0xe000);
 
@@ -84,6 +90,35 @@ describe("correctness — benign strings survive untouched", () => {
     // < 13 digits and > 19 digits both fail before the checksum runs.
     expect(scrubText("id 411111111111").total).toBe(0); // 12
     expect(scrubText("id 41111111111111111111").total).toBe(0); // 20
+  });
+});
+
+describe("correctness — a secret after an escape sequence or a control code", () => {
+  // In JSON-escaped text or coloured terminal output the character before a secret is a
+  // letter or a hex digit (`\n`, `ESC[32m`, `\u001b`), so a plain word boundary does not
+  // hold there. Each case must still be redacted, once, with its own placeholder.
+  it.each(ESCAPE_BOUNDARY_FIXTURES)("$name", ({ input, secret, kind }) => {
+    const result = scrubText(input);
+    expect(result.text).not.toContain(secret);
+    expect(result.text).toContain(`[REDACTED:secret:${kind}`);
+    expect(result.total).toBe(1);
+  });
+
+  it.each(GLUED_TO_A_WORD)("a secret glued to a word stays as it is: %s", (input) => {
+    expect(scrubText(input)).toEqual({ text: input, redactions: {}, total: 0 });
+  });
+
+  it("stays linear on long runs of escapes and unterminated control codes", () => {
+    const inputs = [
+      "\\n".repeat(50_000),
+      "\x1b[".repeat(20_000),
+      `\x1b[${"1;".repeat(50_000)}`,
+      "\\u001b[".repeat(20_000),
+      "\\u00".repeat(40_000),
+    ];
+    const start = performance.now();
+    for (const input of inputs) scrubText(input);
+    expect(performance.now() - start).toBeLessThan(2_000);
   });
 });
 
