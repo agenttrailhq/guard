@@ -265,6 +265,75 @@ export const INTERACTION_FIXTURES: readonly InteractionFixture[] = [
 ];
 
 /**
+ * Secrets that sit right after an escape sequence or a terminal control code. A word
+ * boundary cannot see the start of the secret there: the character before it is the
+ * `n` of an escaped newline, the `m` of a colour code, or a hex digit of `\uXXXX`.
+ *
+ * Each entry is `[description, secret, placeholder kind]`. The GitHub token and the
+ * JWT are assembled at runtime; the AWS key is AWS's own documentation example.
+ */
+export const ESCAPE_BOUNDARY_SECRETS: ReadonlyArray<readonly [string, string, string]> = [
+  ["a GitHub token", `${["gh", "p_"].join("")}${"R2l0SHViVG9rZW4".padEnd(36, "q")}`, "github"],
+  ["an AWS access key", "AKIAIOSFODNN7EXAMPLE", "aws"],
+  [
+    "a JWT",
+    `${["ey", "J"].join("")}hbGciOiJIUzI1NiJ9.${["ey", "J"].join("")}zdWIiOiIxMjMifQ.c2lnbmF0dXJlLXZhbHVl`,
+    "jwt",
+  ],
+];
+
+/** Each position where the start of a secret is hidden from a word boundary. */
+export const ESCAPE_BOUNDARY_CONTEXTS: ReadonlyArray<
+  readonly [string, (secret: string) => string]
+> = [
+  // What a JSON string holds for a two-line output: a backslash and an `n`, not a newline.
+  ["line 2 of a JSON-escaped output", (s) => `{"output":"line one\\n${s}\\nline three"}`],
+  ["after an escaped tab", (s) => `name\\t${s}`],
+  ["after an escaped CRLF", (s) => `first\\r\\n${s}`],
+  ["after a \\uXXXX escape", (s) => `key\\u003d${s}`],
+  ["after a raw ANSI colour code", (s) => `\x1b[32m${s}\x1b[0m`],
+  ["after an escaped ANSI colour code", (s) => `\\u001b[1;32m${s}\\u001b[0m`],
+  ["after an ANSI code escaped for a shell", (s) => `\\x1b[31m${s}`],
+  ["in a JSON argument after a newline", (s) => JSON.stringify({ query: `find\n${s}` })],
+  ["after an erase-line code, as a spinner prints", (s) => `\r\x1b[K${s}`],
+  ["after an erase-whole-line code", (s) => `\x1b[2K${s}`],
+  ["after an erase and a cursor move", (s) => `\x1b[2K\x1b[1G${s}`],
+  ["after an escaped erase-line code", (s) => JSON.stringify({ o: `progress\r\x1b[K${s}` })],
+  ["after a colon-form colour code", (s) => `\x1b[38:5:208m${s}`],
+  ["after a character-set switch", (s) => `\x1b(B${s}`],
+  ["after a JSON-escaped form feed", (s) => JSON.stringify({ o: `a\f${s}` })],
+  ["after a JSON-escaped backspace", (s) => JSON.stringify({ o: `a\b${s}` })],
+];
+
+/** A secret in an escape-boundary position: it must be redacted once, as `kind`. */
+export interface EscapeBoundaryFixture {
+  readonly name: string;
+  readonly input: string;
+  readonly secret: string;
+  readonly kind: string;
+}
+
+/** Every secret in every escape-boundary context. */
+export const ESCAPE_BOUNDARY_FIXTURES: readonly EscapeBoundaryFixture[] =
+  ESCAPE_BOUNDARY_SECRETS.flatMap(([what, secret, kind]) =>
+    ESCAPE_BOUNDARY_CONTEXTS.map(([where, wrap]) => ({
+      name: `${what} ${where}`,
+      input: wrap(secret),
+      secret,
+      kind,
+    })),
+  );
+
+/**
+ * A secret glued to a word is still not a secret on its own: the escape-aware start
+ * only adds positions after an escape or a control code, never inside a word.
+ */
+export const GLUED_TO_A_WORD: readonly string[] = [
+  "xAKIAIOSFODNN7EXAMPLE",
+  `prefix${["gh", "p_"].join("")}${"R2l0SHViVG9rZW4".padEnd(36, "q")}`,
+];
+
+/**
  * Every input, flattened. Order is stable so a failing
  * case is identified the same way on every run.
  */
@@ -272,6 +341,8 @@ export const CORPUS: readonly string[] = [
   ...POSITIVE_FIXTURES.map((f) => f.input),
   ...NEGATIVE_FIXTURES.map((f) => f.input),
   ...INTERACTION_FIXTURES.map((f) => f.input),
+  ...ESCAPE_BOUNDARY_FIXTURES.map((f) => f.input),
+  ...GLUED_TO_A_WORD,
   // Engine-level edge cases. They carry no catalog expectation of their own, but
   // the two scrubbers must still agree on them exactly.
   "",

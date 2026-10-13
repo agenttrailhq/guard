@@ -1,3 +1,4 @@
+// cspell:words nghp mghp nrtfb
 /**
  * The secret scrubber: the `standard` pattern set, applied to a single string.
  *
@@ -48,6 +49,33 @@ function redacted(kind: string, hint?: string): string {
   return hint ? `[REDACTED:${kind}:${hint}]` : `[REDACTED:${kind}]`;
 }
 
+/**
+ * Where a secret may start: a word boundary, or right after an escape sequence or a
+ * terminal control code that a word boundary cannot see.
+ *
+ * Text reaches the scrubber JSON-escaped (`line one\nghp_…`) or coloured by a terminal
+ * (`ESC[32mghp_…`, or `\u001b[32m…` once escaped). In each of those the character right
+ * before the secret is a letter (`n`, `t`, `m`, `K`) or a hex digit, so `\b` does not hold.
+ * Each shape keeps `\b` and adds lookbehinds for an escaped `\n` `\r` `\t` `\f` `\b`, a
+ * `\uXXXX` escape, any ANSI CSI sequence (`ESC[` parameters, then any final byte `@` to
+ * `~`: colour codes including the colon form, erase-line, cursor moves) raw or escaped as
+ * `\u001b[`, `\x1b[` or `\033[`, and a character-set switch (`ESC(B`), raw or escaped.
+ *
+ * It only adds match positions after one of those sequences, so a secret glued to a word
+ * is still not matched, and the text is scrubbed where it lies, so each placeholder lands
+ * at the secret's own offset. Each lookbehind is bounded (at most 8 characters, or 32
+ * parameter characters of a CSI sequence).
+ *
+ * Not covered: URL-encoded characters (`%0A`), hex or octal escapes in a string literal
+ * (`\x0a`, `\012`), and other encodings that would need decoding first.
+ */
+const LEAD = String.raw`(?:\b|(?<=\\[nrtfb])|(?<=\\u[0-9A-Fa-f]{4})|(?<=\x1b\[[0-9;:?]{0,32}[@-~])|(?<=\\(?:u001[bB]|x1[bB]|033)\[[0-9;:?]{0,32}[@-~])|(?<=\x1b\([0-9A-Za-z])|(?<=\\(?:u001[bB]|x1[bB]|033)\([0-9A-Za-z]))`;
+
+/** A pattern that starts at `LEAD`. `source` is written without a leading `\b`. */
+function led(source: string, flags: string): RegExp {
+  return new RegExp(`${LEAD}${source}`, flags);
+}
+
 // ── Secrets ──────────────────────────────────────────────────────────────────
 
 /**
@@ -55,8 +83,10 @@ function redacted(kind: string, hint?: string): string {
  * the label carries NO part of the id, not even the last-4 — those four characters
  * fingerprint the key, and a shared scan report should disclose nothing that identifies it.
  */
-const AWS_ACCESS_KEY_ID =
-  /\b((?:AKIA|ABIA|ACCA|AGPA|AIDA|AIPA|ANPA|ANVA|AROA|ASCA|ASIA)[A-Z0-9]{16})\b/g;
+const AWS_ACCESS_KEY_ID = led(
+  String.raw`((?:AKIA|ABIA|ACCA|AGPA|AIDA|AIPA|ANPA|ANVA|AROA|ASCA|ASIA)[A-Z0-9]{16})\b`,
+  "g",
+);
 
 /**
  * AWS secret access key — 40-char base64-ish value, **context-anchored** to an
@@ -73,14 +103,16 @@ const AWS_SECRET_ACCESS_KEY = new RegExp(
 );
 
 /** OpenAI-style key: `sk-` + 20-64 url-safe chars (covers `sk-proj-` too). */
-const OPENAI_KEY = /\bsk-(?:proj-)?[A-Za-z0-9_-]{20,64}\b/g;
+const OPENAI_KEY = led(String.raw`sk-(?:proj-)?[A-Za-z0-9_-]{20,64}\b`, "g");
 
 /** GitHub PAT / OAuth / app tokens: `ghp_` `gho_` `ghu_` `ghs_` `ghr_` `github_pat_`. */
-const GITHUB_TOKEN =
-  /\b(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{36,255}\b|\bgithub_pat_[A-Za-z0-9_]{22,255}\b/g;
+const GITHUB_TOKEN = led(
+  String.raw`(?:(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{36,255}\b|github_pat_[A-Za-z0-9_]{22,255}\b)`,
+  "g",
+);
 
 /** Slack tokens: `xoxb-`/`xoxp-`/`xoxa-`/`xoxr-`/`xoxs-` + dotted segments. */
-const SLACK_TOKEN = /\bxox[baprs]-[A-Za-z0-9-]{10,255}\b/g;
+const SLACK_TOKEN = led(String.raw`xox[baprs]-[A-Za-z0-9-]{10,255}\b`, "g");
 
 /**
  * HTTP Bearer token in an Authorization-style value. **Case-insensitive** — raw
@@ -89,7 +121,7 @@ const SLACK_TOKEN = /\bxox[baprs]-[A-Za-z0-9-]{10,255}\b/g;
  * an incidental prose "bearer <8+ token-ish chars>" is also redacted: losing one
  * benign word beats leaking a real lowercase bearer token.
  */
-const BEARER_TOKEN = /\bBearer\s+([A-Za-z0-9._~+/-]{8,})=*/gi;
+const BEARER_TOKEN = led(String.raw`Bearer\s+([A-Za-z0-9._~+/-]{8,})=*`, "gi");
 
 /**
  * Credentialed connection string for common datastores. The whole `user:pass@host`
@@ -100,11 +132,13 @@ const BEARER_TOKEN = /\bBearer\s+([A-Za-z0-9._~+/-]{8,})=*/gi;
  * `ssw0rd` and `pa/ss` misses entirely, persisting the full credential — but the captured
  * host is used only for that anchoring, never echoed into the placeholder.
  */
-const CONNECTION_STRING =
-  /\b(postgres(?:ql)?|mysql|mongodb(?:\+srv)?|redis|rediss|amqp|amqps):\/\/[^\s/@:]+:[^\s]*@([^\s/:@]+)/gi;
+const CONNECTION_STRING = led(
+  String.raw`(postgres(?:ql)?|mysql|mongodb(?:\+srv)?|redis|rediss|amqp|amqps):\/\/[^\s/@:]+:[^\s]*@([^\s/:@]+)`,
+  "gi",
+);
 
 /** JWT: three base64url segments. Claims are NEVER stored in the placeholder. */
-const JWT = /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{4,}\.[A-Za-z0-9_-]{4,}\b/g;
+const JWT = led(String.raw`eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{4,}\.[A-Za-z0-9_-]{4,}\b`, "g");
 
 /** PEM private-key block (RSA / EC / OPENSSH / generic). */
 const PEM_PRIVATE_KEY =
@@ -115,7 +149,7 @@ const PEM_PRIVATE_KEY =
  * Same robust userinfo shape as `CONNECTION_STRING`, so a password containing
  * `@` or `/` is fully consumed rather than leaving a residual `ssw0rd@`.
  */
-const BASIC_AUTH_URL = /\b(https?|ftp|wss?):\/\/[^\s/@:]+:[^\s]*@(?=[^\s/:@])/gi;
+const BASIC_AUTH_URL = led(String.raw`(https?|ftp|wss?):\/\/[^\s/@:]+:[^\s]*@(?=[^\s/:@])`, "gi");
 
 /**
  * `.env`-style secret assignment: a KEY whose name implies a secret, followed by
@@ -135,16 +169,16 @@ const ENV_SECRET_ASSIGNMENT = (() => {
   // sentinel so an already-inserted placeholder is never re-consumed.
   const value =
     `(?:"([^"${sentinel}]{4,})"` + `|'([^'${sentinel}]{4,})'` + `|([^\\s"',;${sentinel}]{4,}))`;
-  return new RegExp(`\\b${key}(["']?\\s*[=:]\\s*)${value}`, "gi");
+  return new RegExp(`${LEAD}${key}(["']?\\s*[=:]\\s*)${value}`, "gi");
 })();
 
 // ── PII ──────────────────────────────────────────────────────────────────────
 
 /** Email address. */
-const EMAIL = /\b[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9.-]{1,255}\.[A-Za-z]{2,24}\b/g;
+const EMAIL = led(String.raw`[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9.-]{1,255}\.[A-Za-z]{2,24}\b`, "g");
 
 /** US Social Security Number (`123-45-6789` / `123 45 6789`). */
-const SSN = /\b(?!000|666|9\d\d)\d{3}[- ](?!00)\d{2}[- ](?!0000)\d{4}\b/g;
+const SSN = led(String.raw`(?!000|666|9\d\d)\d{3}[- ](?!00)\d{2}[- ](?!0000)\d{4}\b`, "g");
 
 /**
  * Candidate card number (Luhn-validated below). Two non-bridging shapes:
@@ -152,7 +186,7 @@ const SSN = /\b(?!000|666|9\d\d)\d{3}[- ](?!00)\d{2}[- ](?!0000)\d{4}\b/g;
  * CONSISTENT separator (the `\1` backreference is what stops the pattern
  * bridging two unrelated numbers across a stray space or dash).
  */
-const CREDIT_CARD = /\b\d{13,19}\b|\b\d{3,6}([ -])\d{3,6}(?:\1\d{3,6}){1,3}\b/g;
+const CREDIT_CARD = led(String.raw`(?:\d{13,19}\b|\d{3,6}([ -])\d{3,6}(?:\1\d{3,6}){1,3}\b)`, "g");
 
 /**
  * The ordered catalog — the `standard` patterns, in application order.
