@@ -6090,7 +6090,8 @@ var CURSOR_NOT_ACTIONS = /* @__PURE__ */ new Set([
   "Task",
   "ReadLints",
   "SemanticSearch",
-  "WebFetch"
+  "WebFetch",
+  "UpdateCurrentStep"
 ]);
 var FILE_TOOLS2 = /* @__PURE__ */ new Map([
   ["Read", "Read"],
