@@ -298,13 +298,14 @@ describe("each tool in a session file is evaluated as the table says", () => {
     "ReadLints",
     "SemanticSearch",
     "WebFetch",
+    "UpdateCurrentStep",
   ];
 
   it.each(NOT_ACTIONS)("%s is not an action", (name) => {
     expect(map(name, { anything: true })).toEqual({ kind: "not-action" });
   });
 
-  it("the not-action list is exactly those ten", () => {
+  it("the not-action list is exactly those eleven", () => {
     expect([...CURSOR_NOT_ACTIONS].sort()).toEqual([...NOT_ACTIONS].sort());
   });
 
@@ -764,7 +765,8 @@ describe("the committed session fixture, read from disk", () => {
       NO_ALLOWLIST,
     );
     // Session file: three shell commands, a read, a search, an edit and an MCP call. Sub-agent:
-    // a file search and a shell command. The to-do list is not an action.
+    // a file search and a shell command. The to-do list and the two progress steps are not
+    // actions.
     expect(result.toolCalls).toBe(9);
     // Three deletes, the `.env` read and the search for `.env` files.
     expect(result.riskyActions).toBe(5);
@@ -774,7 +776,7 @@ describe("the committed session fixture, read from disk", () => {
     ]);
     expect(result.recurring.map((r) => [r.text, r.count])).toEqual([["rm -rf <path>", 3]]);
     expect(result.skipped).toMatchObject({
-      notActions: 1,
+      notActions: 3,
       turnsEndedWithError: 1,
       unmappedTools: [],
     });

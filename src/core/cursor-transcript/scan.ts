@@ -40,9 +40,10 @@
  * same verdict in both.
  *
  * `GetDynamicTools`, `TodoWrite`, `CreatePlan`, `AskQuestion`, `SwitchMode`, `Await`,
- * `Task`, `ReadLints`, `SemanticSearch` and `WebFetch` are not actions a guardrail checks,
- * and are counted apart. A `Task` starts a sub-agent, whose own tool calls are read from its
- * file. Any other tool name is counted as not recognized.
+ * `Task`, `ReadLints`, `SemanticSearch`, `WebFetch` and `UpdateCurrentStep` (a progress step
+ * shown in Cursor's UI) are not actions a guardrail checks, and are counted apart. A `Task`
+ * starts a sub-agent, whose own tool calls are read from its file. Any other tool name is
+ * counted as not recognized.
  */
 
 import { join } from "node:path";
@@ -86,6 +87,7 @@ export const CURSOR_NOT_ACTIONS: ReadonlySet<string> = new Set([
   "ReadLints",
   "SemanticSearch",
   "WebFetch",
+  "UpdateCurrentStep",
 ]);
 
 /** File tools, by Cursor's name, and the name each is evaluated as. */

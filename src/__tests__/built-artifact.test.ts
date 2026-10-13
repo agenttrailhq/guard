@@ -1095,7 +1095,8 @@ describe("scan, against the built binary", () => {
     expect(payload.result.agent).toBe("cursor");
     expect(payload.result.sessions).toBe(1);
     expect(payload.result.projects).toBe(1);
-    // Seven actions in the session file and two in its sub-agent's; the to-do list is not one.
+    // Seven actions in the session file and two in its sub-agent's; the to-do list and the two
+    // progress steps are not actions.
     expect(payload.result.toolCalls).toBe(9);
     expect(payload.result.tokens).toBeNull();
     expect(payload.result.skipped).toEqual({
@@ -1104,7 +1105,7 @@ describe("scan, against the built binary", () => {
       unknownRecords: 0,
       turnsEndedWithError: 1,
       unreadableFiles: 0,
-      notActions: 1,
+      notActions: 3,
       unmappedTools: [],
     });
     expect(r.stdout).not.toContain("/home/user");
