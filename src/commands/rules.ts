@@ -38,6 +38,11 @@ import { SHIPPED_CATALOG } from "../core/catalog.js";
 import { parseConfig, updateConfigText } from "../core/config.js";
 import { inspectConfig } from "../core/config-report.js";
 import { compileAllowlist, evaluateCall } from "../core/evaluate.js";
+import {
+  correctSingleBraceLabels,
+  findSingleBraceLabels,
+  singleBraceWarning,
+} from "../core/label-braces.js";
 import { buildGuardSpanContext } from "../core/normalize.js";
 import { guardDir } from "../core/paths.js";
 import { blockFixtureCommands } from "../core/rule-fixtures.js";
@@ -995,7 +1000,10 @@ const CORRECTED_EXAMPLE = `  {
     "match": { "any_of": [
       { "kind": "execute_tool", "label": "Bash", "detail_contains": ["./deploy.sh"] }
     ]}
-  }`;
+  }
+
+\`label\` is one tool name ("Bash") or an alternation of two or more ("{Bash,PowerShell}").
+A single name in braces ("{Bash}") is not an alternation: its braces are read literally.`;
 
 function cmdAdd(io: SetupIO, flags: Flags, files: Files, deps: RulesDeps, path: string): number {
   const r = new Reporter(io, flags, "add");
@@ -1009,7 +1017,23 @@ function cmdAdd(io: SetupIO, flags: Flags, files: Files, deps: RulesDeps, path: 
     return r.fail(`${path} is not valid JSON: ${(error as Error).message}. Nothing was written.`);
   }
   // A file holding a one-element array is what someone copying `guardrails.json` produces.
-  const candidate = Array.isArray(raw) && raw.length === 1 ? raw[0] : raw;
+  let candidate = Array.isArray(raw) && raw.length === 1 ? raw[0] : raw;
+
+  // `{Bash}` is accepted by every check and then never matches `Bash`, so the label is written
+  // without the braces and the output says so. A group that is not a plain tool name, such as
+  // `{*}`, is only warned about: unwrapping it could turn a guardrail that never fires into one
+  // that matches every tool call.
+  let rewrote: ReturnType<typeof findSingleBraceLabels> = [];
+  let braceWarnings: ReturnType<typeof findSingleBraceLabels> = [];
+  if (candidate !== null && typeof candidate === "object" && !Array.isArray(candidate)) {
+    const rec = candidate as Record<string, unknown>;
+    const corrected = correctSingleBraceLabels(rec.match);
+    braceWarnings = corrected.warnings;
+    if (corrected.fixes.length > 0) {
+      candidate = { ...rec, match: corrected.match };
+      rewrote = corrected.fixes;
+    }
+  }
 
   const { rule, errors } = validateUserRule(candidate);
   if (rule === undefined) {
@@ -1045,10 +1069,25 @@ function cmdAdd(io: SetupIO, flags: Flags, files: Files, deps: RulesDeps, path: 
   io.writeFileAtomic(files.rulesPath, `${JSON.stringify([...existing, candidate], null, 2)}\n`);
   const active = views.filter((v) => v.enabled).length + 1;
   r.say(
+    ...rewrote.map(
+      (f) =>
+        `Rewrote ${f.path} from \`${f.label}\` to \`${f.corrected}\`: a brace group with one value is not an alternation, and picomatch would have read the braces literally.`,
+    ),
+    ...braceWarnings.map((f) => `WARNING: ${singleBraceWarning(f)}`),
     `Validated. Added ${rule.id} (${displayAction(rule.defaultAction)}) to ${files.rulesPath}.`,
     `${active} guardrails active.`,
   );
-  return r.ok({ changed: true, guardrail: rule.id });
+  // `--quiet` drops the lines above, but a guardrail that was written and will never fire is
+  // worth one line even then.
+  if (flags.quiet && !flags.json) {
+    for (const f of braceWarnings) io.writeStdout(`WARNING: ${singleBraceWarning(f)}\n`);
+  }
+  return r.ok({
+    changed: true,
+    guardrail: rule.id,
+    ...(rewrote.length > 0 ? { rewrote } : {}),
+    ...(braceWarnings.length > 0 ? { warnings: braceWarnings } : {}),
+  });
 }
 
 function cmdRemove(io: SetupIO, flags: Flags, files: Files, deps: RulesDeps, id: string): number {
@@ -1117,19 +1156,36 @@ function cmdValidate(
   // question, and it is the one a user asks most often.
   if (path === undefined) {
     const user = loadUserRules(files.rulesText);
+    // A valid guardrail can still be inert: `{Bash}` loads and then never matches `Bash`.
+    const warnings = user.valid.flatMap((rule) =>
+      findSingleBraceLabels(rule.match).map((found) => ({ guardrail: rule.id, ...found })),
+    );
     if (flags.json) {
       return user.invalid.length === 0
-        ? r.ok({ valid: user.valid.length, invalid: [] })
-        : r.fail("invalid guardrails", { invalid: user.invalid });
+        ? r.ok({
+            valid: user.valid.length,
+            invalid: [],
+            ...(warnings.length > 0 ? { warnings } : {}),
+          })
+        : r.fail("invalid guardrails", {
+            invalid: user.invalid,
+            ...(warnings.length > 0 ? { warnings } : {}),
+          });
     }
+    const warningLines = warnings.map(
+      (w) => `    WARNING ${w.guardrail}: ${singleBraceWarning(w)}`,
+    );
     if (user.invalid.length === 0) {
-      r.say(`Valid. ${user.valid.length} of your own guardrails in ${files.rulesPath}.`);
+      r.say(
+        `Valid. ${user.valid.length} of your own guardrails in ${files.rulesPath}.`,
+        ...warningLines,
+      );
       return r.ok({ valid: user.valid.length });
     }
     io.writeStdout(
       `${user.invalid.length} of your guardrails ${user.invalid.length === 1 ? "is" : "are"} invalid and NOT running:\n${user.invalid
         .map((b) => `    ${b.id}: ${b.reason}`)
-        .join("\n")}\n`,
+        .join("\n")}\n${warningLines.map((line) => `${line}\n`).join("")}`,
     );
     return 1;
   }
@@ -1187,11 +1243,13 @@ function cmdValidate(
     });
   }
   const failed = rows.filter((x) => !x.pass).length;
+  const braces = findSingleBraceLabels(rule.match);
+  const warnings = braces.length > 0 ? { warnings: braces } : {};
 
   if (flags.json) {
     return failed === 0
-      ? r.ok({ id: rule.id, action: rule.defaultAction, fixtures: rows })
-      : r.fail("fixtures failed", { id: rule.id, fixtures: rows });
+      ? r.ok({ id: rule.id, action: rule.defaultAction, fixtures: rows, ...warnings })
+      : r.fail("fixtures failed", { id: rule.id, fixtures: rows, ...warnings });
   }
 
   // A fixture path written with backslashes is answered differently depending on
@@ -1218,6 +1276,7 @@ function cmdValidate(
     // own evaluator.
     "  Schema checked with the same `parseRule` CI runs. Fixtures were run through the",
     "  guard's own evaluator — the one that will run on your machine.",
+    ...braces.flatMap((found) => ["", `  WARNING: ${singleBraceWarning(found)}`]),
     ...(backslashFixtures.length > 0
       ? [
           "",

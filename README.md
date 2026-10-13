@@ -301,6 +301,14 @@ Write a rule with at least one command it must match (`block`) and one it must n
 }
 ```
 
+`label` is the tool name: one name (`"Bash"`), or an alternation of two or more in braces
+(`"{Bash,PowerShell}"`), and `*` works as in a glob (`"mcp__github__*"`). A single name in
+braces (`"{Bash}"`) is not an alternation: its braces are read literally, so it never matches
+`Bash`. `guardrails add` writes it without the braces and says so, and `guardrails validate`
+warns about it. Only a plain tool name is rewritten: anything else in one-value braces, such
+as a wildcard or a negation (`"{*}"`, `"{!Bash}"`), is only warned about, because without the
+braces it could match almost every tool call.
+
 Validate it against Guard's own evaluator, then add it:
 
 ```console
