@@ -1,3 +1,9 @@
+## [0.4.5](https://github.com/agenttrailhq/guard/compare/v0.4.4...v0.4.5) (2026-10-14)
+
+### Bug Fixes
+
+* **rules:** rewrite or warn on a one-element brace group in label ([21dcb7c](https://github.com/agenttrailhq/guard/commit/21dcb7c9eccad89f40b2eb0a35b0cb6bcdcc5ebb))
+
 ## [0.4.4](https://github.com/agenttrailhq/guard/compare/v0.4.3...v0.4.4) (2026-10-14)
 
 ### Bug Fixes
