@@ -1,3 +1,9 @@
+## [0.4.4](https://github.com/agenttrailhq/guard/compare/v0.4.3...v0.4.4) (2026-10-14)
+
+### Bug Fixes
+
+* **cursor:** count UpdateCurrentStep as a non-action in session scans ([7a3e718](https://github.com/agenttrailhq/guard/commit/7a3e718897b5baed39e0ec1a766a7b828d2882bc))
+
 ## [0.4.3](https://github.com/agenttrailhq/guard/compare/v0.4.2...v0.4.3) (2026-10-14)
 
 ### Bug Fixes
