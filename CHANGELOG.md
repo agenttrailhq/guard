@@ -1,3 +1,9 @@
+## [0.4.3](https://github.com/agenttrailhq/guard/compare/v0.4.2...v0.4.3) (2026-10-14)
+
+### Bug Fixes
+
+* **scrub:** redact a secret after an escaped newline or a terminal code ([709251c](https://github.com/agenttrailhq/guard/commit/709251c5848c7e842b7e9805ab82b5651f8b94b4))
+
 ## [0.4.2](https://github.com/agenttrailhq/guard/compare/v0.4.1...v0.4.2) (2026-10-07)
 
 ### Bug Fixes
