@@ -182,7 +182,7 @@ describe("the script stays inside its allow-lists", () => {
     ["self.open()", "self.open(u);"],
     ["window.open()", "window.open(u);"],
     ["a computed href write", 'a["href"] = u;'],
-    ["a computed name", 'window["loc" + "ation"] = u;'],
+    ["a computed name", "window[key] = u;"],
     ["an appending href write", "a.href += u;"],
     ["setAttribute with a variable name", "el.setAttribute(name, u);"],
     ["setAttribute href", 'el.setAttribute("href", u);'],
