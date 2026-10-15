@@ -42,7 +42,7 @@ var POST_LIMIT = ${POST_LIMIT};
 var URL_WEIGHT = 23;
 var HASHTAG = "#agenttrail";
 var FILTERS = ["all", "block", "require_approval", "warn"];
-var SORTS = { serious: "most serious", category: "category", count: "most matches", name: "name" };
+var SORTS = ["serious", "category", "count", "name"];
 
 function charWeight(code) {
   if (code <= 0x10ff) return 1;
@@ -53,10 +53,10 @@ function charWeight(code) {
 }
 
 function xLength(text) {
-  var chars = Array.from(String(text));
   var n = 0;
-  var i;
-  for (i = 0; i < chars.length; i++) n += charWeight(chars[i].codePointAt(0));
+  Array.from(String(text)).forEach(function (ch) {
+    n += charWeight(ch.codePointAt(0));
+  });
   return n;
 }
 
@@ -92,7 +92,7 @@ function rowVisible(filter, action) {
 }
 
 function isSort(value) {
-  return Object.prototype.hasOwnProperty.call(SORTS, value);
+  return SORTS.indexOf(value) !== -1;
 }
 
 function rankOf(value) {
@@ -104,8 +104,14 @@ function statusText(shown, total) {
   return "Showing " + shown + " of " + total + (total === 1 ? " guardrail" : " guardrails");
 }
 
+function sortLabel(key) {
+  if (key === "serious") return "most serious";
+  if (key === "count") return "most matches";
+  return key;
+}
+
 function sortText(key) {
-  return "Sorted by " + SORTS[key] + ". Keyboard and screen-reader order stays most serious first.";
+  return "Sorted by " + sortLabel(key) + ". Keyboard and screen-reader order stays most serious first.";
 }
 
 function exportHref(raw) {
