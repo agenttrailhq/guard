@@ -349,6 +349,14 @@ You get a summary in the terminal and a single self-contained
 `agenttrail-guard-report.html`, opened in your browser (`--no-open` to skip, `--out <file>`
 to choose where, `--json` for JSON only). The report loads nothing from outside itself.
 
+The report opens with what Guard would have done: how many actions it would have blocked,
+asked you about, or warned on. It then lists the guardrails to fix first, every matched
+guardrail with filters and sort, repeated command shapes, next steps, and a suggested post
+that carries totals only. Its PDF and JSON buttons save the report as shown. One inline
+script runs the filters, copy buttons and exports. The page's Content-Security-Policy allows
+that script and blocks the page from loading or fetching anything. Links to agenttrail.sh
+carry UTM tags naming the report and the agent, and open only when you click them.
+
 **A scan shows what would match now, not what was blocked then.** It applies today's
 guardrails and settings to past calls, so its results can differ from what Guard enforced
 during those sessions, or from sessions that ran before Guard was installed.
