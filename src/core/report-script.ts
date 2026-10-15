@@ -55,7 +55,8 @@ function charWeight(code) {
 function xLength(text) {
   var chars = Array.from(String(text));
   var n = 0;
-  for (var i = 0; i < chars.length; i++) n += charWeight(chars[i].codePointAt(0));
+  var i;
+  for (i = 0; i < chars.length; i++) n += charWeight(chars[i].codePointAt(0));
   return n;
 }
 
@@ -126,14 +127,14 @@ var page = document.documentElement;
 var store = null;
 try {
   store = window.localStorage;
-} catch (e) {
+} catch {
   store = null;
 }
 
 function storedTheme() {
   try {
     return store ? readTheme(store.getItem(THEME_KEY)) : null;
-  } catch (e) {
+  } catch {
     return null;
   }
 }
@@ -141,7 +142,9 @@ function storedTheme() {
 function storeTheme(value) {
   try {
     if (store) store.setItem(THEME_KEY, value);
-  } catch (e) {}
+  } catch {
+    // Storage is blocked: the choice lasts for this page only.
+  }
 }
 
 function themeLabel(button) {
@@ -217,7 +220,9 @@ function copyByHand(text, button) {
   try {
     document.execCommand("copy");
     copied(button);
-  } catch (e) {}
+  } catch {
+    // Copying is blocked here; the text stays selected for the reader to copy.
+  }
 }
 
 each("[data-copy]", function (button) {

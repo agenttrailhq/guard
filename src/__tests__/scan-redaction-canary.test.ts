@@ -1,3 +1,4 @@
+// cspell:words hrefs anary
 // cspell:words mcpcanary awscanary bearercanary slackcanary connpwcanary envsecretcanary
 // cspell:words emailcanary pathcanary acmecocanary filecanary containercanary sshcanary
 // cspell:words kubenscanary kubepodcanary sqlhostcanary sqldbcanary sqltablecanary
@@ -247,6 +248,79 @@ describe("zero survivors — no planted token reaches either surface", () => {
     // The MCP payload keeps its keys and shape while every value is gone.
     expect(HTML).toContain("&quot;team&quot;:&quot;&lt;value&gt;&quot;");
     expect(HTML).toContain("git push origin main #&lt;comment&gt;");
+  });
+});
+
+/** Decode the five escapes the report writes, and numeric character references. */
+function decodeEntities(text: string): string {
+  return text
+    .replace(/&#x([0-9a-f]+);/gi, (_m, hex: string) =>
+      String.fromCodePoint(Number.parseInt(hex, 16)),
+    )
+    .replace(/&#(\d+);/g, (_m, dec: string) => String.fromCodePoint(Number.parseInt(dec, 10)))
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&amp;/g, "&");
+}
+
+/**
+ * Every form a string can take in the file, decoded: the page's text, every `href` with its
+ * percent-encoding undone, and the data block parsed back from its JSON escapes.
+ */
+function decodedSurfaces(html: string): Record<string, string> {
+  const block = html.match(
+    /<script type="application\/json" id="report-data">([\s\S]*?)<\/script>/,
+  );
+  const hrefs = [...html.matchAll(/\shref="([^"]*)"/g)].map((m) => decodeEntities(m[1] ?? ""));
+  const params = hrefs.flatMap((href) => {
+    try {
+      return [...new URL(href, "https://local.invalid").searchParams.values()];
+    } catch {
+      return [];
+    }
+  });
+  return {
+    text: decodeEntities(html),
+    hrefs: hrefs.map((h) => decodeURIComponent(h)).join("\n"),
+    params: params.join("\n"),
+    data: block === null ? "" : JSON.stringify(JSON.parse(block[1] ?? "null")),
+  };
+}
+
+const ARTIFACT_HTML = renderReport(RESULT, META, { variant: "artifact" });
+
+describe("zero survivors in any decoded form of the file", () => {
+  it("the standalone page has a data block to decode", () => {
+    expect(decodedSurfaces(HTML).data.length).toBeGreaterThan(100);
+  });
+
+  it.each(ALL_TOKENS)("%s survives no decoding of either variant", (token) => {
+    for (const page of [HTML, ARTIFACT_HTML]) {
+      for (const [surface, text] of Object.entries(decodedSurfaces(page))) {
+        expect(text, `${token} in the decoded ${surface}`).not.toContain(token);
+      }
+    }
+  });
+
+  it("negative control — a token hidden in a JSON escape is found in the data block", () => {
+    const planted = `<script type="application/json" id="report-data">{"x":"\\u0063anary-json"}</script>`;
+    expect(planted).not.toContain("canary-json");
+    expect(decodedSurfaces(planted).data).toContain("canary-json");
+  });
+
+  it("negative control — a token hidden in percent-encoding is found in an href", () => {
+    const planted = `<a href="https://x.com/intent/post?text=c%61nary-href&amp;url=x">x</a>`;
+    expect(planted).not.toContain("canary-href");
+    expect(decodedSurfaces(planted).hrefs).toContain("canary-href");
+    expect(decodedSurfaces(planted).params).toContain("canary-href");
+  });
+
+  it("negative control — a token hidden in a character reference is found in the text", () => {
+    const planted = "<p>&#99;anary-entity &#x63;anary-hex</p>";
+    expect(planted).not.toContain("canary-entity");
+    expect(decodedSurfaces(planted).text).toContain("canary-entity");
+    expect(decodedSurfaces(planted).text).toContain("canary-hex");
   });
 });
 
