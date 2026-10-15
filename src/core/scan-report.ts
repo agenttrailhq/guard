@@ -62,7 +62,7 @@ import { scrubText } from "./scrub.js";
 import { addUsage, EMPTY_TOKEN_TOTALS, type TokenTotals } from "./tokens.js";
 import type { ParsedSession } from "./transcript/transcript-types.js";
 import { toolCallsOf } from "./transcripts.js";
-import type { AgentSource, GuardAction, MappedCall } from "./types.js";
+import type { AgentSource, GuardAction, GuardRule, MappedCall } from "./types.js";
 
 /**
  * The four redactors, composed in the one order that is correct.
@@ -201,6 +201,16 @@ export interface ExampleShape {
   readonly count: number;
 }
 
+/**
+ * Where a matched rule came from.
+ *
+ * `library` only when the compiled rule IS one of the shipped catalog's rule objects —
+ * decided by identity, never by id. `scan` appends the user's own rules to the catalog and
+ * the id lookup is last-write-wins, so a user rule that reuses a shipped id would otherwise
+ * be labelled `library` and carry its own title into the places that show library text only.
+ */
+export type RuleSource = "library" | "yours";
+
 /** Everything one rule did across the whole corpus. */
 export interface ScanFinding {
   readonly ruleId: string;
@@ -216,6 +226,28 @@ export interface ScanFinding {
    * none, which includes every guardrail from `guardrails.json`. Never inferred.
    */
   readonly owasp: readonly OwaspId[];
+  /** Absent means `yours`: a finding nobody vouched for is never treated as library text. */
+  readonly source?: RuleSource;
+  /** The shipped rule's pack. Library findings only; a user's own category is never carried. */
+  readonly category?: string;
+  /**
+   * The shipped rule's description, which states how it decides and what it misses.
+   * Library findings only, carried as shipped: it is catalog text, not anything the scan read,
+   * and a user's own description is never carried.
+   */
+  readonly description?: string;
+}
+
+/**
+ * Tool calls by the strictest action any matching guardrail would have taken.
+ *
+ * Counted once per tool call, so the three add up to `riskyActions`. The per-rule totals in
+ * `findings` count a call once per guardrail it matched, and can be larger.
+ */
+export interface ActionCounts {
+  readonly block: number;
+  readonly require_approval: number;
+  readonly warn: number;
 }
 
 /** One command shape that happened more than once and matched a rule. */
@@ -282,6 +314,8 @@ export interface ScanResult {
   readonly toolCalls: number;
   /** Tool calls that matched at least one rule. */
   readonly riskyActions: number;
+  /** `riskyActions`, split by the strictest action that matched each call. */
+  readonly riskyByAction: ActionCounts;
   /** Per-rule totals, most frequent first. */
   readonly findings: readonly ScanFinding[];
   /** Shapes seen two or more times, most frequent first. */
@@ -416,6 +450,13 @@ interface FindingAccumulator {
   readonly shapes: Map<string, number>;
 }
 
+/** The strictest of a call's matched actions. Only called with at least one match. */
+function strictestAction(actions: readonly GuardAction[]): GuardAction {
+  if (actions.includes("block")) return "block";
+  if (actions.includes("require_approval")) return "require_approval";
+  return "warn";
+}
+
 /** Most-frequent-first, then lexical — so two runs over one corpus render identically. */
 function byCountThenText<T extends { count: number; text: string }>(a: T, b: T): number {
   return b.count - a.count || a.text.localeCompare(b.text);
@@ -432,6 +473,11 @@ export function aggregateScan(
   corpus: ScanCorpus,
   catalog: readonly CompiledRule[],
   allowlist: CompiledAllowlist,
+  /**
+   * The shipped catalog's rule objects. A finding is `library` only when its rule is one of
+   * them. Empty by default, so a caller that passes nothing gets no library text at all.
+   */
+  shipped: ReadonlySet<GuardRule> = new Set(),
 ): ScanResult {
   // A corpus with no `agent` is Claude Code's: `readCorpus` predates the field and
   // every other reader stamps its own.
@@ -444,6 +490,7 @@ export function aggregateScan(
 
   let toolCalls = 0;
   let riskyActions = 0;
+  const riskyByAction = { block: 0, require_approval: 0, warn: 0 };
   let skippedLines = 0;
   let notActions = 0;
   const unmapped = new Map<string, number>();
@@ -472,6 +519,7 @@ export function aggregateScan(
       if (decision.matches.length === 0) continue;
 
       riskyActions++;
+      riskyByAction[strictestAction(decision.matches.map((m) => m.action))]++;
       // Redacted ONCE per matched call, then shared by every rule that matched it.
       // Scrubbing is the most expensive thing in this loop and the result is identical
       // per rule, so doing it inside the inner loop would be a per-rule cost for a
@@ -529,7 +577,24 @@ export function aggregateScan(
     // `user-rules.ts` never copies `owasp` onto it.
     const owasp = [...(entry?.rule.owasp ?? [])];
 
-    findings.push({ ruleId, title, severity, action, count: acc.count, examples, owasp });
+    const rule = entry?.rule;
+    const fromLibrary = rule !== undefined && shipped.has(rule);
+    findings.push(
+      fromLibrary
+        ? {
+            ruleId,
+            title,
+            severity,
+            action,
+            count: acc.count,
+            examples,
+            owasp,
+            source: "library",
+            category: rule.category,
+            description: rule.description,
+          }
+        : { ruleId, title, severity, action, count: acc.count, examples, owasp, source: "yours" },
+    );
 
     for (const example of examples) {
       if (example.count >= 2) {
@@ -550,6 +615,7 @@ export function aggregateScan(
     projects: corpus.projects,
     toolCalls,
     riskyActions,
+    riskyByAction,
     findings,
     recurring,
     owasp: owaspTally(findings, callOwasp),

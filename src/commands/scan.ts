@@ -739,11 +739,14 @@ export async function runScan(
   // enforcement rather than the shipped defaults.
   const config = parseConfig(io.readFile(configPath(home)));
   const userRules = parseUserRulesData(io.readFile(userRulesPath(home)));
-  const catalog = compileCatalog([...(deps.catalog ?? SHIPPED_CATALOG), ...userRules], config);
+  const shipped = deps.catalog ?? SHIPPED_CATALOG;
+  const catalog = compileCatalog([...shipped, ...userRules], config);
   const allowlist = compileAllowlist(config.allowlist);
 
   const corpus: ScanCorpus = await readCorpusFor(agent, root, io);
-  const result = aggregateScan(corpus, catalog, allowlist);
+  // The shipped rule OBJECTS, so a finding is labelled `library` by identity: a user rule
+  // that reuses a shipped id is still the user's own rule.
+  const result = aggregateScan(corpus, catalog, allowlist, new Set(shipped));
   const meta: ReportMeta = { version: VERSION, generatedAt: now };
 
   if (flags.json) {

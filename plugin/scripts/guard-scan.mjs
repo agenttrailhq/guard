@@ -9260,10 +9260,15 @@ function unmappedToolName(raw) {
   if (raw === "") return "<unnamed>";
   return PLAIN_TOOL_NAME.test(raw) ? redactTitle(raw) : "<other>";
 }
+function strictestAction(actions) {
+  if (actions.includes("block")) return "block";
+  if (actions.includes("require_approval")) return "require_approval";
+  return "warn";
+}
 function byCountThenText(a, b) {
   return b.count - a.count || a.text.localeCompare(b.text);
 }
-function aggregateScan(corpus, catalog, allowlist) {
+function aggregateScan(corpus, catalog, allowlist, shipped = /* @__PURE__ */ new Set()) {
   const agent = corpus.agent ?? "claude";
   const capabilities = corpus.capabilities ?? DEFAULT_CAPABILITIES;
   const sessionCalls = sessionCallsFor(agent);
@@ -9272,6 +9277,7 @@ function aggregateScan(corpus, catalog, allowlist) {
   for (const entry of catalog) ruleOf.set(entry.rule.id, entry);
   let toolCalls = 0;
   let riskyActions = 0;
+  const riskyByAction = { block: 0, require_approval: 0, warn: 0 };
   let skippedLines = 0;
   let notActions = 0;
   const unmapped2 = /* @__PURE__ */ new Map();
@@ -9295,6 +9301,7 @@ function aggregateScan(corpus, catalog, allowlist) {
       const { mapped, decision } = evaluateAction(catalog, allowlist, call.candidates);
       if (decision.matches.length === 0) continue;
       riskyActions++;
+      riskyByAction[strictestAction(decision.matches.map((m) => m.action))]++;
       const text = displayTextOf(mapped);
       callOwasp.push(decision.matches.flatMap((m) => ruleOf.get(m.ruleId)?.rule.owasp ?? []));
       for (const match of decision.matches) {
@@ -9317,7 +9324,22 @@ function aggregateScan(corpus, catalog, allowlist) {
     const action = entry?.action ?? "warn";
     const examples = [...acc.shapes].map(([text, count2]) => ({ text, count: count2 })).sort(byCountThenText);
     const owasp = [...entry?.rule.owasp ?? []];
-    findings.push({ ruleId, title, severity, action, count: acc.count, examples, owasp });
+    const rule = entry?.rule;
+    const fromLibrary = rule !== void 0 && shipped.has(rule);
+    findings.push(
+      fromLibrary ? {
+        ruleId,
+        title,
+        severity,
+        action,
+        count: acc.count,
+        examples,
+        owasp,
+        source: "library",
+        category: rule.category,
+        description: rule.description
+      } : { ruleId, title, severity, action, count: acc.count, examples, owasp, source: "yours" }
+    );
     for (const example of examples) {
       if (example.count >= 2) {
         recurring.push({ text: example.text, count: example.count, ruleId, title });
@@ -9335,6 +9357,7 @@ function aggregateScan(corpus, catalog, allowlist) {
     projects: corpus.projects,
     toolCalls,
     riskyActions,
+    riskyByAction,
     findings,
     recurring,
     owasp: owaspTally(findings, callOwasp),
@@ -10106,10 +10129,11 @@ ${SCAN_USAGE}`);
   const now = deps.now ?? /* @__PURE__ */ new Date();
   const config = parseConfig(io.readFile(configPath(home)));
   const userRules = parseUserRulesData(io.readFile(userRulesPath(home)));
-  const catalog = compileCatalog([...deps.catalog ?? SHIPPED_CATALOG, ...userRules], config);
+  const shipped = deps.catalog ?? SHIPPED_CATALOG;
+  const catalog = compileCatalog([...shipped, ...userRules], config);
   const allowlist = compileAllowlist(config.allowlist);
   const corpus = await readCorpusFor(agent, root, io);
-  const result = aggregateScan(corpus, catalog, allowlist);
+  const result = aggregateScan(corpus, catalog, allowlist, new Set(shipped));
   const meta = { version: VERSION, generatedAt: now };
   if (flags.json) {
     io.writeStdout(renderJson(result, meta));
