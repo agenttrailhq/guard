@@ -1,69 +1,80 @@
-// cspell:words backticked hellip middot noopener noreferrer waitlist ldquo rdquo
+// cspell:words backticked hellip middot noopener noreferrer ldquo rdquo rsquo
 /**
  * `agenttrail-guard-report.html` — one self-contained file.
  *
  * ── The constraint that shapes every line below ──────────────────────────────
  * "It must render from a `file://` URL with the wifi off, and it must not phone home
- * when someone opens it." So: inline `<style>`, no `<script>`, no `<img>`, no `<link>`,
- * no `@import`, no `url(…)`, no web font, and nothing that loads from outside the file.
- * `report.test.ts` asserts each of those over the generated string, each with a
- * negative control proving the assertion fires on a fixture that violates it. The
- * palette, stylesheet and logo live in `report-brand.ts` under the same rules.
+ * when someone opens it." So: inline `<style>`, no `<img>`, no `<link>`, no `@import`, no
+ * `url(…)`, no web font, and nothing that loads from outside the file. Links go out only
+ * when clicked. `report.test.ts` asserts each of those over the generated string, each with
+ * a negative control proving the assertion fires on a fixture that violates it. The palette,
+ * stylesheet and logo live in `report-brand.ts` under the same rules.
+ *
+ * ── One script, on the standalone page only ──────────────────────────────────
+ * The standalone page carries one inline script (`report-script.ts`) for filters, sort,
+ * copy, theme, print and export, pinned by hash in a `default-src 'none'` Content-Security-
+ * Policy that is the first element of `<head>`. Its data comes from one
+ * `<script type="application/json">` block holding `reportPayload`, with every `<` written
+ * as the JSON escape `<` so no `</script>` or `<!--` can occur inside it. Everything
+ * works without the script too: rows are all listed, expanders are `<details>`, and the
+ * controls that need it stay `hidden`.
  *
  * ── Two variants, one body ────────────────────────────────────────────────────
- * `document` is the standalone page. `artifact` is the same body as page content only —
- * no doctype, `<html>`, `<head>` or `<body>` — for publishing as a Claude artifact, whose
- * host supplies that skeleton. The two differ only where the page speaks about itself —
- * where it came from, and who can still check it — so a reviewed file and a published
- * file carry the same findings. `report.test.ts` compares the two bodies.
+ * `document` is the standalone page. `artifact` is the same body as page content only — no
+ * doctype, `<html>`, `<head>` or `<body>` — for publishing as a Claude artifact, whose host
+ * supplies that skeleton. It carries no script and no data block: it has no `<head>` for the
+ * policy, so it is static. The two differ only where the page speaks about itself — where it
+ * came from, and who can still check it — so a reviewed file and a published file carry the
+ * same findings. `report.test.ts` compares the two bodies.
  *
- * ── One link, in Claude Code reports only ────────────────────────────────────
- * A Claude Code report carries one product note, `PRODUCT_NOTE`, after the last section
- * and before the footer: it names agenttrail, which works with Claude Code sessions, and
- * links to it once, `rel="noopener noreferrer"`. A link loads nothing until it is clicked,
- * so the file still renders offline and opening it still contacts nobody. A Cursor report
- * carries no note. The footer never carries one (`catalog-stamp.test.ts`), and the
- * repository URL in it stays text. The href set is pinned exactly in `report.test.ts`, so
- * a second link cannot arrive without a test change.
+ * ── What the file carries is one capped projection ───────────────────────────
+ * `reportPayload` copies, field by field, the first `MAX_ROWS` findings (most serious first),
+ * the first `MAX_EXAMPLES` shapes of each, the first `MAX_ROWS` repeats, the counts and the
+ * share text. The rows, the data block, the export and `scan --review` all read it, so the
+ * review lists exactly what the file holds, and a field added to `ScanResult` reaches the file
+ * only when it is added here. `--json` on stdout stays the whole result.
+ *
+ * ── Links ────────────────────────────────────────────────────────────────────
+ * Every link to the site is built by `siteLink`, which adds `utm_source`, `utm_medium`,
+ * `utm_campaign` (the agent) and `utm_content` (where on the page). A link loads nothing until
+ * it is clicked. Library pages are linked for shipped guardrails only.
  *
  * ── No currency, anywhere ─────────────────────────────────────────────────────
- * Not in the hero, not in the findings table, not labelled "estimated". Counts are
- * counts; token totals come straight off the transcript and are exact. A dollar figure
- * is a count multiplied by an assumption: one rule firing on a test suite that deletes
- * its own scratch directories would multiply into a large and entirely false number.
- * Leaving prices out also removes any dependency on model pricing, which is unknown for
- * an unrecognized model.
- *
- * The rule is about what the GUARD claims. A report can still contain `$` inside
- * commands the user's own agent ran, such as `${DB}` or `$?`: `redactPaths` keeps a
- * shell variable deliberately — `rm -rf $DIR` is a documented miss of the rm rule and
- * hiding the variable would hide the coverage limit. So the ban is total on every word
- * this file writes, and the `<code>` spans are quoted input. `report.test.ts` splits
- * the assertion the same way.
- *
- * ── Nothing it cannot source ─────────────────────────────────────────────────
- * Where the catalog carries no version stamp the footer says "version not yet stamped"
- * rather than omitting the row — an absent row reads as "there is no catalog", which is
- * a different and wronger claim. Where no session reported a cache-write split, the
- * split row is withheld rather than printed as `0 / 0`, because those are two different
- * facts and only one of them is true.
+ * Not in the hero, not in the findings, not labelled "estimated", and no score. Counts are
+ * counts; token totals come straight off the transcript and are exact. A report can still
+ * contain `$` inside commands the user's own agent ran, such as `${DB}`: `redactPaths` keeps a
+ * shell variable deliberately, because `rm -rf $DIR` is a documented miss of the rm rule. So
+ * the ban is total on every word this file writes, and the `<code>` spans and the
+ * `library-text` paragraphs (shipped guardrail descriptions, quoted) are quoted input.
  *
  * ── Every interpolation is escaped ───────────────────────────────────────────
- * `ScanResult` is redacted by construction (`scan-report.ts`), but redacted is not the
- * same as inert: a command containing `<` or `&` must not become markup. Everything
- * from the result goes through `escapeHtml`, including numbers, so there is no
- * "this one is safe" exception to copy.
+ * `ScanResult` is redacted by construction (`scan-report.ts`), but redacted is not the same as
+ * inert: a command containing `<` or `&` must not become markup. Everything from the result
+ * goes through `escapeHtml`, including numbers and attribute values.
  */
 
+import { createHash } from "node:crypto";
 import { agentDisplayName, unhandledAgent } from "./agent.js";
 import { catalogStamp, formatCatalogStamp } from "./catalog-stamp.js";
 import { LOGO_LOCKUP_SVG, LOGO_MARK_SVG, REPORT_STYLES } from "./report-brand.js";
-import type { ScanFinding, ScanResult, ScanSkipped } from "./scan-report.js";
-import { formatCount, formatTokens, totalTokens } from "./tokens.js";
+import { POST_LIMIT, REPORT_SCRIPT } from "./report-script.js";
+import type {
+  ActionCounts,
+  ExampleShape,
+  RecurringItem,
+  RuleSource,
+  ScanFinding,
+  ScanResult,
+  ScanSkipped,
+} from "./scan-report.js";
+import { formatCount, formatTokens, type TokenTotals, totalTokens } from "./tokens.js";
 import type { AgentSource, GuardAction } from "./types.js";
 
-/** Where the source lives. Rendered as text; see the header. */
+/** Where the source lives. Rendered as text. */
 export const REPOSITORY_URL = "https://github.com/agenttrailhq/guard";
+
+/** The site every outbound link points at, through `siteLink`. */
+export const SITE_URL = "https://www.agenttrail.sh";
 
 /** The report's filename, used by `commands/scan.ts`. */
 export const REPORT_FILENAME = "agenttrail-guard-report.html";
@@ -79,17 +90,13 @@ export interface RenderOptions {
   readonly variant?: ReportVariant;
 }
 
-/**
- * The one product note, in Claude Code reports only. Its wording and address live here so
- * they can change without touching the renderer.
- */
+/** The AgentTrail OS block, in Claude Code reports only. Wording lives here, not in markup. */
 export const PRODUCT_NOTE = {
-  eyebrow: "agenttrail",
-  heading: "Catch the mistakes your agents repeat",
-  body: "This report is one look at the transcripts on one machine. agenttrail watches every agent session, turns each repeated mistake into a guardrail, and proves the fix on your own history. It is a separate product; nothing in this report was sent to it.",
-  action: "Join the waitlist",
-  url: "https://www.agenttrail.sh",
-  label: "www.agenttrail.sh",
+  eyebrow: "AgentTrail OS",
+  heading: "Guard stops the mistake. OS remembers it and turns it into a rule.",
+  body: "This report is one look at the transcripts on one machine. AgentTrail OS watches every agent session, turns each repeated mistake into a guardrail, and proves the fix on your own history. It is a separate product, and nothing in this report was sent to it.",
+  primary: { label: "Book a team demo", path: "/agenttrail-os", content: "os-demo" },
+  secondary: { label: "Guard vs OS", path: "/guard-vs-os", content: "os-compare" },
 } as const;
 
 /** Severities from most to least serious. Anything else ranks after all of them. */
@@ -111,10 +118,10 @@ export interface MatchTally {
 }
 
 /**
- * Every finding's matches, totalled by severity and by action — over ALL findings, not
- * the first `MAX_ROWS` the table lists. A tool call that matched two guardrails counts
- * under each, which is why the totals can exceed `riskyActions`. Shared by the report and
- * the terminal summary so both state the same numbers.
+ * Every finding's matches, totalled by severity and by action — over ALL findings, not the
+ * first `MAX_ROWS` the page lists. A tool call that matched two guardrails counts under each,
+ * which is why the totals can exceed `riskyActions`. Shared by the report and the terminal
+ * summary so both state the same numbers.
  */
 export function matchTally(result: ScanResult): MatchTally {
   const bySeverity = new Map<string, number>();
@@ -140,7 +147,9 @@ export function matchTally(result: ScanResult): MatchTally {
 }
 
 /** Findings ordered most serious first, then most frequent, then by id. A new array. */
-export function bySeverityThenCount(findings: readonly ScanFinding[]): ScanFinding[] {
+export function bySeverityThenCount<T extends Pick<ScanFinding, "severity" | "count" | "ruleId">>(
+  findings: readonly T[],
+): T[] {
   return [...findings].sort(
     (a, b) =>
       severityRank(a.severity) - severityRank(b.severity) ||
@@ -150,25 +159,35 @@ export function bySeverityThenCount(findings: readonly ScanFinding[]): ScanFindi
 }
 
 /**
- * How many findings and repeats the HTML lists before it stops.
+ * How many findings and repeats the file carries before it stops.
  *
- * Exported because `scan --review` enumerates exactly what this file writes, and a
- * second copy of the cap would drift: the review would promise "this is the whole file"
- * while showing a different set.
+ * Exported because `scan --review` enumerates exactly what this file writes, and a second
+ * copy of the cap would drift.
  */
 export const MAX_ROWS = 50;
-/** How many distinct shapes are shown under one finding. See {@link MAX_ROWS}. */
+/** How many distinct shapes are carried under one finding. See {@link MAX_ROWS}. */
 export const MAX_EXAMPLES = 3;
+/** How many cards "Fix these first" shows. */
+export const FIX_FIRST_MAX = 6;
+/** How many guardrails each "What Guard would have done" column names. */
+const TOP_PER_ACTION = 3;
+/** Longest line of a wrapped description. Keeps every line of the file short. */
+const DESCRIPTION_LINE = 160;
+
+/**
+ * When to suggest turning a few "ask" guardrails down to "warn": when at most
+ * `TUNING_MAX_GUARDRAILS` of them produce at least `TUNING_MIN_SHARE` of all ask matches,
+ * and there are at least `TUNING_MIN_ASKS` of those.
+ */
+export const TUNING_MAX_GUARDRAILS = 3;
+export const TUNING_MIN_SHARE = 0.6;
+export const TUNING_MIN_ASKS = 5;
 
 /**
  * What the renderers need that a `ScanResult` cannot know about itself.
  *
- * There is deliberately NO path on this type. The obvious field to add is "where the
- * transcripts were read from", and it is a leak: the default root is
- * `~/.claude/projects`, which on a real machine expands to `/Users/<their name>/…`.
- * The person running the scan already knows where they pointed it; a reader of the
- * shared file has no use for it and would be handed a username. The terminal summary
- * may print it — that is their own screen — but this file may not.
+ * There is deliberately NO path on this type: the default transcript root expands to a home
+ * folder, which names the user. The terminal summary may print it; this file may not.
  */
 export interface ReportMeta {
   /** The guard's own version. */
@@ -177,13 +196,7 @@ export interface ReportMeta {
   readonly generatedAt: Date;
 }
 
-/**
- * Escape text for HTML.
- *
- * Five characters, including both quote forms: the output is interpolated into text
- * nodes today, and an attribute tomorrow when someone adds a `title`. Escaping for the
- * stricter context always is cheaper than remembering which helper to use where.
- */
+/** Escape text for HTML, both quote forms included, so it is safe in text and attributes. */
 export function escapeHtml(value: string | number): string {
   return String(value)
     .replace(/&/g, "&amp;")
@@ -193,13 +206,7 @@ export function escapeHtml(value: string | number): string {
     .replace(/'/g, "&#39;");
 }
 
-/**
- * The app whose sessions a scan read, as the report and the summary name it.
- *
- * Delegates to `core/agent.ts`, which holds the one switch: the report's heading and the
- * CLI's `--agent` menu now cannot call the same app two different things, and a new app
- * fails to compile there rather than being titled "Claude Code" here.
- */
+/** The app whose sessions a scan read, as the report and the summary name it. */
 export function agentName(agent: AgentSource): string {
   return agentDisplayName(agent);
 }
@@ -210,11 +217,267 @@ function counted(n: number, one: string, many: string): string {
 }
 
 /**
+ * The URL segment for a guardrail id on the site: lowercased, each run of other characters
+ * one hyphen (`wt.reset-hard` becomes `wt-reset-hard`).
+ */
+export function ruleSlug(id: string): string {
+  return id
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+/** A link to the site, tagged with where it came from. The only way this file builds one. */
+export function siteLink(path: string, agent: AgentSource, content: string): string {
+  const tags = `utm_source=guard&utm_medium=scan-report&utm_campaign=${agent}&utm_content=${content}`;
+  return `${SITE_URL}${path}${path.includes("?") ? "&" : "?"}${tags}`;
+}
+
+/** A shipped guardrail's library page. */
+function libraryLink(category: string, ruleId: string, agent: AgentSource): string {
+  return siteLink(
+    `/guardrails/${encodeURIComponent(category)}/${encodeURIComponent(ruleSlug(ruleId))}`,
+    agent,
+    "guardrail",
+  );
+}
+
+/** Display names for the shipped packs. An unknown pack shows its id. */
+const PACK_LABELS: Readonly<Record<string, string>> = {
+  "working-tree": "Working tree",
+  "destructive-data": "Destructive data",
+  "prod-infra": "Production infrastructure",
+  "secret-exposure": "Secret exposure",
+  "rce-supply-chain": "Remote code and supply chain",
+  "safety-bypass": "Safety bypass",
+  "privilege-supply-chain": "Privileges and supply chain",
+  "file-scope": "File scope",
+  "agent-context": "Agent context",
+  "test-integrity": "Test integrity",
+  exfiltration: "Data leaving the machine",
+};
+
+/** The group a finding is listed under. A user's own guardrails share one fixed group. */
+export const YOUR_GUARDRAILS = "Your guardrails";
+
+/** A pack's display name. */
+export function packLabel(category: string): string {
+  return PACK_LABELS[category] ?? category;
+}
+
+/** Wrap prose into lines no longer than `width`, at spaces. A longer word keeps its own line. */
+function wrapLines(text: string, width: number): string[] {
+  const lines: string[] = [];
+  let line = "";
+  for (const word of text.split(/\s+/).filter(Boolean)) {
+    if (line === "") line = word;
+    else if (line.length + 1 + word.length <= width) line = `${line} ${word}`;
+    else {
+      lines.push(line);
+      line = word;
+    }
+  }
+  if (line !== "") lines.push(line);
+  return lines;
+}
+
+// ── The projection ────────────────────────────────────────────────────────────
+
+/** One finding as the file carries it. */
+export interface PayloadFinding {
+  readonly ruleId: string;
+  readonly title: string;
+  readonly severity: string;
+  readonly action: GuardAction;
+  readonly count: number;
+  readonly source: RuleSource;
+  /** Shipped guardrails only. */
+  readonly category?: string;
+  /** The shipped description, wrapped into short lines. Shipped guardrails only. */
+  readonly descriptionLines?: readonly string[];
+  readonly examples: readonly ExampleShape[];
+  /** Distinct shapes beyond `examples` that are not carried. */
+  readonly moreShapes: number;
+}
+
+/** Everything the file carries: the page renders it, and the data block and export are it. */
+export interface ReportPayload {
+  readonly tool: "agenttrail-guard";
+  readonly version: string;
+  readonly generatedAt: string;
+  readonly catalog: string;
+  readonly agent: AgentSource;
+  readonly sessions: number;
+  readonly projects: number;
+  readonly quarantined: number;
+  readonly notRead: number;
+  readonly skippedLines: number;
+  readonly toolCalls: number;
+  readonly riskyActions: number;
+  readonly riskyByAction: ActionCounts;
+  /** Most serious first, at most `MAX_ROWS`. */
+  readonly findings: readonly PayloadFinding[];
+  readonly moreFindings: number;
+  /** Most frequent first, at most `MAX_ROWS`. */
+  readonly recurring: readonly RecurringItem[];
+  readonly moreRecurring: number;
+  readonly tokens: TokenTotals | null;
+  readonly skipped?: ScanSkipped;
+  readonly shareText: string;
+}
+
+/** One finding, copied field by field. Library text only for a library finding. */
+function payloadFinding(finding: ScanFinding): PayloadFinding {
+  const base = {
+    ruleId: finding.ruleId,
+    title: finding.title,
+    severity: finding.severity,
+    action: finding.action,
+    count: finding.count,
+    examples: finding.examples
+      .slice(0, MAX_EXAMPLES)
+      .map((e) => ({ text: e.text, count: e.count })),
+    moreShapes: Math.max(0, finding.examples.length - MAX_EXAMPLES),
+  };
+  if (finding.source !== "library") return { ...base, source: "yours" };
+  return {
+    ...base,
+    source: "library",
+    ...(finding.category === undefined ? {} : { category: finding.category }),
+    ...(finding.description === undefined
+      ? {}
+      : { descriptionLines: wrapLines(finding.description, DESCRIPTION_LINE) }),
+  };
+}
+
+/**
+ * Everything the file carries, and nothing else. See "What the file carries" in the header.
+ *
+ * Fields are copied one by one, never spread from the result, so a field added to
+ * `ScanResult` reaches the file only when it is added here.
+ */
+export function reportPayload(result: ScanResult, meta: ReportMeta): ReportPayload {
+  const ordered = bySeverityThenCount(result.findings);
+  const payload: ReportPayload = {
+    tool: "agenttrail-guard",
+    version: meta.version,
+    generatedAt: meta.generatedAt.toISOString(),
+    catalog: formatCatalogStamp(catalogStamp(), meta.generatedAt),
+    agent: result.agent,
+    sessions: result.sessions,
+    projects: result.projects,
+    quarantined: result.quarantined,
+    notRead: result.notRead,
+    skippedLines: result.skippedLines,
+    toolCalls: result.toolCalls,
+    riskyActions: result.riskyActions,
+    riskyByAction: {
+      block: result.riskyByAction.block,
+      require_approval: result.riskyByAction.require_approval,
+      warn: result.riskyByAction.warn,
+    },
+    findings: ordered.slice(0, MAX_ROWS).map(payloadFinding),
+    moreFindings: Math.max(0, result.findings.length - MAX_ROWS),
+    recurring: result.recurring.slice(0, MAX_ROWS).map((r) => ({
+      text: r.text,
+      count: r.count,
+      ruleId: r.ruleId,
+      title: r.title,
+    })),
+    moreRecurring: Math.max(0, result.recurring.length - MAX_ROWS),
+    tokens: result.tokens === null ? null : { ...result.tokens },
+    shareText: shareText(result),
+  };
+  const skipped = result.skipped;
+  if (skipped === undefined) return payload;
+  return {
+    ...payload,
+    skipped: {
+      unreadableFiles: skipped.unreadableFiles,
+      truncatedLastLines: skipped.truncatedLastLines,
+      unparseableLines: skipped.unparseableLines,
+      unknownRecords: skipped.unknownRecords,
+      turnsEndedWithError: skipped.turnsEndedWithError,
+      notActions: skipped.notActions,
+      unmappedTools: skipped.unmappedTools.map((t) => ({ name: t.name, count: t.count })),
+    },
+  };
+}
+
+// ── Share text ────────────────────────────────────────────────────────────────
+
+/** How X weighs a post: most text one per character, a link 23, plus the hashtag. */
+export function postLength(text: string): number {
+  let n = 0;
+  for (const ch of text) {
+    const code = ch.codePointAt(0) ?? 0;
+    const light =
+      code <= 0x10ff ||
+      (code >= 0x2000 && code <= 0x200d) ||
+      (code >= 0x2010 && code <= 0x201f) ||
+      (code >= 0x2032 && code <= 0x2037);
+    n += light ? 1 : 2;
+  }
+  return n + 1 + 23 + 1 + "#agenttrail".length;
+}
+
+/** The library "would block" guardrail with the most matches, if any. Never a user's own. */
+function topLibraryBlocker(result: ScanResult): ScanFinding | undefined {
+  return result.findings
+    .filter((f) => f.action === "block" && f.source === "library")
+    .sort(
+      (a, b) =>
+        b.count - a.count ||
+        severityRank(a.severity) - severityRank(b.severity) ||
+        a.ruleId.localeCompare(b.ruleId),
+    )[0];
+}
+
+/**
+ * The prefilled post: totals, and the top blocked LIBRARY guardrail's title.
+ *
+ * Built from counts, the agent's display name and one shipped title — never a command, a
+ * path, a project name, or a guardrail the user wrote, whose title can name internal things.
+ * The user can edit it before posting.
+ */
+export function shareText(result: ScanResult): string {
+  const { block, require_approval: ask, warn } = result.riskyByAction;
+  const calls = counted(result.toolCalls, "tool call", "tool calls");
+  const head = `I scanned ${calls} from ${agentName(result.agent)} with AgentTrail Guard`;
+  const tail = ". Checked locally, nothing uploaded.";
+  const top = topLibraryBlocker(result);
+
+  const compose = (withTitle: boolean): string => {
+    const parts: string[] = [];
+    if (block > 0) {
+      const detail =
+        withTitle && top !== undefined
+          ? ` (${formatCount(top.count)} of those: ${top.title.replace(/`/g, "")})`
+          : "";
+      parts.push(`${formatCount(block)} would block${detail}`);
+    }
+    if (ask > 0) parts.push(`${formatCount(ask)} would ask`);
+    if (warn > 0) parts.push(`${formatCount(warn)} would warn`);
+    const body = parts.length === 0 ? ": nothing matched a guardrail" : `: ${parts.join(" · ")}`;
+    return `${head}${body}${tail}`;
+  };
+
+  const full = compose(true);
+  return postLength(full) <= POST_LIMIT ? full : compose(false);
+}
+
+/** The Post-on-X link for a text. User text only ever sits inside the encoded parameter. */
+export function shareLink(text: string, agent: AgentSource): string {
+  const url = siteLink("/agenttrail-guard", agent, "share");
+  return `https://x.com/intent/post?text=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}&hashtags=agenttrail`;
+}
+
+// ── Small pieces ──────────────────────────────────────────────────────────────
+
+/**
  * What a scan read but could not use, as counted phrases. Empty when there is none.
  *
- * Shared by the report and the terminal summary, so both say the same thing. Tool calls
- * that are not actions, and turns that ended with an error, are not listed: every long
- * session has them, and neither leaves a tool call unread.
+ * Shared by the report and the terminal summary, so both say the same thing.
  */
 export function skippedPhrases(skipped: ScanSkipped): readonly string[] {
   const unrecognized = skipped.unmappedTools.reduce((sum, tool) => sum + tool.count, 0);
@@ -302,14 +565,124 @@ function inlineTitle(title: string): string {
   return escapeHtml(title).replace(/`([^`\n]+)`/g, "<code>$1</code>");
 }
 
+/** An outbound link: a new browsing context, no opener, no referrer. */
+function outLink(url: string, text: string, className?: string): string {
+  const cls = className === undefined ? "" : ` class="${className}"`;
+  return `<a${cls} href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${text}</a>`;
+}
+
+/** A command with a copy button. The button stays hidden until the page script runs. */
+function copyable(id: string, command: string): string {
+  return `<div class="command"><code id="${escapeHtml(id)}">${escapeHtml(command)}</code><button type="button" class="copy js-only" data-copy="${escapeHtml(id)}" data-label="Copy" hidden>Copy</button></div>`;
+}
+
 /** One `<div class="stat">`. The class names are part of what the tests read. */
 function stat(value: string, label: string, note?: string): string {
   const noteHtml = note === undefined ? "" : `<div class="stat-note">${escapeHtml(note)}</div>`;
   return `<div class="stat"><div class="stat-value">${escapeHtml(value)}</div><div class="stat-label">${escapeHtml(label)}</div>${noteHtml}</div>`;
 }
 
-/** The hero strip. No token cell when the sessions record no token counts, as Cursor's do not. */
-function heroSection(result: ScanResult): string {
+/** The first sentence of a description, for a card. */
+function firstSentence(lines: readonly string[]): string {
+  const text = lines.join(" ");
+  const end = text.search(/\.(\s|$)/);
+  return end === -1 ? text : text.slice(0, end + 1);
+}
+
+/**
+ * Shipped library text, quoted as written: escaped, `backticked` spans as code, and wrapped at
+ * spaces so no line of the file is long. Marked `library-text` because, like a command, it is
+ * quoted rather than written by the report: a description may show a shell variable such as
+ * `$DIR` to state what its guardrail misses.
+ */
+function libraryText(text: string, className = "library-text"): string {
+  const html = wrapLines(inlineTitle(text), DESCRIPTION_LINE).join("\n");
+  return `<p class="${className}">${html}</p>`;
+}
+
+// ── Sections ──────────────────────────────────────────────────────────────────
+
+/**
+ * The one-line headline, from tool calls by their strictest action.
+ *
+ * One function, so a later headline can be put in front of it with this as the fallback.
+ */
+export function headline(result: ScanResult): string {
+  const { block, require_approval: ask, warn } = result.riskyByAction;
+  const actions = (n: number): string => counted(n, "action", "actions");
+  if (block > 0 && ask > 0) {
+    return `Guard would have stopped ${actions(block)} and asked you about ${formatCount(ask)} more`;
+  }
+  if (block > 0) return `Guard would have stopped ${actions(block)}`;
+  if (ask > 0) return `Guard would have asked you about ${actions(ask)}`;
+  if (warn > 0) return `Guard would have warned you about ${actions(warn)}`;
+  return "Nothing in these sessions matched a guardrail";
+}
+
+/** The top bar: the mark, the section links, and the export and theme controls. */
+function topBar(): string {
+  const links: [string, string][] = [
+    ["overview", "Overview"],
+    ["fix-first", "Fix first"],
+    ["findings", "All findings"],
+    ["next-steps", "Next steps"],
+    ["privacy", "Privacy"],
+  ];
+  const nav = links.map(([id, label]) => `<li><a href="#${id}">${label}</a></li>`).join("\n");
+  // The controls need the page script. They are written into both variants so the two
+  // bodies stay identical, and stay `hidden` where no script runs.
+  const controls = `<div class="toolbar">
+<button type="button" id="print-button" class="tool js-only" hidden>PDF</button>
+<button type="button" id="export-button" class="tool js-only" hidden>JSON</button>
+<button type="button" id="theme-toggle" class="tool js-only" hidden>Theme</button>
+</div>`;
+  return `<header class="masthead">
+<div class="brand" role="img" aria-label="agenttrail">${LOGO_LOCKUP_SVG}</div>
+<span class="product-tag">guard</span>
+<nav class="sections" aria-label="Report sections"><ul>
+${nav}
+</ul></nav>
+${controls}
+</header>`;
+}
+
+/**
+ * Where this page came from — the part the two variants do not share.
+ *
+ * The standalone file was produced on the reader's own machine. A published copy was produced
+ * on the PUBLISHER's machine and put on claude.ai by them, so "nothing uploaded" would be
+ * false there and it says what happened instead. Both keep the qualified claim about the scan
+ * itself: it made no network call, crash reporting being the one exception in this tool.
+ */
+function provenance(result: ScanResult, meta: ReportMeta, variant: ReportVariant): string {
+  const stamp = `Generated ${escapeHtml(meta.generatedAt.toISOString())} by agenttrail-guard ${escapeHtml(meta.version)}`;
+  if (variant === "artifact") {
+    return `${stamp} on the publisher&#39;s own machine, from their own ${escapeHtml(agentName(result.agent))} transcripts. The scan itself made no network call &mdash; crash reporting is the one exception anywhere in this tool, off unless turned on, and a scan never uses it. This copy was published to claude.ai by the person who ran it, through Claude Code.`;
+  }
+  return `${stamp}. Produced entirely on this machine from transcripts already on disk &mdash; no account, nothing uploaded, and no network call: the one exception anywhere in this tool is crash reporting, which is off unless you turn it on and which a scan never uses.`;
+}
+
+/** The most serious library match for the hero, or a neutral line for a user's own. */
+function mostSerious(payload: ReportPayload): string | undefined {
+  if (payload.findings.length === 0) return undefined;
+  const library = payload.findings.find((f) => f.source === "library");
+  if (library === undefined) {
+    return `<p class="top-match">Most serious match: a guardrail you added</p>`;
+  }
+  return `<p class="top-match">Most serious match: ${severityBadge(library.severity)} <span class="top-title">${inlineTitle(library.title)}</span></p>`;
+}
+
+/** The hero: where it came from, the headline, the numbers, and what to do next. */
+function heroSection(
+  result: ScanResult,
+  payload: ReportPayload,
+  meta: ReportMeta,
+  variant: ReportVariant,
+): string {
+  const origin =
+    variant === "artifact"
+      ? "Scanned locally &middot; published by the person who ran it"
+      : "Scanned locally &middot; nothing uploaded";
   const t = result.tokens;
   const cells = [
     stat(formatCount(result.sessions), result.sessions === 1 ? "session" : "sessions"),
@@ -317,6 +690,10 @@ function heroSection(result: ScanResult): string {
     stat(formatCount(result.riskyActions), "risky actions"),
     stat(formatCount(result.recurring.length), "recurring mistakes"),
   ];
+  if (result.toolCalls > 0) {
+    const clean = Math.floor(((result.toolCalls - result.riskyActions) / result.toolCalls) * 100);
+    cells.push(stat(`${clean}%`, "matched no guardrail"));
+  }
   if (t !== null) {
     cells.push(
       stat(
@@ -326,18 +703,38 @@ function heroSection(result: ScanResult): string {
       ),
     );
   }
-  return `<section class="stats" aria-label="Summary">\n${cells.join("\n")}\n</section>`;
+  const fixTarget = payload.findings.some((f) => f.action === "block") ? "fix-first" : "findings";
+  const top = mostSerious(payload);
+  return `<section class="intro" id="overview">
+<p class="origin">${origin}</p>
+<p class="agent">Agent: ${escapeHtml(agentName(result.agent))}</p>
+<h1>${escapeHtml(headline(result))}</h1>
+<p class="lead">What your coding agent actually did, and which guardrails would have fired.</p>
+<p class="provenance">${provenance(result, meta, variant)}</p>${top === undefined ? "" : `\n${top}`}
+<div class="actions">
+<a class="button" href="#${fixTarget}">See what to fix first</a>
+${outLink(shareLink(payload.shareText, result.agent), "Share on X", "button secondary")}
+</div>
+${copyable("cmd-init-hero", `agenttrail-guard init --agent ${result.agent}`)}
+</section>
+<section class="stats" aria-label="Summary">
+${cells.join("\n")}
+</section>`;
 }
+
+/** What each action means for the agent. */
+const ACTION_MEANING: Readonly<Record<GuardAction, string>> = {
+  block: "The command does not run, and the agent is told which guardrail stopped it.",
+  require_approval: "The command waits until you allow or deny it.",
+  warn: "The command runs, and the agent is shown which guardrail it matched.",
+};
 
 /**
  * What "would ask" meant on an app that cannot ask.
  *
- * The label names the guardrail's own action, which is what lets one guardrail be compared
- * across apps — so it stays "would ask" everywhere. On Codex that action cannot be carried
- * out: a hook has no way to reach a person, so the answer sent is a block. Without this
- * line the report says a person would have been asked, on the one app where nobody is.
- *
- * Only when a require-approval guardrail actually matched; otherwise it explains nothing.
+ * The label names the guardrail's own action, so it stays "would ask" everywhere. On Codex a
+ * hook has no way to reach a person, so the answer sent is a block. Only when a
+ * require-approval guardrail actually matched.
  */
 function askOnCodexNote(result: ScanResult, byAction: readonly { action: string }[]): string {
   if (result.agent !== "codex") return "";
@@ -345,146 +742,258 @@ function askOnCodexNote(result: ScanResult, byAction: readonly { action: string 
   return `\n<p class="note"><strong>On Codex, &ldquo;would ask&rdquo; means the action would have been stopped.</strong> Codex gives a guardrail no way to ask you, so the guard sends those as a block. The label above is the guardrail&#39;s own decision, kept the same across apps so one guardrail reads the same way everywhere.</p>`;
 }
 
-/**
- * Matches by severity and by action, over every finding. Absent when nothing matched —
- * the Findings section already says so, and a strip of zeroes would say it twice.
- */
-function tallySection(result: ScanResult): string {
+/** The ask guardrails worth turning down, when a few of them produce most of the asks. */
+export interface TuningHint {
+  readonly ids: readonly string[];
+  readonly share: number;
+  readonly asks: number;
+  readonly remaining: number;
+}
+
+/** See `TUNING_MAX_GUARDRAILS`. Over the guardrails the file carries, so `--review` covers ids. */
+export function tuningHint(findings: readonly PayloadFinding[]): TuningHint | undefined {
+  const asks = findings
+    .filter((f) => f.action === "require_approval")
+    .sort((a, b) => b.count - a.count || a.ruleId.localeCompare(b.ruleId));
+  const total = asks.reduce((sum, f) => sum + f.count, 0);
+  if (total < TUNING_MIN_ASKS) return undefined;
+  let covered = 0;
+  for (let k = 1; k <= Math.min(TUNING_MAX_GUARDRAILS, asks.length); k++) {
+    covered += asks[k - 1]?.count ?? 0;
+    if (covered / total >= TUNING_MIN_SHARE) {
+      return {
+        ids: asks.slice(0, k).map((f) => f.ruleId),
+        share: covered / total,
+        asks: total,
+        remaining: total - covered,
+      };
+    }
+  }
+  return undefined;
+}
+
+/** The tuning hint's markup. */
+function tuningSection(payload: ReportPayload): string {
+  const hint = tuningHint(payload.findings);
+  if (hint === undefined) return "";
+  const n = hint.ids.length;
+  const pct = Math.round(hint.share * 100);
+  const commands = hint.ids
+    .map((id, i) => copyable(`cmd-tune-${i}`, `agenttrail-guard guardrails set-action ${id} warn`))
+    .join("\n");
+  return `<div class="hint">
+<p><strong>${escapeHtml(counted(n, "guardrail produces", "guardrails produce"))} ${pct}% of the asks.</strong> Setting ${n === 1 ? "it" : "them"} to warn would take ask matches from ${escapeHtml(formatCount(hint.asks))} to ${escapeHtml(formatCount(hint.remaining))}, and the agent would be shown a warning instead.</p>
+${commands}
+</div>`;
+}
+
+/** Three columns, one per action, then the severity tally. */
+function wouldHaveDoneSection(result: ScanResult, payload: ReportPayload): string {
   if (result.findings.length === 0) return "";
+  const columns = ACTION_ORDER.map((action) => {
+    const count = result.riskyByAction[action];
+    const top = payload.findings
+      .filter((f) => f.action === action)
+      .sort((a, b) => b.count - a.count || a.ruleId.localeCompare(b.ruleId))
+      .slice(0, TOP_PER_ACTION)
+      .map(
+        (f) =>
+          `<li><span class="col-title">${inlineTitle(f.title)}</span><span class="times">${escapeHtml(formatCount(f.count))}&times;</span></li>`,
+      )
+      .join("\n");
+    const label = { block: "Blocked", require_approval: "Asked you first", warn: "Warned" }[action];
+    return `<div class="col ${actionClass(action)}-col">
+<p class="col-label">${label}</p>
+<p class="col-count">${escapeHtml(formatCount(count))}</p>
+<p class="note">${escapeHtml(ACTION_MEANING[action])}</p>${top === "" ? "" : `\n<ul class="col-list">\n${top}\n</ul>`}
+</div>`;
+  }).join("\n");
+
   const { bySeverity, byAction } = matchTally(result);
   const item = (label: string, count: number): string =>
     `<li>${label}<span class="tally-count">${escapeHtml(formatCount(count))}</span></li>`;
   const severities = bySeverity.map((s) => item(severityBadge(s.severity), s.count)).join("\n");
   const actions = byAction.map((a) => item(actionChip(a.action), a.count)).join("\n");
-  return `<section class="tally" aria-label="Guardrail matches">
+
+  return `<section id="would-do">
+<h2>What Guard would have done</h2>
+<p class="note">Tool calls, each counted once under the strictest guardrail it matched.</p>
+<div class="columns">
+${columns}
+</div>${askOnCodexNote(result, byAction)}
+${tuningSection(payload)}
+<div class="tally" aria-label="Guardrail matches">
 <div class="tally-group"><p class="tally-label">Matches by severity</p><ul class="pills">
 ${severities}
 </ul></div>
-<div class="tally-group"><p class="tally-label">What the guard would have done</p><ul class="pills">
+<div class="tally-group"><p class="tally-label">Matches by action</p><ul class="pills">
 ${actions}
 </ul></div>
-<p class="note">Each guardrail counts its own matches, so a tool call that matched two guardrails is counted under both, and these totals can be larger than the number of risky actions.</p>${askOnCodexNote(result, byAction)}
+<p class="note">Each guardrail counts its own matches, so a tool call that matched two guardrails is counted under both, and these totals can be larger than the number of risky actions.</p>
+</div>
 </section>`;
 }
 
-/**
- * The token detail table.
- *
- * The cache-write split is a SEPARATE row from the aggregate and is withheld entirely
- * when no turn reported one — see the module header, and `tokens.ts` on why the two
- * are never derived from each other.
- *
- * Omitted entirely for sessions that record no token counts (Cursor's): a table of zeroes
- * would state a count nobody measured.
- */
-function tokensSection(result: ScanResult): string {
-  const t = result.tokens;
-  if (t === null) return "";
-  const rows = [
-    ["Input", formatCount(t.input)],
-    ["Output", formatCount(t.output)],
-    ["Read from cache (cumulative)", formatCount(t.cacheRead)],
-    ["Written to cache", formatCount(t.cacheCreation)],
-  ];
-  if (t.turnsWithSplit > 0) {
-    rows.push([
-      "…of which 5-minute / 1-hour",
-      `${formatCount(t.cacheCreation5m)} / ${formatCount(t.cacheCreation1h)}`,
-    ]);
+/** The guardrails that would block outright, most serious first. */
+function fixFirstSection(payload: ReportPayload): string {
+  const blocking = payload.findings.filter((f) => f.action === "block").slice(0, FIX_FIRST_MAX);
+  if (blocking.length === 0) {
+    return `<section id="fix-first"><h2>Fix these first</h2><p class="empty">No guardrail would have blocked anything in these sessions.</p></section>`;
   }
-  const body = rows
-    .map(
-      ([label, value]) =>
-        `<tr><th scope="row">${escapeHtml(label ?? "")}</th><td class="num">${escapeHtml(value ?? "")}</td></tr>`,
-    )
+  const cards = blocking
+    .map((f) => {
+      const index = payload.findings.indexOf(f);
+      const why =
+        f.descriptionLines === undefined
+          ? `<p class="note">A guardrail you added.</p>`
+          : libraryText(firstSentence(f.descriptionLines), "library-text note");
+      const example = f.examples[0];
+      const exampleHtml =
+        example === undefined
+          ? ""
+          : `\n<p class="example"><code>${escapeHtml(example.text)}</code></p>`;
+      const group = f.category === undefined ? YOUR_GUARDRAILS : packLabel(f.category);
+      const link =
+        f.category === undefined
+          ? ""
+          : `\n<p>${outLink(libraryLink(f.category, f.ruleId, payload.agent), "How this guardrail works")}</p>`;
+      return `<article class="card">
+<div class="card-head">${severityBadge(f.severity)} ${actionChip(f.action)}<span class="times">${escapeHtml(formatCount(f.count))}&times;</span></div>
+<h3><a href="#finding-${index}">${inlineTitle(f.title)}</a></h3>
+${why}${exampleHtml}
+<p class="card-meta">${escapeHtml(group)} &middot; <code>${escapeHtml(f.ruleId)}</code></p>${link}
+</article>`;
+    })
     .join("\n");
-
-  const splitNote =
-    t.turnsWithSplit > 0
-      ? `<p class="note">The 5-minute / 1-hour split is reported separately by the model and is not derived from the total above; on real sessions the two do not always agree, so both are shown as reported.</p>`
-      : `<p class="note">None of these sessions reported a 5-minute / 1-hour cache-write split, so that row is omitted rather than shown as zero.</p>`;
-
-  // "Read from cache" is a cumulative figure: the cached prefix is re-read, and re-charged,
-  // on every turn, so a long session's total dwarfs its distinct input. Said plainly so the
-  // large number is not misread as fresh consumption.
-  const cacheReadNote =
-    t.cacheRead > 0
-      ? `<p class="note">"Read from cache" is cumulative — the cached prefix is re-read and re-charged every turn, so this counts the same tokens many times over a session. It is a total of what the model billed for, not of distinct input.</p>`
-      : "";
-
-  return `<section><h2>Tokens</h2>
-<p class="note">Read straight from the transcripts, so these are exact counts and not estimates.</p>
-<div class="table-wrap"><table class="kv">
-${body}
-</table></div>
-${cacheReadNote}${splitNote}</section>`;
+  return `<section id="fix-first">
+<h2>Fix these first</h2>
+<p class="note">The guardrails that would have stopped a command outright, most serious first.</p>
+<div class="cards">
+${cards}
+</div>
+</section>`;
 }
 
-/** The findings table. Rows stack into cards on a narrow screen, with CSS alone. */
-function findingsSection(result: ScanResult): string {
-  if (result.findings.length === 0) {
-    return `<section><h2>Findings</h2><p class="empty">No guardrail matched anything in these sessions.</p></section>`;
-  }
+/** Rank maps for the sort control, computed here so the script reads numbers only. */
+function ranks(findings: readonly PayloadFinding[]): {
+  category: Map<PayloadFinding, number>;
+  count: Map<PayloadFinding, number>;
+  name: Map<PayloadFinding, number>;
+} {
+  const group = (f: PayloadFinding): string =>
+    f.category === undefined ? `~${YOUR_GUARDRAILS}` : packLabel(f.category);
+  const rankBy = (cmp: (a: PayloadFinding, b: PayloadFinding) => number) =>
+    new Map([...findings].sort(cmp).map((f, i) => [f, i]));
+  return {
+    category: rankBy(
+      (a, b) => group(a).localeCompare(group(b)) || findings.indexOf(a) - findings.indexOf(b),
+    ),
+    count: rankBy((a, b) => b.count - a.count || findings.indexOf(a) - findings.indexOf(b)),
+    name: rankBy((a, b) => a.title.localeCompare(b.title) || a.ruleId.localeCompare(b.ruleId)),
+  };
+}
 
-  const rows = result.findings
-    .slice(0, MAX_ROWS)
-    .map((finding) => {
-      const examples = finding.examples
-        .slice(0, MAX_EXAMPLES)
-        .map(
-          (example) =>
-            `<li><code>${escapeHtml(example.text)}</code><span class="times">${escapeHtml(formatCount(example.count))}&times;</span></li>`,
-        )
-        .join("\n");
-      const more =
-        finding.examples.length > MAX_EXAMPLES
-          ? `\n<li class="more">and ${escapeHtml(formatCount(finding.examples.length - MAX_EXAMPLES))} more shapes</li>`
-          : "";
-      return `<tr role="row">
-<td class="rule" role="cell">
-<div class="guardrail-title">${inlineTitle(finding.title)}</div>
-<div class="guardrail-id"><code>${escapeHtml(finding.ruleId)}</code></div>
+/** One row of All findings. */
+function findingRow(
+  f: PayloadFinding,
+  index: number,
+  r: ReturnType<typeof ranks>,
+  agent: AgentSource,
+): string {
+  const group = f.category === undefined ? YOUR_GUARDRAILS : packLabel(f.category);
+  const examples = f.examples
+    .map(
+      (example) =>
+        `<li><code>${escapeHtml(example.text)}</code><span class="times">${escapeHtml(formatCount(example.count))}&times;</span></li>`,
+    )
+    .join("\n");
+  const more =
+    f.moreShapes > 0
+      ? `\n<li class="more">and ${escapeHtml(formatCount(f.moreShapes))} more shapes</li>`
+      : "";
+  const shapes = counted(f.examples.length + f.moreShapes, "command shape", "command shapes");
+  const how =
+    f.descriptionLines === undefined
+      ? ""
+      : `\n<details class="how"><summary>How this guardrail decides, and what it misses</summary>
+${libraryText(f.descriptionLines.join(" "))}
+<p>${outLink(libraryLink(f.category ?? "", f.ruleId, agent), "Open it in the guardrail library")}</p>
+</details>`;
+  return `<li class="finding" id="finding-${index}" data-action="${escapeHtml(f.action)}" data-rank-serious="${index}" data-rank-category="${r.category.get(f) ?? index}" data-rank-count="${r.count.get(f) ?? index}" data-rank-name="${r.name.get(f) ?? index}">
+<div class="finding-head">
+<div class="guardrail-title">${inlineTitle(f.title)}</div>
+<div class="finding-meta">${severityBadge(f.severity)} ${actionChip(f.action)}<span class="num" data-label="Matches">${escapeHtml(formatCount(f.count))}&times;</span></div>
+</div>
+<div class="guardrail-id"><code>${escapeHtml(f.ruleId)}</code> &middot; <span class="group">${escapeHtml(group)}</span></div>
+<details class="commands"><summary>The ${escapeHtml(shapes)} behind it</summary>
 <ul class="shapes">
 ${examples}${more}
 </ul>
-</td>
-<td class="sev" role="cell">${severityBadge(finding.severity)}</td>
-<td class="act" role="cell">${actionChip(finding.action)}</td>
-<td class="num" role="cell" data-label="Matches">${escapeHtml(formatCount(finding.count))}</td>
-</tr>`;
-    })
-    .join("\n");
+</details>${how}
+</li>`;
+}
 
+/** All findings: one row per guardrail, most serious first, with filters and sort. */
+function findingsSection(payload: ReportPayload): string {
+  if (payload.findings.length === 0) {
+    return `<section id="findings"><h2>All findings</h2><p class="empty">No guardrail matched anything in these sessions.</p></section>`;
+  }
+  const r = ranks(payload.findings);
+  const rows = payload.findings.map((f, i) => findingRow(f, i, r, payload.agent)).join("\n");
   const truncated =
-    result.findings.length > MAX_ROWS
-      ? `\n<p class="note">${escapeHtml(formatCount(result.findings.length - MAX_ROWS))} further guardrails matched and are not listed here.</p>`
+    payload.moreFindings > 0
+      ? `\n<p class="note">${escapeHtml(formatCount(payload.moreFindings))} further guardrails matched and are not listed here.</p>`
       : "";
-
-  const matched = counted(result.findings.length, "guardrail matched", "guardrails matched");
-  return `<section>
-<div class="section-head"><h2>Findings</h2><p class="section-meta">${escapeHtml(matched)}</p></div>
-<div class="table-wrap"><table class="findings" role="table">
-<thead role="rowgroup"><tr role="row"><th scope="col" role="columnheader">Guardrail</th><th scope="col" role="columnheader">Severity</th><th scope="col" role="columnheader">Action</th><th scope="col" class="num" role="columnheader">Matches</th></tr></thead>
-<tbody role="rowgroup">
+  const filters = [
+    ["all", "All"],
+    ["block", "Would block"],
+    ["require_approval", "Would ask"],
+    ["warn", "Would warn"],
+  ]
+    .map(
+      ([value, label]) =>
+        `<button type="button" class="filter" data-filter="${value}" aria-pressed="${value === "all" ? "true" : "false"}">${label}</button>`,
+    )
+    .join("\n");
+  const matched = counted(
+    payload.findings.length + payload.moreFindings,
+    "guardrail matched",
+    "guardrails matched",
+  );
+  return `<section id="findings" class="findings-section">
+<div class="section-head"><h2>All findings</h2><p class="section-meta">${escapeHtml(matched)}</p></div>
+<div class="controls js-only" hidden>
+<div class="filters" role="group" aria-label="Show findings">
+${filters}
+</div>
+<label class="sort">Sort <select id="sort">
+<option value="serious">Most serious</option>
+<option value="category">Category</option>
+<option value="count">Most matches</option>
+<option value="name">Name</option>
+</select></label>
+</div>
+<p id="findings-status" class="sr-only" role="status" aria-live="polite"></p>
+<ol class="finding-list">
 ${rows}
-</tbody>
-</table></div>${truncated}
+</ol>${truncated}
 </section>`;
 }
 
-/** The recurring-issues table. */
-function recurringSection(result: ScanResult): string {
-  if (result.recurring.length === 0) {
-    return `<section><h2>Recurring issues</h2><p class="empty">Nothing matched more than once.</p></section>`;
+/** Repeat offenders: the same command shape more than once. */
+function recurringSection(payload: ReportPayload): string {
+  if (payload.recurring.length === 0) {
+    return `<section id="repeats"><h2>Repeat offenders</h2><p class="empty">Nothing matched more than once.</p></section>`;
   }
-  const rows = result.recurring
-    .slice(0, MAX_ROWS)
-    .map(
-      (item) =>
-        `<tr role="row"><td class="shape" role="cell"><code>${escapeHtml(item.text)}</code></td><td class="num" role="cell">${escapeHtml(formatCount(item.count))}&times;</td><td class="rule-name" role="cell">${inlineTitle(item.title)}</td></tr>`,
-    )
+  const rows = payload.recurring
+    .map((item) => {
+      const index = payload.findings.findIndex((f) => f.ruleId === item.ruleId);
+      const title = inlineTitle(item.title);
+      const named = index === -1 ? title : `<a href="#finding-${index}">${title}</a>`;
+      return `<tr role="row"><td class="shape" role="cell"><code>${escapeHtml(item.text)}</code></td><td class="num" role="cell">${escapeHtml(formatCount(item.count))}&times;</td><td class="rule-name" role="cell">${named}</td></tr>`;
+    })
     .join("\n");
-  return `<section><h2>Recurring issues</h2>
+  return `<section id="repeats"><h2>Repeat offenders</h2>
 <p class="note">The same shape, seen more than once. Paths are redacted before counting, so many different paths under one command become one repeat.</p>
 <div class="table-wrap"><table class="recurring" role="table">
 <thead role="rowgroup"><tr role="row"><th scope="col" role="columnheader">Command shape</th><th scope="col" class="num" role="columnheader">Times</th><th scope="col" role="columnheader">Guardrail</th></tr></thead>
@@ -495,14 +1004,85 @@ ${rows}
 </section>`;
 }
 
+/** Three steps, each with a command to copy, and where to read more. */
+function nextStepsSection(result: ScanResult): string {
+  const a = result.agent;
+  return `<section id="next-steps">
+<h2>Next steps</h2>
+<ol class="steps">
+<li><p><strong>Turn on Guard</strong> so these guardrails run before each command.</p>
+${copyable("cmd-init", `agenttrail-guard init --agent ${a}`)}</li>
+<li><p><strong>See what it is doing</strong>: whether it is on, and what it decided recently.</p>
+${copyable("cmd-status", "agenttrail-guard status")}</li>
+<li><p><strong>Scan again next week</strong>, and read every line before the report is written.</p>
+${copyable("cmd-scan-again", `agenttrail-guard scan --agent ${a} --review`)}</li>
+</ol>
+<ul class="links">
+<li>${outLink(siteLink("/get-started/guard", a, "next-commands"), "Every command")}</li>
+<li>${outLink(siteLink("/guardrails", a, "next-library"), "The guardrail library")}</li>
+<li>${outLink(siteLink("/get-started/guard", a, "next-agents"), "Set up Cursor or Codex")}</li>
+</ul>
+</section>`;
+}
+
+/** The post preview: totals only, editable, with a count and a plain link to X. */
+function shareSectionHtml(result: ScanResult, payload: ReportPayload): string {
+  const length = postLength(payload.shareText);
+  return `<section id="share" class="share">
+<h2>Share your result</h2>
+<p class="note">Totals only: no commands, paths, project names or guardrails you wrote. Edit it before posting.</p>
+<label class="share-label" for="share-text">Post preview</label>
+<textarea id="share-text" rows="4">${escapeHtml(payload.shareText)}</textarea>
+<p class="share-actions"><span id="share-count" class="share-count" data-over="${length > POST_LIMIT ? "true" : "false"}">${escapeHtml(`${length} / ${POST_LIMIT}`)}</span>
+<a id="share-link" class="button" href="${escapeHtml(shareLink(payload.shareText, result.agent))}" target="_blank" rel="noopener noreferrer">Post on X</a>
+<button type="button" class="copy js-only" data-copy="share-text" data-label="Copy text" hidden>Copy text</button></p>
+</section>`;
+}
+
+/** "Before you share this": what the placeholders stand for, and the limit of redaction. */
+function beforeYouShareSection(result: ScanResult, variant: ReportVariant): string {
+  const review = `<code>agenttrail-guard scan --agent ${escapeHtml(result.agent)} --review</code>`;
+  const check =
+    variant === "artifact"
+      ? `Redaction is thorough but not a guarantee. Read the findings before passing this page on; the person who published it can check every line with ${review} before the file is written.`
+      : `Redaction is thorough but not a guarantee. Read the findings before posting this anywhere public, and run ${review} to see every line before the file is written.`;
+  return `<section class="callout" id="privacy">
+<h2>Before you share this</h2>
+<p class="note">This report was made on one machine from transcripts already on its disk, and the scan sent nothing anywhere.</p>
+<p class="note">Every command below has been through a secret scrubber, a path redactor, a pass for secret-named values and long random-looking strings, and an identifier redactor, and every MCP tool call has had its payload values structurally redacted. Redaction runs before anything is written, so this file has never held the original text.</p>
+<dl class="legend">
+<div><dt><code>&lt;path&gt;</code></dt><dd>stands for a redacted filesystem path or URL</dd></div>
+<div><dt><code>&lt;name&gt;</code> <code>&lt;host&gt;</code> <code>&lt;user&gt;</code> <code>&lt;message&gt;</code> <code>&lt;comment&gt;</code></dt><dd>stand for an identifying operand of a command &mdash; a container, a namespace, a machine, a login, a commit message or heredoc body, a shell comment</dd></div>
+<div><dt><code>&lt;value&gt;</code></dt><dd>stands for a redacted MCP payload value</dd></div>
+<div><dt><code>[REDACTED:&hellip;]</code></dt><dd>stands for a redacted secret; <code>[REDACTED:secret:generic]</code> marks a long random-looking string masked on a best guess</dd></div>
+<div><dt><code>&hellip;</code></dt><dd>marks where a long command was shortened for display</dd></div>
+</dl>
+<p class="warning">${check}</p>
+<p class="note pdf-tip"><strong>Saving as PDF?</strong> Turn off headers and footers in the print dialog, so the file&rsquo;s location on your disk is not printed on every page.</p>
+</section>`;
+}
+
 /**
- * The reader's own coverage limit, stated rather than left to be discovered.
+ * How redaction works and where it can miss: the limits stated, not left to be discovered.
  *
- * A report that silently covers a quarter of the corpus is the same class of failure as
- * one that over-claims, pointed the other way — and this one reads as good news. Each app
- * gets its own sentence because each reader walks a different shape of folder, and naming
- * the wrong one would send a reader looking in a directory their agent does not use. A
- * checked switch, so a new app cannot inherit another app's description of where it looked.
+ * Paths and working directories are redacted structurally, so "appear nowhere" holds.
+ * Identifying names are removed for a fixed list of commands, a deny-list that cannot be
+ * proved complete, and the section says so.
+ */
+function redactionSection(): string {
+  return `<section id="redaction"><h2>How redaction works and where it can miss</h2>
+<p class="note">Working directories and file paths appear nowhere in this file, and the projects these sessions came from are carried as a count and never as names.</p>
+<p class="note"><strong>Identifying names are a weaker claim than paths, and the difference is worth knowing.</strong> Shell commands go through an identifier redactor keyed to a fixed list of tools &mdash; container runtimes, <code>kubectl</code> (including resource names), the database clients (host, database, and the SQL handed to <code>-c</code> / <code>-e</code>), <code>ssh</code>, <code>git</code> commit messages and identity settings, 1Password&#39;s <code>op</code> (item and vault names), and <code>gh</code> titles and bodies &mdash; plus, in any command, a secret passed as a flag value (<code>--token</code>, <code>--password</code>, <code>--key</code>), a UUID, the body of a heredoc, and the text of a <code>#</code> comment. That list is a deny-list and will miss the tool nobody thought of, so a bare operand naming a resource for a tool not on it can survive.</p>
+<p class="note">Cloud account identifiers are redacted where a name or flag gives them away: <code>CLOUDFLARE_ACCOUNT_ID</code> and <code>--account-id</code>, <code>wrangler</code> commands, AWS account numbers after <code>--account</code> or inside an ARN, and <code>--project</code> for <code>gcloud</code>, <code>gsutil</code>, <code>bq</code> and <code>firebase</code>.</p>
+<p class="note"><strong>Secrets without a known format are caught by name and by shape, and both are guesses.</strong> A value after a name ending in <code>_KEY</code> or <code>-key</code>, an <code>Authorization</code> header, and any long random-looking string of 32 or more characters is masked. A secret that is shorter, that is only hexadecimal and has no revealing name, that is split by punctuation, or that has no name and is followed by a <code>.</code>, ends in <code>=</code> or is written as short dashed groups can survive. Branch names, folder names and git branch operands are kept readable and are not redacted.</p>
+<p class="note"><strong>MCP tool calls are handled the other way round:</strong> a call to an MCP server arrives as a structured payload, and rather than deny-listing known-sensitive fields, every value in it is redacted to <code>&lt;value&gt;</code> by default and only the field names and the shape are kept.</p>
+<p class="note">Guardrail ids and titles are shown as their author wrote them &mdash; which for any guardrail you added yourself means your own words, unredacted. Redaction is thorough but not a guarantee. Read the commands and guardrail names above before posting this anywhere public.</p>
+</section>`;
+}
+
+/**
+ * The reader's own coverage limit, stated rather than left to be discovered. Each app gets its
+ * own sentence because each reader walks a different shape of folder.
  */
 function coverageNote(result: ScanResult): string {
   if (result.notRead === 0) return "";
@@ -545,38 +1125,17 @@ function corpusSection(result: ScanResult): string {
       `${escapeHtml(agentName(result.agent))}&#39;s session files record no token counts, so this report shows none.`,
     );
   }
-
   const coverage = coverageNote(result);
-
-  // ── Two claims, stated separately ──────────────────────────────────────────
-  //   - paths and working directories: redacted structurally, so "appear nowhere" holds;
-  //   - identifying names: `core/redact-identifiers.ts` removes them for a fixed list of
-  //     commands, and the paragraph says so, because the pass is a deny-list and cannot
-  //     be proved complete. A project's name can survive, for example, as a container
-  //     name in a command that list does not cover.
-  //
-  // The posture is the one two sections up ("thorough but not a guarantee. Read the
-  // findings before posting this anywhere public"), repeated here because a reader who
-  // has scrolled this far cannot see that sentence any more.
-  return `<section><h2>What was scanned</h2>
+  return `<section id="scanned"><h2>What was scanned</h2>
 <p class="note">${lines.join(" ")}</p>${coverage === "" ? "" : `\n${coverage}`}
-<p class="note">Working directories and file paths appear nowhere in this file, and the projects these sessions came from are carried as a count and never as names.</p>
-<p class="note"><strong>Identifying names are a weaker claim than paths, and the difference is worth knowing.</strong> Shell commands go through an identifier redactor keyed to a fixed list of tools &mdash; container runtimes, <code>kubectl</code> (including resource names), the database clients (host, database, and the SQL handed to <code>-c</code> / <code>-e</code>), <code>ssh</code>, <code>git</code> commit messages and identity settings, 1Password&#39;s <code>op</code> (item and vault names), and <code>gh</code> titles and bodies &mdash; plus, in any command, a secret passed as a flag value (<code>--token</code>, <code>--password</code>, <code>--key</code>), a UUID, the body of a heredoc, and the text of a <code>#</code> comment. That list is a deny-list and will miss the tool nobody thought of, so a bare operand naming a resource for a tool not on it can survive.</p>
-<p class="note">Cloud account identifiers are redacted where a name or flag gives them away: <code>CLOUDFLARE_ACCOUNT_ID</code> and <code>--account-id</code>, <code>wrangler</code> commands, AWS account numbers after <code>--account</code> or inside an ARN, and <code>--project</code> for <code>gcloud</code>, <code>gsutil</code>, <code>bq</code> and <code>firebase</code>.</p>
-<p class="note"><strong>Secrets without a known format are caught by name and by shape, and both are guesses.</strong> A value after a name ending in <code>_KEY</code> or <code>-key</code>, an <code>Authorization</code> header, and any long random-looking string of 32 or more characters is masked. A secret that is shorter, that is only hexadecimal and has no revealing name, that is split by punctuation, or that has no name and is followed by a <code>.</code>, ends in <code>=</code> or is written as short dashed groups can survive. Branch names, folder names and git branch operands are kept readable and are not redacted.</p>
-<p class="note"><strong>MCP tool calls are handled the other way round:</strong> a call to an MCP server arrives as a structured payload, and rather than deny-listing known-sensitive fields, every value in it is redacted to <code>&lt;value&gt;</code> by default and only the field names and the shape are kept.</p>
-<p class="note">Guardrail ids and titles are shown as their author wrote them &mdash; which for any guardrail you added yourself means your own words, unredacted. Redaction is thorough but not a guarantee. Read the commands and guardrail names above before posting this anywhere public.</p>
 </section>`;
 }
 
 /**
  * What a scan read but did not evaluate. Absent from a report whose reader counts none.
- *
- * Every kind is listed with its count, and each tool name the reader does not recognize is
- * shown, so a reader can tell a quiet report from a report over files it could not read.
  */
-function skippedSection(result: ScanResult): string {
-  const skipped = result.skipped;
+function skippedSection(payload: ReportPayload): string {
+  const skipped = payload.skipped;
   if (skipped === undefined) return "";
 
   const phrases = skippedPhrases(skipped);
@@ -607,57 +1166,69 @@ function skippedSection(result: ScanResult): string {
     );
   }
 
-  return `<section><h2>What was not evaluated</h2>
+  return `<section id="not-evaluated"><h2>What was not evaluated</h2>
 <p class="note">None of this stopped the scan. Each line of a session file is read on its own, and whatever could not be used is counted here.</p>
 ${kinds}${tools}${notes.map((note) => `\n<p class="note">${escapeHtml(note)}</p>`).join("")}
 </section>`;
 }
 
 /**
- * Where this page came from — the one paragraph the two variants do not share.
- *
- * The standalone file was produced on the reader's own machine. A published copy was
- * produced on the PUBLISHER's machine and then put on claude.ai by them, so "nothing
- * uploaded" would be false there and it says what happened instead. Both keep the
- * qualified claim about the scan itself: it made no network call, crash reporting being
- * the one exception in this tool.
+ * The token detail table. The cache-write split is withheld entirely when no turn reported
+ * one, and the section is omitted for sessions that record no token counts.
  */
-function provenance(result: ScanResult, meta: ReportMeta, variant: ReportVariant): string {
-  const stamp = `Generated ${escapeHtml(meta.generatedAt.toISOString())} by agenttrail-guard ${escapeHtml(meta.version)}`;
-  if (variant === "artifact") {
-    return `${stamp} on the publisher&#39;s own machine, from their own ${escapeHtml(agentName(result.agent))} transcripts. The scan itself made no network call &mdash; crash reporting is the one exception anywhere in this tool, off unless turned on, and a scan never uses it. This copy was published to claude.ai by the person who ran it, through Claude Code.`;
+function tokensSection(result: ScanResult): string {
+  const t = result.tokens;
+  if (t === null) return "";
+  const rows = [
+    ["Input", formatCount(t.input)],
+    ["Output", formatCount(t.output)],
+    ["Read from cache (cumulative)", formatCount(t.cacheRead)],
+    ["Written to cache", formatCount(t.cacheCreation)],
+  ];
+  if (t.turnsWithSplit > 0) {
+    rows.push([
+      "…of which 5-minute / 1-hour",
+      `${formatCount(t.cacheCreation5m)} / ${formatCount(t.cacheCreation1h)}`,
+    ]);
   }
-  return `${stamp}. Produced entirely on this machine from transcripts already on disk &mdash; no account, nothing uploaded, and no network call: the one exception anywhere in this tool is crash reporting, which is off unless you turn it on and which a scan never uses.`;
+  const body = rows
+    .map(
+      ([label, value]) =>
+        `<tr><th scope="row">${escapeHtml(label ?? "")}</th><td class="num">${escapeHtml(value ?? "")}</td></tr>`,
+    )
+    .join("\n");
+
+  const splitNote =
+    t.turnsWithSplit > 0
+      ? `<p class="note">The 5-minute / 1-hour split is reported separately by the model and is not derived from the total above; on real sessions the two do not always agree, so both are shown as reported.</p>`
+      : `<p class="note">None of these sessions reported a 5-minute / 1-hour cache-write split, so that row is omitted rather than shown as zero.</p>`;
+
+  // "Read from cache" is cumulative: the cached prefix is re-read, and re-charged, on every
+  // turn, so a long session's total dwarfs its distinct input.
+  const cacheReadNote =
+    t.cacheRead > 0
+      ? `<p class="note">"Read from cache" is cumulative — the cached prefix is re-read and re-charged every turn, so this counts the same tokens many times over a session. It is a total of what the model billed for, not of distinct input.</p>`
+      : "";
+
+  return `<section id="tokens"><h2>Tokens</h2>
+<p class="note">Read straight from the transcripts, so these are exact counts and not estimates.</p>
+<div class="table-wrap"><table class="kv">
+${body}
+</table></div>
+${cacheReadNote}${splitNote}</section>`;
 }
 
-/** "Before you share this": what the placeholders stand for, and the limit of redaction. */
-function shareSection(result: ScanResult, variant: ReportVariant): string {
-  const review = `<code>agenttrail-guard scan --agent ${escapeHtml(result.agent)} --review</code>`;
-  const check =
-    variant === "artifact"
-      ? `Redaction is thorough but not a guarantee. Read the findings before passing this page on; the person who published it can check every line with ${review} before the file is written.`
-      : `Redaction is thorough but not a guarantee. Read the findings before posting this anywhere public, and run ${review} to see every line before the file is written.`;
-  return `<section class="callout">
-<h2>Before you share this</h2>
-<p class="note">Every command below has been through a secret scrubber, a path redactor, a pass for secret-named values and long random-looking strings, and an identifier redactor, and every MCP tool call has had its payload values structurally redacted. Redaction runs before anything is written, so this file has never held the original text.</p>
-<dl class="legend">
-<div><dt><code>&lt;path&gt;</code></dt><dd>stands for a redacted filesystem path or URL</dd></div>
-<div><dt><code>&lt;name&gt;</code> <code>&lt;host&gt;</code> <code>&lt;user&gt;</code> <code>&lt;message&gt;</code> <code>&lt;comment&gt;</code></dt><dd>stand for an identifying operand of a command &mdash; a container, a namespace, a machine, a login, a commit message or heredoc body, a shell comment</dd></div>
-<div><dt><code>&lt;value&gt;</code></dt><dd>stands for a redacted MCP payload value</dd></div>
-<div><dt><code>[REDACTED:&hellip;]</code></dt><dd>stands for a redacted secret; <code>[REDACTED:secret:generic]</code> marks a long random-looking string masked on a best guess</dd></div>
-</dl>
-<p class="warning">${check}</p>
-</section>`;
-}
-
-/** The product note. Claude Code reports only; see the header. */
+/** The AgentTrail OS block. Claude Code reports only. */
 function productNoteSection(result: ScanResult): string {
   if (result.agent !== "claude") return "";
-  return `<aside class="product-note" aria-label="About agenttrail">
+  const a = result.agent;
+  const { primary, secondary } = PRODUCT_NOTE;
+  return `<aside class="product-note" id="os" aria-label="About AgentTrail OS">
 <p class="eyebrow">${escapeHtml(PRODUCT_NOTE.eyebrow)}</p>
 <h2>${escapeHtml(PRODUCT_NOTE.heading)}</h2>
 <p>${escapeHtml(PRODUCT_NOTE.body)}</p>
-<p class="product-note-action"><a class="button" href="${escapeHtml(PRODUCT_NOTE.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(PRODUCT_NOTE.action)}</a><span class="url">${escapeHtml(PRODUCT_NOTE.label)}</span></p>
+<p class="product-note-action">${outLink(siteLink(primary.path, a, primary.content), escapeHtml(primary.label), "button")}
+${outLink(siteLink(secondary.path, a, secondary.content), escapeHtml(secondary.label), "text-link")}</p>
 </aside>`;
 }
 
@@ -666,13 +1237,22 @@ function pageTitle(result: ScanResult, meta: ReportMeta): string {
   return `agenttrail guard scan report · ${agentName(result.agent)} · ${meta.generatedAt.toISOString().slice(0, 10)}`;
 }
 
+/** The data block's text: the payload, with every `<` as `<`. */
+export function dataBlockText(payload: ReportPayload): string {
+  return JSON.stringify(payload, null, 1).replace(/</g, "\\u003c");
+}
+
+/** The policy for the standalone page: no requests, and only this one script may run. */
+export function contentSecurityPolicy(): string {
+  const hash = createHash("sha256").update(REPORT_SCRIPT, "utf8").digest("base64");
+  return `default-src 'none'; script-src 'sha256-${hash}'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'`;
+}
+
 /**
  * Render the whole report.
  *
- * Pure: the same result, the same `generatedAt` and the same variant produce the same
- * bytes, which is what lets the suite assert over the string instead of over a file on
- * disk. Every element sits on its own line, so no line of the file is longer than a
- * capped command shape plus its markup.
+ * Pure: the same result, the same `generatedAt` and the same variant produce the same bytes.
+ * Every element sits on its own line, so no line of the file is long.
  */
 export function renderReport(
   result: ScanResult,
@@ -680,43 +1260,42 @@ export function renderReport(
   options: RenderOptions = {},
 ): string {
   const variant = options.variant ?? "document";
-  // Through the SEAM, not a hard-coded `undefined`: `catalogStamp()` returns nothing
-  // when the bundled catalog carries no stamp, and the footer says so. Once
-  // it does, this line starts printing a real version with no edit here.
-  const catalogLine = formatCatalogStamp(catalogStamp(), meta.generatedAt);
+  const payload = reportPayload(result, meta);
   const head = `<title>${escapeHtml(pageTitle(result, meta))}</title>
 <style>${REPORT_STYLES}</style>`;
   const body = `<main class="page" lang="en">
-<header class="masthead">
-<div class="brand" role="img" aria-label="agenttrail">${LOGO_LOCKUP_SVG}</div>
-<span class="product-tag">guard</span>
-</header>
-<section class="intro">
-<p class="agent">Agent: ${escapeHtml(agentName(result.agent))}</p>
-<h1>Scan report</h1>
-<p class="lead">What your coding agent actually did, and which guardrails would have fired.</p>
-<p class="provenance">${provenance(result, meta, variant)}</p>
-</section>
-${heroSection(result)}
-${tallySection(result)}
-${shareSection(result, variant)}
-${findingsSection(result)}
-${recurringSection(result)}
-${tokensSection(result)}
-${skippedSection(result)}
+${topBar()}
+${heroSection(result, payload, meta, variant)}
+${wouldHaveDoneSection(result, payload)}
+${fixFirstSection(payload)}
+${findingsSection(payload)}
+${recurringSection(payload)}
+${nextStepsSection(result)}
+${shareSectionHtml(result, payload)}
+${beforeYouShareSection(result, variant)}
+${redactionSection()}
 ${corpusSection(result)}
+${skippedSection(payload)}
+${tokensSection(result)}
 ${productNoteSection(result)}
 <footer>
-<p class="footer-brand">${LOGO_MARK_SVG}<span>agenttrail-guard ${escapeHtml(meta.version)} &middot; ${escapeHtml(catalogLine)}</span></p>
+<p class="footer-brand">${LOGO_MARK_SVG}<span>agenttrail-guard ${escapeHtml(meta.version)} &middot; ${escapeHtml(payload.catalog)}</span></p>
 <p>Source: ${escapeHtml(REPOSITORY_URL)}</p>
 <p>A finding is a guardrail that matched. It is not proof that anything went wrong, and the guardrails state their own coverage limits.</p>
+<ul class="footer-links">
+<li>${outLink(siteLink("/agenttrail-guard", result.agent, "footer-guard"), "AgentTrail Guard")}</li>
+<li>${outLink(siteLink("/guardrails", result.agent, "footer-library"), "Guardrail library")}</li>
+<li>${outLink(siteLink("/security", result.agent, "footer-security"), "Security")}</li>
+</ul>
 </footer>
+<textarea id="copy-buffer" class="sr-only" tabindex="-1" aria-hidden="true" readonly></textarea>
 </main>`;
 
   if (variant === "artifact") return `${head}\n${body}\n`;
   return `<!doctype html>
 <html lang="en">
 <head>
+<meta http-equiv="Content-Security-Policy" content="${contentSecurityPolicy()}">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="light dark">
@@ -724,6 +1303,10 @@ ${head}
 </head>
 <body>
 ${body}
+<script type="application/json" id="report-data">
+${dataBlockText(payload)}
+</script>
+<script>${REPORT_SCRIPT}</script>
 </body>
 </html>
 `;
@@ -738,24 +1321,14 @@ export interface ReviewGroup {
 /**
  * Every distinct free-text string the report will contain — the `--review` payload.
  *
- * ── Why this lives beside the renderer and not beside the command ───────────
- * It reads the same `MAX_ROWS` / `MAX_EXAMPLES` the renderer slices by, from the same
- * file. A review computed anywhere else would have its own copy of the caps, and the
- * first change to either one would leave `--review` promising "this is everything" over
- * a different set. `report.test.ts` asserts the two agree over a real result rather than
- * trusting the shared constant.
+ * Read off `reportPayload`, the same projection the page and the data block are, so the two
+ * cannot list different sets. Counts are omitted: an integer cannot carry a name. Shipped
+ * library text (pack names, descriptions) is omitted too: it is the same for every user.
  *
- * ── What it does NOT list, and why that is not a hole ───────────────────────
- * Counts, token totals and the corpus numbers are omitted. They are numbers, and the
- * file states its own rule for them: counts are counts and tokens come straight off the
- * transcript. An integer cannot carry a name, and listing 20 of them would
- * bury the three lines a reader has to actually look at. Everything the report renders
- * that a HUMAN wrote — a guardrail id, a guardrail title, a command shape — is here.
- *
- * De-duplicated, first appearance wins, so a shape that is both a finding example and a
- * recurring row is one line to read rather than two.
+ * De-duplicated, first appearance wins.
  */
 export function reviewStrings(result: ScanResult): readonly ReviewGroup[] {
+  const payload = reportPayload(result, { version: "", generatedAt: new Date(0) });
   const seen = new Set<string>();
   const take = (value: string): string[] => {
     if (seen.has(value)) return [];
@@ -766,33 +1339,32 @@ export function reviewStrings(result: ScanResult): readonly ReviewGroup[] {
   const guardrails: string[] = [];
   const commands: string[] = [];
 
-  for (const finding of result.findings.slice(0, MAX_ROWS)) {
+  for (const finding of payload.findings) {
     guardrails.push(...take(`${finding.ruleId}  ${finding.title}`));
-    for (const example of finding.examples.slice(0, MAX_EXAMPLES)) {
-      commands.push(...take(example.text));
-    }
+    for (const example of finding.examples) commands.push(...take(example.text));
   }
-  for (const item of result.recurring.slice(0, MAX_ROWS)) {
+  for (const item of payload.recurring) {
     guardrails.push(...take(`${item.ruleId}  ${item.title}`));
     commands.push(...take(item.text));
   }
-  // A tool name comes off disk too, so a Cursor report's unrecognized names are listed.
-  const tools = (result.skipped?.unmappedTools ?? []).flatMap((tool) => take(tool.name));
+  // A tool name comes off disk too, so a reader's unrecognized names are listed.
+  const tools = (payload.skipped?.unmappedTools ?? []).flatMap((tool) => take(tool.name));
 
   const groups: ReviewGroup[] = [];
   if (guardrails.length > 0)
     groups.push({ label: "Guardrails named in the report", lines: guardrails });
   if (commands.length > 0) groups.push({ label: "Command shapes in the report", lines: commands });
   if (tools.length > 0) groups.push({ label: "Tool names in the report", lines: tools });
+  if (payload.findings.length > 0) {
+    groups.push({ label: "The suggested post, which you can edit", lines: [payload.shareText] });
+  }
   return groups;
 }
 
 /**
- * The `--json` payload.
- *
- * The same redacted `ScanResult`, plus the metadata the HTML footer carries, so a
- * pipeline consumer gets exactly what a reader of the report gets and nothing more.
- * Deliberately NOT a second shape: if the two could diverge, one of them would.
+ * The `--json` payload: the whole redacted `ScanResult`, plus the metadata the footer
+ * carries. It goes to the user's own terminal or pipe, so it is not capped; the file's own
+ * export button is `reportPayload`.
  */
 export function renderJson(result: ScanResult, meta: ReportMeta): string {
   return `${JSON.stringify(
