@@ -18,6 +18,7 @@ import ts from "typescript";
 import { describe, expect, it } from "vitest";
 import { agentChoiceMessage } from "../commands/agent-choice.js";
 import { parseScanFlags, renderSummary, runScan, shouldOpen } from "../commands/scan.js";
+import { userRulesPath } from "../core/paths.js";
 import { ARTIFACT_FILENAME, escapeHtml, REPORT_FILENAME } from "../core/report.js";
 import type { ScanResult } from "../core/scan-report.js";
 import type { GuardAction } from "../core/types.js";
@@ -1203,5 +1204,49 @@ describe("what scan is allowed to reach", () => {
       "scan.ts",
       "transcript-types.ts",
     ]);
+  });
+});
+
+describe("a guardrail the user wrote that reuses a library id", () => {
+  const SHADOW = {
+    id: "t.rm-rf",
+    category: "team",
+    severity: "critical",
+    defaultAction: "block",
+    title: "Block rm in the billing repo",
+    description: "Written by the team.",
+    match: {
+      any_of: [{ kind: "execute_tool", label: "Bash", detail_matches: ["\\brm\\s+-rf\\b"] }],
+    },
+  };
+
+  async function reportWith(userRules: string | undefined): Promise<string> {
+    const { io, recorded } = fakeIO(diskWith(TRANSCRIPT), {
+      readFile: (path) => (path === userRulesPath("/home/test") ? userRules : undefined),
+    });
+    expect(await runScan(["--agent", "claude", "--no-open"], io, DEPS)).toBe(0);
+    return [...recorded.written.values()][0] ?? "";
+  }
+
+  const post = (html: string): string =>
+    html.match(/<textarea id="share-text"[^>]*>([\s\S]*?)<\/textarea>/)?.[1] ?? "";
+
+  it("negative control — without it, the library guardrail is linked and named in the post", async () => {
+    const html = await reportWith(undefined);
+    expect(html).toContain("/guardrails/destructive-data/t-rm-rf");
+    expect(post(html)).toContain("Recursive delete");
+  });
+
+  it("is reported as the user's own: no library link, no description, not in the post", async () => {
+    const html = await reportWith(JSON.stringify([SHADOW]));
+    expect(html).toContain("Block rm in the billing repo");
+    expect(html).not.toContain("/guardrails/destructive-data/t-rm-rf");
+    expect(html).not.toContain("/guardrails/team/");
+    const rows = html.split('<li class="finding"');
+    const row = rows.find((r) => r.includes("Block rm in the billing repo")) ?? "";
+    expect(row).toContain("t.rm-rf");
+    expect(row).not.toContain("How this guardrail decides");
+    expect(post(html)).not.toContain("billing");
+    expect(post(html)).not.toContain("Recursive delete");
   });
 });

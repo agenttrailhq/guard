@@ -9,6 +9,7 @@
     ".git/",
     "plugin/scripts/guard-hook.mjs",
     "plugin/scripts/guard-scan.mjs",
+    "src/__tests__/__snapshots__/",
     "pnpm-lock.yaml",
     "*.lock"
   ],
