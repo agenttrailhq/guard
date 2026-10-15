@@ -3,13 +3,15 @@
  * The report's one script: what it must never contain, and what it does.
  *
  * The static checks read the source: a Content-Security-Policy stops requests but not
- * navigation, so every network, navigation and markup API is banned here, each ban with a
- * negative control. The behaviour checks run the real script in a bare `node:vm` context,
+ * navigation, so the script is held to allow-lists — the property names it may use, the lines
+ * that may mention `href`, the attributes it may set and the element it may create — with a
+ * negative control per rule. The behaviour checks run the real script in a bare `node:vm` context,
  * against a small stand-in for the page that implements only what the script touches.
  */
 
 import { runInNewContext } from "node:vm";
 import { describe, expect, it } from "vitest";
+import { renderReport } from "../core/report.js";
 import {
   EXPORT_PREFIX,
   REPORT_SCRIPT,
@@ -18,60 +20,151 @@ import {
   THEME_KEY,
 } from "../core/report-script.js";
 
-// ── What the script must never contain ──────────────────────────────────────
+// ── What the script may contain: allow-lists ────────────────────────────────
 
-/** The two `href` writes the script may make, each behind a fixed prefix. */
-const ALLOWED_HREF_WRITES = [
+/** Every property name the script may use. Anything else is a violation. */
+const ALLOWED_PROPERTIES = new Set([
+  "addEventListener",
+  "appendChild",
+  "body",
+  "call",
+  "click",
+  "clipboard",
+  "codePointAt",
+  "createElement",
+  "documentElement",
+  "download",
+  "execCommand",
+  "forEach",
+  "from",
+  "getAttribute",
+  "getElementById",
+  "getItem",
+  "hidden",
+  "href",
+  "indexOf",
+  "length",
+  "localStorage",
+  "matchMedia",
+  "matches",
+  "open",
+  "order",
+  "parse",
+  "print",
+  "prototype",
+  "push",
+  "querySelectorAll",
+  "removeChild",
+  "select",
+  "setAttribute",
+  "setItem",
+  "slice",
+  "stringify",
+  "style",
+  "tagName",
+  "textContent",
+  "then",
+  "value",
+  "writeText",
+]);
+
+/** The only lines that may mention `href`: two writes, each behind a fixed prefix. */
+const ALLOWED_HREF_LINES = [
+  "function shareSuffix(href) {",
+  'if (typeof href !== "string" || href.indexOf(SHARE_PREFIX) !== 0) return null;',
+  'var at = href.indexOf("&url=");',
+  "return at === -1 ? null : href.slice(at);",
+  "function shareHref(text, suffix) {",
+  "function exportHref(raw) {",
   "a.href = exportHref(data.textContent);",
+  'var suffix = shareLink ? shareSuffix(shareLink.getAttribute("href")) : null;',
   "shareLink.href = shareHref(shareInput.value, suffix);",
 ];
 
-const BANNED: readonly [string, RegExp, string][] = [
-  ["fetch", /\bfetch\b/, "fetch('/x')"],
-  ["XMLHttpRequest", /XMLHttpRequest/, "new XMLHttpRequest()"],
-  ["WebSocket", /WebSocket/, "new WebSocket('wss://x')"],
-  ["EventSource", /EventSource/, "new EventSource('/x')"],
-  ["sendBeacon", /sendBeacon/, "navigator.sendBeacon('/x', d)"],
-  ["dynamic import", /\bimport\s*\(/, "import('./x.js')"],
-  ["a worker", /\bWorker\b/, "new Worker('x.js')"],
-  ["an image request", /new\s+Image\b/, "new Image().src = u"],
-  ["a src write", /\.src\s*=/, "img.src = u"],
-  ["an object URL", /createObjectURL/, "URL.createObjectURL(b)"],
-  ["location", /\blocation\b/, "window.location = u"],
-  ["window.open", /window\.open/, "window.open(u)"],
-  ["a URL attribute write", /setAttribute\(\s*["'](href|src|action)/, "a.setAttribute('href', u)"],
-  ["innerHTML", /innerHTML/, "el.innerHTML = s"],
-  ["outerHTML", /outerHTML/, "el.outerHTML = s"],
-  ["insertAdjacentHTML", /insertAdjacentHTML/, "el.insertAdjacentHTML('beforeend', s)"],
-  ["document.write", /document\.write/, "document.write(s)"],
-  ["eval", /\beval\b/, "eval(s)"],
-  ["the Function constructor", /\bFunction\s*\(/, "new Function(s)"],
-  ["a timer given a string", /setTimeout\(\s*["'`]/, "setTimeout('x()', 1)"],
+/** The only statements that may add or remove an element: the export's temporary link. */
+const ALLOWED_TREE_CHANGES = ["document.body.appendChild(a);", "document.body.removeChild(a);"];
+
+/** The attributes the script may set, and the one element it may create. */
+const SETTABLE_ATTRIBUTES = new Set(['"data-theme"', '"aria-pressed"', '"data-over"']);
+const CREATABLE_ELEMENTS = new Set(['"a"']);
+
+/** Calls and names that are never allowed, whatever property list they get past. */
+const BANNED_CODE: readonly [string, RegExp][] = [
+  ["a call to open", /\bopen\s*\(/],
+  ["computed member access", /[\w$)\]]\s*\[/],
+  ["an appending href write", /\.href\s*[-+*|&]=/],
+  ["a timer given a string", /set(Timeout|Interval)\(\s*""/],
+  ["dynamic import", /\bimport\s*\(/],
+  ["eval", /\beval\b/],
+  ["the Function constructor", /\bFunction\b/],
+  ["a network constructor", /\b(XMLHttpRequest|WebSocket|EventSource|Worker|Image)\b/],
+  ["fetch", /\bfetch\b/],
+  ["location", /\blocation\b/],
+  ["Reflect", /\bReflect\b/],
 ];
 
-describe("the script contains no network, navigation or markup API", () => {
-  it.each(BANNED)("no %s", (_label, pattern) => {
-    expect(REPORT_SCRIPT).not.toMatch(pattern);
-  });
+/** Split the script into code with string literals emptied, and the literals themselves. */
+function splitStrings(source: string): { code: string; strings: string[] } {
+  const strings: string[] = [];
+  const code = source
+    .replace(/"(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*'|`(?:[^`\\]|\\.)*`/g, (literal) => {
+      strings.push(literal);
+      return '""';
+    })
+    .replace(/\/\/[^\n]*/g, "")
+    .replace(/\/\*[\s\S]*?\*\//g, "");
+  return { code, strings };
+}
 
-  it.each(BANNED)("negative control — the %s matcher fires", (_label, pattern, violating) => {
-    expect(violating).toMatch(pattern);
+/** Every way `source` steps outside the allow-lists. Empty for the shipped script. */
+function scriptViolations(source: string): string[] {
+  const out: string[] = [];
+  const { code, strings } = splitStrings(source);
+  const lines = source.split("\n").map((line) => line.trim());
+
+  for (const m of code.matchAll(/\.\s*([A-Za-z_$][\w$]*)/g)) {
+    if (!ALLOWED_PROPERTIES.has(m[1] ?? "")) out.push(`property .${m[1]}`);
+  }
+  for (const [label, pattern] of BANNED_CODE) {
+    if (pattern.test(code)) out.push(label);
+  }
+  for (const line of lines.filter((l) => /href/i.test(l))) {
+    if (!ALLOWED_HREF_LINES.includes(line)) out.push(`href line: ${line}`);
+  }
+  for (const line of lines.filter((l) =>
+    /\b(appendChild|removeChild|insertBefore|replaceChild|replaceChildren|append|prepend|before|after|replaceWith|remove)\s*\(/.test(
+      l,
+    ),
+  )) {
+    if (!ALLOWED_TREE_CHANGES.includes(line)) out.push(`tree change: ${line}`);
+  }
+  for (const m of source.matchAll(/setAttribute\(\s*([^,)]*)/g)) {
+    if (!SETTABLE_ATTRIBUTES.has((m[1] ?? "").trim())) out.push(`setAttribute ${m[1]}`);
+  }
+  for (const m of source.matchAll(/createElement\(\s*([^,)]*)/g)) {
+    if (!CREATABLE_ELEMENTS.has((m[1] ?? "").trim())) out.push(`createElement ${m[1]}`);
+  }
+  for (const literal of strings) {
+    const text = literal.slice(1, -1);
+    const isUrl = /^(\w+:|\/\/)/.test(text) || text.includes("//");
+    if (isUrl && text !== SHARE_PREFIX && text !== EXPORT_PREFIX) out.push(`URL ${literal}`);
+  }
+  return out;
+}
+
+describe("the script stays inside its allow-lists", () => {
+  it("the shipped script has no violation", () => {
+    expect(scriptViolations(REPORT_SCRIPT)).toEqual([]);
   });
 
   it("writes an href in exactly the two allowed statements", () => {
     const writes = REPORT_SCRIPT.split("\n")
       .map((line) => line.trim())
       .filter((line) => /\.href\s*=/.test(line));
-    expect(writes).toEqual(ALLOWED_HREF_WRITES);
-  });
-
-  it("negative control — a third href write is seen", () => {
-    const tampered = `${REPORT_SCRIPT}\nlink.href = other;`;
-    expect(tampered.split("\n").filter((line) => /\.href\s*=/.test(line))).toHaveLength(3);
-  });
-
-  it("names no URL but the X post prefix", () => {
-    expect(REPORT_SCRIPT.match(/https?:\/\/[^\s"'`]*/g)).toEqual([SHARE_PREFIX]);
+    expect(writes).toEqual([
+      "a.href = exportHref(data.textContent);",
+      "shareLink.href = shareHref(shareInput.value, suffix);",
+    ]);
   });
 
   it("each allowed write starts from a fixed prefix", () => {
@@ -81,6 +174,121 @@ describe("the script contains no network, navigation or markup API", () => {
       "return SHARE_PREFIX + encodeURIComponent(String(text)) + suffix;",
     );
     expect(REPORT_SCRIPT_LOGIC).toContain("return EXPORT_PREFIX + encodeURIComponent(");
+  });
+
+  // One tampered statement per rule. Each must be reported.
+  const TAMPERED: readonly [string, string][] = [
+    ["a bare open()", "open(u);"],
+    ["self.open()", "self.open(u);"],
+    ["window.open()", "window.open(u);"],
+    ["a computed href write", 'a["href"] = u;'],
+    ["a computed name", 'window["loc" + "ation"] = u;'],
+    ["an appending href write", "a.href += u;"],
+    ["setAttribute with a variable name", "el.setAttribute(name, u);"],
+    ["setAttribute href", 'el.setAttribute("href", u);'],
+    ["setAttributeNS", 'el.setAttributeNS(null, "href", u);'],
+    ["Object.assign", "Object.assign(a, { target: u });"],
+    ["Reflect.set", 'Reflect.set(a, "target", u);'],
+    ["a ping write", "a.ping = u;"],
+    ["an action write", "f.action = u;"],
+    ["a formAction write", "b.formAction = u;"],
+    ["a srcdoc write", "i.srcdoc = u;"],
+    ["a src write", "img.src = u;"],
+    ["innerHTML", "el.innerHTML = s;"],
+    ["outerHTML", "el.outerHTML = s;"],
+    ["insertAdjacentHTML", 'el.insertAdjacentHTML("beforeend", s);'],
+    ["document.write", "document.write(s);"],
+    ["location", "location.assign(u);"],
+    ["fetch", "fetch(u);"],
+    ["sendBeacon", "navigator.sendBeacon(u, d);"],
+    ["a WebSocket", "new WebSocket(u);"],
+    ["an image", "new Image();"],
+    ["dynamic import", 'import("./x.js");'],
+    ["eval", "eval(s);"],
+    ["the Function constructor", "new Function(s);"],
+    ["a timer given a string", 'setTimeout("x()", 1);'],
+    ["a protocol-relative URL", 'var u = "//example.com/x";'],
+    ["a full URL", 'var u = "https://example.com/x";'],
+    ["a javascript: URL", 'var u = "javascript:alert(1)";'],
+    ["an href in an object literal", "var o = { href: u };"],
+    ["moving a row", "row.parentNode.appendChild(row);"],
+    ["inserting a row", "list.insertBefore(row, null);"],
+    ["replacing the rows", "list.replaceChildren(row);"],
+    ["appending a row", "list.append(row);"],
+    ["creating another element", 'document.createElement("img");'],
+  ];
+
+  it.each(TAMPERED)("negative control — %s is reported", (_label, statement) => {
+    expect(scriptViolations(`${REPORT_SCRIPT}\n${statement}\n`)).not.toEqual([]);
+  });
+});
+
+// ── The script and the page agree ───────────────────────────────────────────
+
+describe("everything the script looks for is in the rendered page", () => {
+  const META = { version: "0.0.0", generatedAt: new Date("2026-10-01T09:00:00.000Z") };
+  const finding = {
+    ruleId: "t.x",
+    title: "A guardrail",
+    severity: "high",
+    action: "block" as const,
+    count: 1,
+    examples: [{ text: "x", count: 1 }],
+    owasp: [],
+  };
+  const html = renderReport(
+    {
+      agent: "claude",
+      sessions: 1,
+      quarantined: 0,
+      notRead: 0,
+      skippedLines: 0,
+      projects: 1,
+      toolCalls: 1,
+      riskyActions: 1,
+      riskyByAction: { block: 1, require_approval: 0, warn: 0 },
+      findings: [finding],
+      recurring: [],
+      owasp: [],
+      tokens: null,
+    },
+    META,
+  );
+  const ids = new Set([...html.matchAll(/\sid="([^"]+)"/g)].map((m) => m[1]));
+
+  it("every id the script asks for", () => {
+    const wanted = [...REPORT_SCRIPT.matchAll(/byId\("([^"]+)"\)/g)].map((m) => m[1]);
+    expect(wanted.length).toBeGreaterThan(5);
+    for (const id of wanted) expect(ids.has(id), id).toBe(true);
+  });
+
+  it("every selector the script queries", () => {
+    const present: Record<string, RegExp> = {
+      ".js-only": /class="[^"]*\bjs-only\b/,
+      "[data-filter]": /\sdata-filter="/,
+      ".finding": /class="finding"/,
+      "[data-copy]": /\sdata-copy="/,
+      details: /<details\b/,
+    };
+    const wanted = [...REPORT_SCRIPT.matchAll(/each\("([^"]+)"/g)].map((m) => m[1] ?? "");
+    expect(wanted.length).toBeGreaterThan(3);
+    for (const selector of wanted) {
+      const pattern = present[selector];
+      expect(pattern, `no check for ${selector}`).toBeDefined();
+      expect(html).toMatch(pattern as RegExp);
+    }
+  });
+
+  it("every copy button names an element that exists", () => {
+    const targets = [...html.matchAll(/\sdata-copy="([^"]+)"/g)].map((m) => m[1]);
+    expect(targets.length).toBeGreaterThan(2);
+    for (const id of targets) expect(ids.has(id), id).toBe(true);
+  });
+
+  it("the sort control offers exactly the sorts the script accepts", () => {
+    const options = [...html.matchAll(/<option value="([^"]+)">/g)].map((m) => m[1]);
+    expect(options).toEqual(["serious", "category", "count", "name"]);
+    for (const key of options) expect(html).toMatch(new RegExp(`data-rank-${key}="\\d+"`));
   });
 });
 
@@ -208,10 +416,10 @@ class FakeElement {
   value = "";
   download = "";
   selected = false;
-  constructor(
-    readonly tagName: string,
-    attrs: Record<string, string> = {},
-  ) {
+  /** Upper case, as a real page reports an HTML element's tag name. */
+  readonly tagName: string;
+  constructor(tag: string, attrs: Record<string, string> = {}) {
+    this.tagName = tag.toUpperCase();
     for (const [k, v] of Object.entries(attrs)) this.attrs.set(k, v);
     if ("hidden" in attrs) this.hidden = true;
   }
@@ -250,12 +458,16 @@ interface Page {
   readonly appended: FakeElement[];
   printed: number;
   copied: string[];
+  execCommands: string[];
+  timers: (() => void)[];
 }
 
 interface PageOptions {
   readonly storage?: "works" | "throws";
   readonly stored?: string;
   readonly systemDark?: boolean;
+  /** How the clipboard behaves: it works, it is not there, or it refuses. */
+  readonly clipboard?: "works" | "missing" | "rejects";
 }
 
 /** A page shaped like the report, with three findings, and the script run against it. */
@@ -301,6 +513,12 @@ function loadPage(options: PageOptions = {}): Page {
       "data-label": "Copy",
     }),
     el("textarea", { id: "share-text" }),
+    el("button", {
+      class: "copy js-only",
+      hidden: "",
+      "data-copy": "share-text",
+      "data-label": "Copy text",
+    }),
     el("a", { id: "share-link", href: LINK }),
     el("span", { id: "share-count" }),
     el("textarea", { id: "copy-buffer" }),
@@ -315,7 +533,7 @@ function loadPage(options: PageOptions = {}): Page {
   if (code) code.textContent = "agenttrail-guard init --agent claude";
   const data = byId.get("report-data");
   if (data) data.textContent = JSON.stringify({ tool: "agenttrail-guard", n: 1 });
-  const details = elements.filter((e) => e.tagName === "details");
+  const details = elements.filter((e) => e.tagName === "DETAILS");
   if (details[1]) details[1].open = true;
 
   const root = new FakeElement("html");
@@ -332,6 +550,8 @@ function loadPage(options: PageOptions = {}): Page {
     appended,
     printed: 0,
     copied: [],
+    execCommands: [],
+    timers: [],
   };
 
   const matches = (e: FakeElement, selector: string): boolean => {
@@ -340,7 +560,7 @@ function loadPage(options: PageOptions = {}): Page {
     if (selector === ".finding") return classes.includes("finding");
     if (selector === "[data-filter]") return e.getAttribute("data-filter") !== null;
     if (selector === "[data-copy]") return e.getAttribute("data-copy") !== null;
-    if (selector === "details") return e.tagName === "details";
+    if (selector === "details") return e.tagName === "DETAILS";
     throw new Error(`the script asked for a selector this page does not model: ${selector}`);
   };
 
@@ -370,17 +590,24 @@ function loadPage(options: PageOptions = {}): Page {
     getElementById: (id: string) => byId.get(id) ?? null,
     querySelectorAll: (selector: string) => elements.filter((e) => matches(e, selector)),
     createElement: (tag: string) => new FakeElement(tag),
-    execCommand: () => true,
-  };
-  const navigator = {
-    clipboard: {
-      writeText: (text: string) => {
-        page.copied.push(text);
-        return Promise.resolve();
-      },
+    execCommand: (command: string) => {
+      page.execCommands.push(command);
+      return true;
     },
   };
-  runInNewContext(REPORT_SCRIPT, { window, document, navigator, setTimeout: () => 0 });
+  const clipboard = {
+    writeText: (text: string) => {
+      if (options.clipboard === "rejects") return Promise.reject(new Error("not allowed"));
+      page.copied.push(text);
+      return Promise.resolve();
+    },
+  };
+  const navigator = options.clipboard === "missing" ? {} : { clipboard };
+  const setTimeout = (fn: () => void) => {
+    page.timers.push(fn);
+    return 0;
+  };
+  runInNewContext(REPORT_SCRIPT, { window, document, navigator, setTimeout });
   return page;
 }
 
@@ -417,11 +644,11 @@ describe("the script in the page", () => {
 
   it("sorts by moving rows on screen only, and leaves their order in the page alone", () => {
     const page = loadPage();
-    const before = rows(page);
     const sort = page.byId.get("sort") as FakeElement;
     sort.value = "name";
     sort.fire("change");
-    expect(rows(page)).toEqual(before);
+    // The rows themselves never move in the page: the static allow-list above refuses any
+    // statement that adds, moves or removes an element other than the export's link.
     expect(rows(page).map((r) => r.style.order)).toEqual(["2", "0", "1"]);
     expect(page.byId.get("findings-status")?.textContent).toContain("stays most serious first");
     sort.value = "count";
@@ -466,6 +693,51 @@ describe("the script in the page", () => {
     expect(page.copied).toEqual(["agenttrail-guard init --agent claude"]);
   });
 
+  /** The copy button that names `target`. */
+  const copyButton = (page: Page, target: string) =>
+    page.elements.find((e) => e.getAttribute("data-copy") === target) as FakeElement;
+
+  /** Let a settled clipboard promise run its handlers. */
+  const settle = async () => {
+    for (let i = 0; i < 3; i++) await Promise.resolve();
+  };
+
+  it("copies a text area's value, not its text", async () => {
+    const page = loadPage();
+    const input = page.byId.get("share-text") as FakeElement;
+    input.textContent = "the text the page was rendered with";
+    input.value = "the text as edited";
+    copyButton(page, "share-text").click();
+    await settle();
+    expect(page.copied).toEqual(["the text as edited"]);
+  });
+
+  it("says Copied, then puts its own label back", async () => {
+    const page = loadPage();
+    const button = copyButton(page, "share-text");
+    button.click();
+    await settle();
+    expect(button.textContent).toBe("Copied");
+    for (const fn of page.timers) fn();
+    expect(button.textContent).toBe("Copy text");
+  });
+
+  it.each([
+    "missing",
+    "rejects",
+  ] as const)("copies by hand through the hidden buffer when the clipboard %s", async (mode) => {
+    const page = loadPage({ clipboard: mode });
+    const button = copyButton(page, "cmd-init");
+    button.click();
+    await settle();
+    const buffer = page.byId.get("copy-buffer") as FakeElement;
+    expect(page.copied).toEqual([]);
+    expect(buffer.value).toBe("agenttrail-guard init --agent claude");
+    expect(buffer.selected).toBe(true);
+    expect(page.execCommands).toEqual(["copy"]);
+    expect(button.textContent).toBe("Copied");
+  });
+
   it("keeps the Post-on-X link an X post as the text is edited, and counts it", () => {
     const page = loadPage();
     const input = page.byId.get("share-text") as FakeElement;
@@ -486,7 +758,7 @@ describe("the script in the page", () => {
     const page = loadPage();
     (page.byId.get("print-button") as FakeElement).click();
     expect(page.printed).toBe(1);
-    const details = page.elements.filter((e) => e.tagName === "details");
+    const details = page.elements.filter((e) => e.tagName === "DETAILS");
     for (const fn of page.windowListeners.get("beforeprint") ?? []) fn();
     expect(details.map((d) => d.open)).toEqual([true, true]);
     for (const fn of page.windowListeners.get("afterprint") ?? []) fn();
