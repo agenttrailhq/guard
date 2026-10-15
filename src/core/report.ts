@@ -102,6 +102,16 @@ export const PRODUCT_NOTE = {
 /** Severities from most to least serious. Anything else ranks after all of them. */
 export const SEVERITY_ORDER = ["critical", "high", "medium", "low", "info"] as const;
 
+/**
+ * A severity as the file shows it: one of `SEVERITY_ORDER`, or `unknown`.
+ *
+ * A guardrail the user wrote can carry any string as its severity. The file never shows that
+ * text: it is not redacted, and `--review` does not list it.
+ */
+export function knownSeverity(severity: string): string {
+  return (SEVERITY_ORDER as readonly string[]).includes(severity) ? severity : "unknown";
+}
+
 /** Where a severity sorts: its index in `SEVERITY_ORDER`, or after every known one. */
 export function severityRank(severity: string): number {
   const index = (SEVERITY_ORDER as readonly string[]).indexOf(severity);
@@ -331,7 +341,7 @@ function payloadFinding(finding: ScanFinding): PayloadFinding {
   const base = {
     ruleId: finding.ruleId,
     title: finding.title,
-    severity: finding.severity,
+    severity: knownSeverity(finding.severity),
     action: finding.action,
     count: finding.count,
     examples: finding.examples
@@ -809,7 +819,15 @@ function wouldHaveDoneSection(result: ScanResult, payload: ReportPayload): strin
 </div>`;
   }).join("\n");
 
-  const { bySeverity, byAction } = matchTally(result);
+  const { byAction } = matchTally(result);
+  // Over every finding, as the summary counts them, with each severity shown as the file
+  // shows it: a user's own severity text is folded into `unknown`.
+  const severityCounts = new Map<string, number>();
+  for (const s of matchTally(result).bySeverity) {
+    const key = knownSeverity(s.severity);
+    severityCounts.set(key, (severityCounts.get(key) ?? 0) + s.count);
+  }
+  const bySeverity = [...severityCounts].map(([severity, count]) => ({ severity, count }));
   const item = (label: string, count: number): string =>
     `<li>${label}<span class="tally-count">${escapeHtml(formatCount(count))}</span></li>`;
   const severities = bySeverity.map((s) => item(severityBadge(s.severity), s.count)).join("\n");

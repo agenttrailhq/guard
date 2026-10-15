@@ -531,8 +531,11 @@ describe("what the report says", () => {
       ],
     };
     const html = renderReport(withExotic, META);
-    expect(html).toContain("informational");
-    expect(html).toContain("sev-unknown");
+    // The row stays. Its severity is shown as `unknown`: a severity is free text on a rule a
+    // user wrote, so the file never shows it.
+    expect(html).toContain("A severity the renderer has never seen");
+    expect(html).toContain('<span class="badge sev-unknown">unknown</span>');
+    expect(html).not.toContain("informational");
     expect(html).toContain("would warn");
   });
 

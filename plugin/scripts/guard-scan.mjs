@@ -7685,6 +7685,9 @@ var PRODUCT_NOTE = {
   secondary: { label: "Guard vs OS", path: "/guard-vs-os", content: "os-compare" }
 };
 var SEVERITY_ORDER = ["critical", "high", "medium", "low", "info"];
+function knownSeverity(severity) {
+  return SEVERITY_ORDER.includes(severity) ? severity : "unknown";
+}
 function severityRank(severity) {
   const index = SEVERITY_ORDER.indexOf(severity);
   return index === -1 ? SEVERITY_ORDER.length : index;
@@ -7778,7 +7781,7 @@ function payloadFinding(finding) {
   const base = {
     ruleId: finding.ruleId,
     title: finding.title,
-    severity: finding.severity,
+    severity: knownSeverity(finding.severity),
     action: finding.action,
     count: finding.count,
     examples: finding.examples.slice(0, MAX_EXAMPLES).map((e) => ({ text: e.text, count: e.count })),
@@ -8112,7 +8115,13 @@ ${top}
 </ul>`}
 </div>`;
   }).join("\n");
-  const { bySeverity, byAction } = matchTally(result);
+  const { byAction } = matchTally(result);
+  const severityCounts = /* @__PURE__ */ new Map();
+  for (const s of matchTally(result).bySeverity) {
+    const key = knownSeverity(s.severity);
+    severityCounts.set(key, (severityCounts.get(key) ?? 0) + s.count);
+  }
+  const bySeverity = [...severityCounts].map(([severity, count2]) => ({ severity, count: count2 }));
   const item = (label, count2) => `<li>${label}<span class="tally-count">${escapeHtml(formatCount(count2))}</span></li>`;
   const severities = bySeverity.map((s) => item(severityBadge(s.severity), s.count)).join("\n");
   const actions = byAction.map((a) => item(actionChip(a.action), a.count)).join("\n");
