@@ -7783,6 +7783,18 @@ function wrapLines(text, width) {
   if (line !== "") lines.push(line);
   return lines;
 }
+function tokenCopy(t) {
+  return {
+    input: t.input,
+    output: t.output,
+    cacheRead: t.cacheRead,
+    cacheCreation: t.cacheCreation,
+    cacheCreation5m: t.cacheCreation5m,
+    cacheCreation1h: t.cacheCreation1h,
+    turnsWithSplit: t.turnsWithSplit,
+    turns: t.turns
+  };
+}
 function payloadFinding(finding) {
   const base = {
     ruleId: finding.ruleId,
@@ -7830,7 +7842,7 @@ function reportPayload(result, meta) {
       title: r.title
     })),
     moreRecurring: Math.max(0, result.recurring.length - MAX_ROWS),
-    tokens: result.tokens === null ? null : { ...result.tokens },
+    tokens: result.tokens === null ? null : tokenCopy(result.tokens),
     shareText: shareText(result)
   };
   const skipped = result.skipped;

@@ -15,7 +15,8 @@
  * copy, theme, print and export, pinned by hash in a `default-src 'none'` Content-Security-
  * Policy that is the first element of `<head>`. Its data comes from one
  * `<script type="application/json">` block holding `reportPayload`, with every `<` written
- * as the JSON escape `<` so no `</script>` or `<!--` can occur inside it. Everything
+ * as the six-character JSON escape backslash-u003c, so no `</script>` or `<!--` can occur
+ * inside it. Everything
  * works without the script too: rows are all listed, expanders are `<details>`, and the
  * controls that need it stay `hidden`.
  *
@@ -336,6 +337,20 @@ export interface ReportPayload {
   readonly shareText: string;
 }
 
+/** Token totals, copied field by field. */
+function tokenCopy(t: TokenTotals): TokenTotals {
+  return {
+    input: t.input,
+    output: t.output,
+    cacheRead: t.cacheRead,
+    cacheCreation: t.cacheCreation,
+    cacheCreation5m: t.cacheCreation5m,
+    cacheCreation1h: t.cacheCreation1h,
+    turnsWithSplit: t.turnsWithSplit,
+    turns: t.turns,
+  };
+}
+
 /** One finding, copied field by field. Library text only for a library finding. */
 function payloadFinding(finding: ScanFinding): PayloadFinding {
   const base = {
@@ -395,7 +410,7 @@ export function reportPayload(result: ScanResult, meta: ReportMeta): ReportPaylo
       title: r.title,
     })),
     moreRecurring: Math.max(0, result.recurring.length - MAX_ROWS),
-    tokens: result.tokens === null ? null : { ...result.tokens },
+    tokens: result.tokens === null ? null : tokenCopy(result.tokens),
     shareText: shareText(result),
   };
   const skipped = result.skipped;
@@ -1264,7 +1279,7 @@ function pageTitle(result: ScanResult, meta: ReportMeta): string {
   return `agenttrail guard scan report · ${agentName(result.agent)} · ${meta.generatedAt.toISOString().slice(0, 10)}`;
 }
 
-/** The data block's text: the payload, with every `<` as `<`. */
+/** The data block's text: the payload, with every `<` as the escape backslash-u003c. */
 export function dataBlockText(payload: ReportPayload): string {
   return JSON.stringify(payload, null, 1).replace(/</g, "\\u003c");
 }
