@@ -284,8 +284,18 @@ function decodedSurfaces(html: string): Record<string, string> {
     text: decodeEntities(html),
     hrefs: hrefs.map((h) => decodeURIComponent(h)).join("\n"),
     params: params.join("\n"),
-    data: block === null ? "" : JSON.stringify(JSON.parse(block[1] ?? "null")),
+    data: block === null ? "" : stringLeaves(JSON.parse(block[1] ?? "null")).join("\n"),
   };
+}
+
+/** Every string in a parsed value, keys included, exactly as decoded. */
+function stringLeaves(node: unknown): string[] {
+  if (typeof node === "string") return [node];
+  if (Array.isArray(node)) return node.flatMap(stringLeaves);
+  if (node !== null && typeof node === "object") {
+    return Object.entries(node).flatMap(([k, v]) => [k, ...stringLeaves(v)]);
+  }
+  return [];
 }
 
 const ARTIFACT_HTML = renderReport(RESULT, META, { variant: "artifact" });
@@ -301,6 +311,11 @@ describe("zero survivors in any decoded form of the file", () => {
         expect(text, `${token} in the decoded ${surface}`).not.toContain(token);
       }
     }
+  });
+
+  it("negative control — a token beside a quote or a backslash is found as written", () => {
+    const planted = `<script type="application/json" id="report-data">{"x":"a\\"canary\\\\x"}</script>`;
+    expect(decodedSurfaces(planted).data).toContain('a"canary\\x');
   });
 
   it("negative control — a token hidden in a JSON escape is found in the data block", () => {
