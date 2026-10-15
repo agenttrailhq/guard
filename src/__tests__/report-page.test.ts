@@ -358,6 +358,31 @@ describe("a guardrail the user wrote is never shown as a library one", () => {
   });
 });
 
+describe("a severity the user wrote never reaches the file", () => {
+  const SEVERITY = "team-billing-sev";
+
+  it.each([
+    ["inside the row cap", 0],
+    ["beyond the row cap", MAX_ROWS],
+  ])("%s, it is shown as unknown, in the rows, the tally and the data block", (_n, before) => {
+    const findings = [
+      ...Array.from({ length: before }, (_, i) =>
+        lib(`a.r-${String(i).padStart(3, "0")}`, "warn", 5, { severity: "critical" }),
+      ),
+      own("t.sev", "warn", 1, { severity: SEVERITY }),
+    ];
+    const html = renderReport(resultWith(findings), META);
+    expect(html).not.toContain(SEVERITY);
+    expect(html).toContain('<span class="badge sev-unknown">unknown</span>');
+  });
+
+  it("is still counted in the severity tally, under unknown", () => {
+    const html = renderReport(resultWith([own("t.sev", "warn", 3, { severity: SEVERITY })]), META);
+    const tally = between(html, '<div class="tally"', "</section>");
+    expect(tally).toMatch(/sev-unknown">unknown<\/span><span class="tally-count">3</);
+  });
+});
+
 describe("the suggested post", () => {
   it("carries totals and the top blocked library guardrail's title, and nothing else", () => {
     const result = resultWith(
