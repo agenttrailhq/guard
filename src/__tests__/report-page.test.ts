@@ -20,6 +20,7 @@ import {
   packLabel,
   postLength,
   type ReportMeta,
+  renderJson,
   renderReport,
   reportPayload,
   reviewStrings,
@@ -110,6 +111,19 @@ function rowOf(html: string, index: number): string {
   const end = html.indexOf("</ol>", at);
   return html.slice(at, next === -1 || next > end ? end : next);
 }
+
+/** Decode the five escapes the report writes. */
+function decodeEntities(text: string): string {
+  return text
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&amp;/g, "&");
+}
+
+/** A tag whose every attribute value is quoted and holds no quote or angle bracket. */
+const WELL_FORMED_TAG = /^<[a-z][a-z0-9]*(\s+[A-Za-z][A-Za-z0-9-]*(="[^"<>]*")?)*\s*\/?>$/;
 
 /** The text between two markers, for looking at one part of the page. */
 function between(html: string, start: string, end: string): string {
@@ -379,9 +393,20 @@ describe("a guardrail the user wrote is never shown as a library one", () => {
     const html = renderReport(resultWith([own(id, "require_approval", 9)]), META);
     const page = html.replace(/<script[\s\S]*?<\/script>/g, "");
     expect(page).not.toContain(id);
-    expect(page).toContain(escapeHtml(id));
-    // Every attribute in the page is still well formed.
-    expect(page.match(/<[a-z]+\s[^>]*"[^">]*'<id>/)).toBeNull();
+    // Shown as text, and it reads back as the id.
+    const codes = [...page.matchAll(/<code>([^<]*)<\/code>/g)].map((m) =>
+      decodeEntities(m[1] ?? ""),
+    );
+    expect(codes).toContain(id);
+    // Every tag in the page is still well formed.
+    const tags = page.match(/<[a-z][a-z0-9]*\b[^>]*>/g) ?? [];
+    expect(tags.length).toBeGreaterThan(50);
+    for (const tag of tags) expect(tag).toMatch(WELL_FORMED_TAG);
+  });
+
+  it("negative control — an id written raw into an attribute breaks the tag check", () => {
+    const broken = `<code data-id="t."quoted'<id>">`.match(/<[a-z][a-z0-9]*\b[^>]*>/)?.[0] ?? "";
+    expect(broken).not.toMatch(WELL_FORMED_TAG);
   });
 });
 
@@ -499,23 +524,99 @@ describe("what the file carries is one capped projection", () => {
     expect(html).not.toContain("never-in-the-file");
   });
 
-  it("review lists exactly the strings in the data block, both ways", () => {
-    const html = renderReport(OVERSIZED, META);
+  it("--json on stdout stays the whole result", () => {
+    const json = JSON.parse(renderJson(OVERSIZED, META));
+    expect(json.result.findings).toHaveLength(MAX_ROWS + 4);
+    for (const f of json.result.findings) expect(f.examples).toHaveLength(MAX_EXAMPLES + 2);
+  });
+
+  /** The oversized result, plus a guardrail the user wrote, a repeat and an unknown tool. */
+  const REVIEWED = resultWith(
+    [
+      ...OVERSIZED.findings,
+      own("t.mine", "require_approval", 3, { examples: [{ text: "own-shape <path>", count: 2 }] }),
+    ],
+    undefined,
+    {
+      recurring: [
+        { text: "own-shape <path>", count: 2, ruleId: "t.mine", title: "Team guardrail t.mine" },
+      ],
+      skipped: {
+        unparseableLines: 0,
+        truncatedLastLines: 0,
+        unknownRecords: 0,
+        turnsEndedWithError: 0,
+        unreadableFiles: 0,
+        notActions: 0,
+        unmappedTools: [{ name: "FutureTool", count: 2 }],
+      },
+    },
+  );
+
+  /**
+   * Keys whose strings are not free text from the scan: fixed vocabulary, the tool's own
+   * stamps, and shipped library text.
+   */
+  const NOT_FREE_TEXT = new Set([
+    "tool",
+    "version",
+    "generatedAt",
+    "catalog",
+    "agent",
+    "severity",
+    "action",
+    "source",
+    "category",
+    "descriptionLines",
+  ]);
+
+  /** Every free-text string in a parsed data block, by walking every leaf. */
+  function freeText(node: unknown, key = ""): string[] {
+    if (NOT_FREE_TEXT.has(key)) return [];
+    if (typeof node === "string") return [node];
+    if (Array.isArray(node)) return node.flatMap((item) => freeText(item, key));
+    if (node !== null && typeof node === "object") {
+      return Object.entries(node).flatMap(([k, v]) => freeText(v, k));
+    }
+    return [];
+  }
+
+  const reviewedParts = (result: ScanResult): Set<string> =>
+    new Set(reviewStrings(result).flatMap((g) => g.lines.flatMap((l) => l.split("  "))));
+
+  it("review lists exactly the free text in the data block, both ways", () => {
+    const html = renderReport(REVIEWED, META);
     const block = between(html, '<script type="application/json" id="report-data">', "</script>");
-    const parsed = JSON.parse(block.slice(block.indexOf(">") + 1)) as ReturnType<
-      typeof reportPayload
-    >;
-    const inBlock = new Set<string>([
-      ...parsed.findings.flatMap((f) => [
-        `${f.ruleId}  ${f.title}`,
-        ...f.examples.map((e) => e.text),
-      ]),
-      ...parsed.recurring.flatMap((r) => [`${r.ruleId}  ${r.title}`, r.text]),
-      parsed.shareText,
-    ]);
-    const reviewed = new Set(reviewStrings(OVERSIZED).flatMap((g) => g.lines));
+    const inBlock = new Set(freeText(JSON.parse(block.slice(block.indexOf(">") + 1))));
+    const reviewed = reviewedParts(REVIEWED);
+    expect(inBlock).toContain("Team guardrail t.mine");
+    expect(inBlock).toContain("FutureTool");
     expect([...inBlock].filter((s) => !reviewed.has(s))).toEqual([]);
     expect([...reviewed].filter((s) => !inBlock.has(s))).toEqual([]);
+  });
+
+  it("negative control — a free-text field the review does not list is found", () => {
+    const payload = { ...reportPayload(REVIEWED, META), note: "unlisted free text" };
+    const reviewed = reviewedParts(REVIEWED);
+    expect(freeText(payload).filter((s) => !reviewed.has(s))).toEqual(["unlisted free text"]);
+  });
+
+  it("every command shape or id the page shows as code is reviewed", () => {
+    // The code spans an empty report also has are the page's own wording.
+    const codes = (html: string): Set<string> =>
+      new Set(
+        [...html.matchAll(/<code(?: id="[^"]*")?>([^<]*)<\/code>/g)].map((m) =>
+          decodeEntities(m[1] ?? ""),
+        ),
+      );
+    const own = codes(renderReport(resultWith([]), META));
+    const reviewed = reviewedParts(REVIEWED);
+    const unreviewed = [...codes(renderReport(REVIEWED, META))].filter((text) => {
+      if (own.has(text) || reviewed.has(text)) return false;
+      const command = text.match(/^agenttrail-guard guardrails set-action (\S+) warn$/);
+      return !(command !== null && reviewed.has(command[1] ?? ""));
+    });
+    expect(unreviewed).toEqual([]);
   });
 });
 
@@ -532,7 +633,8 @@ describe("the data block cannot be broken out of", () => {
   const html = renderReport(result, META);
 
   it("has exactly one executable script and one data block", () => {
-    expect(html.split("<script>").length - 1).toBe(1);
+    const tags = html.match(/<script\b[^>]*>/gi) ?? [];
+    expect(tags).toEqual(['<script type="application/json" id="report-data">', "<script>"]);
     expect(html.split('<script type="application/json" id="report-data">').length - 1).toBe(1);
     expect(html.split("</script>").length - 1).toBe(2);
   });
@@ -576,9 +678,12 @@ describe("the standalone page's policy", () => {
     expect(html).toContain(`content="${policy}"`);
   });
 
-  it("negative control — a changed script would not match the hash", () => {
-    const other = createHash("sha256").update(`${REPORT_SCRIPT} `, "utf8").digest("base64");
-    expect(contentSecurityPolicy()).not.toContain(other);
+  it("negative control — one changed character in the page's script breaks the match", () => {
+    const script = between(html, "<script>", "</script>").slice("<script>".length);
+    const changed = script.replace('"use strict";', '"use strict" ;');
+    expect(changed).not.toBe(script);
+    const hash = createHash("sha256").update(changed, "utf8").digest("base64");
+    expect(html).not.toContain(hash);
   });
 });
 
@@ -653,8 +758,22 @@ describe("the privacy and coverage sections stay", () => {
     expect(html.indexOf('id="privacy"')).toBeLessThan(html.indexOf('id="scanned"'));
   });
 
-  it("has no score and no currency in its own words", () => {
-    const html = renderReport(resultWith([lib("a.b", "block", 1)]), META);
-    expect(html).not.toMatch(/risk score/i);
+  const SCORE = /\brisk[- ]?score\b|\bscore\b/i;
+
+  it.each([
+    ["claude", "document"],
+    ["cursor", "document"],
+    ["codex", "document"],
+    ["claude", "artifact"],
+  ] as const)("a %s %s gives no score", (agent, variant) => {
+    const html = renderReport(resultWith([lib("a.b", "block", 1)], undefined, { agent }), META, {
+      variant,
+    });
+    expect(html).not.toMatch(SCORE);
+  });
+
+  it("negative control — the score matcher fires", () => {
+    expect("Risk score: 87").toMatch(SCORE);
+    expect("a risk-score of 4").toMatch(SCORE);
   });
 });

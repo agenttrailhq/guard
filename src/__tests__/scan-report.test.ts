@@ -25,7 +25,15 @@ import {
   type ScanCorpus,
   type ScanResult,
 } from "../core/scan-report.js";
-import { bash, RULE_RM_RF, session, TEST_CATALOG, toolUse, turn } from "./scan-fixtures.js";
+import {
+  bash,
+  RULE_GIT_CHECKOUT,
+  RULE_RM_RF,
+  session,
+  TEST_CATALOG,
+  toolUse,
+  turn,
+} from "./scan-fixtures.js";
 
 const CATALOG = compileCatalog(TEST_CATALOG);
 const NO_ALLOWLIST = compileAllowlist([]);
@@ -495,6 +503,20 @@ describe("tool calls by their strictest action", () => {
     expect(result.riskyByAction).toEqual({ block: 2, require_approval: 1, warn: 1 });
     const { block, require_approval, warn } = result.riskyByAction;
     expect(block + require_approval + warn).toBe(result.riskyActions);
+  });
+
+  it("finds the strictest action whatever order the guardrails match in", () => {
+    const both = corpusOf([
+      session([turn([bash("git checkout -- src/a.ts && rm -rf /tmp/y", "1")])]),
+    ]);
+    for (const catalog of [
+      compileCatalog([RULE_GIT_CHECKOUT, RULE_RM_RF]),
+      compileCatalog([RULE_RM_RF, RULE_GIT_CHECKOUT]),
+    ]) {
+      const result = aggregateScan(both, catalog, NO_ALLOWLIST);
+      expect(result.findings).toHaveLength(2);
+      expect(result.riskyByAction).toEqual({ block: 1, require_approval: 0, warn: 0 });
+    }
   });
 
   it("is all zeroes when nothing matched", () => {

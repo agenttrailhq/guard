@@ -15,6 +15,7 @@ import { describe, expect, it } from "vitest";
 import { catalogStamp, formatCatalogStamp } from "../core/catalog-stamp.js";
 import { compileAllowlist } from "../core/evaluate.js";
 import { escapeHtml, type ReportMeta, renderReport } from "../core/report.js";
+import { LOGO_LOCKUP_SVG, LOGO_MARK_SVG } from "../core/report-brand.js";
 import { compileCatalog } from "../core/rules.js";
 import { aggregateScan } from "../core/scan-report.js";
 import type { GuardRule } from "../core/types.js";
@@ -59,6 +60,7 @@ const RESULT = aggregateScan(
             bash("git checkout -- src/a.ts", "6"),
             bash("./deploy.sh staging", "7"),
             bash("./deploy.sh staging", "8"),
+            bash("./deploy.sh production", "11"),
             bash("npm test", "9"),
             bash("ls -la", "10"),
           ],
@@ -75,6 +77,15 @@ const RESULT = aggregateScan(
     quarantined: 1,
     notRead: 0,
     projects: 2,
+    // A reader that counts what it could not use, so "What was not evaluated" is rendered.
+    capabilities: { tokens: true, skips: true },
+    skipped: {
+      unparseableLines: 1,
+      truncatedLastLines: 0,
+      unknownRecords: 0,
+      turnsEndedWithError: 1,
+      unreadableFiles: 0,
+    },
   },
   compileCatalog([...TEST_CATALOG, OWN_RULE]),
   compileAllowlist([]),
@@ -82,19 +93,51 @@ const RESULT = aggregateScan(
   new Set([RULE_RM_RF, RULE_ENV_FILE, RULE_GIT_CHECKOUT]),
 );
 
-/** The page with the bundled library's version line fixed. */
+/**
+ * The page with its constant parts replaced: the bundled library's version line, and the
+ * bodies of the stylesheet, the script and the logo, which are pinned by their own tests
+ * (`report.test.ts` for the styles and logo, the policy hash for the script). What is left
+ * is the markup this corpus produces.
+ */
 function render(variant: "document" | "artifact"): string {
   const line = formatCatalogStamp(catalogStamp(), META.generatedAt);
   return renderReport(RESULT, META, { variant })
     .split(line)
     .join("guardrail library vX.Y.Z")
     .split(escapeHtml(line))
-    .join("guardrail library vX.Y.Z");
+    .join("guardrail library vX.Y.Z")
+    .replace(/<style>[\s\S]*?<\/style>/, "<style>(stylesheet)</style>")
+    .replace(/<script>[\s\S]*?<\/script>/, "<script>(script)</script>")
+    .replace(/script-src 'sha256-[^']+'/, "script-src 'sha256-(hash)'")
+    .split(LOGO_LOCKUP_SVG)
+    .join('<svg class="lockup">(logo)</svg>')
+    .split(LOGO_MARK_SVG)
+    .join('<svg class="mark">(mark)</svg>');
 }
 
 describe("the golden report", () => {
   it("the corpus reaches every section", () => {
-    expect(RESULT.riskyByAction).toEqual({ block: 3, require_approval: 4, warn: 1 });
+    expect(RESULT.riskyByAction).toEqual({ block: 3, require_approval: 5, warn: 1 });
+    const html = render("document");
+    for (const part of [
+      'id="would-do"',
+      '<div class="hint">',
+      'id="fix-first"',
+      '<article class="card">',
+      'id="findings"',
+      'id="repeats"',
+      'id="next-steps"',
+      'id="share"',
+      'id="privacy"',
+      'id="redaction"',
+      'id="scanned"',
+      'id="not-evaluated"',
+      'id="tokens"',
+      'id="os"',
+      "<footer>",
+    ]) {
+      expect(html, part).toContain(part);
+    }
     expect(RESULT.recurring.length).toBeGreaterThan(0);
     expect(RESULT.findings.map((f) => f.source).sort()).toEqual([
       "library",
