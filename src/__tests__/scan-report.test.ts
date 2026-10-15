@@ -473,3 +473,81 @@ describe("a guardrail title is redacted too, and the limit of that is stated", (
     expect(SHIPPED_CATALOG.length).toBeGreaterThan(10);
   });
 });
+
+describe("tool calls by their strictest action", () => {
+  it("counts each risky call once, under the strictest action that matched it", () => {
+    const result = aggregateScan(
+      corpusOf([
+        session([
+          turn([
+            bash("rm -rf /tmp/x", "1"),
+            // Matches the warn rule and the block rule: counted once, as a block.
+            bash("git checkout -- src/a.ts && rm -rf /tmp/y", "2"),
+            bash("git checkout -- src/b.ts", "3"),
+            toolUse("Read", { file_path: "/srv/app/.env" }, "4"),
+            bash("ls -la", "5"),
+          ]),
+        ]),
+      ]),
+      CATALOG,
+      NO_ALLOWLIST,
+    );
+    expect(result.riskyByAction).toEqual({ block: 2, require_approval: 1, warn: 1 });
+    const { block, require_approval, warn } = result.riskyByAction;
+    expect(block + require_approval + warn).toBe(result.riskyActions);
+  });
+
+  it("is all zeroes when nothing matched", () => {
+    const result = aggregateScan(corpusOf([]), CATALOG, NO_ALLOWLIST);
+    expect(result.riskyByAction).toEqual({ block: 0, require_approval: 0, warn: 0 });
+  });
+});
+
+describe("a finding's source is decided by the rule object, not by its id", () => {
+  const CALLS = corpusOf([
+    session([
+      turn([bash("rm -rf /tmp/x", "1"), toolUse("Read", { file_path: "/srv/app/.env" }, "2")]),
+    ]),
+  ]);
+
+  it("labels a shipped rule's finding as library, with its pack and description", () => {
+    const result = aggregateScan(CALLS, CATALOG, NO_ALLOWLIST, new Set([RULE_RM_RF]));
+    const rm = result.findings.find((f) => f.ruleId === "t.rm-rf");
+    expect(rm).toMatchObject({
+      source: "library",
+      category: RULE_RM_RF.category,
+      description: RULE_RM_RF.description,
+    });
+  });
+
+  it("labels every other finding as the user's own, and carries no category or description", () => {
+    const result = aggregateScan(CALLS, CATALOG, NO_ALLOWLIST, new Set([RULE_RM_RF]));
+    const env = result.findings.find((f) => f.ruleId === "t.env-file");
+    expect(env?.source).toBe("yours");
+    expect(env).not.toHaveProperty("category");
+    expect(env).not.toHaveProperty("description");
+  });
+
+  it("treats every finding as the user's own when no shipped set is given", () => {
+    const result = aggregateScan(CALLS, CATALOG, NO_ALLOWLIST);
+    expect(result.findings.map((f) => f.source)).toEqual(["yours", "yours"]);
+    for (const f of result.findings) expect(f).not.toHaveProperty("description");
+  });
+
+  it("a user rule that reuses a shipped id stays the user's own", () => {
+    const shadow = {
+      ...RULE_RM_RF,
+      title: "Block rm on the billing cluster",
+      category: "my-team",
+      description: "Written by the user.",
+    };
+    // The user's rules are appended after the shipped ones, as `scan` does.
+    const catalog = compileCatalog([...TEST_CATALOG, shadow]);
+    const result = aggregateScan(CALLS, catalog, NO_ALLOWLIST, new Set(TEST_CATALOG));
+    const rm = result.findings.find((f) => f.ruleId === "t.rm-rf");
+    expect(rm?.source).toBe("yours");
+    expect(rm?.title).toBe("Block rm on the billing cluster");
+    expect(rm).not.toHaveProperty("category");
+    expect(rm).not.toHaveProperty("description");
+  });
+});

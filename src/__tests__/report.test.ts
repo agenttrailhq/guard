@@ -907,6 +907,7 @@ describe("an app that cannot ask says so", () => {
         sessions: 1,
         toolCalls: 1,
         riskyActions: findings.length,
+        riskyByAction: { block: 0, require_approval: findings.length, warn: 0 },
         projects: 1,
         notRead: 0,
         findings,

@@ -4,8 +4,9 @@
  * `scan --json` is a documented output with no schema version, so a key added, renamed or
  * removed is a change for whoever reads it. Pinning the keys of the envelope, the result, a
  * finding, an example shape, a recurring row, the token totals, a tally row and the skipped
- * block makes every such change an edit to this file. `owasp`, on each finding and on the
- * result, is the latest addition.
+ * block makes every such change an edit to this file. The latest additions are
+ * `riskyByAction` on the result, and `source` on each finding, with `category` and
+ * `description` on a finding from the shipped library.
  */
 
 import { describe, expect, it } from "vitest";
@@ -14,15 +15,21 @@ import { compileAllowlist } from "../core/evaluate.js";
 import { renderJson } from "../core/report.js";
 import { compileCatalog } from "../core/rules.js";
 import { aggregateScan, type ScanCorpus } from "../core/scan-report.js";
+import type { GuardRule } from "../core/types.js";
 import { bash, session, toolUse, turn } from "./scan-fixtures.js";
 
 const META = { version: "0.0.0-test", generatedAt: new Date("2026-10-01T00:00:00.000Z") };
 
 type Json = Record<string, unknown>;
 
-/** `scan --json` for a corpus, parsed back. */
-function jsonOf(corpus: ScanCorpus): Json & { result: Json } {
-  const result = aggregateScan(corpus, compileCatalog(SHIPPED_CATALOG), compileAllowlist([]));
+/** `scan --json` for a corpus, parsed back, with the shipped library marked as shipped. */
+function jsonOf(corpus: ScanCorpus, own: readonly GuardRule[] = []): Json & { result: Json } {
+  const result = aggregateScan(
+    corpus,
+    compileCatalog([...SHIPPED_CATALOG, ...own]),
+    compileAllowlist([]),
+    new Set(SHIPPED_CATALOG),
+  );
   return JSON.parse(renderJson(result, META)) as Json & { result: Json };
 }
 
@@ -57,6 +64,7 @@ const RESULT_KEYS = [
   "quarantined",
   "recurring",
   "riskyActions",
+  "riskyByAction",
   "sessions",
   "skippedLines",
   "tokens",
@@ -69,12 +77,49 @@ describe("scan --json keys", () => {
     expect(typeof claude.catalog).toBe("string");
   });
 
-  it("pins the result", () => {
+  it("pins the result, and the per-action split", () => {
     expect(keys(claude.result)).toEqual(RESULT_KEYS);
+    expect(keys(claude.result.riskyByAction)).toEqual(["block", "require_approval", "warn"]);
   });
 
   it("pins a finding and its example shapes", () => {
     const [finding] = claude.result.findings as Json[];
+    expect(keys(finding)).toEqual([
+      "action",
+      "category",
+      "count",
+      "description",
+      "examples",
+      "owasp",
+      "ruleId",
+      "severity",
+      "source",
+      "title",
+    ]);
+    const [example] = (finding as { examples: Json[] }).examples;
+    expect(keys(example)).toEqual(["count", "text"]);
+  });
+
+  it("pins a finding for a guardrail the user wrote, which carries no library fields", () => {
+    const own: GuardRule = {
+      id: "team.list",
+      category: "team",
+      severity: "low",
+      defaultAction: "warn",
+      title: "Listing files",
+      description: "Written by the team.",
+      match: { any_of: [{ kind: "execute_tool", label: "Bash", detail_contains: ["ls -la"] }] },
+    };
+    const json = jsonOf(
+      {
+        sessions: [session([turn([bash("ls -la", "1")])])],
+        quarantined: 0,
+        projects: 1,
+        notRead: 0,
+      },
+      [own],
+    );
+    const [finding] = json.result.findings as Json[];
     expect(keys(finding)).toEqual([
       "action",
       "count",
@@ -82,10 +127,10 @@ describe("scan --json keys", () => {
       "owasp",
       "ruleId",
       "severity",
+      "source",
       "title",
     ]);
-    const [example] = (finding as { examples: Json[] }).examples;
-    expect(keys(example)).toEqual(["count", "text"]);
+    expect(finding?.source).toBe("yours");
   });
 
   it("pins a recurring row", () => {
