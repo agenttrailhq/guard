@@ -24,6 +24,7 @@ import {
   reportPayload,
   reviewStrings,
   ruleSlug,
+  SHELL_SAFE_ID,
   SITE_URL,
   shareText,
   TUNING_MIN_ASKS,
@@ -235,6 +236,32 @@ describe("the tuning hint", () => {
     );
     expect(html).toContain("agenttrail-guard guardrails set-action a.noisy warn");
     expect(html).not.toContain("set-action a.rare");
+  });
+});
+
+describe("the tuning hint never offers an unsafe command to copy", () => {
+  const UNSAFE = ["x;touch PWNED;#", "a$(id)", "a`id`", "a b", "-rf", "a|b", "a'b", "a&&b"];
+
+  it.each(UNSAFE)("an id like %s is named as text, with no command", (id) => {
+    const html = renderReport(resultWith([own(id, "require_approval", 9)]), META);
+    const hint = between(html, '<div class="hint">', "</section>");
+    expect(hint).toContain(`<code>${escapeHtml(id)}</code>`);
+    expect(hint).not.toContain("cmd-tune-");
+    expect(hint).not.toContain(`set-action ${escapeHtml(id)}`);
+    expect(hint).not.toContain(`set-action ${id}`);
+  });
+
+  it("a plain id gets its command", () => {
+    const html = renderReport(resultWith([own("team.deploy_v2-x", "require_approval", 9)]), META);
+    expect(html).toContain("agenttrail-guard guardrails set-action team.deploy_v2-x warn");
+  });
+
+  it("every shipped guardrail's id is a plain id", () => {
+    for (const rule of SHIPPED_CATALOG) expect(SHELL_SAFE_ID.test(rule.id), rule.id).toBe(true);
+  });
+
+  it.each(UNSAFE)("negative control — %s is not a plain id", (id) => {
+    expect(SHELL_SAFE_ID.test(id)).toBe(false);
   });
 });
 

@@ -782,14 +782,23 @@ export function tuningHint(findings: readonly PayloadFinding[]): TuningHint | un
   return undefined;
 }
 
+/** An id that a shell reads as one plain word. */
+export const SHELL_SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+
 /** The tuning hint's markup. */
 function tuningSection(payload: ReportPayload): string {
   const hint = tuningHint(payload.findings);
   if (hint === undefined) return "";
   const n = hint.ids.length;
   const pct = Math.round(hint.share * 100);
+  // A copyable command only for an id that is safe to paste into a shell. A user's own id is
+  // any string, so one that is not gets named as text, with no command to copy.
   const commands = hint.ids
-    .map((id, i) => copyable(`cmd-tune-${i}`, `agenttrail-guard guardrails set-action ${id} warn`))
+    .map((id, i) =>
+      SHELL_SAFE_ID.test(id)
+        ? copyable(`cmd-tune-${i}`, `agenttrail-guard guardrails set-action ${id} warn`)
+        : `<p class="note">Set <code>${escapeHtml(id)}</code> to warn with <code>agenttrail-guard guardrails set-action</code>. Its id has characters a shell would read, so no command is offered to copy.</p>`,
+    )
     .join("\n");
   return `<div class="hint">
 <p><strong>${escapeHtml(counted(n, "guardrail produces", "guardrails produce"))} ${pct}% of the asks.</strong> Setting ${n === 1 ? "it" : "them"} to warn would take ask matches from ${escapeHtml(formatCount(hint.asks))} to ${escapeHtml(formatCount(hint.remaining))}, and the agent would be shown a warning instead.</p>
