@@ -1024,19 +1024,40 @@ describe("scan, against the built binary", () => {
     });
     const html = readFileSync(join(work, "agenttrail-guard-report.html"), "utf8");
 
-    for (const banned of [/<script/i, /\ssrc\s*=/i, /@import/i, /url\s*\(/i]) {
+    for (const banned of [/\ssrc\s*=/i, /@import/i, /url\s*\(/i, /<link\b/i, /<iframe/i]) {
       expect(html).not.toMatch(banned);
     }
-    // A Claude Code report's one link is the product note's, and the set is exact.
-    const links = [...html.matchAll(/\shref\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/gi)].map(
-      (m) => m[1] ?? m[2] ?? m[3],
+    // One executable script, the report's own, pinned by the page's policy; one data block.
+    expect(html.match(/<script>/g)?.length).toBe(1);
+    expect(html.match(/<script type="application\/json" id="report-data">/g)?.length).toBe(1);
+    expect(html).toContain(
+      `<meta http-equiv="Content-Security-Policy" content="default-src 'none';`,
     );
-    expect(links).toEqual([PRODUCT_NOTE.url]);
+    // Every link stays in the page, goes to the site, or prefills an X post.
+    const links = [...html.matchAll(/\shref\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/gi)].map(
+      (m) => m[1] ?? m[2] ?? m[3] ?? "",
+    );
+    expect(links.length).toBeGreaterThan(0);
+    for (const link of links) {
+      expect(
+        link.startsWith("#") ||
+          link.startsWith("https://www.agenttrail.sh/") ||
+          link.startsWith("https://x.com/intent/post?text="),
+        link,
+      ).toBe(true);
+    }
+    expect(html).toContain(PRODUCT_NOTE.primary.label);
     // A currency WORD is banned everywhere; a currency SYMBOL only in the guard's own
     // chrome, because a real command legitimately contains `$?` or `${DB}` and
     // `redactPaths` preserves a shell variable on purpose. See `report.test.ts`.
     expect(html).not.toMatch(/\bUSD\b|\bdollars?\b|\bestimated\b|\brisk avoided\b/i);
-    expect(html.replace(/<code>[\s\S]*?<\/code>/g, "")).not.toMatch(/[$£€¥]/);
+    expect(
+      html
+        .replace(/<script[\s\S]*?<\/script>/g, "")
+        .replace(/<p class="library-text[^"]*">[\s\S]*?<\/p>/g, "")
+        .replace(/<code[^>]*>[\s\S]*?<\/code>/g, "")
+        .replace(/<textarea[\s\S]*?<\/textarea>/g, ""),
+    ).not.toMatch(/[$£€¥]/);
   });
 
   it("--json prints a parseable payload and writes no file", () => {

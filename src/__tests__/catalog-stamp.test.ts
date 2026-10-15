@@ -220,7 +220,7 @@ describe("all three surfaces read the SAME stamp", () => {
     const footer = html.slice(html.indexOf("<footer"), html.indexOf("</footer>"));
     expect(footer).toContain(expected);
     expect(footer).not.toContain("product-note");
-    expect(footer).not.toContain(PRODUCT_NOTE.url);
+    expect(footer).not.toContain(PRODUCT_NOTE.primary.label);
     expect(footer).not.toContain(PRODUCT_NOTE.heading);
     expect(footer).not.toMatch(/sign up|free trial|get started|upgrade|book a demo|waitlist/i);
     // The control: the note IS in the page, so the slice above is what kept it out.

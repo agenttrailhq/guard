@@ -26,6 +26,7 @@ import {
   renderJson,
   renderReport,
   reviewStrings,
+  SITE_URL,
 } from "../core/report.js";
 import {
   DARK_TOKENS,
@@ -114,9 +115,20 @@ function urls(html: string): string[] {
   return html.match(/https?:\/\/[^\s"'<>]+/g) ?? [];
 }
 
+/** The page without its script and data block: what the guard's own markup says. */
+function withoutScripts(html: string): string {
+  return html.replace(/<script[\s\S]*?<\/script>/g, "");
+}
+
+/** The UTM tags every site link carries, for one agent. */
+function utmFor(agent: string): Record<string, string> {
+  return { utm_source: "guard", utm_medium: "scan-report", utm_campaign: agent };
+}
+
+const X_INTENT = "https://x.com/intent/post?text=";
+
 describe("the report is self-contained — nothing outside the file is loaded", () => {
   const BANNED: readonly [string, RegExp, string][] = [
-    ["a script tag", /<script/i, "<script>alert(1)</script>"],
     ["a src attribute", /\ssrc\s*=/i, `<img src="x.png">`],
     ["a link tag", /<link\b/i, `<link rel="stylesheet" href="x.css">`],
     ["a CSS import", /@import/i, `@import url("x.css");`],
@@ -131,6 +143,42 @@ describe("the report is self-contained — nothing outside the file is loaded", 
       expect(html).not.toMatch(pattern);
     });
 
+    it("links only within the page, to the site with tags, or to an X post", () => {
+      const agent = html.includes("Agent: Cursor")
+        ? "cursor"
+        : html.includes("Agent: Codex CLI")
+          ? "codex"
+          : "claude";
+      const ids = new Set([...html.matchAll(/\sid="([^"]+)"/g)].map((m) => m[1]));
+      for (const raw of hrefs(html)) {
+        const href = raw.replace(/&amp;/g, "&");
+        if (href.startsWith("#")) {
+          expect(ids.has(href.slice(1)), `${href} has no target`).toBe(true);
+        } else if (href.startsWith(X_INTENT)) {
+          const url = new URL(href);
+          expect(url.searchParams.get("hashtags")).toBe("agenttrail");
+          const back = new URL(url.searchParams.get("url") ?? "");
+          expect(back.origin).toBe(SITE_URL);
+          expect(Object.fromEntries(back.searchParams)).toMatchObject(utmFor(agent));
+        } else {
+          const url = new URL(href);
+          expect(url.origin, href).toBe(SITE_URL);
+          expect(Object.fromEntries(url.searchParams)).toMatchObject(utmFor(agent));
+          expect(url.searchParams.get("utm_content")).toMatch(/^[a-z-]+$/);
+        }
+      }
+    });
+
+    it("opens every outbound link with no opener and no referrer", () => {
+      const anchors = html.match(/<a\s[^>]*>/g) ?? [];
+      const outbound = anchors.filter((a) => /href="https:/.test(a));
+      expect(outbound.length).toBeGreaterThan(0);
+      for (const a of outbound) {
+        expect(a).toContain('target="_blank"');
+        expect(a).toContain('rel="noopener noreferrer"');
+      }
+    });
+
     it("carries its whole stylesheet inline", () => {
       expect(html).toContain("<style>");
       expect(html).toContain("prefers-color-scheme");
@@ -143,36 +191,50 @@ describe("the report is self-contained — nothing outside the file is loaded", 
     expect(violating).toMatch(pattern);
   });
 
-  it("a Claude Code report links exactly once, to the product note's address", () => {
-    // The href set is pinned, not pattern-matched: a second link — anywhere, to anything —
-    // turns this red rather than being waved through by an allow-list that was widened.
-    expect(hrefs(HTML)).toEqual([PRODUCT_NOTE.url]);
-    expect(hrefs(ARTIFACT)).toEqual([PRODUCT_NOTE.url]);
-  });
-
-  it("that link opens a new browsing context with no opener and no referrer", () => {
-    expect(HTML).toContain(
-      `<a class="button" href="${PRODUCT_NOTE.url}" target="_blank" rel="noopener noreferrer">`,
+  it("links to exactly these site pages, pinned per agent", () => {
+    // Pinned, not pattern-matched: a new destination turns this red until it is added here.
+    const pages = (html: string): string[] =>
+      [
+        ...new Set(
+          hrefs(html)
+            .map((h) => h.replace(/&amp;/g, "&"))
+            .filter((h) => h.startsWith(SITE_URL))
+            .map((h) => {
+              const url = new URL(h);
+              return `${url.pathname} ${url.searchParams.get("utm_content")}`;
+            }),
+        ),
+      ].sort();
+    const common = [
+      "/agenttrail-guard footer-guard",
+      "/get-started/guard next-agents",
+      "/get-started/guard next-commands",
+      "/guardrails footer-library",
+      "/guardrails next-library",
+      "/security footer-security",
+    ];
+    expect(pages(CURSOR_HTML)).toEqual(common);
+    expect(pages(CODEX_HTML)).toEqual(common);
+    expect(pages(HTML)).toEqual(
+      [...common, "/agenttrail-os os-demo", "/guard-vs-os os-compare"].sort(),
     );
-  });
-
-  it("a Cursor report links nowhere", () => {
-    expect(hrefs(CURSOR_HTML)).toEqual([]);
-    expect(hrefs(CURSOR_ARTIFACT)).toEqual([]);
+    expect(pages(ARTIFACT)).toEqual(pages(HTML));
   });
 
   it("negative control — the href reader finds every quoting style", () => {
     expect(hrefs(`<a href="x">a</a> <a href='y'>b</a> <a href=z>c</a>`)).toEqual(["x", "y", "z"]);
   });
 
-  it("names no URL beyond the product note's and the repository's, not even in a comment", () => {
-    // The repository URL is deliberately TEXT; the product note's is its one link. Both are
-    // still `https://` substrings, so the assertion is "exactly these, in this order" —
-    // and a Cursor report carries only the repository's.
-    expect(urls(HTML)).toEqual([PRODUCT_NOTE.url, REPOSITORY_URL]);
-    expect(urls(ARTIFACT)).toEqual([PRODUCT_NOTE.url, REPOSITORY_URL]);
-    expect(urls(CURSOR_HTML)).toEqual([REPOSITORY_URL]);
-    expect(urls(CURSOR_ARTIFACT)).toEqual([REPOSITORY_URL]);
+  it.each(
+    RENDERINGS,
+  )("%s names no URL beyond the site, an X post and the repository", (_n, html) => {
+    // The repository URL is deliberately text. Every other URL is a link checked above.
+    for (const url of urls(html)) {
+      const ok =
+        url.startsWith(`${SITE_URL}/`) || url.startsWith(X_INTENT) || url === REPOSITORY_URL;
+      expect(ok, url).toBe(true);
+    }
+    expect(urls(html)).toContain(REPOSITORY_URL);
   });
 
   it("is a complete HTML document, not a fragment", () => {
@@ -203,6 +265,7 @@ describe("the artifact variant is page content, for a host that supplies the ske
       html
         .slice(html.indexOf("<main"), html.indexOf("</main>"))
         .replace(/<p class="provenance">[\s\S]*?<\/p>/, "")
+        .replace(/<p class="origin">[\s\S]*?<\/p>/, "")
         .replace(/<p class="warning">[\s\S]*?<\/p>/, "");
     expect(body(ARTIFACT)).toBe(body(HTML));
     expect(body(ARTIFACT).length).toBeGreaterThan(2000);
@@ -237,8 +300,9 @@ describe("one stylesheet serves both hosts and both themes", () => {
 
   it("paints the body itself and leaves the root's padding to the host", () => {
     expect(REPORT_STYLES).toMatch(/body \{[^}]*background: var\(--bg\)/);
+    // Light, dark by preference, dark by choice, and light again for print.
     const rootRules = REPORT_STYLES.match(/:root[^{]*\{[^}]*\}/g) ?? [];
-    expect(rootRules.length).toBe(3);
+    expect(rootRules.length).toBe(4);
     for (const rule of rootRules) expect(rule).not.toMatch(/padding/);
   });
 
@@ -284,6 +348,17 @@ describe("no line of the file is long", () => {
   });
 });
 
+/**
+ * The report minus every quoted command: `<code>` spans, quoted guardrail library text, and
+ * the data block and the post preview, which carry the same commands and counts as data.
+ */
+function chromeOf(html: string): string {
+  return withoutScripts(html)
+    .replace(/<p class="library-text[^"]*">[\s\S]*?<\/p>/g, "")
+    .replace(/<code[^>]*>[\s\S]*?<\/code>/g, "")
+    .replace(/<textarea[\s\S]*?<\/textarea>/g, "");
+}
+
 describe("no currency, in any spelling", () => {
   /**
    * A currency word. These cannot be shell syntax, so they are banned everywhere.
@@ -305,7 +380,7 @@ describe("no currency, in any spelling", () => {
    * chrome — every word this tool wrote — carries no currency symbol at all, and the
    * `<code>` spans are quoted input.
    */
-  const chrome = HTML.replace(/<code>[\s\S]*?<\/code>/g, "");
+  const chrome = chromeOf(HTML);
 
   it("no currency symbol anywhere in the guard's own words", () => {
     expect(chrome).not.toMatch(CURRENCY_SYMBOL);
@@ -343,7 +418,7 @@ describe("no currency, in any spelling", () => {
   it("negative control — the chrome strip does not simply empty the document", () => {
     // Without this, "the chrome has no `$`" would pass on an empty string.
     expect(chrome.length).toBeGreaterThan(2000);
-    expect(chrome).toContain("Findings");
+    expect(chrome).toContain("All findings");
   });
 
   it("a shell variable in a command SURVIVES, which is the point of the split", () => {
@@ -353,7 +428,7 @@ describe("no currency, in any spelling", () => {
     });
     const html = renderReport(withVar, META);
     expect(html).toContain("$DIR");
-    expect(html.replace(/<code>[\s\S]*?<\/code>/g, "")).not.toMatch(CURRENCY_SYMBOL);
+    expect(chromeOf(html)).not.toMatch(CURRENCY_SYMBOL);
   });
 });
 
@@ -375,7 +450,7 @@ describe("what the report says", () => {
   it("shows a repeat as one shape with its count, not as two rows", () => {
     // The two `rm -rf` calls differ only by path, so redaction makes them one shape.
     expect(HTML).toContain("rm -rf &lt;path&gt;");
-    expect(HTML).toContain("Recurring issues");
+    expect(HTML).toContain("Repeat offenders");
   });
 
   it("reports the skipped files, and does not imply they were corrupt", () => {
@@ -517,23 +592,24 @@ describe("what the report says", () => {
   });
 });
 
-describe("the product note", () => {
+describe("the AgentTrail OS block", () => {
   const notes = (html: string): number => html.split('class="product-note"').length - 1;
 
   it("appears exactly once in a Claude Code report, before the footer, in both variants", () => {
     for (const html of [HTML, ARTIFACT]) {
       expect(notes(html)).toBe(1);
       expect(html.indexOf('class="product-note"')).toBeLessThan(html.indexOf("<footer"));
-      expect(html).toContain(PRODUCT_NOTE.heading);
-      expect(html).toContain(PRODUCT_NOTE.label);
+      expect(html).toContain(escapeHtml(PRODUCT_NOTE.heading));
+      expect(html).toContain(PRODUCT_NOTE.primary.label);
+      expect(html).toContain(PRODUCT_NOTE.secondary.label);
     }
   });
 
-  it("never appears in a Cursor report", () => {
-    for (const html of [CURSOR_HTML, CURSOR_ARTIFACT]) {
+  it("never appears in a Cursor or Codex report", () => {
+    for (const html of [CURSOR_HTML, CURSOR_ARTIFACT, CODEX_HTML, CODEX_ARTIFACT]) {
       expect(notes(html)).toBe(0);
-      expect(html).not.toContain(PRODUCT_NOTE.heading);
-      expect(html).not.toContain(PRODUCT_NOTE.label);
+      expect(html).not.toContain(escapeHtml(PRODUCT_NOTE.heading));
+      expect(html).not.toContain(PRODUCT_NOTE.primary.label);
     }
   });
 
@@ -541,8 +617,17 @@ describe("the product note", () => {
     expect(notes('<aside class="product-note">x</aside>')).toBe(1);
   });
 
-  it.each(RENDERINGS)("%s has no sign-up, trial, upgrade or demo wording", (_n, html) => {
-    expect(html).not.toMatch(/sign up|free trial|get started|upgrade|book a demo/i);
+  it.each(RENDERINGS)("%s has no sign-up, trial, upgrade or prize wording", (_n, html) => {
+    const words = chromeOf(html);
+    expect(words).not.toMatch(/sign up|free trial|get started|upgrade|book a demo/i);
+    expect(words).not.toMatch(/\b(prize|giveaway|win|winners?|free month|promo|promotion)\b/i);
+  });
+
+  it("negative control — the wording matchers fire", () => {
+    expect("Share to win a free month").toMatch(
+      /\b(prize|giveaway|win|winners?|free month|promo|promotion)\b/i,
+    );
+    expect("Sign up free").toMatch(/sign up|free trial|get started|upgrade|book a demo/i);
   });
 
   it("says that nothing in the report was sent to the product it names", () => {
@@ -569,8 +654,17 @@ describe("a backticked span in a guardrail title renders as code", () => {
 
   it("wraps the span in code, in the findings and in the repeats", () => {
     const html = renderReport(titled("Hold `rm -rf` for approval"), META);
-    expect(html.split("Hold <code>rm -rf</code> for approval").length - 1).toBe(2);
-    expect(html).not.toContain("`");
+    const row = html.slice(
+      html.indexOf('id="finding-0"'),
+      html.indexOf("</li>", html.indexOf('id="finding-0"')),
+    );
+    const repeats = html.slice(
+      html.indexOf('id="repeats"'),
+      html.indexOf("</section>", html.indexOf('id="repeats"')),
+    );
+    expect(row).toContain("Hold <code>rm -rf</code> for approval");
+    expect(repeats).toContain("Hold <code>rm -rf</code> for approval");
+    expect(withoutScripts(html)).not.toContain("`");
   });
 
   it("leaves an unpaired backtick as a backtick", () => {
@@ -580,7 +674,9 @@ describe("a backticked span in a guardrail title renders as code", () => {
   it("escapes before it wraps, so markup inside the span stays text", () => {
     const html = renderReport(titled("Run `<script>` here"), META);
     expect(html).toContain("<code>&lt;script&gt;</code>");
-    expect(html).not.toContain("<script>");
+    // The page's own script is the only `<script>` element; the title stays text.
+    expect(withoutScripts(html)).not.toContain("<script>");
+    expect(html.split("<script>").length - 1).toBe(1);
   });
 });
 
@@ -641,7 +737,7 @@ describe("the match tally", () => {
 
   it("renders above the findings, and not at all when nothing matched", () => {
     expect(HTML.indexOf('class="tally"')).toBeGreaterThan(0);
-    expect(HTML.indexOf('class="tally"')).toBeLessThan(HTML.indexOf("<h2>Findings</h2>"));
+    expect(HTML.indexOf('class="tally"')).toBeLessThan(HTML.indexOf("<h2>All findings</h2>"));
     expect(renderReport(resultOf(), META)).not.toContain('class="tally"');
   });
 });
