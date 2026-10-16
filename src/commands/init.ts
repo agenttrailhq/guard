@@ -39,7 +39,8 @@ import { mapCursorCall } from "../core/cursor-mapper.js";
 import { compileAllowlist, evaluateCall } from "../core/evaluate.js";
 import { mapToolCall } from "../core/mapper.js";
 import { buildGuardSpanContext } from "../core/normalize.js";
-import { configPath, guardDir, userRulesPath } from "../core/paths.js";
+import { configPath, guardDir, productLineStatePath, userRulesPath } from "../core/paths.js";
+import { takeProductLine, writeOrFalse } from "../core/product-line.js";
 import { compileCatalog } from "../core/rules.js";
 import type { AgentSource, GuardRule, MappedCall } from "../core/types.js";
 import { VERSION } from "../core/version.js";
@@ -99,6 +100,34 @@ export interface InitDeps {
 export interface InitArgs {
   readonly print?: boolean;
   readonly agent?: string | boolean;
+  /** `--quiet`: leave out optional lines. Today that is only the AgentTrail OS line. */
+  readonly quiet?: boolean;
+}
+
+/**
+ * The AgentTrail OS line after a successful install, as `"\n<line>\n"`, or `""`.
+ *
+ * Read after the install so it sees the `config.json` the install may just have seeded.
+ */
+function productLineAfterInstall(
+  io: SetupIO,
+  agent: AgentSource,
+  quiet: boolean,
+  now: Date,
+): string {
+  const home = io.homedir();
+  const line = takeProductLine(
+    {
+      interactive: io.isTTY?.() === true && !quiet,
+      configText: io.readFile(configPath(home)),
+      statePath: productLineStatePath(home),
+      now,
+      readFile: (path) => io.readFile(path),
+      writeFile: writeOrFalse((path, text) => io.writeFileAtomic(path, text)),
+    },
+    { surface: "init", agent },
+  );
+  return line === undefined ? "" : `\n${line}\n`;
 }
 
 /** Read the bundled plugin manifest's version, if it can be read. */
@@ -291,6 +320,7 @@ function initCursor(
   deps: InitDeps,
   catalog: readonly GuardRule[],
   now: Date,
+  quiet = false,
 ): number {
   const request = {
     setup: io,
@@ -319,6 +349,8 @@ function initCursor(
   io.writeStdout(
     `${applied.value.join("\n")}\n\n${closing(catalog, "cursor", now, invokedViaNpx(deps.cliPath), `${CURSOR_RUN_MODE_NOTE}\n`)}`,
   );
+  const osLine = productLineAfterInstall(io, "cursor", quiet, now);
+  if (osLine !== "") io.writeStdout(osLine);
   return 0;
 }
 
@@ -407,7 +439,7 @@ export async function runInit(
   // Code plugin and reported success for an app that has none.
   switch (agent) {
     case "cursor":
-      return initCursor(io, dryRun, scaffoldDir, deps, catalog, now);
+      return initCursor(io, dryRun, scaffoldDir, deps, catalog, now, argv.quiet === true);
     case "codex":
       return initCodex(io, dryRun, scaffoldDir, deps, catalog, now);
     case "claude":
@@ -553,5 +585,7 @@ export async function runInit(
   io.writeStdout(
     `${lines.join("\n")}\n\n${closing(catalog, "claude", now, invokedViaNpx(deps.cliPath), overrideBlock)}`,
   );
+  const osLine = productLineAfterInstall(io, "claude", argv.quiet === true, now);
+  if (osLine !== "") io.writeStdout(osLine);
   return 0;
 }

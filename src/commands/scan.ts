@@ -50,7 +50,8 @@ import { createColors, hyperlink, shouldUseColor } from "../core/color.js";
 import { parseConfig } from "../core/config.js";
 import { defaultCursorProjectsRoot, readCursorCorpus } from "../core/cursor-transcript/scan.js";
 import { compileAllowlist } from "../core/evaluate.js";
-import { configPath, userRulesPath } from "../core/paths.js";
+import { configPath, productLineStatePath, userRulesPath } from "../core/paths.js";
+import { takeProductLine } from "../core/product-line.js";
 import {
   ARTIFACT_FILENAME,
   actionLabel,
@@ -93,7 +94,7 @@ export const SCAN_USAGE = `agenttrail-guard scan — what your agent has been do
 
 Usage:
   agenttrail-guard scan --agent <claude|cursor|codex> [--dir <root>] [--out <file>]
-                        [--artifact] [--no-open] [--review] [--json]
+                        [--artifact] [--no-open] [--review] [--json] [--quiet]
 
   --agent <app>  Whose sessions to read, and it is required: claude reads Claude Code's
                  transcripts in ~/.claude/projects, cursor reads Cursor's session files
@@ -107,6 +108,7 @@ Usage:
   --no-open      Do not open the report in your browser. It opens by default, except
                  with --artifact or when CI is set
   --json         Print the result as JSON and write no report file
+  --quiet        Leave out the closing line about AgentTrail OS
   --review       Print every command and guardrail the report will contain, and ask
                  before writing it. Redaction is thorough but not a guarantee; this
                  is how you check it yourself before the file exists.
@@ -127,6 +129,8 @@ export interface ScanFlags {
   readonly agent?: AgentSource | undefined;
   readonly dir?: string | undefined;
   readonly json: boolean;
+  /** `--quiet`: leave out optional lines. Today that is only the AgentTrail OS line. */
+  readonly quiet: boolean;
   /** `--no-open`: leave the report closed. It opens by default; see `shouldOpen`. */
   readonly noOpen: boolean;
   /** `--artifact`: write page content only, for publishing as a Claude artifact. */
@@ -155,6 +159,7 @@ export function parseScanFlags(argv: readonly string[]): ScanFlags {
   let agentRefused = false;
   let dir: string | undefined;
   let json = false;
+  let quiet = false;
   let noOpen = false;
   let artifact = false;
   let out: string | undefined;
@@ -180,6 +185,7 @@ export function parseScanFlags(argv: readonly string[]): ScanFlags {
       }
     } else if (arg.startsWith("--agent=")) takeAgent(arg.slice("--agent=".length));
     else if (arg === "--json") json = true;
+    else if (arg === "--quiet") quiet = true;
     else if (arg === "--no-open") noOpen = true;
     else if (arg === "--artifact") artifact = true;
     else if (arg === "--review") review = true;
@@ -214,6 +220,7 @@ export function parseScanFlags(argv: readonly string[]): ScanFlags {
     agent: agentRefused ? undefined : agent,
     dir,
     json,
+    quiet,
     noOpen,
     artifact,
     out,
@@ -260,6 +267,11 @@ export interface ScanDeps {
   readonly catalog?: readonly GuardRule[];
   /** Frozen clock, so a rendered report is byte-stable in a test. */
   readonly now?: Date;
+  /**
+   * `false` turns the AgentTrail OS line off whatever else holds. The plugin's skill entry
+   * (`scan-entry.ts`) passes it, so the line never lands in an agent's context.
+   */
+  readonly productLine?: boolean;
 }
 
 /** Deepest directory nesting the file tally will descend. */
@@ -797,6 +809,25 @@ export async function runScan(
     io.writeStdout(colors.yellow(`\nCould not write the report to ${reportPath}\n`));
     return 1;
   }
+
+  // The AgentTrail OS line, after the summary and only when the scan matched something.
+  const osLine = takeProductLine(
+    {
+      interactive: deps.productLine !== false && io.isTTY() && !flags.quiet,
+      configText: io.readFile(configPath(home)),
+      statePath: productLineStatePath(home),
+      now,
+      readFile: (path) => io.readFile(path),
+      writeFile: (path, text) => io.writeFile(path, text),
+    },
+    {
+      surface: "scan",
+      agent,
+      matches: result.riskyActions,
+      asks: matchTally(result).byAction.find((a) => a.action === "require_approval")?.count ?? 0,
+    },
+  );
+  if (osLine !== undefined) io.writeStdout(`\n${osLine}\n`);
 
   if (shouldOpen(flags, io.env)) {
     io.writeStdout(

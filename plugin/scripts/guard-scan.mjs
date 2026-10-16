@@ -6814,6 +6814,139 @@ function configPath(homedir3) {
 function userRulesPath(homedir3) {
   return join3(guardDir(homedir3), "guardrails.json");
 }
+function productLineStatePath(homedir3) {
+  return join3(guardDir(homedir3), ".product-line");
+}
+
+// src/core/tokens.ts
+function tok(n) {
+  return typeof n === "number" && Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
+}
+var EMPTY_TOKEN_TOTALS = {
+  input: 0,
+  output: 0,
+  cacheRead: 0,
+  cacheCreation: 0,
+  cacheCreation5m: 0,
+  cacheCreation1h: 0,
+  turnsWithSplit: 0,
+  turns: 0
+};
+function addUsage(totals, usage) {
+  const u = usage ?? {};
+  const hasSplit = u.cache_creation !== void 0;
+  return {
+    input: totals.input + tok(u.input_tokens),
+    output: totals.output + tok(u.output_tokens),
+    cacheRead: totals.cacheRead + tok(u.cache_read_input_tokens),
+    cacheCreation: totals.cacheCreation + tok(u.cache_creation_input_tokens),
+    cacheCreation5m: totals.cacheCreation5m + (hasSplit ? tok(u.cache_creation?.ephemeral_5m_input_tokens) : 0),
+    cacheCreation1h: totals.cacheCreation1h + (hasSplit ? tok(u.cache_creation?.ephemeral_1h_input_tokens) : 0),
+    turnsWithSplit: totals.turnsWithSplit + (hasSplit ? 1 : 0),
+    turns: totals.turns + 1
+  };
+}
+function totalTokens(t) {
+  return t.input + t.output + t.cacheRead + t.cacheCreation;
+}
+function formatTokens(n) {
+  if (!Number.isFinite(n) || n < 0) return "0";
+  if (n >= 1e9) return `${(n / 1e9).toFixed(1)}B`;
+  if (n >= 1e6) return `${(n / 1e6).toFixed(1)}M`;
+  if (n >= 1e3) return `${(n / 1e3).toFixed(1)}K`;
+  return String(Math.floor(n));
+}
+function formatCount(n) {
+  if (!Number.isFinite(n) || n < 0) return "0";
+  return Math.floor(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+}
+
+// src/core/product-line.ts
+var SUPPORTED_AGENTS = /* @__PURE__ */ new Set(["claude", "cursor"]);
+var plural = (n, one, many) => `${formatCount(n)} ${n === 1 ? one : many}`;
+var PRODUCT_LINE = {
+  destination: "https://agenttrail.sh/agenttrail-os",
+  utm: "utm_source=guard&utm_medium=cli",
+  /** `config.json` key. Only `false` turns the line off. */
+  configKey: "productLine",
+  /** At most one showing per command in this many hours. */
+  intervalHours: 24,
+  /** How far back `status` counts decisions. */
+  statusWindowDays: 7,
+  text: {
+    init: (url) => `Want a teammate to approve risky actions, and every session on record? AgentTrail OS (Team plan): ${url}`,
+    statusAsks: (asks, url) => `This week guard asked about ${plural(asks, "action", "actions")}. In AgentTrail OS a teammate approves them from the app (Team plan): ${url}`,
+    statusBlocks: (blocks, url) => `Guard blocked ${plural(blocks, "action", "actions")} this week. AgentTrail OS finds the failures agents repeat and suggests the guardrail that stops them: ${url}`,
+    scanAsks: (asks, url) => `${formatCount(asks)} of these would have waited for a teammate's approval in AgentTrail OS (Team plan), not a prompt: ${url}`,
+    scanMatches: (url) => `AgentTrail OS finds the failures agents repeat and suggests the guardrail that stops them: ${url}`,
+    add: (id, url) => `Share it: with everyone, run agenttrail-guard guardrails export ${id}; with your team, AgentTrail OS syncs guardrails to every teammate (Team plan): ${url}`
+  }
+};
+function productLineUrl(surface) {
+  return `${PRODUCT_LINE.destination}?${PRODUCT_LINE.utm}&utm_content=${surface}`;
+}
+function productLineText(facts) {
+  const url = productLineUrl(facts.surface);
+  const t = PRODUCT_LINE.text;
+  switch (facts.surface) {
+    case "init":
+      return SUPPORTED_AGENTS.has(facts.agent) ? t.init(url) : void 0;
+    case "status":
+      if (facts.asks > 0) return t.statusAsks(facts.asks, url);
+      if (facts.blocks > 0) return t.statusBlocks(facts.blocks, url);
+      return void 0;
+    case "scan":
+      if (!SUPPORTED_AGENTS.has(facts.agent) || facts.matches === 0) return void 0;
+      return facts.asks > 0 ? t.scanAsks(facts.asks, url) : t.scanMatches(url);
+    case "add":
+      return t.add(facts.guardrailId, url);
+    default:
+      return void 0;
+  }
+}
+function productLineEnabled(configText) {
+  if (configText === void 0) return true;
+  try {
+    const raw = JSON.parse(configText);
+    if (raw === null || typeof raw !== "object" || Array.isArray(raw)) return true;
+    return raw[PRODUCT_LINE.configKey] !== false;
+  } catch {
+    return true;
+  }
+}
+function readState(text) {
+  if (text === void 0) return {};
+  try {
+    const raw = JSON.parse(text);
+    return raw !== null && typeof raw === "object" && !Array.isArray(raw) ? { ...raw } : {};
+  } catch {
+    return {};
+  }
+}
+function productLineDue(stateText, surface, now) {
+  const last = readState(stateText)[surface];
+  if (typeof last !== "string") return true;
+  const at = Date.parse(last);
+  if (Number.isNaN(at) || at > now.getTime()) return true;
+  return now.getTime() - at >= PRODUCT_LINE.intervalHours * 36e5;
+}
+function recordProductLine(stateText, surface, now) {
+  const state = readState(stateText);
+  state[surface] = now.toISOString();
+  return `${JSON.stringify(state, null, 2)}
+`;
+}
+function takeProductLine(ctx, facts) {
+  if (!ctx.interactive || !productLineEnabled(ctx.configText)) return void 0;
+  const text = productLineText(facts);
+  if (text === void 0) return void 0;
+  const state = ctx.readFile(ctx.statePath);
+  if (!productLineDue(state, facts.surface, ctx.now)) return void 0;
+  if (!ctx.writeFile(ctx.statePath, recordProductLine(state, facts.surface, ctx.now))) {
+    return void 0;
+  }
+  return text;
+}
 
 // src/core/report.ts
 import { createHash } from "crypto";
@@ -7819,49 +7952,6 @@ ${REPORT_SCRIPT_LOGIC.trim()}
 ${REPORT_SCRIPT_GLUE.trim()}
 })();
 `;
-
-// src/core/tokens.ts
-function tok(n) {
-  return typeof n === "number" && Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
-}
-var EMPTY_TOKEN_TOTALS = {
-  input: 0,
-  output: 0,
-  cacheRead: 0,
-  cacheCreation: 0,
-  cacheCreation5m: 0,
-  cacheCreation1h: 0,
-  turnsWithSplit: 0,
-  turns: 0
-};
-function addUsage(totals, usage) {
-  const u = usage ?? {};
-  const hasSplit = u.cache_creation !== void 0;
-  return {
-    input: totals.input + tok(u.input_tokens),
-    output: totals.output + tok(u.output_tokens),
-    cacheRead: totals.cacheRead + tok(u.cache_read_input_tokens),
-    cacheCreation: totals.cacheCreation + tok(u.cache_creation_input_tokens),
-    cacheCreation5m: totals.cacheCreation5m + (hasSplit ? tok(u.cache_creation?.ephemeral_5m_input_tokens) : 0),
-    cacheCreation1h: totals.cacheCreation1h + (hasSplit ? tok(u.cache_creation?.ephemeral_1h_input_tokens) : 0),
-    turnsWithSplit: totals.turnsWithSplit + (hasSplit ? 1 : 0),
-    turns: totals.turns + 1
-  };
-}
-function totalTokens(t) {
-  return t.input + t.output + t.cacheRead + t.cacheCreation;
-}
-function formatTokens(n) {
-  if (!Number.isFinite(n) || n < 0) return "0";
-  if (n >= 1e9) return `${(n / 1e9).toFixed(1)}B`;
-  if (n >= 1e6) return `${(n / 1e6).toFixed(1)}M`;
-  if (n >= 1e3) return `${(n / 1e3).toFixed(1)}K`;
-  return String(Math.floor(n));
-}
-function formatCount(n) {
-  if (!Number.isFinite(n) || n < 0) return "0";
-  return Math.floor(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
-}
 
 // src/core/report.ts
 var REPOSITORY_URL = "https://github.com/agenttrailhq/guard";
@@ -11573,7 +11663,7 @@ var SCAN_USAGE = `agenttrail-guard scan \u2014 what your agent has been doing
 
 Usage:
   agenttrail-guard scan --agent <claude|cursor|codex> [--dir <root>] [--out <file>]
-                        [--artifact] [--no-open] [--review] [--json]
+                        [--artifact] [--no-open] [--review] [--json] [--quiet]
 
   --agent <app>  Whose sessions to read, and it is required: claude reads Claude Code's
                  transcripts in ~/.claude/projects, cursor reads Cursor's session files
@@ -11587,6 +11677,7 @@ Usage:
   --no-open      Do not open the report in your browser. It opens by default, except
                  with --artifact or when CI is set
   --json         Print the result as JSON and write no report file
+  --quiet        Leave out the closing line about AgentTrail OS
   --review       Print every command and guardrail the report will contain, and ask
                  before writing it. Redaction is thorough but not a guarantee; this
                  is how you check it yourself before the file exists.
@@ -11601,6 +11692,7 @@ function parseScanFlags(argv) {
   let agentRefused = false;
   let dir;
   let json = false;
+  let quiet = false;
   let noOpen = false;
   let artifact = false;
   let out;
@@ -11623,6 +11715,7 @@ function parseScanFlags(argv) {
       }
     } else if (arg.startsWith("--agent=")) takeAgent(arg.slice("--agent=".length));
     else if (arg === "--json") json = true;
+    else if (arg === "--quiet") quiet = true;
     else if (arg === "--no-open") noOpen = true;
     else if (arg === "--artifact") artifact = true;
     else if (arg === "--review") review = true;
@@ -11653,6 +11746,7 @@ function parseScanFlags(argv) {
     agent: agentRefused ? void 0 : agent,
     dir,
     json,
+    quiet,
     noOpen,
     artifact,
     out,
@@ -11818,14 +11912,14 @@ function renderSummary(result, colorsEnabled, reportPath) {
     }
   };
   const actionTone = (action, text) => action === "block" ? c.red(text) : action === "require_approval" ? c.yellow(text) : c.dim(text);
-  const plural = (n, word) => `${formatCount(n)} ${word}${n === 1 ? "" : "s"}`;
+  const plural2 = (n, word) => `${formatCount(n)} ${word}${n === 1 ? "" : "s"}`;
   const was = (n) => n === 1 ? "was" : "were";
   out.push(
     [
       agentName(result.agent),
-      c.bold(plural(result.sessions, "session")),
-      c.bold(plural(result.riskyActions, "risky action")),
-      c.bold(plural(result.recurring.length, "recurring mistake"))
+      c.bold(plural2(result.sessions, "session")),
+      c.bold(plural2(result.riskyActions, "risky action")),
+      c.bold(plural2(result.recurring.length, "recurring mistake"))
     ].join(" \xB7 ")
   );
   if (t !== null) {
@@ -11851,14 +11945,14 @@ function renderSummary(result, colorsEnabled, reportPath) {
   if (result.quarantined > 0) {
     out.push(
       c.yellow(
-        `${plural(result.quarantined, "file")} yielded no session and ${was(result.quarantined)} skipped.`
+        `${plural2(result.quarantined, "file")} yielded no session and ${was(result.quarantined)} skipped.`
       )
     );
   }
   if (result.notRead > 0) {
     out.push(
       c.dim(
-        `${plural(result.notRead, "further transcript file")} ${was(result.notRead)} not read; see the report for why.`
+        `${plural2(result.notRead, "further transcript file")} ${was(result.notRead)} not read; see the report for why.`
       )
     );
   }
@@ -12023,6 +12117,25 @@ Could not write the report to ${reportPath}
 `));
     return 1;
   }
+  const osLine = takeProductLine(
+    {
+      interactive: deps.productLine !== false && io.isTTY() && !flags.quiet,
+      configText: io.readFile(configPath(home)),
+      statePath: productLineStatePath(home),
+      now,
+      readFile: (path) => io.readFile(path),
+      writeFile: (path, text) => io.writeFile(path, text)
+    },
+    {
+      surface: "scan",
+      agent,
+      matches: result.riskyActions,
+      asks: matchTally(result).byAction.find((a) => a.action === "require_approval")?.count ?? 0
+    }
+  );
+  if (osLine !== void 0) io.writeStdout(`
+${osLine}
+`);
   if (shouldOpen(flags, io.env)) {
     io.writeStdout(
       colors.dim(
@@ -12122,7 +12235,7 @@ function createRealScanIO() {
 }
 
 // src/scan-entry.ts
-var code = await runScan(process.argv.slice(2), createRealScanIO());
+var code = await runScan(process.argv.slice(2), createRealScanIO(), { productLine: false });
 if (code !== 0) {
   process.exitCode = code;
 }

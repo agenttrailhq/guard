@@ -16,7 +16,8 @@
 import { runScan } from "./commands/scan.js";
 import { createRealScanIO } from "./scan-io.js";
 
-const code = await runScan(process.argv.slice(2), createRealScanIO());
+// The skill's output is read by the agent, so the AgentTrail OS line is left out.
+const code = await runScan(process.argv.slice(2), createRealScanIO(), { productLine: false });
 if (code !== 0) {
   process.exitCode = code;
 }
