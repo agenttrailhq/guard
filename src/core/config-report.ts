@@ -197,5 +197,13 @@ export function inspectConfig(
     }
   }
 
+  // ── productLine: only `false` turns the AgentTrail OS line off. ────────────
+  if (obj.productLine !== undefined && typeof obj.productLine !== "boolean") {
+    problems.push({
+      where: "productLine",
+      reason: `${JSON.stringify(obj.productLine)} is not true or false — it was ignored, so the AgentTrail OS line is still on. Set it to false to turn the line off.`,
+    });
+  }
+
   return { config, problems };
 }

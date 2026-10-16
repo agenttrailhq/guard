@@ -187,6 +187,15 @@ describe("the colour helper is unreachable from the hook", () => {
   });
 });
 
+describe("the AgentTrail OS line is unreachable from the hook", () => {
+  // `init`, `status`, `scan` and `guardrails add` may print it. A hook answer never may: it
+  // is read mid-task by the agent and the person at the keyboard.
+  it("core/product-line.ts is not in the hook graph", () => {
+    const graph = hookBundleGraph().map((f) => relative(PKG_ROOT, f));
+    expect(graph).not.toContain(join("src", "core", "product-line.ts"));
+  });
+});
+
 describe("the per-app modules are in the hook graph", () => {
   // Named, so every fence in this file is known to cover them: a module that fell out of
   // the graph would pass every fence without being checked.
