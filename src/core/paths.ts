@@ -36,6 +36,15 @@ export function eventsPath(homedir: string): string {
 }
 
 /**
+ * `.product-line` — when `init`, `status`, `scan` and `guardrails add` last printed the
+ * AgentTrail OS line, one ISO timestamp per command. Never read by the hook. Deleting it is
+ * always safe: the line shows once more, then waits a day again.
+ */
+export function productLineStatePath(homedir: string): string {
+  return join(guardDir(homedir), ".product-line");
+}
+
+/**
  * `.last-decision` — a one-line marker holding a HASH of the last decision the recorder
  * wrote, so the recorder can tell a duplicate hook invocation from a fresh call.
  *

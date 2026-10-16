@@ -108,6 +108,7 @@ export function serializeDefaultConfig(): string {
       guardrailActionOverrides: {},
       allowlist: [],
       crashReports: false,
+      productLine: true,
     },
     null,
     2,
