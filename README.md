@@ -698,6 +698,22 @@ Not sure which fits? See
 [AgentTrail Guard vs AgentTrail OS](https://www.agenttrail.sh/guard-vs-os) for a detailed
 comparison, or [get started](https://www.agenttrail.sh/get-started) with either.
 
+### The one line about AgentTrail OS
+
+`init`, `status`, `scan` and `guardrails add` can end with one line about AgentTrail OS,
+printed after their own output. Each line uses your own numbers. For example, `status`
+shows it only when Guard asked about or blocked an action in the last 7 days, and `scan`
+shows it only when the scan matched something. There is no line for Codex CLI, which
+AgentTrail OS does not support yet.
+
+- It shows at most once a day per command, and only when the output is a terminal.
+- It never appears in a hook's answer, so your agent never sees it.
+- It is printed text: showing it sends nothing, and nothing opens unless you click the link.
+
+To turn it off, pass `--quiet` (or `--json` where a command has it), or set
+`"productLine": false` in `~/.agenttrail/guard/config.json`. The setting covers these
+terminal lines only; it does not change the scan report.
+
 ## Troubleshooting
 
 | What you see | What to check |
@@ -1215,6 +1231,10 @@ give `--out`, because that file is for you to read and share.
   only what you changed: every pack not named in `disabledPacks` is on, including packs
   added in later releases. Written by `init` if it is absent, and never overwritten after
   that.
+- `config.json` also holds `productLine`. Set it to `false` to turn off
+  [the line about AgentTrail OS](#the-one-line-about-agenttrail-os).
+- `.product-line`: when each command last printed that line, so it shows at most once a
+  day. Deleting it is safe.
 - `guardrails.json`: your own guardrails, enforced alongside the bundled ones. Starts as
   `[]`; `guardrails add` writes to it. One here that is invalid is skipped, not fatal,
   and **`status` is where you find out**: a hook's stderr goes to a debug log you will
