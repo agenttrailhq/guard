@@ -111,8 +111,10 @@ import {
   cursorHooksPath,
   cursorInstallRecordPath,
   eventsPath,
+  productLineStatePath,
   userRulesPath,
 } from "../core/paths.js";
+import { recentDecisionCounts, takeProductLine, writeOrFalse } from "../core/product-line.js";
 import { isRedacted, PATTERN_PLACEHOLDER } from "../core/redaction.js";
 import { blockFixtureCommands } from "../core/rule-fixtures.js";
 import { buildRuleViews } from "../core/rule-view.js";
@@ -222,6 +224,8 @@ export interface StatusDeps {
   readonly now?: Date;
   /** `--clear-history`: empty the decision log and return, printing nothing else. */
   readonly clearHistory?: boolean;
+  /** `--quiet`: leave out optional lines. Today that is only the AgentTrail OS line. */
+  readonly quiet?: boolean;
   /** Reads `~/.cursor/hooks.json` and guard's Cursor files. The real file system when omitted. */
   readonly cursorIo?: CursorFileIO;
   /** Reads `~/.codex/hooks.json` and guard's Codex files. The real file system when omitted. */
@@ -930,6 +934,20 @@ export async function runStatus(io: SetupIO, deps: StatusDeps = {}): Promise<num
       );
     }
   }
+
+  // ── The AgentTrail OS line: last, and only when this week's log gives it a reason. ──
+  const osLine = takeProductLine(
+    {
+      interactive: io.isTTY?.() === true && deps.quiet !== true,
+      configText,
+      statePath: productLineStatePath(home),
+      now,
+      readFile: (path) => io.readFile(path),
+      writeFile: writeOrFalse((path, text) => io.writeFileAtomic(path, text)),
+    },
+    { surface: "status", ...recentDecisionCounts(records, now) },
+  );
+  if (osLine !== undefined) out.push("", osLine);
 
   io.writeStdout(`${out.join("\n")}\n`);
   return 0;

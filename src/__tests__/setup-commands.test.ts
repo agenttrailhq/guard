@@ -21,6 +21,7 @@ import {
 } from "../commands/status.js";
 import { runUninstall, type UninstallDeps } from "../commands/uninstall.js";
 import { parseConfig } from "../core/config.js";
+import { productLineText } from "../core/product-line.js";
 import { PATTERN_PLACEHOLDER } from "../core/redaction.js";
 import type { GuardRule } from "../core/types.js";
 import { VERSION } from "../core/version.js";
@@ -2525,5 +2526,175 @@ describe("status agrees with init and uninstall for Codex", () => {
     from = h.out().length;
     expect(await runStatus(h.io, { codexIo: codex.io, guardIo })).toBe(0);
     expect(codexSection(h.out().slice(from))).toBe(`Codex CLI\n${CODEX_NOT_INSTALLED}`);
+  });
+});
+
+describe("the AgentTrail OS line in init and status", () => {
+  const STATE = `${HOME}/.agenttrail/guard/.product-line`;
+  const EVENTS = `${HOME}/.agenttrail/guard/events.jsonl`;
+  const NOW = new Date("2026-03-10T12:00:00.000Z");
+  const INIT_LINE = productLineText({ surface: "init", agent: "claude" }) as string;
+
+  /** The harness, as a terminal. */
+  function tty(h: Harness): SetupIO {
+    return { ...h.io, isTTY: () => true };
+  }
+
+  const decision = (decisionValue: string, agent: string, ts = "2026-03-09T12:00:00.000Z") =>
+    JSON.stringify({
+      ts,
+      tool: "Bash",
+      decision: decisionValue,
+      ruleId: "local.example",
+      command: "./deploy.sh",
+      agent,
+    });
+
+  function lastLine(out: string): string {
+    return out.trimEnd().split("\n").at(-1) ?? "";
+  }
+
+  it("init --agent claude ends with the line, and records the showing", async () => {
+    const h = harness();
+    expect(await runInit(tty(h), CLAUDE, { ...initDeps, now: NOW })).toBe(0);
+    expect(lastLine(h.out())).toBe(INIT_LINE);
+    expect(h.out().split(INIT_LINE).length).toBe(2);
+    expect(JSON.parse(h.files.get(STATE) ?? "{}").init).toBe(NOW.toISOString());
+  });
+
+  it("init --agent cursor ends with the line", async () => {
+    const h = harness();
+    const cursor = fakeCursorFiles({
+      files: { [`${SCAFFOLD}/scripts/guard-hook.mjs`]: "// hook\n" },
+    });
+    await runInit(
+      tty(h),
+      { agent: "cursor" },
+      { ...initDeps, cursorIo: cursor.io, nodePath: "/n", now: NOW },
+    );
+    expect(lastLine(h.out())).toBe(INIT_LINE);
+  });
+
+  it("init --agent codex prints no line", async () => {
+    const h = harness();
+    const codex = fakeCodexFiles({
+      files: { [`${SCAFFOLD}/scripts/guard-hook.mjs`]: "// hook\n" },
+    });
+    await runInit(
+      tty(h),
+      { agent: "codex" },
+      { ...initDeps, codexIo: codex.io, nodePath: "/n", now: NOW },
+    );
+    expect(h.out()).not.toContain("AgentTrail OS");
+    expect(h.files.has(STATE)).toBe(false);
+  });
+
+  it.each([
+    ["--print", { ...CLAUDE, print: true }, true],
+    ["--quiet", { ...CLAUDE, quiet: true }, true],
+    ["not a terminal", CLAUDE, false],
+  ] as const)("init with %s prints no line", async (_label, args, terminal) => {
+    const h = harness();
+    await runInit(terminal ? tty(h) : h.io, args, { ...initDeps, now: NOW });
+    expect(h.out()).not.toContain("AgentTrail OS");
+    expect(h.files.has(STATE)).toBe(false);
+  });
+
+  it('init prints no line when config.json says "productLine": false', async () => {
+    const h = harness({ files: { [CONFIG_FILE]: configWith({ productLine: false }) } });
+    await runInit(tty(h), CLAUDE, { ...initDeps, now: NOW });
+    expect(h.out()).not.toContain("AgentTrail OS");
+  });
+
+  it("init shows it at most once a day", async () => {
+    const h = harness();
+    await runInit(tty(h), CLAUDE, { ...initDeps, now: NOW });
+    const later = new Date(NOW.getTime() + 23 * 3_600_000);
+    let from = h.out().length;
+    await runInit(tty(h), CLAUDE, { ...initDeps, now: later });
+    expect(h.out().slice(from)).not.toContain("AgentTrail OS");
+    const nextDay = new Date(NOW.getTime() + 25 * 3_600_000);
+    from = h.out().length;
+    await runInit(tty(h), CLAUDE, { ...initDeps, now: nextDay });
+    expect(lastLine(h.out().slice(from))).toBe(INIT_LINE);
+  });
+
+  it("init still succeeds, with no line, when the showing cannot be recorded", async () => {
+    const h = harness({
+      files: { [CONFIG_FILE]: configWith({}), [`${HOME}/.agenttrail/guard/guardrails.json`]: "[]" },
+    });
+    const io: SetupIO = {
+      ...tty(h),
+      writeFileAtomic: () => {
+        throw new Error("EROFS: read-only file system");
+      },
+    };
+    expect(await runInit(io, CLAUDE, { ...initDeps, now: NOW })).toBe(0);
+    expect(h.out()).not.toContain("AgentTrail OS");
+  });
+
+  it("status ends with the asks line when guard asked about something this week", async () => {
+    const h = harness({
+      plugins: [{ id: GUARD_PLUGIN_ID }],
+      files: {
+        [EVENTS]: [
+          decision("ask", "claude"),
+          decision("ask", "cursor"),
+          decision("deny", "claude"),
+        ].join("\n"),
+      },
+    });
+    expect(await runStatus(tty(h), { now: NOW })).toBe(0);
+    expect(lastLine(h.out())).toBe(productLineText({ surface: "status", asks: 2, blocks: 1 }));
+  });
+
+  it("status ends with the blocks line when guard only blocked", async () => {
+    const h = harness({
+      plugins: [{ id: GUARD_PLUGIN_ID }],
+      files: { [EVENTS]: decision("deny", "claude") },
+    });
+    await runStatus(tty(h), { now: NOW });
+    expect(lastLine(h.out())).toBe(productLineText({ surface: "status", asks: 0, blocks: 1 }));
+  });
+
+  it.each([
+    ["no decisions", undefined],
+    ["only allows", decision("allow", "claude")],
+    ["only Codex rows", [decision("ask", "codex"), decision("deny", "codex")].join("\n")],
+    ["only last month", decision("ask", "claude", "2026-02-01T00:00:00.000Z")],
+  ])("status with %s prints no line", async (_label, events) => {
+    const h = harness({
+      plugins: [{ id: GUARD_PLUGIN_ID }],
+      files: events === undefined ? {} : { [EVENTS]: events },
+    });
+    await runStatus(tty(h), { now: NOW });
+    expect(h.out()).not.toContain("AgentTrail OS");
+    expect(h.files.has(STATE)).toBe(false);
+  });
+
+  it.each([
+    ["--quiet", { quiet: true }, true, configWith({})],
+    ["not a terminal", {}, false, configWith({})],
+    ['"productLine": false', {}, true, configWith({ productLine: false })],
+  ] as const)("status with %s prints no line", async (_label, deps, terminal, config) => {
+    const h = harness({
+      plugins: [{ id: GUARD_PLUGIN_ID }],
+      files: { [EVENTS]: decision("ask", "claude"), [CONFIG_FILE]: config },
+    });
+    await runStatus(terminal ? tty(h) : h.io, { now: NOW, ...deps });
+    expect(h.out()).not.toContain("AgentTrail OS");
+  });
+
+  it("status names a productLine that is not a boolean, and still shows the line", async () => {
+    const h = harness({
+      plugins: [{ id: GUARD_PLUGIN_ID }],
+      files: {
+        [EVENTS]: decision("ask", "claude"),
+        [CONFIG_FILE]: configWith({ productLine: "no" }),
+      },
+    });
+    await runStatus(tty(h), { now: NOW });
+    expect(h.out()).toContain("productLine:");
+    expect(lastLine(h.out())).toContain("AgentTrail OS");
   });
 });

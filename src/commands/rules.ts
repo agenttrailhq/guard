@@ -46,6 +46,7 @@ import {
 import { buildGuardSpanContext } from "../core/normalize.js";
 import { isOwaspId, type OwaspId, owaspTitle } from "../core/owasp.js";
 import { guardDir } from "../core/paths.js";
+import { takeProductLine, writeOrFalse } from "../core/product-line.js";
 import { blockFixtureCommands } from "../core/rule-fixtures.js";
 import {
   bannedConstructWarning,
@@ -60,7 +61,6 @@ import { loadUserRules } from "../core/user-rules.js";
 import { parseUserRulesData } from "../core/user-rules-data.js";
 import type { SetupIO } from "../setup-io.js";
 import {
-  addFollowUp,
   addFollowUpAllowed,
   BLANK,
   draftFor,
@@ -289,6 +289,8 @@ function unreadableConfig(files: Files): string {
 export interface RulesDeps {
   /** The rule catalog. `@agenttrail/guardrails` arrives through here. */
   readonly catalog?: readonly GuardRule[];
+  /** Frozen clock for the AgentTrail OS line's once-a-day limit. */
+  readonly now?: Date;
 }
 
 function viewsFor(files: Files, deps: RulesDeps): { views: RuleView[]; invalidCount: number } {
@@ -1183,10 +1185,26 @@ function cmdAdd(io: SetupIO, flags: Flags, files: Files, deps: RulesDeps, path: 
     ...(carriesOwasp(candidate) ? [`NOTE: ${OWASP_IGNORED_NOTE}`] : []),
     `Validated. Added ${rule.id} (${displayAction(rule.defaultAction)}) to ${files.rulesPath}.`,
     `${active} guardrails active.`,
-    ...(addFollowUpAllowed({ quiet: flags.quiet, json: flags.json, isTTY: io.isTTY?.() === true })
-      ? [addFollowUp(rule.id)]
-      : []),
   );
+  // One line about sharing it, after the confirmation. It names `guardrails export` too,
+  // so it takes the place of the export line rather than following it. Never under
+  // `--quiet` or `--json`, and `.product-line` sits beside the `config.json` this command read.
+  const osLine = takeProductLine(
+    {
+      interactive: addFollowUpAllowed({
+        quiet: flags.quiet,
+        json: flags.json,
+        isTTY: io.isTTY?.() === true,
+      }),
+      configText: files.configText,
+      statePath: `${files.dir}/.product-line`,
+      now: deps.now ?? new Date(),
+      readFile: (p) => io.readFile(p),
+      writeFile: writeOrFalse((p, text) => io.writeFileAtomic(p, text)),
+    },
+    { surface: "add", guardrailId: rule.id },
+  );
+  if (osLine !== undefined) r.say(osLine);
   // `--quiet` drops the lines above, but a guardrail that was written and will never fire is
   // worth one line even then.
   if (flags.quiet && !flags.json) {

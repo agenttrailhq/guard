@@ -78,7 +78,7 @@ guardrails subcommands: list  show  enable  disable  set-action  add  remove  al
                         reset  validate  export  (run "agenttrail-guard guardrails --help")
 
 scan flags: --agent <claude|cursor|codex> (required) --dir <root> --out <file> --artifact
-            --no-open --review --json
+            --no-open --review --json --quiet
 scan reads transcripts already on your disk, writes one self-contained HTML file, and
 opens it in your browser (--no-open to skip).
 No account, and no network call of its own — crash reporting above is the one
@@ -88,6 +88,11 @@ operands are redacted before display or write; --review shows every line first.
 Flags:
   --print                      With init: show what would happen, change nothing
   --clear-history              With status: empty the local decision log
+  --quiet                      With init, status or scan: leave out the AgentTrail OS line
+
+init, status, scan and guardrails add may end with one line about AgentTrail OS, at most
+once a day each, and only in a terminal. --quiet, --json, or "productLine": false in
+~/.agenttrail/guard/config.json turns it off.
 `;
 
 // Re-exported from `core/version.ts` so `hook-entry.ts` can read the version
@@ -112,6 +117,7 @@ export async function runCli(
     version?: boolean | undefined;
     print?: boolean | undefined;
     "clear-history"?: boolean | undefined;
+    quiet?: boolean | undefined;
     /**
      * Declared as a string, but a lone `--agent` still arrives as `true`, and
      * `--agent --print` arrives as `"--print"`. `init` and `uninstall` accept only the exact
@@ -127,6 +133,7 @@ export async function runCli(
         version: { type: "boolean", short: "v" },
         print: { type: "boolean" },
         "clear-history": { type: "boolean" },
+        quiet: { type: "boolean" },
         agent: { type: "string" },
       },
       allowPositionals: true,
@@ -196,7 +203,7 @@ export async function runCli(
       // real entry path; a direct unit-test call omits it and gets the global-install line.
       return runInit(
         setup,
-        { print: values.print === true, agent: values.agent },
+        { print: values.print === true, agent: values.agent, quiet: values.quiet === true },
         {
           ...appDeps,
           cliPath: fileURLToPath(import.meta.url),
@@ -206,6 +213,7 @@ export async function runCli(
     if (command === "status") {
       return runStatus(setup, {
         clearHistory: values["clear-history"] === true,
+        quiet: values.quiet === true,
         guardIo: io,
         ...appDeps,
       });

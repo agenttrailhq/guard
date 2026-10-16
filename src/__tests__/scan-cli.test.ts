@@ -19,6 +19,7 @@ import { describe, expect, it } from "vitest";
 import { agentChoiceMessage } from "../commands/agent-choice.js";
 import { parseScanFlags, renderSummary, runScan, shouldOpen } from "../commands/scan.js";
 import { userRulesPath } from "../core/paths.js";
+import { productLineText } from "../core/product-line.js";
 import { ARTIFACT_FILENAME, escapeHtml, REPORT_FILENAME } from "../core/report.js";
 import type { ScanResult } from "../core/scan-report.js";
 import type { GuardAction } from "../core/types.js";
@@ -1249,5 +1250,110 @@ describe("a guardrail the user wrote that reuses a library id", () => {
     expect(row).not.toContain("How this guardrail decides");
     expect(post(html)).not.toContain("billing");
     expect(post(html)).not.toContain("Recursive delete");
+  });
+});
+
+describe("the AgentTrail OS line after the summary", () => {
+  const STATE = "/home/test/.agenttrail/guard/.product-line";
+  const CONFIG = "/home/test/.agenttrail/guard/config.json";
+  const OPENING = "Opening it in your browser.";
+
+  /** A terminal, with an in-memory guard folder so the once-a-day record round-trips. */
+  function terminal(disk: FakeDisk, files: Record<string, string> = {}) {
+    const guardFiles = new Map(Object.entries(files));
+    return fakeIO(disk, {
+      isTTY: () => true,
+      env: {},
+      readFile: (path) => guardFiles.get(path),
+      writeFile: (path, text) => {
+        guardFiles.set(path, text);
+        return true;
+      },
+    });
+  }
+
+  const askLine = (asks: number) =>
+    productLineText({ surface: "scan", agent: "claude", matches: 1, asks }) as string;
+
+  it("Claude Code: the would-ask count, after the summary and before the browser line", async () => {
+    const { io, recorded } = terminal(diskWith(TRANSCRIPT));
+    expect(await runScan(["--agent", "claude"], io, DEPS)).toBe(0);
+    const out = recorded.stdout.join("");
+    const asks = /(\d+) would ask/.exec(out)?.[1];
+    expect(asks).toBeDefined();
+    const line = askLine(Number(asks));
+    expect(out).toContain(`\n${line}\n`);
+    expect(out.indexOf(line)).toBeGreaterThan(out.indexOf("Full report:"));
+    expect(out.indexOf(line)).toBeLessThan(out.indexOf(OPENING));
+    expect(out.split(line).length).toBe(2);
+  });
+
+  it("matches with no would-ask get the approved line", async () => {
+    const { io, recorded } = terminal(
+      diskWith([userLine("x"), assistantLine([bash("rm -rf /tmp/x", "t1")])]),
+    );
+    await runScan(["--agent", "claude", "--no-open"], io, DEPS);
+    expect(recorded.stdout.join("")).toContain(
+      productLineText({ surface: "scan", agent: "claude", matches: 1, asks: 0 }),
+    );
+  });
+
+  it("Cursor gets a line too", async () => {
+    const { io, recorded } = terminal(cursorDisk());
+    await runScan(["--agent", "cursor", "--no-open"], io, DEPS);
+    expect(recorded.stdout.join("")).toContain("AgentTrail OS");
+  });
+
+  it.each([
+    ["Codex", ["--agent", "codex"], codexDisk(), {}],
+    ["no match", ["--agent", "claude"], diskWith([assistantLine([bash("ls -la", "t1")])]), {}],
+    ["--quiet", ["--agent", "claude", "--quiet"], diskWith(TRANSCRIPT), {}],
+    [
+      '"productLine": false',
+      ["--agent", "claude"],
+      diskWith(TRANSCRIPT),
+      { [CONFIG]: '{"productLine": false}' },
+    ],
+  ] as const)("%s: no line", async (_label, argv, disk, files) => {
+    const { io, recorded } = terminal(disk, files);
+    await runScan([...argv, "--no-open"], io, DEPS);
+    expect(recorded.stdout.join("")).not.toContain("AgentTrail OS");
+    expect(recorded.written.has(STATE)).toBe(false);
+  });
+
+  it("--json: no line, and stdout stays one JSON document", async () => {
+    const { io, recorded } = terminal(diskWith(TRANSCRIPT));
+    await runScan(["--agent", "claude", "--json"], io, DEPS);
+    const out = recorded.stdout.join("");
+    expect(out).not.toContain("AgentTrail OS");
+    expect(() => JSON.parse(out)).not.toThrow();
+  });
+
+  it("not a terminal, or the plugin's skill entry: no line", async () => {
+    const piped = fakeIO(diskWith(TRANSCRIPT));
+    await runScan(["--agent", "claude", "--no-open"], piped.io, DEPS);
+    expect(piped.recorded.stdout.join("")).not.toContain("AgentTrail OS");
+
+    const skill = terminal(diskWith(TRANSCRIPT));
+    await runScan(["--agent", "claude", "--no-open"], skill.io, { ...DEPS, productLine: false });
+    expect(skill.recorded.stdout.join("")).not.toContain("AgentTrail OS");
+  });
+
+  it("at most once a day", async () => {
+    const files = { [STATE]: JSON.stringify({ scan: "2026-09-08T08:00:00.000Z" }) };
+    const recent = terminal(diskWith(TRANSCRIPT), files);
+    await runScan(["--agent", "claude", "--no-open"], recent.io, DEPS);
+    expect(recent.recorded.stdout.join("")).not.toContain("AgentTrail OS");
+
+    const old = terminal(diskWith(TRANSCRIPT), {
+      [STATE]: JSON.stringify({ scan: "2026-09-07T08:00:00.000Z" }),
+    });
+    await runScan(["--agent", "claude", "--no-open"], old.io, DEPS);
+    expect(old.recorded.stdout.join("")).toContain("AgentTrail OS");
+  });
+
+  it("the skill entry turns the line off", () => {
+    const entry = readFileSync(join(SRC, "scan-entry.ts"), "utf8");
+    expect(entry).toContain("{ productLine: false }");
   });
 });

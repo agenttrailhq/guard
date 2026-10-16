@@ -28,6 +28,7 @@ import {
 } from "../commands/guardrail-export.js";
 import { runRules } from "../commands/rules.js";
 import { SHIPPED_CATALOG } from "../core/catalog.js";
+import { productLineText } from "../core/product-line.js";
 import type { GuardRule } from "../core/types.js";
 import type { SetupIO } from "../setup-io.js";
 
@@ -132,9 +133,8 @@ function fill(draft: Record<string, unknown>, block: string[], allow: string[]):
 describe("round trip: add → export → fill → validate → export", () => {
   it("ends with a module that parses into the rule the draft held", async () => {
     const h = await added(COMMAND_RULE);
-    expect(h.out()).toContain(
-      "Want everyone to have this guardrail? Run: agenttrail-guard guardrails export local.no-deploy-friday",
-    );
+    // The first add of the day names export inside the AgentTrail OS line.
+    expect(h.out()).toContain("run agenttrail-guard guardrails export local.no-deploy-friday;");
 
     expect(await run(h, "export", "local.no-deploy-friday", "--out", WORK)).toBe(0);
     const draftPath = `${WORK}/pi-no-deploy-friday.json`;
@@ -273,9 +273,11 @@ describe("the line after add", () => {
     return h.out();
   }
 
-  it("prints in an interactive terminal, after the active count", async () => {
+  it("in an interactive terminal, the AgentTrail OS line takes its place", async () => {
     const out = await addWith(true);
-    expect(out).toContain(`guardrails active.\n${ADD_FOLLOW_UP} local.no-deploy-friday\n`);
+    const osLine = productLineText({ surface: "add", guardrailId: "local.no-deploy-friday" });
+    expect(out).toContain(`guardrails active.\n${osLine}\n`);
+    expect(out).not.toContain(ADD_FOLLOW_UP);
   });
 
   it("is silent under --quiet, even in a terminal", async () => {

@@ -21,6 +21,7 @@ import { silenceCommand } from "../commands/status.js";
 import { SHIPPED_CATALOG } from "../core/catalog.js";
 import { parseConfig } from "../core/config.js";
 import { OWASP_IDS, type OwaspId } from "../core/owasp.js";
+import { productLineText } from "../core/product-line.js";
 import { PATTERN_PLACEHOLDER } from "../core/redaction.js";
 import type { ClaudeRunResult, SetupIO } from "../setup-io.js";
 
@@ -1668,5 +1669,56 @@ describe("a personal guardrail never claims an OWASP id", () => {
     // Only the guardrail that carries `owasp` gets a note.
     expect(h.out().match(/^ {4}NOTE /gm)).toHaveLength(1);
     expect(h.out()).not.toContain(`NOTE ${USER_RULE_OWN_CATEGORY.id}`);
+  });
+});
+
+describe("guardrails add: the AgentTrail OS line", () => {
+  const STATE = `${DIR}/.product-line`;
+  const NOW = new Date("2026-03-10T12:00:00.000Z");
+  const LINE = productLineText({ surface: "add", guardrailId: USER_RULE.id }) as string;
+
+  function tty(files: Record<string, string> = {}) {
+    const h = harness({ "/tmp/r.json": JSON.stringify(USER_RULE), ...files });
+    return { ...h, io: { ...h.io, isTTY: () => true } };
+  }
+
+  it("ends with one line naming both ways to share", async () => {
+    const h = tty();
+    expect(await runRules(["add", "/tmp/r.json"], h.io, { now: NOW })).toBe(0);
+    const lines = h.out().trimEnd().split("\n");
+    expect(lines.at(-2)).toContain("guardrails active.");
+    expect(lines.at(-1)).toBe(LINE);
+    expect(JSON.parse(h.raw(STATE) ?? "{}").add).toBe(NOW.toISOString());
+  });
+
+  it.each([
+    ["--quiet", ["--quiet"], {}],
+    ["--json", ["--json"], {}],
+    ['"productLine": false', [], { [CONFIG]: '{"productLine": false}' }],
+    ["shown in the last day", [], { [STATE]: JSON.stringify({ add: "2026-03-10T01:00:00.000Z" }) }],
+  ])("%s: no line", async (_label, flags, files) => {
+    const h = tty(files);
+    await runRules(["add", "/tmp/r.json", ...flags], h.io, { now: NOW });
+    expect(h.out()).not.toContain("AgentTrail OS");
+  });
+
+  it("not a terminal: no line, and nothing recorded", async () => {
+    const h = harness({ "/tmp/r.json": JSON.stringify(USER_RULE) });
+    await runRules(["add", "/tmp/r.json"], h.io, { now: NOW });
+    expect(h.out()).not.toContain("AgentTrail OS");
+    expect(h.raw(STATE)).toBeUndefined();
+  });
+
+  it("a rejected guardrail: no line", async () => {
+    const h = tty({ "/tmp/r.json": "{}" });
+    expect(await runRules(["add", "/tmp/r.json"], h.io, { now: NOW })).toBe(1);
+    expect(h.out()).not.toContain("AgentTrail OS");
+  });
+
+  it("--config <dir> keeps the record beside that config.json", async () => {
+    const h = tty();
+    await runRules(["add", "/tmp/r.json", "--config", "/scratch"], h.io, { now: NOW });
+    expect(h.raw("/scratch/.product-line")).toBeDefined();
+    expect(h.raw(STATE)).toBeUndefined();
   });
 });
