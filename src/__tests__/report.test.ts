@@ -392,9 +392,30 @@ describe("the logo is drawn inline and references nothing", () => {
     expect(svg).not.toMatch(/xmlns|href|url\s*\(|<use\b|<image\b|<title\b|<script|\son[a-z]+=/i);
   });
 
+  /** The page's own words: no markup, script, styles, commands, the lockup's tag or the OS link. */
+  const prose = (html: string): string =>
+    withoutScripts(html)
+      .replace(/<style>[\s\S]*?<\/style>/, "")
+      .replace(/<code[^>]*>[\s\S]*?<\/code>/g, "")
+      .replace('<span class="product-tag">Guard</span>', "")
+      .replace(`>${PRODUCT_NOTE.secondary.label}<`, "><")
+      .replace(/<[^>]+>/g, " ");
+  const BARE = /(?<!AgentTrail )\b(Guard|OS)\b/;
+
+  it.each(RENDERINGS)("%s names the products in full in its prose", (_n, html) => {
+    expect(prose(html)).not.toMatch(BARE);
+    expect(prose(html)).toContain("AgentTrail Guard");
+  });
+
+  it("negative control — a bare product name is caught", () => {
+    expect(prose("<h1>Guard would have stopped 1 action</h1>")).toMatch(BARE);
+    expect(prose("<p>OS remembers it</p>")).toMatch(BARE);
+    expect(prose("<p>AgentTrail OS remembers it</p>")).not.toMatch(BARE);
+  });
+
   it.each(RENDERINGS)("%s shows the lockup once, named for assistive technology", (_n, html) => {
     expect(html.split('class="lockup"').length - 1).toBe(1);
-    expect(html).toContain('<div class="brand" role="img" aria-label="agenttrail">');
+    expect(html).toContain('<div class="brand" role="img" aria-label="AgentTrail">');
   });
 });
 
