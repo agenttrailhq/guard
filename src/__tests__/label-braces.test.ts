@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { correctSingleBraceLabels, findSingleBraceLabels } from "../core/label-braces.js";
 import { createCompiledLabelMatcher } from "../engine/matchers.js";
+import { BACKSTOP_MS, growth, LINEAR_RATIO } from "./linear-time.js";
 
 describe("the trap is real", () => {
   it("`{Bash}` does not match Bash, while `Bash` and `{Bash,PowerShell}` do", () => {
@@ -101,11 +102,14 @@ describe("findSingleBraceLabels", () => {
     ]);
   });
 
-  it("stays linear on a long run of unclosed brackets and braces", () => {
-    const start = performance.now();
-    findSingleBraceLabels({ any_of: [{ label: "[".repeat(50_000) }] });
-    findSingleBraceLabels({ any_of: [{ label: "{".repeat(50_000) }] });
-    expect(performance.now() - start).toBeLessThan(1_000);
+  it.each(["[", "{"])("stays linear on a long run of unclosed %s", (open) => {
+    const { ratio, large } = growth(
+      (label) => findSingleBraceLabels({ any_of: [{ label }] }),
+      (size) => open.repeat(size),
+      50_000,
+    );
+    expect(ratio).toBeLessThan(LINEAR_RATIO);
+    expect(large).toBeLessThan(BACKSTOP_MS);
   });
 
   it("is total on shapes that are not a match object", () => {
