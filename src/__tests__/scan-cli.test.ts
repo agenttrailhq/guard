@@ -552,6 +552,7 @@ describe("the terminal summary", () => {
     action,
     count,
     examples: [],
+    owasp: [],
   });
   const RESULT: ScanResult = {
     agent: "claude",
@@ -572,6 +573,7 @@ describe("the terminal summary", () => {
       finding("t.odd", "zany", "warn", 50),
     ],
     recurring: [],
+    owasp: [],
     tokens: null,
   };
 

@@ -5363,6 +5363,33 @@ var RULES_BY_PACK = {
 };
 var RULES = PACKS.flatMap((pack) => RULES_BY_PACK[pack]);
 
+// node_modules/@agenttrail/guardrails/dist/chunk-T6MJIV52.js
+var OWASP_IDS = [
+  "ASI01",
+  "ASI02",
+  "ASI03",
+  "ASI04",
+  "ASI05",
+  "ASI06",
+  "ASI07",
+  "ASI08",
+  "ASI09",
+  "ASI10",
+  "LLM01",
+  "LLM02",
+  "LLM03",
+  "LLM04",
+  "LLM05",
+  "LLM06",
+  "LLM07",
+  "LLM08",
+  "LLM09",
+  "LLM10"
+];
+function owaspIndex(id) {
+  return OWASP_IDS.indexOf(id);
+}
+
 // src/core/catalog.ts
 var SHIPPED_CATALOG = RULES;
 
@@ -7898,6 +7925,28 @@ function buildGuardSpanContext(mapped) {
   return { span, agentId: NIL_UUID, projectId: NIL_UUID, developerId: null };
 }
 
+// src/core/owasp.ts
+function owaspTally(findings, callIds) {
+  const calls = /* @__PURE__ */ new Map();
+  for (const ids of callIds) {
+    for (const id of new Set(ids)) calls.set(id, (calls.get(id) ?? 0) + 1);
+  }
+  const matches = /* @__PURE__ */ new Map();
+  const guardrails = /* @__PURE__ */ new Map();
+  for (const finding of findings) {
+    for (const id of finding.owasp) {
+      matches.set(id, (matches.get(id) ?? 0) + finding.count);
+      guardrails.set(id, (guardrails.get(id) ?? 0) + 1);
+    }
+  }
+  return [...guardrails.keys()].sort((a, b) => owaspIndex(a) - owaspIndex(b)).map((id) => ({
+    id,
+    callCount: calls.get(id) ?? 0,
+    ruleMatches: matches.get(id) ?? 0,
+    guardrailCount: guardrails.get(id) ?? 0
+  }));
+}
+
 // src/core/redaction.ts
 var REDACTION_PREFIX = "[REDACTED:";
 
@@ -9028,6 +9077,7 @@ function aggregateScan(corpus, catalog, allowlist) {
   let notActions = 0;
   const unmapped2 = /* @__PURE__ */ new Map();
   let tokens = EMPTY_TOKEN_TOTALS;
+  const callOwasp = [];
   for (const session of corpus.sessions) {
     skippedLines += session.skippedLines;
     for (const turn of session.turns) tokens = addUsage(tokens, turn.usage);
@@ -9047,6 +9097,7 @@ function aggregateScan(corpus, catalog, allowlist) {
       if (decision.matches.length === 0) continue;
       riskyActions++;
       const text = displayTextOf(mapped);
+      callOwasp.push(decision.matches.flatMap((m) => ruleOf.get(m.ruleId)?.rule.owasp ?? []));
       for (const match of decision.matches) {
         let acc = byRule.get(match.ruleId);
         if (acc === void 0) {
@@ -9066,7 +9117,8 @@ function aggregateScan(corpus, catalog, allowlist) {
     const severity = entry?.rule.severity ?? "unknown";
     const action = entry?.action ?? "warn";
     const examples = [...acc.shapes].map(([text, count2]) => ({ text, count: count2 })).sort(byCountThenText);
-    findings.push({ ruleId, title, severity, action, count: acc.count, examples });
+    const owasp = [...entry?.rule.owasp ?? []];
+    findings.push({ ruleId, title, severity, action, count: acc.count, examples, owasp });
     for (const example of examples) {
       if (example.count >= 2) {
         recurring.push({ text: example.text, count: example.count, ruleId, title });
@@ -9086,6 +9138,7 @@ function aggregateScan(corpus, catalog, allowlist) {
     riskyActions,
     findings,
     recurring,
+    owasp: owaspTally(findings, callOwasp),
     // Withheld, not zeroed, when the records carry no counts: a total of 0 is a
     // measurement nobody made.
     tokens: capabilities.tokens ? tokens : null

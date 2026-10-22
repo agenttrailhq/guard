@@ -451,6 +451,7 @@ describe("what the report says", () => {
           action: "warn" as const,
           count: 1,
           examples: [{ text: "boom", count: 1 }],
+          owasp: [],
         },
       ],
     };
@@ -502,6 +503,7 @@ describe("what the report says", () => {
           action: "warn",
           count: 1,
           examples: [{ text: "boom", count: 1 }],
+          owasp: [],
         },
       ],
     };
@@ -559,6 +561,7 @@ describe("a backticked span in a guardrail title renders as code", () => {
         action: "block",
         count: 2,
         examples: [{ text: "x", count: 2 }],
+        owasp: [],
       },
     ],
     recurring: [{ text: "x", count: 2, ruleId: "t.titled", title }],
@@ -589,6 +592,7 @@ describe("the match tally", () => {
     action,
     count,
     examples: [],
+    owasp: [],
   });
 
   it("totals every finding, including those past the table's row cap", () => {
@@ -814,6 +818,7 @@ describe("the pre-flight review lists exactly what the file carries", () => {
       severity: "high",
       action: "warn" as const,
       count: MAX_ROWS + 5 - i,
+      owasp: [],
       examples: Array.from({ length: MAX_EXAMPLES + 2 }, (_, j) => ({
         text: `cmd-${i}-shape-${j} <path>`,
         count: MAX_EXAMPLES + 2 - j,
