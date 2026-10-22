@@ -1052,3 +1052,34 @@ describe("the OWASP section", () => {
     });
   });
 });
+
+describe("every copy button", () => {
+  const html = renderReport(
+    resultWith(
+      [
+        lib("a.q1", "require_approval", 4),
+        lib("a.q2", "require_approval", 3),
+        lib("a.b", "block", 1),
+      ],
+      { block: 1, require_approval: 7, warn: 0 },
+    ),
+    META,
+  );
+  const buttons = [
+    ...html.matchAll(/<button type="button" class="copy js-only"[^>]*>([^<]*)<\/button>/g),
+  ].map((m) => ({ tag: m[0], text: m[1] ?? "", name: m[0].match(/aria-label="([^"]*)"/)?.[1] }));
+
+  it("has its own accessible name, which starts with the text it shows", () => {
+    // The hero's init command, two set-action commands, three next steps and the post.
+    expect(buttons.length).toBe(7);
+    for (const b of buttons) {
+      expect(b.name, b.tag).toBeDefined();
+      expect(b.name?.startsWith(b.text), b.tag).toBe(true);
+    }
+    expect(new Set(buttons.map((b) => b.name)).size).toBe(buttons.length);
+  });
+
+  it("names no guardrail, so nothing a user wrote reaches a button's name", () => {
+    for (const b of buttons) expect(b.name).not.toMatch(/a\.q|a\.b/);
+  });
+});
