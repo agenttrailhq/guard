@@ -820,12 +820,15 @@ function heroSection(
     result.toolCalls === 0
       ? `<p class="lead">${escapeHtml(emptyLead(result))}</p>
 <p class="provenance">${provenance(result, meta, variant)}</p>
-${copyable("cmd-scan-hero", `agenttrail-guard scan --agent ${result.agent} --dir <folder>`, "Copy the scan command")}
-<p class="note">Leave out --dir to read the folder ${escapeHtml(agentName(result.agent))} uses by default.</p>`
+${copyable("cmd-scan-hero", `agenttrail-guard scan --agent ${result.agent}`, "Copy the scan command")}
+<p class="note">This reads the folder ${escapeHtml(agentName(result.agent))} uses by default. To read another folder, add <code>--dir</code> and its path.</p>`
       : `<p class="lead">What your coding agent actually did, and which guardrails would have fired.</p>
 <p class="provenance">${provenance(result, meta, variant)}</p>${top === undefined ? "" : `\n${top}`}
-<div class="actions">
-<a class="button" href="#${fixTarget}">See what to fix first</a>
+<div class="actions">${
+          payload.findings.length > 0
+            ? `\n<a class="button" href="#${fixTarget}">See what to fix first</a>`
+            : ""
+        }
 ${outLink(shareLink(payload.shareText, result.agent), "Share on X", "button secondary")}
 </div>
 ${copyable("cmd-init-hero", `agenttrail-guard init --agent ${result.agent}`, "Copy the init command")}`;
@@ -1341,6 +1344,8 @@ function beforeYouShareSection(result: ScanResult, variant: ReportVariant): stri
     variant === "artifact"
       ? `Redaction is thorough but not a guarantee. Read the findings before passing this page on; the person who published it can check every line with ${review} before the file is written.`
       : `Redaction is thorough but not a guarantee. Read the findings before posting this anywhere public, and run ${review} to see every line before the file is written.`;
+  // With no tool calls read, there are no findings to read and no post to share.
+  const warning = result.toolCalls === 0 ? "" : `\n<p class="warning">${check}</p>`;
   return `<section class="callout" id="privacy">
 <h2>Before you share this</h2>
 <p class="note">This report was made on one machine from transcripts already on its disk, and the scan sent nothing anywhere.</p>
@@ -1351,8 +1356,7 @@ function beforeYouShareSection(result: ScanResult, variant: ReportVariant): stri
 <div><dt><code>&lt;value&gt;</code></dt><dd>stands for a redacted MCP payload value</dd></div>
 <div><dt><code>[REDACTED:&hellip;]</code></dt><dd>stands for a redacted secret; <code>[REDACTED:secret:generic]</code> marks a long random-looking string masked on a best guess</dd></div>
 <div><dt><code>&hellip;</code></dt><dd>marks where a long command was shortened for display</dd></div>
-</dl>
-<p class="warning">${check}</p>
+</dl>${warning}
 <p class="note pdf-tip"><strong>Saving as PDF?</strong> Turn off headers and footers in the print dialog, so the file&rsquo;s location on your disk is not printed on every page.</p>
 </section>`;
 }
