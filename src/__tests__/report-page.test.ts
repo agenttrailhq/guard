@@ -1,4 +1,4 @@
-// cspell:words noopener noreferrer
+// cspell:words middot noopener noreferrer
 /**
  * The report page's sections, what the file carries, and how its one script is fenced.
  *
@@ -17,6 +17,7 @@ import {
   headline,
   MAX_EXAMPLES,
   MAX_ROWS,
+  OWN_CARD_HEADING,
   packLabel,
   postLength,
   type ReportMeta,
@@ -314,8 +315,46 @@ describe("fix these first", () => {
     const section = between(html, 'id="fix-first"', "</section>");
     const link = `${SITE_URL}/guardrails/destructive-data/wt-reset-hard?utm_source=guard&amp;utm_medium=scan-report&amp;utm_campaign=claude&amp;utm_content=guardrail`;
     expect(section).toContain(link);
-    expect(section).toContain("A guardrail you added.");
+    expect(section).toContain(`>${OWN_CARD_HEADING}</a></h3>`);
     expect(section.split("/guardrails/").length - 1).toBe(1);
+  });
+
+  it("heads a user's own card with fixed text, and shows their title and id as plain text", () => {
+    const title = "Stop `./ship.sh` <b>now</b>";
+    const html = renderReport(
+      resultWith([own("t.mine", "block", 2, { title }), lib("a.lib", "block", 1)], {
+        block: 3,
+        require_approval: 0,
+        warn: 0,
+      }),
+      META,
+    );
+    const section = between(html, 'id="fix-first"', "</section>");
+    const headings = [...section.matchAll(/<h3>([\s\S]*?)<\/h3>/g)].map((m) => m[1]);
+    expect(headings).toEqual([
+      `<a href="#finding-0">${OWN_CARD_HEADING}</a>`,
+      '<a href="#finding-1">Library guardrail a.lib</a>',
+    ]);
+    expect(section).toContain(
+      '<p class="own-title">Stop <code>./ship.sh</code> &lt;b&gt;now&lt;/b&gt;</p>',
+    );
+    expect(section).toContain(`${YOUR_GUARDRAILS} &middot; <code>t.mine</code>`);
+    // Nowhere on the page does the title the user wrote become a heading.
+    for (const m of html.matchAll(/<h([1-6])[^>]*>([\s\S]*?)<\/h\1>/g)) {
+      expect(m[2]).not.toContain("ship.sh");
+    }
+  });
+
+  it("gives a library card with no description no description line", () => {
+    const html = renderReport(
+      resultWith([lib("a.bare", "block", 1, { description: undefined })]),
+      META,
+    );
+    const card = between(between(html, 'id="fix-first"', "</section>"), "<article", "</article>");
+    expect(card).toContain(
+      '<a href="#finding-0">Library guardrail a.bare</a></h3>\n<p class="example">',
+    );
+    expect(card).not.toContain("own-title");
   });
 
   it("says so when nothing would have been blocked", () => {
