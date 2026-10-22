@@ -299,6 +299,25 @@ describe("the tuning hint", () => {
     ).toBeUndefined();
   });
 
+  it("on a tie in asks removed, picks the guardrail with more asks of its own", () => {
+    // A pick that removes no asks yet ties with the others. Taking the one with the most asks
+    // of its own (d, then e; or c) is what reaches 60% within three guardrails: by id alone,
+    // the first case would pick c and f after b and remove only 4 of 8.
+    const all = carried("a", "b", "c", "d", "e", "f");
+    expect(tuningHint([ask(["b", "c", "f"], 1), ask(["d", "e"], 4), ask(["b"], 3)], all)).toEqual({
+      ids: ["b", "d", "e"],
+      share: 7 / 8,
+      asks: 8,
+      remaining: 1,
+    });
+    expect(tuningHint([ask(["c", "e"], 6), ask(["a", "f"], 1)], all)).toEqual({
+      ids: ["c", "e"],
+      share: 6 / 7,
+      asks: 7,
+      remaining: 1,
+    });
+  });
+
   it("counts asks in tool calls, not in guardrail matches", () => {
     // Two guardrails asked on the same 4 calls: 8 matches, but only 4 asks.
     expect(tuningHint([ask(["a.x", "a.y"], 4)], carried("a.x", "a.y"))).toBeUndefined();
