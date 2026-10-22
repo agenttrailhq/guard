@@ -204,7 +204,17 @@ if (themeButton) {
 
 var status = byId("findings-status");
 var riskSelect = byId("risk-filter");
+var countLine = byId("findings-count");
+var countText = countLine ? countLine.textContent : "";
+var emptyRow = byId("findings-empty");
 var actionFilter = "all";
+
+function pressAction(filter) {
+  actionFilter = filter;
+  each("[data-filter]", function (other) {
+    other.setAttribute("aria-pressed", other.getAttribute("data-filter") === filter ? "true" : "false");
+  });
+}
 
 function applyFilters() {
   var risk = riskSelect && isRisk(riskSelect.value) ? riskSelect.value : "";
@@ -219,16 +229,15 @@ function applyFilters() {
     if (visible) shown++;
   });
   if (status) status.textContent = statusText(shown, total);
+  if (countLine) countLine.textContent = shown === total ? countText : statusText(shown, total);
+  if (emptyRow) emptyRow.hidden = shown !== 0;
 }
 
 each("[data-filter]", function (button) {
   button.addEventListener("click", function () {
     var filter = button.getAttribute("data-filter");
     if (!isFilter(filter)) return;
-    actionFilter = filter;
-    each("[data-filter]", function (other) {
-      other.setAttribute("aria-pressed", other === button ? "true" : "false");
-    });
+    pressAction(filter);
     applyFilters();
   });
 });
@@ -239,11 +248,24 @@ each("[data-risk]", function (button) {
   button.addEventListener("click", function () {
     var risk = button.getAttribute("data-risk");
     if (!riskSelect || !isRisk(risk)) return;
+    pressAction("all");
     riskSelect.value = risk;
     applyFilters();
     riskSelect.focus();
   });
 });
+
+var clearFilters = byId("clear-filters");
+if (clearFilters) {
+  clearFilters.addEventListener("click", function () {
+    pressAction("all");
+    if (riskSelect) riskSelect.value = "";
+    applyFilters();
+    each("[data-filter]", function (other) {
+      if (other.getAttribute("data-filter") === "all") other.focus();
+    });
+  });
+}
 
 var sortSelect = byId("sort");
 if (sortSelect) {

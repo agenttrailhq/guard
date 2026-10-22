@@ -7262,6 +7262,20 @@ td.num { font-weight: 600; }
 .sort { font-size: 13px; color: var(--muted-fg); }
 .sort select { font: inherit; font-size: 13px; color: var(--fg); background: var(--card); border: 1px solid var(--border); border-radius: 6px; padding: 3px 6px; }
 .findings-section { position: relative; }
+.filter-empty {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 14px;
+  margin-top: 10px;
+  padding: 14px 16px;
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+  color: var(--muted-fg);
+}
+.filter-empty[hidden] { display: none; }
+.filter-empty p { margin: 0; }
 .finding-list { display: flex; flex-direction: column; list-style: none; margin: 0; padding: 0; gap: 10px; }
 .finding {
   background: var(--card);
@@ -7593,7 +7607,17 @@ if (themeButton) {
 
 var status = byId("findings-status");
 var riskSelect = byId("risk-filter");
+var countLine = byId("findings-count");
+var countText = countLine ? countLine.textContent : "";
+var emptyRow = byId("findings-empty");
 var actionFilter = "all";
+
+function pressAction(filter) {
+  actionFilter = filter;
+  each("[data-filter]", function (other) {
+    other.setAttribute("aria-pressed", other.getAttribute("data-filter") === filter ? "true" : "false");
+  });
+}
 
 function applyFilters() {
   var risk = riskSelect && isRisk(riskSelect.value) ? riskSelect.value : "";
@@ -7608,16 +7632,15 @@ function applyFilters() {
     if (visible) shown++;
   });
   if (status) status.textContent = statusText(shown, total);
+  if (countLine) countLine.textContent = shown === total ? countText : statusText(shown, total);
+  if (emptyRow) emptyRow.hidden = shown !== 0;
 }
 
 each("[data-filter]", function (button) {
   button.addEventListener("click", function () {
     var filter = button.getAttribute("data-filter");
     if (!isFilter(filter)) return;
-    actionFilter = filter;
-    each("[data-filter]", function (other) {
-      other.setAttribute("aria-pressed", other === button ? "true" : "false");
-    });
+    pressAction(filter);
     applyFilters();
   });
 });
@@ -7628,11 +7651,24 @@ each("[data-risk]", function (button) {
   button.addEventListener("click", function () {
     var risk = button.getAttribute("data-risk");
     if (!riskSelect || !isRisk(risk)) return;
+    pressAction("all");
     riskSelect.value = risk;
     applyFilters();
     riskSelect.focus();
   });
 });
+
+var clearFilters = byId("clear-filters");
+if (clearFilters) {
+  clearFilters.addEventListener("click", function () {
+    pressAction("all");
+    if (riskSelect) riskSelect.value = "";
+    applyFilters();
+    each("[data-filter]", function (other) {
+      if (other.getAttribute("data-filter") === "all") other.focus();
+    });
+  });
+}
 
 var sortSelect = byId("sort");
 if (sortSelect) {
@@ -8467,7 +8503,7 @@ function findingsSection(payload) {
     "guardrails matched"
   );
   return `<section id="findings" class="findings-section">
-<div class="section-head"><h2>All findings</h2><p class="section-meta">${escapeHtml(matched)}</p></div>
+<div class="section-head"><h2>All findings</h2><p class="section-meta" id="findings-count">${escapeHtml(matched)}</p></div>
 <div class="controls js-only" hidden>
 <div class="filters" role="group" aria-label="Show findings">
 ${filters}
@@ -8482,7 +8518,8 @@ ${filters}
 <p id="findings-status" class="sr-only" role="status" aria-live="polite"></p>
 <ol class="finding-list">
 ${rows}
-</ol>${truncated}
+</ol>
+<div class="filter-empty" id="findings-empty" hidden><p>No findings match these filters.</p><button type="button" class="tool" id="clear-filters">Show all findings</button></div>${truncated}
 </section>`;
 }
 function recurringSection(payload) {

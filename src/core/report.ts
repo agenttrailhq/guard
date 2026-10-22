@@ -1193,7 +1193,7 @@ function findingsSection(payload: ReportPayload): string {
     "guardrails matched",
   );
   return `<section id="findings" class="findings-section">
-<div class="section-head"><h2>All findings</h2><p class="section-meta">${escapeHtml(matched)}</p></div>
+<div class="section-head"><h2>All findings</h2><p class="section-meta" id="findings-count">${escapeHtml(matched)}</p></div>
 <div class="controls js-only" hidden>
 <div class="filters" role="group" aria-label="Show findings">
 ${filters}
@@ -1208,7 +1208,8 @@ ${filters}
 <p id="findings-status" class="sr-only" role="status" aria-live="polite"></p>
 <ol class="finding-list">
 ${rows}
-</ol>${truncated}
+</ol>
+<div class="filter-empty" id="findings-empty" hidden><p>No findings match these filters.</p><button type="button" class="tool" id="clear-filters">Show all findings</button></div>${truncated}
 </section>`;
 }
 
