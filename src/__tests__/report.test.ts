@@ -374,6 +374,23 @@ describe("one stylesheet serves both hosts and both themes", () => {
     expect(print).toMatch(/a\[href\^="http"\]::after \{ content: " \(" attr\(href\) "\)"/);
   });
 
+  it("prints a long finding across pages, keeping short blocks and headings with what follows", () => {
+    const print = REPORT_STYLES.slice(REPORT_STYLES.indexOf("@media print"));
+    const rules = [...print.matchAll(/([^{}]+)\{([^}]*)\}/g)].map((m) => ({
+      selectors: (m[1] ?? "").split(",").map((s) => s.trim()),
+      body: m[2] ?? "",
+    }));
+    const unbroken = rules
+      .filter((r) => /break-inside: avoid/.test(r.body))
+      .flatMap((r) => r.selectors);
+    expect(unbroken).not.toContain(".finding");
+    expect(unbroken).toEqual(expect.arrayContaining([".finding-head", ".card", ".stat"]));
+    const keptWithNext = rules
+      .filter((r) => /break-after: avoid/.test(r.body))
+      .flatMap((r) => r.selectors);
+    expect(keptWithNext).toEqual(expect.arrayContaining(["h2", "h3", "summary"]));
+  });
+
   it("writes no label in capitals: no uppercase transform and no wide letter-spacing", () => {
     // Labels are written in sentence case in the source, so a brand name renders as written.
     expect(REPORT_STYLES).not.toMatch(/text-transform:\s*uppercase/i);
