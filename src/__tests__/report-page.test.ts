@@ -1666,6 +1666,9 @@ describe("a hostile string in every free-text field stays text", () => {
 });
 
 describe("every command offered to copy runs as pasted", () => {
+  /** Only characters a shell reads as plain words: letters, digits, spaces, and . _ / = -. */
+  const PLAIN_COMMAND = /^[A-Za-z0-9 ._/=-]+$/;
+
   it.each([
     ["an empty scan", resultWith([], undefined, { toolCalls: 0 })],
     ["a clean scan", resultWith([])],
@@ -1681,19 +1684,27 @@ describe("every command offered to copy runs as pasted", () => {
         { block: 2, require_approval: 10, warn: 1 },
       ),
     ],
-  ])("in %s: no <, >, | or ; that a shell would read", (_name, result) => {
+  ])("in %s: nothing but plain words", (_name, result) => {
     for (const agent of ["claude", "cursor", "codex"] as const) {
       const html = renderReport({ ...result, agent }, META);
       const commands = [...html.matchAll(/<code id="cmd-[^"]+">([^<]*)<\/code>/g)].map((m) =>
         decodeEntities(m[1] ?? ""),
       );
       expect(commands.length).toBeGreaterThan(2);
-      for (const command of commands) expect(command, command).not.toMatch(/[<>|;]/);
+      for (const command of commands) expect(command, command).toMatch(PLAIN_COMMAND);
     }
   });
 
-  it("negative control — a placeholder in angle brackets is caught", () => {
-    expect("agenttrail-guard scan --dir <folder>").toMatch(/[<>|;]/);
+  it.each([
+    "agenttrail-guard scan --dir <folder>",
+    "agenttrail-guard scan --dir $HOME",
+    "agenttrail-guard scan --dir `pwd`",
+    "agenttrail-guard status && echo done",
+    "agenttrail-guard scan --dir 'my folder'",
+    "agenttrail-guard scan; ls",
+    "agenttrail-guard scan | tee out",
+  ])("negative control — %s is not a plain command", (command) => {
+    expect(command).not.toMatch(PLAIN_COMMAND);
   });
 });
 
