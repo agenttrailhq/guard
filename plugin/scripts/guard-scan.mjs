@@ -8347,10 +8347,6 @@ function tuningHint(decided, carried) {
   }
   const drop = removed(chosen);
   if (drop / total < TUNING_MIN_SHARE) return void 0;
-  for (const id of [...chosen]) {
-    const without = new Set([...chosen].filter((other) => other !== id));
-    if (removed(without) === drop) chosen.delete(id);
-  }
   return {
     ids: [...chosen].sort((a, b) => (own.get(b) ?? 0) - (own.get(a) ?? 0) || a.localeCompare(b)),
     share: drop / total,
