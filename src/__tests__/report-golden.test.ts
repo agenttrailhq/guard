@@ -174,6 +174,13 @@ describe("the golden report", () => {
     );
   });
 
+  it("replaces the library's version line, so a library release leaves the golden pages alone", () => {
+    for (const variant of ["document", "artifact"] as const) {
+      expect(render(variant)).not.toMatch(/guardrail library v\d/);
+      expect(render(variant)).toContain("guardrail library vX.Y.Z");
+    }
+  });
+
   it.each(LEAKS)("the golden pages carry no $name", ({ pattern }) => {
     expect(scanned(render("document"))).not.toMatch(pattern);
     expect(scanned(render("artifact"))).not.toMatch(pattern);

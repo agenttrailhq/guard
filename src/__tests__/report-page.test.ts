@@ -58,6 +58,7 @@ import {
 } from "../core/scan-report.js";
 import type { TokenTotals } from "../core/tokens.js";
 import type { GuardRule } from "../core/types.js";
+import { decodeEntities } from "./html-text.js";
 import { bash, session, toolUse, turn } from "./scan-fixtures.js";
 
 const META: ReportMeta = { version: "0.0.0", generatedAt: new Date("2026-10-01T09:00:00.000Z") };
@@ -138,16 +139,6 @@ function rowOf(html: string, index: number): string {
   const next = html.indexOf('<li class="finding"', at + 1);
   const end = html.indexOf("</ol>", at);
   return html.slice(at, next === -1 || next > end ? end : next);
-}
-
-/** Decode the five escapes the report writes. */
-function decodeEntities(text: string): string {
-  return text
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&amp;/g, "&");
 }
 
 /** A tag whose every attribute value is quoted and holds no quote or angle bracket. */
@@ -374,6 +365,15 @@ describe("the tuning hint", () => {
     expect(asked).toContain('<p class="col-count">0</p>');
     expect(asked).not.toContain("col-list");
     expect(html).not.toContain('<div class="hint">');
+  });
+
+  it("rounds the share of the asks to the nearest percent", () => {
+    // a.x removes 4 of 6 asks: 66.7%, shown as 67%.
+    const result = resultWith(
+      [lib("a.x", "require_approval", 4), lib("a.y", "require_approval", 2)],
+      { block: 0, require_approval: 6, warn: 0 },
+    );
+    expect(renderReport(result, META)).toContain("1 guardrail accounts for 67% of the asks.");
   });
 
   it("offers one copyable set-action command per guardrail", () => {
@@ -669,12 +669,42 @@ describe("the suggested post", () => {
   it("carries totals and the top blocked library guardrail's title, and nothing else", () => {
     const result = resultWith(
       [lib("a.top", "block", 4, { title: "Delete with `rm -rf`" }), lib("a.next", "block", 1)],
-      { block: 5, require_approval: 2, warn: 0 },
+      // 5 block matches on 4 tool calls: the post counts calls.
+      { block: 4, require_approval: 2, warn: 0 },
       { toolCalls: 1234 },
     );
     expect(shareText(result)).toBe(
-      "I scanned 1,234 tool calls from Claude Code with AgentTrail Guard: 5 would block (4 of those: Delete with rm -rf) · 2 would ask. Checked locally, nothing uploaded.",
+      "I scanned 1,234 tool calls from Claude Code with AgentTrail Guard: 4 would block (4 of those: Delete with rm -rf) · 2 would ask. Checked locally, nothing uploaded.",
     );
+  });
+
+  it("names the library blocker that blocked the most, before a more serious one", () => {
+    const text = shareText(
+      resultWith(
+        [
+          lib("a.many", "block", 5, { severity: "medium", title: "Blocked most often" }),
+          lib("a.crit", "block", 2, { severity: "critical", title: "Most serious" }),
+        ],
+        { block: 7, require_approval: 0, warn: 0 },
+      ),
+    );
+    expect(text).toContain("(5 of those: Blocked most often)");
+  });
+
+  it("keeps the title when the post is exactly at X's limit, and drops it one character over", () => {
+    const withTitle = (length: number) =>
+      shareText(
+        resultWith([lib("a.b", "block", 1, { title: "x".repeat(length) })], {
+          block: 1,
+          require_approval: 0,
+          warn: 0,
+        }),
+      );
+    // Each character of the title adds one to the post's length while the title is kept.
+    const length = 280 - postLength(withTitle(1)) + 1;
+    expect(postLength(withTitle(length))).toBe(280);
+    expect(withTitle(length)).toContain("x".repeat(length));
+    expect(withTitle(length + 1)).not.toContain("of those");
   });
 
   it("leaves the title out when no library guardrail would block", () => {
@@ -999,8 +1029,9 @@ describe("the standalone page's policy", () => {
     const script = between(html, "<script>", "</script>").slice("<script>".length);
     const changed = script.replace('"use strict";', '"use strict" ;');
     expect(changed).not.toBe(script);
-    const hash = createHash("sha256").update(changed, "utf8").digest("base64");
-    expect(html).not.toContain(hash);
+    const hashOf = (text: string) => createHash("sha256").update(text, "utf8").digest("base64");
+    expect(contentSecurityPolicy()).toContain(`'sha256-${hashOf(script)}'`);
+    expect(contentSecurityPolicy()).not.toContain(`'sha256-${hashOf(changed)}'`);
   });
 });
 

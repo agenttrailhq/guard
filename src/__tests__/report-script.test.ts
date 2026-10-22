@@ -591,6 +591,7 @@ function loadPage(options: PageOptions = {}): Page {
       class: "finding",
       "data-action": "block",
       "data-owasp": "ASI02 LLM03",
+      "data-rank-serious": "0",
       "data-rank-name": "2",
       "data-rank-count": "1",
     }),
@@ -598,12 +599,14 @@ function loadPage(options: PageOptions = {}): Page {
       class: "finding",
       "data-action": "warn",
       "data-owasp": "ASI02",
+      "data-rank-serious": "1",
       "data-rank-name": "0",
       "data-rank-count": "0",
     }),
     el("li", {
       class: "finding",
       "data-action": "require_approval",
+      "data-rank-serious": "2",
       "data-rank-name": "1",
       "data-rank-count": "x",
     }),
@@ -847,6 +850,10 @@ describe("the script in the page", () => {
     sort.value = "count";
     sort.fire("change");
     expect(rows(page).map((r) => r.style.order)).toEqual(["1", "0", "0"]);
+    // Back to most serious: the page's own order.
+    sort.value = "serious";
+    sort.fire("change");
+    expect(rows(page).map((r) => r.style.order)).toEqual(["0", "1", "2"]);
   });
 
   it("ignores a sort it does not know", () => {
