@@ -49,9 +49,14 @@ import { compileCatalog } from "../core/rules.js";
 import {
   aggregateScan,
   type DecidedCalls,
+  type ExampleShape,
+  type RecurringItem,
   type ScanFinding,
   type ScanResult,
+  type ScanSkipped,
+  type UnmappedTool,
 } from "../core/scan-report.js";
+import type { TokenTotals } from "../core/tokens.js";
 import type { GuardRule } from "../core/types.js";
 import { bash, session, toolUse, turn } from "./scan-fixtures.js";
 
@@ -749,6 +754,85 @@ describe("what the file carries is one capped projection", () => {
     expect(html).not.toContain("never-in-the-file");
   });
 
+  it("a field added below the top level does not reach the file either", () => {
+    const leak = (where: string) => ({ leak: `leak-in-${where}` });
+    const withExtra = resultWith(
+      [
+        {
+          ...lib("a.x", "warn", 2, {
+            examples: [{ text: "x <path>", count: 2, ...leak("example") } as ExampleShape],
+          }),
+          ...leak("finding"),
+        } as ScanFinding,
+      ],
+      { block: 0, require_approval: 0, warn: 2 },
+      {
+        tokens: {
+          input: 1,
+          output: 1,
+          cacheRead: 0,
+          cacheCreation: 0,
+          cacheCreation5m: 0,
+          cacheCreation1h: 0,
+          turnsWithSplit: 0,
+          turns: 1,
+          ...leak("tokens"),
+        } as TokenTotals,
+        recurring: [
+          {
+            text: "x <path>",
+            count: 2,
+            ruleId: "a.x",
+            title: "t",
+            ...leak("repeat"),
+          } as RecurringItem,
+        ],
+        owasp: [
+          {
+            id: "ASI02",
+            callCount: 2,
+            ruleMatches: 2,
+            guardrailCount: 1,
+            ...leak("tally"),
+          } as OwaspTally,
+        ],
+        skipped: {
+          unparseableLines: 0,
+          truncatedLastLines: 0,
+          unknownRecords: 0,
+          turnsEndedWithError: 0,
+          unreadableFiles: 0,
+          notActions: 0,
+          ...leak("skipped"),
+          unmappedTools: [{ name: "T", count: 1, ...leak("tool") } as UnmappedTool],
+        } as ScanSkipped,
+      },
+    );
+    const html = renderReport(withExtra, META);
+    expect(html).toContain("x &lt;path&gt;");
+    expect(html).not.toContain("leak-in-");
+  });
+
+  it("treats a finding with no source as the user's own: no library text or link", () => {
+    const { source: _none, ...noSource } = lib("a.unsure", "block", 1, {
+      category: "destructive-data",
+      description: "Library text that must not show.",
+    });
+    const result = resultWith([noSource as ScanFinding], {
+      block: 1,
+      require_approval: 0,
+      warn: 0,
+    });
+    const html = renderReport(result, META);
+    expect(html).not.toContain("Library text that must not show.");
+    expect(html).not.toContain("How this guardrail decides");
+    expect(html).not.toContain("/guardrails/destructive-data/");
+    const [carried] = reportPayload(result, META).findings;
+    expect(carried?.source).toBe("yours");
+    expect(carried).not.toHaveProperty("category");
+    expect(carried).not.toHaveProperty("descriptionLines");
+  });
+
   it("--json on stdout stays the whole result", () => {
     const json = JSON.parse(renderJson(OVERSIZED, META));
     expect(json.result.findings).toHaveLength(MAX_ROWS + 4);
@@ -778,10 +862,7 @@ describe("what the file carries is one capped projection", () => {
     },
   );
 
-  /**
-   * Keys whose strings are not free text from the scan: fixed vocabulary, the tool's own
-   * stamps, and shipped library text.
-   */
+  /** Keys whose strings are not free text from the scan: fixed vocabulary and the tool's own stamps. */
   const NOT_FREE_TEXT = new Set([
     "tool",
     "version",
@@ -791,17 +872,20 @@ describe("what the file carries is one capped projection", () => {
     "severity",
     "action",
     "source",
-    "category",
-    "descriptionLines",
   ]);
 
+  /** Shipped library text: not free text, but only on a finding the library vouches for. */
+  const LIBRARY_TEXT = new Set(["category", "descriptionLines"]);
+
   /** Every free-text string in a parsed data block, by walking every leaf. */
-  function freeText(node: unknown, key = ""): string[] {
+  function freeText(node: unknown, key = "", parent?: Record<string, unknown>): string[] {
     if (NOT_FREE_TEXT.has(key)) return [];
+    if (LIBRARY_TEXT.has(key) && parent?.source === "library") return [];
     if (typeof node === "string") return [node];
-    if (Array.isArray(node)) return node.flatMap((item) => freeText(item, key));
+    if (Array.isArray(node)) return node.flatMap((item) => freeText(item, key, parent));
     if (node !== null && typeof node === "object") {
-      return Object.entries(node).flatMap(([k, v]) => freeText(v, k));
+      const object = node as Record<string, unknown>;
+      return Object.entries(object).flatMap(([k, v]) => freeText(v, k, object));
     }
     return [];
   }
@@ -824,6 +908,13 @@ describe("what the file carries is one capped projection", () => {
     const payload = { ...reportPayload(REVIEWED, META), note: "unlisted free text" };
     const reviewed = reviewedParts(REVIEWED);
     expect(freeText(payload).filter((s) => !reviewed.has(s))).toEqual(["unlisted free text"]);
+  });
+
+  it("negative control — library text on a finding the library does not vouch for is found", () => {
+    const leaked = { findings: [{ source: "yours", category: "team-secret-pack", ruleId: "t.x" }] };
+    expect(freeText(leaked)).toEqual(["team-secret-pack", "t.x"]);
+    const vouched = { findings: [{ source: "library", category: "destructive-data" }] };
+    expect(freeText(vouched)).toEqual([]);
   });
 
   it("every command shape or id the page shows as code is reviewed", () => {
