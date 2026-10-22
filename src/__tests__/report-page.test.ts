@@ -1466,15 +1466,16 @@ describe("the published copy says what only the downloaded file can do", () => {
   it("shows the post read-only, and says where to edit it", () => {
     expect(artifact).toContain('<textarea id="share-text" rows="4" readonly>');
     expect(artifact).toContain(
-      "This copy cannot change the post: open the downloaded report to edit it.",
+      "This published copy cannot change the post. In the report file it was made from, the post can be edited before posting.",
     );
     expect(doc).toContain('<textarea id="share-text" rows="4">');
     expect(doc).toContain("Edit it before posting.");
-    expect(doc).not.toContain("open the downloaded report");
+    expect(doc).not.toContain("This published copy");
   });
 
   it("says the filters, sort and export are in the downloaded file", () => {
-    const line = "Open the downloaded file for filters, sort and export.";
+    const line =
+      "Filters, sort and export are in the report file itself, <code>agenttrail-guard-report.html</code>. To make one from your own sessions, run <code>agenttrail-guard scan</code>.";
     expect(between(artifact, 'id="findings"', "</section>")).toContain(line);
     expect(doc).not.toContain(line);
   });

@@ -1224,7 +1224,7 @@ function findingsSection(payload: ReportPayload, variant: ReportVariant): string
     "guardrails matched",
   );
   return `<section id="findings" class="findings-section">
-<div class="section-head"><h2>All findings</h2><p class="section-meta" id="findings-count">${escapeHtml(matched)}</p></div>${variant === "artifact" ? `\n<p class="note artifact-note">Open the downloaded file for filters, sort and export.</p>` : ""}
+<div class="section-head"><h2>All findings</h2><p class="section-meta" id="findings-count">${escapeHtml(matched)}</p></div>${variant === "artifact" ? `\n<p class="note artifact-note">Filters, sort and export are in the report file itself, <code>${REPORT_FILENAME}</code>. To make one from your own sessions, run <code>agenttrail-guard scan</code>.</p>` : ""}
 <div class="controls js-only" hidden>
 <div class="filters" role="group" aria-label="Show findings">
 ${filters}
@@ -1328,7 +1328,7 @@ function shareSectionHtml(
   const editable = variant === "document";
   const edit = editable
     ? "Edit it before posting."
-    : "This copy cannot change the post: open the downloaded report to edit it.";
+    : "This published copy cannot change the post. In the report file it was made from, the post can be edited before posting.";
   return `<section id="share" class="share">
 <h2>Share your result</h2>
 <p class="note share-note">Totals and at most one library guardrail&#39;s name: no commands, paths, project names or guardrails you wrote. ${edit}</p>

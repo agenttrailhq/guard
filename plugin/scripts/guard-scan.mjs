@@ -7324,6 +7324,7 @@ a { color: var(--brand-text); }
   padding: 10px 12px;
   resize: vertical;
 }
+.share textarea[readonly] { background: var(--subtle); resize: none; }
 .share-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; margin-top: 10px; }
 .share-count { font-size: 13px; color: var(--muted-fg); font-variant-numeric: tabular-nums; }
 .share-count[data-over="true"] { color: var(--sev-critical-fg); font-weight: 600; }
@@ -8559,7 +8560,7 @@ function findingsSection(payload, variant) {
   );
   return `<section id="findings" class="findings-section">
 <div class="section-head"><h2>All findings</h2><p class="section-meta" id="findings-count">${escapeHtml(matched)}</p></div>${variant === "artifact" ? `
-<p class="note artifact-note">Open the downloaded file for filters, sort and export.</p>` : ""}
+<p class="note artifact-note">Filters, sort and export are in the report file itself, <code>${REPORT_FILENAME}</code>. To make one from your own sessions, run <code>agenttrail-guard scan</code>.</p>` : ""}
 <div class="controls js-only" hidden>
 <div class="filters" role="group" aria-label="Show findings">
 ${filters}
@@ -8634,7 +8635,7 @@ ${copyable("cmd-scan-again", `agenttrail-guard scan --agent ${a} --review`, "Cop
 function shareSectionHtml(result, payload, variant) {
   const length = postLength(payload.shareText);
   const editable = variant === "document";
-  const edit = editable ? "Edit it before posting." : "This copy cannot change the post: open the downloaded report to edit it.";
+  const edit = editable ? "Edit it before posting." : "This published copy cannot change the post. In the report file it was made from, the post can be edited before posting.";
   return `<section id="share" class="share">
 <h2>Share your result</h2>
 <p class="note share-note">Totals and at most one library guardrail&#39;s name: no commands, paths, project names or guardrails you wrote. ${edit}</p>
