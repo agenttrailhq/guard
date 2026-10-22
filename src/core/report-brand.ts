@@ -447,6 +447,20 @@ td.num { font-weight: 600; }
 .finding-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 6px 12px; }
 .finding-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .group { color: var(--muted-fg); }
+.owasp-ids { display: flex; flex-wrap: wrap; gap: 4px 14px; list-style: none; margin: 6px 0 0; padding: 0; font-size: 13px; }
+.risk-id { font-family: var(--font-mono); font-size: 12.5px; font-weight: 600; }
+.risks { display: grid; grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); gap: 10px; list-style: none; margin: 12px 0; padding: 0; }
+.risk {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 14px;
+  box-shadow: var(--shadow);
+}
+.risk p { margin: 0 0 6px; }
+.risk-name { font-size: 14px; font-weight: 600; }
+.risk-counts { font-size: 13px; color: var(--muted-fg); }
+.risk-sources { font-size: 14px; }
 details { margin-top: 8px; font-size: 14px; }
 summary { cursor: pointer; color: var(--brand-text); }
 .how p { color: var(--muted-fg); margin: 8px 0 0; }
@@ -550,7 +564,8 @@ ${vars(LIGHT_TOKENS)}
   body { background: #ffffff; }
   .sections, .toolbar, .js-only, .actions, .controls, .copy, .share { display: none; }
   .button, .button.secondary { display: inline; background: none; color: var(--brand-text); border: 0; padding: 0; }
-  .stat, .tally, .table-wrap, .product-note, tr, .card, .finding, .col { break-inside: avoid; }
+  .stat, .tally, .table-wrap, .product-note, tr, .card, .finding, .col, .risk { break-inside: avoid; }
+  .owasp-ids a[href^="http"]::after, .risk-name a[href^="http"]::after { content: none; }
   a[href^="http"]::after { content: " (" attr(href) ")"; font-size: 11px; color: var(--muted-fg); overflow-wrap: anywhere; }
 }
 `;

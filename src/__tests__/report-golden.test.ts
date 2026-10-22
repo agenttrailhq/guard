@@ -46,6 +46,20 @@ const OWN_RULE: GuardRule = {
   },
 };
 
+/** The fixture's library rules with OWASP ids, as shipped guardrails carry them. */
+const RM_RF: GuardRule = { ...RULE_RM_RF, owasp: ["ASI02", "LLM03"] };
+const ENV_FILE: GuardRule = { ...RULE_ENV_FILE, owasp: ["LLM02"] };
+const GIT_CHECKOUT: GuardRule = { ...RULE_GIT_CHECKOUT, owasp: ["ASI02"] };
+const LIBRARY = TEST_CATALOG.map((rule) =>
+  rule === RULE_RM_RF
+    ? RM_RF
+    : rule === RULE_ENV_FILE
+      ? ENV_FILE
+      : rule === RULE_GIT_CHECKOUT
+        ? GIT_CHECKOUT
+        : rule,
+);
+
 const RESULT = aggregateScan(
   {
     sessions: [
@@ -87,10 +101,10 @@ const RESULT = aggregateScan(
       unreadableFiles: 0,
     },
   },
-  compileCatalog([...TEST_CATALOG, OWN_RULE]),
+  compileCatalog([...LIBRARY, OWN_RULE]),
   compileAllowlist([]),
   // The fixture's own library: the user's rule is not in it.
-  new Set([RULE_RM_RF, RULE_ENV_FILE, RULE_GIT_CHECKOUT]),
+  new Set([RM_RF, ENV_FILE, GIT_CHECKOUT]),
 );
 
 /**
@@ -124,6 +138,9 @@ describe("the golden report", () => {
       '<div class="hint">',
       'id="fix-first"',
       '<article class="card">',
+      'id="owasp"',
+      '<ul class="owasp-ids"',
+      'id="risk-filter"',
       'id="findings"',
       'id="repeats"',
       'id="next-steps"',

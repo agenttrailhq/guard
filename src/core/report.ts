@@ -38,7 +38,13 @@
  * ── Links ────────────────────────────────────────────────────────────────────
  * Every link to the site is built by `siteLink`, which adds `utm_source`, `utm_medium`,
  * `utm_campaign` (the agent) and `utm_content` (where on the page). A link loads nothing until
- * it is clicked. Library pages are linked for shipped guardrails only.
+ * it is clicked. Library pages are linked for shipped guardrails only. The two OWASP lists
+ * are the only links off the site, to where OWASP publishes them, and carry no tags.
+ *
+ * ── OWASP ────────────────────────────────────────────────────────────────────
+ * Every OWASP id on the page is one the matched guardrail carries itself (`ScanFinding.owasp`),
+ * and every count comes from `ScanResult.owasp`. Risk names come from `owaspTitle`; nothing
+ * here maps a guardrail, a pack or a command to a risk.
  *
  * ── No currency, anywhere ─────────────────────────────────────────────────────
  * Not in the hero, not in the findings, not labelled "estimated", and no score. Counts are
@@ -55,8 +61,19 @@
  */
 
 import { createHash } from "node:crypto";
+import { OWASP_SOURCES } from "@agenttrail/guardrails/guardrails";
 import { agentDisplayName, unhandledAgent } from "./agent.js";
 import { catalogStamp, formatCatalogStamp } from "./catalog-stamp.js";
+import {
+  isOwaspId,
+  OWASP_AGENTIC,
+  OWASP_LLM,
+  OWASP_PAGE_URL,
+  type OwaspId,
+  type OwaspTally,
+  owaspAnchorUrl,
+  owaspTitle,
+} from "./owasp.js";
 import { LOGO_LOCKUP_SVG, LOGO_MARK_SVG, REPORT_STYLES } from "./report-brand.js";
 import { POST_LIMIT, REPORT_SCRIPT } from "./report-script.js";
 import type {
@@ -238,10 +255,27 @@ export function ruleSlug(id: string): string {
     .replace(/^-+|-+$/g, "");
 }
 
-/** A link to the site, tagged with where it came from. The only way this file builds one. */
+/**
+ * A link to the site, tagged with where it came from. The only way this file builds one.
+ * The tags go before a `#fragment`, so a link to a row of a page keeps its query.
+ */
 export function siteLink(path: string, agent: AgentSource, content: string): string {
   const tags = `utm_source=guard&utm_medium=scan-report&utm_campaign=${agent}&utm_content=${content}`;
-  return `${SITE_URL}${path}${path.includes("?") ? "&" : "?"}${tags}`;
+  const hash = path.indexOf("#");
+  const base = hash === -1 ? path : path.slice(0, hash);
+  const fragment = hash === -1 ? "" : path.slice(hash);
+  return `${SITE_URL}${base}${base.includes("?") ? "&" : "?"}${tags}${fragment}`;
+}
+
+/** A full site URL as a path for `siteLink`. Throws on a URL that is not on the site. */
+function sitePath(url: string): string {
+  if (!url.startsWith(`${SITE_URL}/`)) throw new Error(`Not a page on the site: ${url}`);
+  return url.slice(SITE_URL.length);
+}
+
+/** The site's row for one OWASP risk, tagged. */
+function owaspRiskLink(id: OwaspId, agent: AgentSource): string {
+  return siteLink(sitePath(owaspAnchorUrl(id)), agent, "owasp-risk");
 }
 
 /** A shipped guardrail's library page. */
@@ -312,6 +346,8 @@ export interface PayloadFinding {
   readonly examples: readonly ExampleShape[];
   /** Distinct shapes beyond `examples` that are not carried. */
   readonly moreShapes: number;
+  /** The guardrail's own OWASP ids. Empty for a guardrail that carries none. */
+  readonly owasp: readonly OwaspId[];
 }
 
 /** Everything the file carries: the page renders it, and the data block and export are it. */
@@ -338,6 +374,8 @@ export interface ReportPayload {
   readonly tokens: TokenTotals | null;
   readonly skipped?: ScanSkipped;
   readonly shareText: string;
+  /** Per OWASP risk, over every finding, not only the rows the file lists. */
+  readonly owasp: readonly OwaspTally[];
 }
 
 /** Token totals, copied field by field. */
@@ -366,6 +404,7 @@ function payloadFinding(finding: ScanFinding): PayloadFinding {
       .slice(0, MAX_EXAMPLES)
       .map((e) => ({ text: e.text, count: e.count })),
     moreShapes: Math.max(0, finding.examples.length - MAX_EXAMPLES),
+    owasp: finding.owasp.filter((id) => isOwaspId(id)),
   };
   if (finding.source !== "library") return { ...base, source: "yours" };
   return {
@@ -415,6 +454,14 @@ export function reportPayload(result: ScanResult, meta: ReportMeta): ReportPaylo
     moreRecurring: Math.max(0, result.recurring.length - MAX_ROWS),
     tokens: result.tokens === null ? null : tokenCopy(result.tokens),
     shareText: shareText(result),
+    owasp: result.owasp
+      .filter((t) => isOwaspId(t.id))
+      .map((t) => ({
+        id: t.id,
+        callCount: t.callCount,
+        ruleMatches: t.ruleMatches,
+        guardrailCount: t.guardrailCount,
+      })),
   };
   const skipped = result.skipped;
   if (skipped === undefined) return payload;
@@ -648,10 +695,11 @@ export function headline(result: ScanResult): string {
 }
 
 /** The top bar: the mark, the section links, and the export and theme controls. */
-function topBar(): string {
+function topBar(payload: ReportPayload): string {
   const links: [string, string][] = [
     ["overview", "Overview"],
     ["fix-first", "Fix first"],
+    ...(payload.owasp.length > 0 ? [["owasp", "OWASP"] as [string, string]] : []),
     ["findings", "All findings"],
     ["next-steps", "Next steps"],
     ["privacy", "Privacy"],
@@ -923,6 +971,42 @@ ${cards}
 </section>`;
 }
 
+/** An OWASP id and its name, as the page shows it. */
+function riskLabel(id: OwaspId): string {
+  return `<span class="risk-id">${escapeHtml(id)}</span> ${escapeHtml(owaspTitle(id))}`;
+}
+
+/**
+ * The OWASP risks the matched guardrails name, with a leading line break, or nothing when no
+ * matched guardrail carries an id.
+ */
+function owaspSection(payload: ReportPayload): string {
+  if (payload.owasp.length === 0) return "";
+  const touched = (list: readonly { readonly id: string }[]): number =>
+    payload.owasp.filter((t) => list.some((risk) => risk.id === t.id)).length;
+  const summary = `These matches touched ${touched(OWASP_AGENTIC)} of ${OWASP_AGENTIC.length} agentic and ${touched(OWASP_LLM)} of ${OWASP_LLM.length} LLM risks.`;
+  const risks = payload.owasp
+    .map(
+      (t) => `<li class="risk" id="risk-${escapeHtml(t.id.toLowerCase())}">
+<p class="risk-name">${outLink(owaspRiskLink(t.id, payload.agent), riskLabel(t.id))}</p>
+<p class="risk-counts">${escapeHtml(counted(t.callCount, "tool call", "tool calls"))} &middot; ${escapeHtml(counted(t.guardrailCount, "guardrail", "guardrails"))}</p>
+<button type="button" class="tool js-only" data-risk="${escapeHtml(t.id)}" aria-label="Show its findings: ${escapeHtml(t.id)}" hidden>Show its findings</button>
+</li>`,
+    )
+    .join("\n");
+  return `
+<section id="owasp">
+<h2>OWASP risks</h2>
+<p class="lead">${escapeHtml(summary)}</p>
+<ul class="risks">
+${risks}
+</ul>
+<p class="note">A guardrail can name more than one risk, and a tool call can match more than one guardrail, so one tool call can count under several risks. These counts do not add up to the totals above.</p>
+<p class="note">Covers coding-agent actions only, not full OWASP coverage. Each id names a risk where it becomes a command or a file change, and is never a claim that a guardrail covers the whole risk.</p>
+<p class="risk-sources">${outLink(siteLink(sitePath(OWASP_PAGE_URL), payload.agent, "owasp"), "How the guardrails map to OWASP")} &middot; ${outLink(OWASP_SOURCES.agentic, "OWASP Top 10 for Agentic Applications")} &middot; ${outLink(OWASP_SOURCES.llm, "OWASP Top 10 for LLM Applications")}</p>
+</section>`;
+}
+
 /** Rank maps for the sort control, computed here so the script reads numbers only. */
 function ranks(findings: readonly PayloadFinding[]): {
   category: Map<PayloadFinding, number>;
@@ -968,18 +1052,41 @@ function findingRow(
 ${libraryText(f.descriptionLines.join(" "))}
 <p>${outLink(libraryLink(f.category ?? "", f.ruleId, agent), "Open it in the guardrail library")}</p>
 </details>`;
-  return `<li class="finding" id="finding-${index}" data-action="${escapeHtml(f.action)}" data-rank-serious="${index}" data-rank-category="${r.category.get(f) ?? index}" data-rank-count="${r.count.get(f) ?? index}" data-rank-name="${r.name.get(f) ?? index}">
+  const risks =
+    f.owasp.length === 0
+      ? ""
+      : `\n<ul class="owasp-ids" aria-label="OWASP risks">
+${f.owasp.map((id) => `<li>${outLink(owaspRiskLink(id, agent), riskLabel(id))}</li>`).join("\n")}
+</ul>`;
+  const riskData = f.owasp.length === 0 ? "" : ` data-owasp="${escapeHtml(f.owasp.join(" "))}"`;
+  return `<li class="finding" id="finding-${index}" data-action="${escapeHtml(f.action)}"${riskData} data-rank-serious="${index}" data-rank-category="${r.category.get(f) ?? index}" data-rank-count="${r.count.get(f) ?? index}" data-rank-name="${r.name.get(f) ?? index}">
 <div class="finding-head">
 <div class="guardrail-title">${inlineTitle(f.title)}</div>
 <div class="finding-meta">${severityBadge(f.severity)} ${actionChip(f.action)}<span class="num" data-label="Matches">${escapeHtml(formatCount(f.count))}&times;</span></div>
 </div>
-<div class="guardrail-id"><code>${escapeHtml(f.ruleId)}</code> &middot; <span class="group">${escapeHtml(group)}</span></div>
+<div class="guardrail-id"><code>${escapeHtml(f.ruleId)}</code> &middot; <span class="group">${escapeHtml(group)}</span></div>${risks}
 <details class="commands"><summary>The ${escapeHtml(shapes)} behind it</summary>
 <ul class="shapes">
 ${examples}${more}
 </ul>
 </details>${how}
 </li>`;
+}
+
+/** The OWASP risk filter, with a leading line break, or nothing when no risk was touched. */
+function riskFilter(payload: ReportPayload): string {
+  if (payload.owasp.length === 0) return "";
+  const options = payload.owasp
+    .map(
+      (t) =>
+        `<option value="${escapeHtml(t.id)}">${escapeHtml(`${t.id} ${owaspTitle(t.id)}`)}</option>`,
+    )
+    .join("\n");
+  return `
+<label class="sort">OWASP risk <select id="risk-filter">
+<option value="">Any risk</option>
+${options}
+</select></label>`;
 }
 
 /** All findings: one row per guardrail, most serious first, with filters and sort. */
@@ -1020,7 +1127,7 @@ ${filters}
 <option value="category">Category</option>
 <option value="count">Most matches</option>
 <option value="name">Name</option>
-</select></label>
+</select></label>${riskFilter(payload)}
 </div>
 <p id="findings-status" class="sr-only" role="status" aria-live="polite"></p>
 <ol class="finding-list">
@@ -1313,10 +1420,10 @@ export function renderReport(
   const head = `<title>${escapeHtml(pageTitle(result, meta))}</title>
 <style>${REPORT_STYLES}</style>`;
   const body = `<main class="page" lang="en">
-${topBar()}
+${topBar(payload)}
 ${heroSection(result, payload, meta, variant)}
 ${wouldHaveDoneSection(result, payload)}
-${fixFirstSection(payload)}
+${fixFirstSection(payload)}${owaspSection(payload)}
 ${findingsSection(payload)}
 ${recurringSection(payload)}
 ${nextStepsSection(result)}

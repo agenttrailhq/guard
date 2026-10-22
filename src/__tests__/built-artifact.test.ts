@@ -40,6 +40,7 @@ import {
 import { homedir, tmpdir, userInfo } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { OWASP_SOURCES } from "@agenttrail/guardrails/guardrails";
 import { beforeAll, describe, expect, it } from "vitest";
 import { NOT_CHECKED_MESSAGE } from "../commands/hook.js";
 import { silenceCommand } from "../commands/status.js";
@@ -1033,7 +1034,8 @@ describe("scan, against the built binary", () => {
     expect(html).toContain(
       `<meta http-equiv="Content-Security-Policy" content="default-src 'none';`,
     );
-    // Every link stays in the page, goes to the site, or prefills an X post.
+    // Every link stays in the page, goes to the site, prefills an X post, or is one of the two
+    // OWASP lists.
     const links = [...html.matchAll(/\shref\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/gi)].map(
       (m) => m[1] ?? m[2] ?? m[3] ?? "",
     );
@@ -1042,7 +1044,9 @@ describe("scan, against the built binary", () => {
       expect(
         link.startsWith("#") ||
           link.startsWith("https://www.agenttrail.sh/") ||
-          link.startsWith("https://x.com/intent/post?text="),
+          link.startsWith("https://x.com/intent/post?text=") ||
+          link === OWASP_SOURCES.agentic ||
+          link === OWASP_SOURCES.llm,
         link,
       ).toBe(true);
     }
