@@ -217,6 +217,12 @@ describe("what Guard would have done", () => {
     expect(section).toMatch(/Warned<\/p>\n<p class="col-count">4</);
   });
 
+  it("names the match tally as a group, so its label is announced", () => {
+    // A label on an element with no role is ignored by assistive technology.
+    const html = renderReport(resultWith([lib("a.b", "block", 1)]), META);
+    expect(html).toContain('<div class="tally" role="group" aria-label="Guardrail matches">');
+  });
+
   it("is absent when nothing matched", () => {
     expect(renderReport(resultWith([]), META)).not.toContain('id="would-do"');
   });

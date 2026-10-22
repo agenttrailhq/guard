@@ -7324,7 +7324,8 @@ footer p { margin: 0 0 6px; max-width: none; }
 ${vars(LIGHT_TOKENS)}
   }
   body { background: #ffffff; }
-  .sections, .toolbar, .js-only, .actions, .controls, .copy, .share textarea, .share-label { display: none; }
+  .sections, .toolbar, .js-only, .actions, .controls, .copy, .share { display: none; }
+  .button, .button.secondary { display: inline; background: none; color: var(--brand-text); border: 0; padding: 0; }
   .stat, .tally, .table-wrap, .product-note, tr, .card, .finding, .col { break-inside: avoid; }
   a[href^="http"]::after { content: " (" attr(href) ")"; font-size: 11px; color: var(--muted-fg); overflow-wrap: anywhere; }
 }
@@ -8153,7 +8154,7 @@ ${top}
 ${columns}
 </div>${askOnCodexNote(result, byAction)}
 ${tuningSection(payload)}
-<div class="tally" aria-label="Guardrail matches">
+<div class="tally" role="group" aria-label="Guardrail matches">
 <div class="tally-group"><p class="tally-label">Matches by severity</p><ul class="pills">
 ${severities}
 </ul></div>

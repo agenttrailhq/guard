@@ -306,6 +306,21 @@ describe("one stylesheet serves both hosts and both themes", () => {
     for (const rule of rootRules) expect(rule).not.toMatch(/padding/);
   });
 
+  it("prints no share controls, and prints a button link as plain text with its URL after it", () => {
+    const print = REPORT_STYLES.slice(REPORT_STYLES.indexOf("@media print"));
+    const rules = [...print.matchAll(/([^{}]+)\{([^}]*)\}/g)].map((m) => ({
+      selectors: (m[1] ?? "").split(",").map((s) => s.trim()),
+      body: m[2] ?? "",
+    }));
+    const hidden = rules.filter((r) => /display: none/.test(r.body)).flatMap((r) => r.selectors);
+    expect(hidden).toContain(".share");
+    const button = rules.find((r) => r.selectors.includes(".button"));
+    expect(button?.body).toMatch(/display: inline;/);
+    expect(button?.body).toMatch(/background: none/);
+    expect(button?.body).toMatch(/padding: 0/);
+    expect(print).toMatch(/a\[href\^="http"\]::after \{ content: " \(" attr\(href\) "\)"/);
+  });
+
   it("loads no font and no resource", () => {
     expect(REPORT_STYLES).not.toMatch(/@font-face|@import|url\s*\(/i);
   });
