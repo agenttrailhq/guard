@@ -577,6 +577,9 @@ function loadPage(options: PageOptions = {}): Page {
     el("button", { class: "tool js-only", hidden: "", "data-risk": "LLM03" }),
     el("button", { class: "tool js-only", hidden: "", "data-risk": "nonsense" }),
     el("p", { id: "findings-status" }),
+    el("p", { id: "findings-count" }),
+    el("div", { id: "findings-empty", hidden: "" }),
+    el("button", { id: "clear-filters" }),
     el("li", {
       class: "finding",
       "data-action": "block",
@@ -623,6 +626,8 @@ function loadPage(options: PageOptions = {}): Page {
     const id = e.getAttribute("id");
     if (id !== null) byId.set(id, e);
   }
+  const count = byId.get("findings-count");
+  if (count) count.textContent = "3 guardrails matched";
   const code = byId.get("cmd-init");
   if (code) code.textContent = "agenttrail-guard init --agent claude";
   const data = byId.get("report-data");
@@ -744,6 +749,43 @@ describe("the script in the page", () => {
     expect(rows(page).map((r) => r.hidden)).toEqual([true, false, true]);
     filterButton(page, "all").click();
     expect(rows(page).map((r) => r.hidden)).toEqual([false, false, false]);
+  });
+
+  it("shows the filtered count where the total was, and puts the total back", () => {
+    const page = loadPage();
+    const count = page.byId.get("findings-count") as FakeElement;
+    filterButton(page, "block").click();
+    expect(count.textContent).toBe("Showing 1 of 3 guardrails");
+    filterButton(page, "all").click();
+    expect(count.textContent).toBe("3 guardrails matched");
+  });
+
+  it("shows a row with a way back when the filters leave nothing", () => {
+    const page = loadPage();
+    const risk = page.byId.get("risk-filter") as FakeElement;
+    const empty = page.byId.get("findings-empty") as FakeElement;
+    expect(empty.hidden).toBe(true);
+    risk.value = "LLM03";
+    risk.fire("change");
+    filterButton(page, "warn").click();
+    expect(rows(page).map((r) => r.hidden)).toEqual([true, true, true]);
+    expect(empty.hidden).toBe(false);
+    (page.byId.get("clear-filters") as FakeElement).click();
+    expect(rows(page).map((r) => r.hidden)).toEqual([false, false, false]);
+    expect(risk.value).toBe("");
+    expect(filterButton(page, "all").getAttribute("aria-pressed")).toBe("true");
+    expect(filterButton(page, "warn").getAttribute("aria-pressed")).toBe("false");
+    expect(filterButton(page, "all").focused).toBe(true);
+    expect(empty.hidden).toBe(true);
+  });
+
+  it("a risk's button shows all of that risk's findings, whatever action was chosen", () => {
+    const page = loadPage();
+    filterButton(page, "warn").click();
+    page.elements.find((e) => e.getAttribute("data-risk") === "LLM03")?.click();
+    expect(filterButton(page, "all").getAttribute("aria-pressed")).toBe("true");
+    expect(filterButton(page, "warn").getAttribute("aria-pressed")).toBe("false");
+    expect(rows(page).map((r) => r.hidden)).toEqual([false, true, true]);
   });
 
   it("treats a risk value it does not know as any risk", () => {

@@ -425,6 +425,20 @@ td.num { font-weight: 600; }
 .sort { font-size: 13px; color: var(--muted-fg); }
 .sort select { font: inherit; font-size: 13px; color: var(--fg); background: var(--card); border: 1px solid var(--border); border-radius: 6px; padding: 3px 6px; }
 .findings-section { position: relative; }
+.filter-empty {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 14px;
+  margin-top: 10px;
+  padding: 14px 16px;
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+  color: var(--muted-fg);
+}
+.filter-empty[hidden] { display: none; }
+.filter-empty p { margin: 0; }
 .finding-list { display: flex; flex-direction: column; list-style: none; margin: 0; padding: 0; gap: 10px; }
 .finding {
   background: var(--card);

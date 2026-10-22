@@ -126,7 +126,7 @@
 <p class="risk-sources"><a href="https://www.agenttrail.sh/security/owasp?utm_source=guard&amp;utm_medium=scan-report&amp;utm_campaign=claude&amp;utm_content=owasp" target="_blank" rel="noopener noreferrer">How the guardrails map to OWASP</a> &middot; <a href="https://genai.owasp.org/resource/owasp-top-10-for-agentic-applications-for-2026/" target="_blank" rel="noopener noreferrer">OWASP Top 10 for Agentic Applications</a> &middot; <a href="https://genai.owasp.org/resource/owasp-genai-llm-top-10-2026/" target="_blank" rel="noopener noreferrer">OWASP Top 10 for LLM Applications</a></p>
 </section>
 <section id="findings" class="findings-section">
-<div class="section-head"><h2>All findings</h2><p class="section-meta">4 guardrails matched</p></div>
+<div class="section-head"><h2>All findings</h2><p class="section-meta" id="findings-count">4 guardrails matched</p></div>
 <div class="controls js-only" hidden>
 <div class="filters" role="group" aria-label="Show findings">
 <button type="button" class="filter" data-filter="all" aria-pressed="true">All</button>
@@ -221,6 +221,7 @@
 </details>
 </li>
 </ol>
+<div class="filter-empty" id="findings-empty" hidden><p>No findings match these filters.</p><button type="button" class="tool" id="clear-filters">Show all findings</button></div>
 </section>
 <section id="repeats"><h2>Repeat offenders</h2>
 <p class="note">The same shape, seen more than once. Paths are redacted before counting, so many different paths under one command become one repeat.</p>
