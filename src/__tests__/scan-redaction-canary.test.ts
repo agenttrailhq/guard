@@ -28,6 +28,7 @@ import { type ReportMeta, renderJson, renderReport } from "../core/report.js";
 import { compileCatalog } from "../core/rules.js";
 import { aggregateScan, type ScanCorpus } from "../core/scan-report.js";
 import type { GuardRule } from "../core/types.js";
+import { decodeEntities } from "./html-text.js";
 import { RULE_ENV_FILE, session, toolUse, turn } from "./scan-fixtures.js";
 
 const META: ReportMeta = { version: "0.1.0", generatedAt: new Date("2026-09-08T09:00:00.000Z") };
@@ -250,19 +251,6 @@ describe("zero survivors — no planted token reaches either surface", () => {
     expect(HTML).toContain("git push origin main #&lt;comment&gt;");
   });
 });
-
-/** Decode the five escapes the report writes, and numeric character references. */
-function decodeEntities(text: string): string {
-  return text
-    .replace(/&#x([0-9a-f]+);/gi, (_m, hex: string) =>
-      String.fromCodePoint(Number.parseInt(hex, 16)),
-    )
-    .replace(/&#(\d+);/g, (_m, dec: string) => String.fromCodePoint(Number.parseInt(dec, 10)))
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&amp;/g, "&");
-}
 
 /**
  * Every form a string can take in the file, decoded: the page's text, every `href` with its
