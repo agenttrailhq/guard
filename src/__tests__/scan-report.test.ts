@@ -27,6 +27,7 @@ import {
 } from "../core/scan-report.js";
 import {
   bash,
+  RULE_ENV_FILE,
   RULE_GIT_CHECKOUT,
   RULE_RM_RF,
   session,
@@ -516,6 +517,24 @@ describe("tool calls by their strictest action", () => {
       const result = aggregateScan(both, catalog, NO_ALLOWLIST);
       expect(result.findings).toHaveLength(2);
       expect(result.riskyByAction).toEqual({ block: 1, require_approval: 0, warn: 0 });
+    }
+  });
+
+  it("counts a call that one guardrail asked about and another warned on as an ask", () => {
+    const warnsToo = { ...RULE_ENV_FILE, id: "t.env-warn", defaultAction: "warn" as const };
+    const read = corpusOf([
+      session([turn([toolUse("Read", { file_path: "/srv/app/.env" }, "1")])]),
+    ]);
+    for (const catalog of [
+      compileCatalog([RULE_ENV_FILE, warnsToo]),
+      compileCatalog([warnsToo, RULE_ENV_FILE]),
+    ]) {
+      const result = aggregateScan(read, catalog, NO_ALLOWLIST);
+      expect(result.findings).toHaveLength(2);
+      expect(result.riskyByAction).toEqual({ block: 0, require_approval: 1, warn: 0 });
+      expect(result.decided).toEqual([
+        { action: "require_approval", ruleIds: ["t.env-file"], calls: 1 },
+      ]);
     }
   });
 
