@@ -719,7 +719,7 @@ function topBar(payload: ReportPayload): string {
 </div>`;
   return `<header class="masthead">
 <div class="brand" role="img" aria-label="agenttrail">${LOGO_LOCKUP_SVG}</div>
-<span class="product-tag">guard</span>
+<span class="product-tag">Guard</span>
 <nav class="sections" aria-label="Report sections"><ul>
 ${nav}
 </ul></nav>

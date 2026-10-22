@@ -353,6 +353,18 @@ describe("one stylesheet serves both hosts and both themes", () => {
     expect(print).toMatch(/a\[href\^="http"\]::after \{ content: " \(" attr\(href\) "\)"/);
   });
 
+  it("writes no label in capitals: no uppercase transform and no wide letter-spacing", () => {
+    // Labels are written in sentence case in the source, so a brand name renders as written.
+    expect(REPORT_STYLES).not.toMatch(/text-transform:\s*uppercase/i);
+    expect(REPORT_STYLES).not.toMatch(/letter-spacing:\s*0?\.0*[1-9]/);
+  });
+
+  it("negative control — the capitals matchers fire", () => {
+    expect(".x { text-transform: uppercase; }").toMatch(/text-transform:\s*uppercase/i);
+    expect(".x { letter-spacing: 0.06em; }").toMatch(/letter-spacing:\s*0?\.0*[1-9]/);
+    expect("h1 { letter-spacing: -0.02em; }").not.toMatch(/letter-spacing:\s*0?\.0*[1-9]/);
+  });
+
   it("loads no font and no resource", () => {
     expect(REPORT_STYLES).not.toMatch(/@font-face|@import|url\s*\(/i);
   });
