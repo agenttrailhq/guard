@@ -8228,27 +8228,52 @@ function askOnCodexNote(result, byAction) {
   return `
 <p class="note"><strong>On Codex, &ldquo;would ask&rdquo; means the action would have been stopped.</strong> Codex gives a guardrail no way to ask you, so the guard sends those as a block. The label above is the guardrail&#39;s own decision, kept the same across apps so one guardrail reads the same way everywhere.</p>`;
 }
-function tuningHint(findings) {
-  const asks = findings.filter((f) => f.action === "require_approval").sort((a, b) => b.count - a.count || a.ruleId.localeCompare(b.ruleId));
-  const total = asks.reduce((sum, f) => sum + f.count, 0);
-  if (total < TUNING_MIN_ASKS) return void 0;
-  let covered = 0;
-  for (let k = 1; k <= Math.min(TUNING_MAX_GUARDRAILS, asks.length); k++) {
-    covered += asks[k - 1]?.count ?? 0;
-    if (covered / total >= TUNING_MIN_SHARE) {
-      return {
-        ids: asks.slice(0, k).map((f) => f.ruleId),
-        share: covered / total,
-        asks: total,
-        remaining: total - covered
-      };
-    }
+function decidedBy(decided, action) {
+  const out = /* @__PURE__ */ new Map();
+  for (const group of decided) {
+    if (group.action !== action) continue;
+    for (const id of group.ruleIds) out.set(id, (out.get(id) ?? 0) + group.calls);
   }
-  return void 0;
+  return out;
+}
+function tuningHint(decided, carried) {
+  const asks = decided.filter((group) => group.action === "require_approval");
+  const total = asks.reduce((sum, group) => sum + group.calls, 0);
+  if (total < TUNING_MIN_ASKS) return void 0;
+  const askers = new Set(
+    carried.filter((f) => f.action === "require_approval").map((f) => f.ruleId)
+  );
+  const own = new Map([...decidedBy(asks, "require_approval")].filter(([id]) => askers.has(id)));
+  const removed = (ids) => asks.reduce((sum, g) => g.ruleIds.every((id) => ids.has(id)) ? sum + g.calls : sum, 0);
+  const chosen = /* @__PURE__ */ new Set();
+  while (chosen.size < TUNING_MAX_GUARDRAILS && removed(chosen) / total < TUNING_MIN_SHARE) {
+    let best;
+    for (const [id, calls] of own) {
+      if (chosen.has(id)) continue;
+      const gain = removed(/* @__PURE__ */ new Set([...chosen, id]));
+      if (best === void 0 || gain > best.gain || gain === best.gain && (calls > best.calls || calls === best.calls && id < best.id)) {
+        best = { id, gain, calls };
+      }
+    }
+    if (best === void 0) break;
+    chosen.add(best.id);
+  }
+  const drop = removed(chosen);
+  if (drop / total < TUNING_MIN_SHARE) return void 0;
+  for (const id of [...chosen]) {
+    const without = new Set([...chosen].filter((other) => other !== id));
+    if (removed(without) === drop) chosen.delete(id);
+  }
+  return {
+    ids: [...chosen].sort((a, b) => (own.get(b) ?? 0) - (own.get(a) ?? 0) || a.localeCompare(b)),
+    share: drop / total,
+    asks: total,
+    remaining: total - drop
+  };
 }
 var SHELL_SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
-function tuningSection(payload) {
-  const hint = tuningHint(payload.findings);
+function tuningSection(result, payload) {
+  const hint = tuningHint(result.decided, payload.findings);
   if (hint === void 0) return "";
   const n = hint.ids.length;
   const pct = Math.round(hint.share * 100);
@@ -8260,7 +8285,7 @@ function tuningSection(payload) {
     ) : `<p class="note">Set <code>${escapeHtml(id)}</code> to warn with <code>agenttrail-guard guardrails set-action</code>. Its id has characters a shell would read, so no command is offered to copy.</p>`
   ).join("\n");
   return `<div class="hint">
-<p><strong>${escapeHtml(counted(n, "guardrail produces", "guardrails produce"))} ${pct}% of the asks.</strong> Setting ${n === 1 ? "it" : "them"} to warn would take ask matches from ${escapeHtml(formatCount(hint.asks))} to ${escapeHtml(formatCount(hint.remaining))}, and the agent would be shown a warning instead.</p>
+<p><strong>${escapeHtml(counted(n, "guardrail accounts", "guardrails account"))} for ${pct}% of the asks.</strong> Setting ${n === 1 ? "it" : "them"} to warn would take the tool calls you are asked about from ${escapeHtml(formatCount(hint.asks))} to ${escapeHtml(formatCount(hint.remaining))}, and the agent would be shown a warning on those calls instead.</p>
 ${commands}
 </div>`;
 }
@@ -8268,8 +8293,9 @@ function wouldHaveDoneSection(result, payload) {
   if (result.findings.length === 0) return "";
   const columns = ACTION_ORDER.map((action) => {
     const count2 = result.riskyByAction[action];
-    const top = payload.findings.filter((f) => f.action === action).sort((a, b) => b.count - a.count || a.ruleId.localeCompare(b.ruleId)).slice(0, TOP_PER_ACTION).map(
-      (f) => `<li><span class="col-title">${inlineTitle(f.title)}</span><span class="times">${escapeHtml(formatCount(f.count))}&times;</span></li>`
+    const calls = decidedBy(result.decided, action);
+    const top = payload.findings.filter((f) => f.action === action && (calls.get(f.ruleId) ?? 0) > 0).map((f) => ({ f, n: calls.get(f.ruleId) ?? 0 })).sort((a, b) => b.n - a.n || a.f.ruleId.localeCompare(b.f.ruleId)).slice(0, TOP_PER_ACTION).map(
+      ({ f, n }) => `<li><span class="col-title">${inlineTitle(f.title)}</span><span class="times">${escapeHtml(formatCount(n))}&times;</span></li>`
     ).join("\n");
     const label = { block: "Blocked", require_approval: "Asked you first", warn: "Warned" }[action];
     return `<div class="col ${actionClass(action)}-col">
@@ -8297,7 +8323,7 @@ ${top}
 <div class="columns">
 ${columns}
 </div>${askOnCodexNote(result, byAction)}
-${tuningSection(payload)}
+${tuningSection(result, payload)}
 <div class="tally" role="group" aria-label="Guardrail matches">
 <div class="tally-group"><p class="tally-label">Matches by severity</p><ul class="pills">
 ${severities}
@@ -10291,6 +10317,7 @@ function aggregateScan(corpus, catalog, allowlist, shipped = /* @__PURE__ */ new
   const unmapped2 = /* @__PURE__ */ new Map();
   let tokens = EMPTY_TOKEN_TOTALS;
   const callOwasp = [];
+  const decided = /* @__PURE__ */ new Map();
   for (const session of corpus.sessions) {
     skippedLines += session.skippedLines;
     for (const turn of session.turns) tokens = addUsage(tokens, turn.usage);
@@ -10309,7 +10336,15 @@ function aggregateScan(corpus, catalog, allowlist, shipped = /* @__PURE__ */ new
       const { mapped, decision } = evaluateAction(catalog, allowlist, call.candidates);
       if (decision.matches.length === 0) continue;
       riskyActions++;
-      riskyByAction[strictestAction(decision.matches.map((m) => m.action))]++;
+      const strictest = strictestAction(decision.matches.map((m) => m.action));
+      riskyByAction[strictest]++;
+      const deciders = [
+        ...new Set(decision.matches.filter((m) => m.action === strictest).map((m) => m.ruleId))
+      ].sort();
+      const key = JSON.stringify([strictest, deciders]);
+      const group = decided.get(key);
+      if (group === void 0) decided.set(key, { action: strictest, ruleIds: deciders, calls: 1 });
+      else group.calls++;
       const text = displayTextOf(mapped);
       callOwasp.push(decision.matches.flatMap((m) => ruleOf.get(m.ruleId)?.rule.owasp ?? []));
       for (const match of decision.matches) {
@@ -10366,6 +10401,9 @@ function aggregateScan(corpus, catalog, allowlist, shipped = /* @__PURE__ */ new
     toolCalls,
     riskyActions,
     riskyByAction,
+    decided: [...decided.values()].sort(
+      (a, b) => b.calls - a.calls || a.action.localeCompare(b.action) || a.ruleIds.join(" ").localeCompare(b.ruleIds.join(" "))
+    ),
     findings,
     recurring,
     owasp: owaspTally(findings, callOwasp),

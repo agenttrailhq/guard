@@ -250,6 +250,18 @@ export interface ActionCounts {
   readonly warn: number;
 }
 
+/**
+ * Matched tool calls that share their strictest action and the guardrails that matched them at
+ * it. A guardrail that matched one of these calls at a milder action is not listed: setting it
+ * to anything milder would change nothing for that call.
+ */
+export interface DecidedCalls {
+  readonly action: GuardAction;
+  /** Distinct guardrail ids, sorted. */
+  readonly ruleIds: readonly string[];
+  readonly calls: number;
+}
+
 /** One command shape that happened more than once and matched a rule. */
 export interface RecurringItem {
   readonly text: string;
@@ -316,6 +328,11 @@ export interface ScanResult {
   readonly riskyActions: number;
   /** `riskyActions`, split by the strictest action that matched each call. */
   readonly riskyByAction: ActionCounts;
+  /**
+   * `riskyActions` again, grouped by strictest action and the guardrails that decided it,
+   * most calls first. The groups of one action add up to that action in `riskyByAction`.
+   */
+  readonly decided: readonly DecidedCalls[];
   /** Per-rule totals, most frequent first. */
   readonly findings: readonly ScanFinding[];
   /** Shapes seen two or more times, most frequent first. */
@@ -498,6 +515,8 @@ export function aggregateScan(
   // One entry per matched call: the OWASP ids of every guardrail that matched it, so the
   // per-risk tally can count calls as well as guardrail matches.
   const callOwasp: OwaspId[][] = [];
+  // Matched calls by strictest action and the guardrails that matched at it, keyed by both.
+  const decided = new Map<string, { action: GuardAction; ruleIds: string[]; calls: number }>();
 
   for (const session of corpus.sessions) {
     skippedLines += session.skippedLines;
@@ -519,7 +538,15 @@ export function aggregateScan(
       if (decision.matches.length === 0) continue;
 
       riskyActions++;
-      riskyByAction[strictestAction(decision.matches.map((m) => m.action))]++;
+      const strictest = strictestAction(decision.matches.map((m) => m.action));
+      riskyByAction[strictest]++;
+      const deciders = [
+        ...new Set(decision.matches.filter((m) => m.action === strictest).map((m) => m.ruleId)),
+      ].sort();
+      const key = JSON.stringify([strictest, deciders]);
+      const group = decided.get(key);
+      if (group === undefined) decided.set(key, { action: strictest, ruleIds: deciders, calls: 1 });
+      else group.calls++;
       // Redacted ONCE per matched call, then shared by every rule that matched it.
       // Scrubbing is the most expensive thing in this loop and the result is identical
       // per rule, so doing it inside the inner loop would be a per-rule cost for a
@@ -616,6 +643,12 @@ export function aggregateScan(
     toolCalls,
     riskyActions,
     riskyByAction,
+    decided: [...decided.values()].sort(
+      (a, b) =>
+        b.calls - a.calls ||
+        a.action.localeCompare(b.action) ||
+        a.ruleIds.join(" ").localeCompare(b.ruleIds.join(" ")),
+    ),
     findings,
     recurring,
     owasp: owaspTally(findings, callOwasp),

@@ -78,6 +78,7 @@ import { LOGO_LOCKUP_SVG, LOGO_MARK_SVG, REPORT_STYLES } from "./report-brand.js
 import { POST_LIMIT, REPORT_SCRIPT } from "./report-script.js";
 import type {
   ActionCounts,
+  DecidedCalls,
   ExampleShape,
   RecurringItem,
   RuleSource,
@@ -830,34 +831,79 @@ export interface TuningHint {
   readonly remaining: number;
 }
 
-/** See `TUNING_MAX_GUARDRAILS`. Over the guardrails the file carries, so `--review` covers ids. */
-export function tuningHint(findings: readonly PayloadFinding[]): TuningHint | undefined {
-  const asks = findings
-    .filter((f) => f.action === "require_approval")
-    .sort((a, b) => b.count - a.count || a.ruleId.localeCompare(b.ruleId));
-  const total = asks.reduce((sum, f) => sum + f.count, 0);
-  if (total < TUNING_MIN_ASKS) return undefined;
-  let covered = 0;
-  for (let k = 1; k <= Math.min(TUNING_MAX_GUARDRAILS, asks.length); k++) {
-    covered += asks[k - 1]?.count ?? 0;
-    if (covered / total >= TUNING_MIN_SHARE) {
-      return {
-        ids: asks.slice(0, k).map((f) => f.ruleId),
-        share: covered / total,
-        asks: total,
-        remaining: total - covered,
-      };
-    }
+/** Tool calls each guardrail decided at `action`: its count in that action's column. */
+function decidedBy(decided: readonly DecidedCalls[], action: GuardAction): Map<string, number> {
+  const out = new Map<string, number>();
+  for (const group of decided) {
+    if (group.action !== action) continue;
+    for (const id of group.ruleIds) out.set(id, (out.get(id) ?? 0) + group.calls);
   }
-  return undefined;
+  return out;
+}
+
+/**
+ * Up to `TUNING_MAX_GUARDRAILS` ask guardrails that, set to warn, would remove at least
+ * `TUNING_MIN_SHARE` of the asks, when there are at least `TUNING_MIN_ASKS`.
+ *
+ * Counted in tool calls whose strictest action was ask, the basis of the "Asked you first"
+ * column. A call stops being an ask only when every guardrail that asked on it is set to
+ * warn, so a guardrail whose asks were all on calls another guardrail blocked or asked
+ * anyway removes nothing and is never offered. Only guardrails the file carries are
+ * considered, so `--review` lists every id the hint names.
+ */
+export function tuningHint(
+  decided: readonly DecidedCalls[],
+  carried: readonly PayloadFinding[],
+): TuningHint | undefined {
+  const asks = decided.filter((group) => group.action === "require_approval");
+  const total = asks.reduce((sum, group) => sum + group.calls, 0);
+  if (total < TUNING_MIN_ASKS) return undefined;
+  const askers = new Set(
+    carried.filter((f) => f.action === "require_approval").map((f) => f.ruleId),
+  );
+  const own = new Map([...decidedBy(asks, "require_approval")].filter(([id]) => askers.has(id)));
+  const removed = (ids: ReadonlySet<string>): number =>
+    asks.reduce((sum, g) => (g.ruleIds.every((id) => ids.has(id)) ? sum + g.calls : sum), 0);
+
+  // Greedily add the guardrail that removes the most asks with those already chosen.
+  const chosen = new Set<string>();
+  while (chosen.size < TUNING_MAX_GUARDRAILS && removed(chosen) / total < TUNING_MIN_SHARE) {
+    let best: { id: string; gain: number; calls: number } | undefined;
+    for (const [id, calls] of own) {
+      if (chosen.has(id)) continue;
+      const gain = removed(new Set([...chosen, id]));
+      if (
+        best === undefined ||
+        gain > best.gain ||
+        (gain === best.gain && (calls > best.calls || (calls === best.calls && id < best.id)))
+      ) {
+        best = { id, gain, calls };
+      }
+    }
+    if (best === undefined) break;
+    chosen.add(best.id);
+  }
+  const drop = removed(chosen);
+  if (drop / total < TUNING_MIN_SHARE) return undefined;
+  // Drop any choice the others make unnecessary, so every command offered removes asks.
+  for (const id of [...chosen]) {
+    const without = new Set([...chosen].filter((other) => other !== id));
+    if (removed(without) === drop) chosen.delete(id);
+  }
+  return {
+    ids: [...chosen].sort((a, b) => (own.get(b) ?? 0) - (own.get(a) ?? 0) || a.localeCompare(b)),
+    share: drop / total,
+    asks: total,
+    remaining: total - drop,
+  };
 }
 
 /** An id that a shell reads as one plain word. */
 export const SHELL_SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 
 /** The tuning hint's markup. */
-function tuningSection(payload: ReportPayload): string {
-  const hint = tuningHint(payload.findings);
+function tuningSection(result: ScanResult, payload: ReportPayload): string {
+  const hint = tuningHint(result.decided, payload.findings);
   if (hint === undefined) return "";
   const n = hint.ids.length;
   const pct = Math.round(hint.share * 100);
@@ -875,7 +921,7 @@ function tuningSection(payload: ReportPayload): string {
     )
     .join("\n");
   return `<div class="hint">
-<p><strong>${escapeHtml(counted(n, "guardrail produces", "guardrails produce"))} ${pct}% of the asks.</strong> Setting ${n === 1 ? "it" : "them"} to warn would take ask matches from ${escapeHtml(formatCount(hint.asks))} to ${escapeHtml(formatCount(hint.remaining))}, and the agent would be shown a warning instead.</p>
+<p><strong>${escapeHtml(counted(n, "guardrail accounts", "guardrails account"))} for ${pct}% of the asks.</strong> Setting ${n === 1 ? "it" : "them"} to warn would take the tool calls you are asked about from ${escapeHtml(formatCount(hint.asks))} to ${escapeHtml(formatCount(hint.remaining))}, and the agent would be shown a warning on those calls instead.</p>
 ${commands}
 </div>`;
 }
@@ -885,13 +931,17 @@ function wouldHaveDoneSection(result: ScanResult, payload: ReportPayload): strin
   if (result.findings.length === 0) return "";
   const columns = ACTION_ORDER.map((action) => {
     const count = result.riskyByAction[action];
+    // Each guardrail's tool calls in this column: the calls it decided, as the count above
+    // counts them. A guardrail whose matches all landed on stricter calls is not listed.
+    const calls = decidedBy(result.decided, action);
     const top = payload.findings
-      .filter((f) => f.action === action)
-      .sort((a, b) => b.count - a.count || a.ruleId.localeCompare(b.ruleId))
+      .filter((f) => f.action === action && (calls.get(f.ruleId) ?? 0) > 0)
+      .map((f) => ({ f, n: calls.get(f.ruleId) ?? 0 }))
+      .sort((a, b) => b.n - a.n || a.f.ruleId.localeCompare(b.f.ruleId))
       .slice(0, TOP_PER_ACTION)
       .map(
-        (f) =>
-          `<li><span class="col-title">${inlineTitle(f.title)}</span><span class="times">${escapeHtml(formatCount(f.count))}&times;</span></li>`,
+        ({ f, n }) =>
+          `<li><span class="col-title">${inlineTitle(f.title)}</span><span class="times">${escapeHtml(formatCount(n))}&times;</span></li>`,
       )
       .join("\n");
     const label = { block: "Blocked", require_approval: "Asked you first", warn: "Warned" }[action];
@@ -922,7 +972,7 @@ function wouldHaveDoneSection(result: ScanResult, payload: ReportPayload): strin
 <div class="columns">
 ${columns}
 </div>${askOnCodexNote(result, byAction)}
-${tuningSection(payload)}
+${tuningSection(result, payload)}
 <div class="tally" role="group" aria-label="Guardrail matches">
 <div class="tally-group"><p class="tally-label">Matches by severity</p><ul class="pills">
 ${severities}

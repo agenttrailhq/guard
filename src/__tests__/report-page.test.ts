@@ -44,7 +44,12 @@ import {
 } from "../core/report.js";
 import { REPORT_SCRIPT } from "../core/report-script.js";
 import { compileCatalog } from "../core/rules.js";
-import { aggregateScan, type ScanFinding, type ScanResult } from "../core/scan-report.js";
+import {
+  aggregateScan,
+  type DecidedCalls,
+  type ScanFinding,
+  type ScanResult,
+} from "../core/scan-report.js";
 import type { GuardRule } from "../core/types.js";
 import { bash, session, toolUse, turn } from "./scan-fixtures.js";
 
@@ -108,6 +113,9 @@ function resultWith(
     toolCalls: 40,
     riskyActions: risky,
     riskyByAction: byAction,
+    // Each finding's own calls, as if no two guardrails matched one call. A test about
+    // overlap passes its own.
+    decided: findings.map((f) => ({ action: f.action, ruleIds: [f.ruleId], calls: f.count })),
     findings,
     recurring: [],
     owasp: [],
@@ -242,24 +250,101 @@ describe("what Guard would have done", () => {
 });
 
 describe("the tuning hint", () => {
-  const asks = (...counts: number[]) =>
-    reportPayload(resultWith(counts.map((c, i) => lib(`a.ask-${i}`, "require_approval", c))), META)
-      .findings;
+  /** Ask guardrails with no overlap: the decided calls and the carried rows. */
+  const asks = (...counts: number[]) => {
+    const result = resultWith(counts.map((c, i) => lib(`a.ask-${i}`, "require_approval", c)));
+    return [result.decided, reportPayload(result, META).findings] as const;
+  };
+  const ask = (ruleIds: string[], calls: number): DecidedCalls => ({
+    action: "require_approval",
+    ruleIds,
+    calls,
+  });
+  const carried = (...ids: string[]) =>
+    reportPayload(resultWith(ids.map((id) => lib(id, "require_approval", 1))), META).findings;
 
   it("appears when one guardrail produces most of at least the minimum number of asks", () => {
     expect(TUNING_MIN_ASKS).toBe(5);
-    expect(tuningHint(asks(5))).toMatchObject({ ids: ["a.ask-0"], asks: 5, remaining: 0 });
+    expect(tuningHint(...asks(5))).toMatchObject({ ids: ["a.ask-0"], asks: 5, remaining: 0 });
   });
 
   it("stays away below the minimum number of asks", () => {
-    expect(tuningHint(asks(4))).toBeUndefined();
+    expect(tuningHint(...asks(4))).toBeUndefined();
   });
 
   it("uses at most three guardrails, and only when they reach 60%", () => {
     // Five equal guardrails: three of them are exactly 60%.
-    expect(tuningHint(asks(2, 2, 2, 2, 2))?.ids).toHaveLength(3);
+    expect(tuningHint(...asks(2, 2, 2, 2, 2))?.ids).toHaveLength(3);
     // Six equal guardrails: three of them are 50%, which is not enough.
-    expect(tuningHint(asks(2, 2, 2, 2, 2, 2))).toBeUndefined();
+    expect(tuningHint(...asks(2, 2, 2, 2, 2, 2))).toBeUndefined();
+  });
+
+  it("counts asks in tool calls, not in guardrail matches", () => {
+    // Two guardrails asked on the same 4 calls: 8 matches, but only 4 asks.
+    expect(tuningHint([ask(["a.x", "a.y"], 4)], carried("a.x", "a.y"))).toBeUndefined();
+    // On 5 calls, both together remove every ask; neither alone removes any.
+    expect(tuningHint([ask(["a.x", "a.y"], 5)], carried("a.x", "a.y"))).toMatchObject({
+      ids: ["a.x", "a.y"],
+      asks: 5,
+      remaining: 0,
+    });
+  });
+
+  it("measures 60% of the asks in tool calls", () => {
+    // a.x alone removes 3 of 5 asks (60%); the other 2 are shared with a.y.
+    const at = [ask(["a.x"], 3), ask(["a.x", "a.y"], 2)];
+    expect(tuningHint(at, carried("a.x", "a.y"))).toMatchObject({
+      ids: ["a.x"],
+      asks: 5,
+      remaining: 2,
+    });
+    // With 2 calls of its own and 3 shared, a.x alone removes 40%, so both are needed.
+    const below = [ask(["a.x"], 2), ask(["a.x", "a.y"], 3)];
+    expect(tuningHint(below, carried("a.x", "a.y"))).toMatchObject({
+      ids: ["a.x", "a.y"],
+      remaining: 0,
+    });
+  });
+
+  it("never names a guardrail whose asks were on calls another guardrail blocked", () => {
+    // a.shadowed matched 4 calls at ask, but a.blocker blocked every one of them.
+    const findings = [
+      lib("a.blocker", "block", 4),
+      lib("a.shadowed", "require_approval", 4),
+      lib("a.real", "require_approval", 6),
+    ];
+    const result = resultWith(
+      findings,
+      { block: 4, require_approval: 6, warn: 0 },
+      {
+        decided: [{ action: "block", ruleIds: ["a.blocker"], calls: 4 }, ask(["a.real"], 6)],
+      },
+    );
+    expect(tuningHint(result.decided, reportPayload(result, META).findings)).toMatchObject({
+      ids: ["a.real"],
+      asks: 6,
+      remaining: 0,
+    });
+    const html = renderReport(result, META);
+    expect(html).not.toContain("set-action a.shadowed");
+    expect(html).toContain("would take the tool calls you are asked about from 6 to 0");
+    const asked = between(html, "Asked you first</p>", "</div>");
+    expect(asked).toContain('Library guardrail a.real</span><span class="times">6&times;');
+    expect(asked).not.toContain("a.shadowed");
+  });
+
+  it("lists nothing under a column whose count is 0, and gives no hint", () => {
+    // Every ask matched a call that a.blocker blocked.
+    const result = resultWith(
+      [lib("a.blocker", "block", 3), lib("a.asker", "require_approval", 6)],
+      { block: 6, require_approval: 0, warn: 0 },
+      { decided: [{ action: "block", ruleIds: ["a.blocker", "a.both"], calls: 6 }] },
+    );
+    const html = renderReport(result, META);
+    const asked = between(html, "Asked you first</p>", "</div>");
+    expect(asked).toContain('<p class="col-count">0</p>');
+    expect(asked).not.toContain("col-list");
+    expect(html).not.toContain('<div class="hint">');
   });
 
   it("offers one copyable set-action command per guardrail", () => {
@@ -269,6 +354,39 @@ describe("the tuning hint", () => {
     );
     expect(html).toContain("agenttrail-guard guardrails set-action a.noisy warn");
     expect(html).not.toContain("set-action a.rare");
+  });
+
+  it("offers only guardrails that each remove asks, within the limits, on any overlap", () => {
+    // A seeded walk over small random overlaps of five ask guardrails.
+    let seed = 7;
+    const next = (n: number): number => {
+      seed = (seed * 1103515245 + 12345) % 2147483648;
+      return seed % n;
+    };
+    const ids = ["a.p", "a.q", "a.r", "a.s", "a.t"];
+    let offered = 0;
+    for (let round = 0; round < 400; round++) {
+      const groups: DecidedCalls[] = [];
+      for (let g = 0; g < 1 + next(5); g++) {
+        const members = ids.filter(() => next(3) === 0);
+        if (members.length > 0) groups.push(ask(members, 1 + next(6)));
+      }
+      const hint = tuningHint(groups, carried(...ids));
+      if (hint === undefined) continue;
+      offered++;
+      const removed = (set: readonly string[]) =>
+        groups.reduce((n, g) => (g.ruleIds.every((id) => set.includes(id)) ? n + g.calls : n), 0);
+      const total = groups.reduce((n, g) => n + g.calls, 0);
+      expect(hint.asks).toBe(total);
+      expect(total).toBeGreaterThanOrEqual(TUNING_MIN_ASKS);
+      expect(hint.ids.length).toBeLessThanOrEqual(3);
+      expect(removed(hint.ids)).toBe(total - hint.remaining);
+      expect(removed(hint.ids) / total).toBeGreaterThanOrEqual(0.6);
+      for (const id of hint.ids) {
+        expect(removed(hint.ids.filter((other) => other !== id))).toBeLessThan(removed(hint.ids));
+      }
+    }
+    expect(offered).toBeGreaterThan(20);
   });
 });
 

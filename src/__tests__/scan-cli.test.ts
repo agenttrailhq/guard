@@ -565,6 +565,7 @@ describe("the terminal summary", () => {
     toolCalls: 40,
     riskyActions: 20,
     riskyByAction: { block: 8, require_approval: 5, warn: 7 },
+    decided: [],
     findings: [
       finding("t.low", "low", "warn", 30),
       finding("t.crit", "critical", "block", 2),

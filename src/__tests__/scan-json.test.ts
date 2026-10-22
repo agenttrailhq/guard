@@ -5,8 +5,8 @@
  * removed is a change for whoever reads it. Pinning the keys of the envelope, the result, a
  * finding, an example shape, a recurring row, the token totals, a tally row and the skipped
  * block makes every such change an edit to this file. The latest additions are
- * `riskyByAction` on the result, and `source` on each finding, with `category` and
- * `description` on a finding from the shipped library.
+ * `riskyByAction` and `decided` on the result, and `source` on each finding, with `category`
+ * and `description` on a finding from the shipped library.
  */
 
 import { describe, expect, it } from "vitest";
@@ -57,6 +57,7 @@ const withSkips = jsonOf({
 
 const RESULT_KEYS = [
   "agent",
+  "decided",
   "findings",
   "notRead",
   "owasp",
@@ -80,6 +81,8 @@ describe("scan --json keys", () => {
   it("pins the result, and the per-action split", () => {
     expect(keys(claude.result)).toEqual(RESULT_KEYS);
     expect(keys(claude.result.riskyByAction)).toEqual(["block", "require_approval", "warn"]);
+    const [group] = claude.result.decided as Json[];
+    expect(keys(group)).toEqual(["action", "calls", "ruleIds"]);
   });
 
   it("pins a finding and its example shapes", () => {
