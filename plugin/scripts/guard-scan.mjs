@@ -8029,6 +8029,7 @@ function reportPayload(result, meta) {
     recurring: result.recurring.slice(0, MAX_ROWS).map((r) => ({
       text: r.text,
       count: r.count,
+      calls: r.calls,
       ruleId: r.ruleId,
       title: r.title
     })),
@@ -8581,7 +8582,7 @@ function recurringSection(payload) {
     byShape.set(item.text, [...byShape.get(item.text) ?? [], item]);
   }
   const rows = [...byShape].map(([text, items]) => {
-    const times = Math.max(...items.map((item) => item.count));
+    const times = Math.max(...items.map((item) => item.calls));
     const names = items.map((item) => {
       const index = payload.findings.findIndex((f) => f.ruleId === item.ruleId);
       const title = inlineTitle(item.title);
@@ -10428,6 +10429,7 @@ function aggregateScan(corpus, catalog, allowlist, shipped = /* @__PURE__ */ new
   const unmapped2 = /* @__PURE__ */ new Map();
   let tokens = EMPTY_TOKEN_TOTALS;
   const callOwasp = [];
+  const shapeCalls = /* @__PURE__ */ new Map();
   const decided = /* @__PURE__ */ new Map();
   for (const session of corpus.sessions) {
     skippedLines += session.skippedLines;
@@ -10457,6 +10459,7 @@ function aggregateScan(corpus, catalog, allowlist, shipped = /* @__PURE__ */ new
       if (group === void 0) decided.set(key, { action: strictest, ruleIds: deciders, calls: 1 });
       else group.calls++;
       const text = displayTextOf(mapped);
+      shapeCalls.set(text, (shapeCalls.get(text) ?? 0) + 1);
       callOwasp.push(decision.matches.flatMap((m) => ruleOf.get(m.ruleId)?.rule.owasp ?? []));
       for (const match of decision.matches) {
         let acc = byRule.get(match.ruleId);
@@ -10496,7 +10499,13 @@ function aggregateScan(corpus, catalog, allowlist, shipped = /* @__PURE__ */ new
     );
     for (const example of examples) {
       if (example.count >= 2) {
-        recurring.push({ text: example.text, count: example.count, ruleId, title });
+        recurring.push({
+          text: example.text,
+          count: example.count,
+          calls: shapeCalls.get(example.text) ?? example.count,
+          ruleId,
+          title
+        });
       }
     }
   }

@@ -265,7 +265,13 @@ export interface DecidedCalls {
 /** One command shape that happened more than once and matched a rule. */
 export interface RecurringItem {
   readonly text: string;
+  /** How many of this guardrail's matches had this shape. */
   readonly count: number;
+  /**
+   * How many matched tool calls had this shape, whichever guardrails matched them. Different
+   * calls can redact to one shape, so this can be more than `count`.
+   */
+  readonly calls: number;
   readonly ruleId: string;
   /** The rule's title — what the repeat actually means, beside the shape. */
   readonly title: string;
@@ -515,6 +521,8 @@ export function aggregateScan(
   // One entry per matched call: the OWASP ids of every guardrail that matched it, so the
   // per-risk tally can count calls as well as guardrail matches.
   const callOwasp: OwaspId[][] = [];
+  // Matched tool calls per redacted shape, each call once, whichever guardrails it matched.
+  const shapeCalls = new Map<string, number>();
   // Matched calls by strictest action and the guardrails that matched at it, keyed by both.
   const decided = new Map<string, { action: GuardAction; ruleIds: string[]; calls: number }>();
 
@@ -552,6 +560,7 @@ export function aggregateScan(
       // per rule, so doing it inside the inner loop would be a per-rule cost for a
       // per-call value.
       const text = displayTextOf(mapped);
+      shapeCalls.set(text, (shapeCalls.get(text) ?? 0) + 1);
       callOwasp.push(decision.matches.flatMap((m) => ruleOf.get(m.ruleId)?.rule.owasp ?? []));
       for (const match of decision.matches) {
         let acc = byRule.get(match.ruleId);
@@ -625,7 +634,13 @@ export function aggregateScan(
 
     for (const example of examples) {
       if (example.count >= 2) {
-        recurring.push({ text: example.text, count: example.count, ruleId, title });
+        recurring.push({
+          text: example.text,
+          count: example.count,
+          calls: shapeCalls.get(example.text) ?? example.count,
+          ruleId,
+          title,
+        });
       }
     }
   }

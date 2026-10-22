@@ -222,6 +222,7 @@ describe("recurring repeats", () => {
       {
         text: "git checkout -- <path>",
         count: 2,
+        calls: 2,
         ruleId: "t.git-checkout",
         title: "Discards uncommitted work",
       },
@@ -536,6 +537,34 @@ describe("tool calls by their strictest action", () => {
         { action: "require_approval", ruleIds: ["t.env-file"], calls: 1 },
       ]);
     }
+  });
+
+  it("counts the tool calls behind a shape, when different calls redact to it", () => {
+    // Two guardrails, each matching two different reads, all four redacted to one shape.
+    const reads = (glob: string, id: string) => ({
+      ...RULE_ENV_FILE,
+      id,
+      defaultAction: "warn" as const,
+      match: { any_of: [{ kind: "execute_tool" as const, file_glob: glob }] },
+    });
+    const result = aggregateScan(
+      corpusOf([
+        session([
+          turn([
+            toolUse("Read", { file_path: "/srv/one/CLAUDE.md" }, "1"),
+            toolUse("Read", { file_path: "/srv/two/CLAUDE.md" }, "2"),
+            toolUse("Read", { file_path: "/srv/one/ci.yml" }, "3"),
+            toolUse("Read", { file_path: "/srv/two/ci.yml" }, "4"),
+          ]),
+        ]),
+      ]),
+      compileCatalog([reads("**/CLAUDE.md", "t.instructions"), reads("**/ci.yml", "t.ci")]),
+      NO_ALLOWLIST,
+    );
+    expect(result.recurring.map((r) => [r.ruleId, r.text, r.count, r.calls])).toEqual([
+      ["t.instructions", "Read <path>", 2, 4],
+      ["t.ci", "Read <path>", 2, 4],
+    ]);
   });
 
   it("is all zeroes when nothing matched", () => {
