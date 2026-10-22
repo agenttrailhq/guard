@@ -41,6 +41,7 @@ const ALLOWED_PROPERTIES = new Set([
   "getAttribute",
   "getElementById",
   "getItem",
+  "getSelection",
   "hidden",
   "href",
   "indexOf",
@@ -57,6 +58,7 @@ const ALLOWED_PROPERTIES = new Set([
   "querySelectorAll",
   "removeChild",
   "select",
+  "selectAllChildren",
   "setAttribute",
   "setItem",
   "slice",
@@ -362,6 +364,7 @@ interface Logic {
   isSort(value: unknown): boolean;
   rankOf(value: unknown): number;
   isRisk(value: unknown): boolean;
+  copiedText(name: unknown): string;
   riskVisible(risk: string, ids: string | null): boolean;
   exportHref(raw: string): string;
 }
@@ -369,7 +372,7 @@ interface Logic {
 const logic = runInNewContext(
   `${REPORT_SCRIPT_LOGIC}
 ({ xLength, postLength, shareSuffix, shareHref, readTheme, nextTheme, isFilter, rowVisible,
-   isSort, rankOf, isRisk, riskVisible, exportHref });`,
+   isSort, rankOf, isRisk, riskVisible, copiedText, exportHref });`,
 ) as Logic;
 
 const SUFFIX = `&url=${encodeURIComponent("https://www.agenttrail.sh/agenttrail-guard?utm_source=guard")}&hashtags=agenttrail`;
@@ -548,6 +551,8 @@ interface Page {
   printed: number;
   copied: string[];
   execCommands: string[];
+  /** Elements whose text the script selected in place. */
+  selectedAll: FakeElement[];
   timers: (() => void)[];
 }
 
@@ -557,6 +562,8 @@ interface PageOptions {
   readonly systemDark?: boolean;
   /** How the clipboard behaves: it works, it is not there, or it refuses. */
   readonly clipboard?: "works" | "missing" | "rejects";
+  /** What `execCommand("copy")` does: copies, reports it did not, or throws. */
+  readonly execCopy?: "copies" | "refuses" | "throws";
 }
 
 /** A page shaped like the report, with three findings, and the script run against it. */
@@ -608,6 +615,7 @@ function loadPage(options: PageOptions = {}): Page {
       hidden: "",
       "data-copy": "cmd-init",
       "data-label": "Copy",
+      "aria-label": "Copy the init command",
     }),
     el("textarea", { id: "share-text" }),
     el("button", {
@@ -618,6 +626,7 @@ function loadPage(options: PageOptions = {}): Page {
     }),
     el("a", { id: "share-link", href: LINK }),
     el("span", { id: "share-count" }),
+    el("p", { id: "page-status" }),
     el("textarea", { id: "copy-buffer" }),
     el("script", { id: "report-data" }),
   ];
@@ -650,6 +659,7 @@ function loadPage(options: PageOptions = {}): Page {
     printed: 0,
     copied: [],
     execCommands: [],
+    selectedAll: [],
     timers: [],
   };
 
@@ -680,6 +690,9 @@ function loadPage(options: PageOptions = {}): Page {
     addEventListener: (type: string, fn: Listener) => {
       windowListeners.set(type, [...(windowListeners.get(type) ?? []), fn]);
     },
+    getSelection: () => ({
+      selectAllChildren: (e: FakeElement) => void page.selectedAll.push(e),
+    }),
   };
   const document = {
     documentElement: root,
@@ -692,7 +705,8 @@ function loadPage(options: PageOptions = {}): Page {
     createElement: (tag: string) => new FakeElement(tag),
     execCommand: (command: string) => {
       page.execCommands.push(command);
-      return true;
+      if (options.execCopy === "throws") throw new Error("not allowed");
+      return options.execCopy !== "refuses";
     },
   };
   const clipboard = {
@@ -915,6 +929,42 @@ describe("the script in the page", () => {
     expect(buffer.selected).toBe(true);
     expect(page.execCommands).toEqual(["copy"]);
     expect(button.textContent).toBe("Copied");
+    // Focus comes back from the hidden buffer to the button.
+    expect(button.focused).toBe(true);
+    expect(page.byId.get("page-status")?.textContent).toBe("Copied the init command");
+  });
+
+  it.each([
+    "refuses",
+    "throws",
+  ] as const)("says how to copy by hand, with the text selected where it is shown, when copying %s", async (execCopy) => {
+    const page = loadPage({ clipboard: "missing", execCopy });
+    const button = copyButton(page, "cmd-init");
+    button.click();
+    await settle();
+    expect(button.textContent).toBe("Press Ctrl+C or ⌘C");
+    expect(button.focused).toBe(true);
+    expect(page.selectedAll).toEqual([page.byId.get("cmd-init")]);
+    expect(page.byId.get("page-status")?.textContent).toContain("press Ctrl+C");
+    for (const fn of page.timers) fn();
+    expect(button.textContent).toBe("Copy");
+  });
+
+  it("selects a text area's own text when copying by hand fails", async () => {
+    const page = loadPage({ clipboard: "missing", execCopy: "refuses" });
+    copyButton(page, "share-text").click();
+    await settle();
+    expect((page.byId.get("share-text") as FakeElement).selected).toBe(true);
+    expect(page.selectedAll).toEqual([]);
+  });
+
+  it("announces a copy by the button's name", async () => {
+    const page = loadPage();
+    copyButton(page, "cmd-init").click();
+    await settle();
+    expect(page.byId.get("page-status")?.textContent).toBe("Copied the init command");
+    expect(logic.copiedText("Copy text of the post")).toBe("Copied text of the post");
+    expect(logic.copiedText(null)).toBe("Copied");
   });
 
   it("keeps the Post-on-X link an X post as the text is edited, and counts it", () => {
