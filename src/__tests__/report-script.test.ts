@@ -287,6 +287,7 @@ describe("everything the script looks for is in the rendered page", () => {
       toolCalls: 1,
       riskyActions: 1,
       riskyByAction: { block: 1, require_approval: 0, warn: 0 },
+      decided: [{ action: "block", ruleIds: ["t.x"], calls: 1 }],
       findings: [finding],
       recurring: [],
       owasp: [{ id: "ASI02" as const, callCount: 1, ruleMatches: 1, guardrailCount: 1 }],

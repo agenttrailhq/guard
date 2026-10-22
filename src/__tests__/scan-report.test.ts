@@ -522,6 +522,59 @@ describe("tool calls by their strictest action", () => {
   it("is all zeroes when nothing matched", () => {
     const result = aggregateScan(corpusOf([]), CATALOG, NO_ALLOWLIST);
     expect(result.riskyByAction).toEqual({ block: 0, require_approval: 0, warn: 0 });
+    expect(result.decided).toEqual([]);
+  });
+
+  it("groups the calls by strictest action and the guardrails that decided it", () => {
+    const result = aggregateScan(
+      corpusOf([
+        session([
+          turn([
+            bash("rm -rf /tmp/x", "1"),
+            // The warn guardrail matched too, but the block decided: it is not listed.
+            bash("git checkout -- src/a.ts && rm -rf /tmp/y", "2"),
+            bash("git checkout -- src/b.ts", "3"),
+            toolUse("Read", { file_path: "/srv/app/.env" }, "4"),
+            bash("ls -la", "5"),
+          ]),
+        ]),
+      ]),
+      CATALOG,
+      NO_ALLOWLIST,
+    );
+    expect(result.decided).toEqual([
+      { action: "block", ruleIds: ["t.rm-rf"], calls: 2 },
+      { action: "require_approval", ruleIds: ["t.env-file"], calls: 1 },
+      { action: "warn", ruleIds: ["t.git-checkout"], calls: 1 },
+    ]);
+    for (const action of ["block", "require_approval", "warn"] as const) {
+      const calls = result.decided
+        .filter((g) => g.action === action)
+        .reduce((n, g) => n + g.calls, 0);
+      expect(calls, action).toBe(result.riskyByAction[action]);
+    }
+  });
+
+  it("lists every guardrail that matched at the strictest action, once each", () => {
+    const twoBlocks = compileCatalog([
+      RULE_RM_RF,
+      { ...RULE_GIT_CHECKOUT, defaultAction: "block" as const },
+    ]);
+    const result = aggregateScan(
+      corpusOf([session([turn([bash("git checkout -- src/a.ts && rm -rf /tmp/y", "1")])])]),
+      twoBlocks,
+      NO_ALLOWLIST,
+    );
+    expect(result.decided).toEqual([
+      { action: "block", ruleIds: ["t.git-checkout", "t.rm-rf"], calls: 1 },
+    ]);
+    // Two compiled entries under one id: the call is decided once by that id.
+    const doubled = aggregateScan(
+      corpusOf([session([turn([bash("rm -rf /tmp/x", "1")])])]),
+      compileCatalog([RULE_RM_RF, { ...RULE_RM_RF }]),
+      NO_ALLOWLIST,
+    );
+    expect(doubled.decided).toEqual([{ action: "block", ruleIds: ["t.rm-rf"], calls: 1 }]);
   });
 });
 
