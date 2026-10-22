@@ -7027,8 +7027,6 @@ code {
 .product-tag {
   font-size: 12px;
   font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
   color: var(--brand-text);
   background: var(--note-bg);
   border: 1px solid var(--note-border);
@@ -7043,8 +7041,6 @@ code {
   margin: 0;
   font-size: 12px;
   font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
   color: var(--muted-fg);
 }
 .agent::before { content: ""; width: 8px; height: 8px; border-radius: 999px; background: var(--brand); }
@@ -7088,8 +7084,6 @@ code {
   margin: 0;
   font-size: 12px;
   font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
   color: var(--muted-fg);
 }
 .pills { display: flex; flex-wrap: wrap; gap: 8px 14px; list-style: none; margin: 0; padding: 0; }
@@ -7104,9 +7098,7 @@ code {
   padding: 0 9px;
   font-size: 11px;
   font-weight: 650;
-  letter-spacing: 0.05em;
   line-height: 1.8;
-  text-transform: uppercase;
   white-space: nowrap;
 }
 ${severityRules}
@@ -7172,8 +7164,6 @@ thead th {
   color: var(--muted-fg);
   font-size: 12px;
   font-weight: 600;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
   white-space: nowrap;
 }
 .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
@@ -7334,8 +7324,6 @@ a { color: var(--brand-text); }
   margin: 0 0 6px;
   font-size: 12px;
   font-weight: 650;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
   color: var(--brand-text);
 }
 .product-note h2 { font-size: 22px; margin: 0 0 8px; }
@@ -8154,7 +8142,7 @@ function topBar(payload) {
 </div>`;
   return `<header class="masthead">
 <div class="brand" role="img" aria-label="agenttrail">${LOGO_LOCKUP_SVG}</div>
-<span class="product-tag">guard</span>
+<span class="product-tag">Guard</span>
 <nav class="sections" aria-label="Report sections"><ul>
 ${nav}
 </ul></nav>
