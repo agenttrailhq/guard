@@ -812,6 +812,7 @@ describe("what the file carries is one capped projection", () => {
           {
             text: "x <path>",
             count: 2,
+            calls: 2,
             ruleId: "a.x",
             title: "t",
             ...leak("repeat"),
@@ -878,7 +879,13 @@ describe("what the file carries is one capped projection", () => {
     undefined,
     {
       recurring: [
-        { text: "own-shape <path>", count: 2, ruleId: "t.mine", title: "Team guardrail t.mine" },
+        {
+          text: "own-shape <path>",
+          count: 2,
+          calls: 2,
+          ruleId: "t.mine",
+          title: "Team guardrail t.mine",
+        },
       ],
       skipped: {
         unparseableLines: 0,
@@ -1511,9 +1518,21 @@ describe("copy and layout details", () => {
     const html = renderReport(
       resultWith([lib("a.x", "block", 3), lib("a.y", "warn", 2)], undefined, {
         recurring: [
-          { text: "rm -rf <path>", count: 3, ruleId: "a.x", title: "Library guardrail a.x" },
-          { text: "rm -rf <path>", count: 2, ruleId: "a.y", title: "Library guardrail a.y" },
-          { text: "ls <path>", count: 2, ruleId: "a.y", title: "Library guardrail a.y" },
+          {
+            text: "rm -rf <path>",
+            count: 3,
+            calls: 3,
+            ruleId: "a.x",
+            title: "Library guardrail a.x",
+          },
+          {
+            text: "rm -rf <path>",
+            count: 2,
+            calls: 3,
+            ruleId: "a.y",
+            title: "Library guardrail a.y",
+          },
+          { text: "ls <path>", count: 2, calls: 2, ruleId: "a.y", title: "Library guardrail a.y" },
         ],
       }),
       META,
@@ -1581,7 +1600,7 @@ describe("a hostile string in every free-text field stays text", () => {
     { block: 5, require_approval: 9, warn: 1 },
     {
       recurring: [
-        { text: `rm ${HOSTILE}`, count: 3, ruleId: "a.blk", title: `Library ${HOSTILE}` },
+        { text: `rm ${HOSTILE}`, count: 3, calls: 3, ruleId: "a.blk", title: `Library ${HOSTILE}` },
       ],
       skipped: {
         unreadableFiles: 0,
@@ -1663,5 +1682,38 @@ describe("a clean scan offers nothing to fix", () => {
     const hero = between(renderReport(resultWith([]), META), 'id="overview"', "</section>");
     expect(hero).not.toContain("See what to fix first");
     expect(hero).toContain("Share on X");
+  });
+});
+
+describe("Repeat offenders counts the tool calls behind each shape", () => {
+  it("shows the calls a shape stands for when different calls share it", () => {
+    const html = renderReport(
+      resultWith([lib("a.instructions", "warn", 2), lib("a.ci", "warn", 2)], undefined, {
+        recurring: [
+          { text: "Edit <path>", count: 2, calls: 4, ruleId: "a.ci", title: "Editing CI" },
+          {
+            text: "Edit <path>",
+            count: 2,
+            calls: 4,
+            ruleId: "a.instructions",
+            title: "Editing instructions",
+          },
+        ],
+      }),
+      META,
+    );
+    const table = between(html, '<table class="recurring"', "</table>");
+    expect(table).toContain('<td class="num" role="cell">4&times;</td>');
+    expect(table).toContain("Editing CI</a> (2&times;)<br>");
+    expect(table).toContain("Editing instructions</a> (2&times;)</td>");
+  });
+
+  it("carries each repeat's calls in the file", () => {
+    const result = resultWith([lib("a.x", "warn", 2)], undefined, {
+      recurring: [{ text: "x <path>", count: 2, calls: 3, ruleId: "a.x", title: "t" }],
+    });
+    expect(reportPayload(result, META).recurring).toEqual([
+      { text: "x <path>", count: 2, calls: 3, ruleId: "a.x", title: "t" },
+    ]);
   });
 });

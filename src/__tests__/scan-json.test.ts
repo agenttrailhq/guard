@@ -139,7 +139,7 @@ describe("scan --json keys", () => {
   it("pins a recurring row", () => {
     const [row] = claude.result.recurring as Json[];
     expect(row).toBeDefined();
-    expect(keys(row)).toEqual(["count", "ruleId", "text", "title"]);
+    expect(keys(row)).toEqual(["calls", "count", "ruleId", "text", "title"]);
   });
 
   it("pins the token totals", () => {

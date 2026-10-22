@@ -450,6 +450,7 @@ export function reportPayload(result: ScanResult, meta: ReportMeta): ReportPaylo
     recurring: result.recurring.slice(0, MAX_ROWS).map((r) => ({
       text: r.text,
       count: r.count,
+      calls: r.calls,
       ruleId: r.ruleId,
       title: r.title,
     })),
@@ -1255,7 +1256,9 @@ function recurringSection(payload: ReportPayload): string {
   }
   const rows = [...byShape]
     .map(([text, items]) => {
-      const times = Math.max(...items.map((item) => item.count));
+      // Tool calls with this shape, each once: two guardrails on the same calls do not add,
+      // and different calls that redact to this shape do.
+      const times = Math.max(...items.map((item) => item.calls));
       const names = items
         .map((item) => {
           const index = payload.findings.findIndex((f) => f.ruleId === item.ruleId);

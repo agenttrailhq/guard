@@ -774,7 +774,7 @@ describe("a backticked span in a guardrail title renders as code", () => {
         owasp: [],
       },
     ],
-    recurring: [{ text: "x", count: 2, ruleId: "t.titled", title }],
+    recurring: [{ text: "x", count: 2, calls: 2, ruleId: "t.titled", title }],
   });
 
   it("wraps the span in code, in the findings and in the repeats", () => {
@@ -1055,6 +1055,7 @@ describe("the pre-flight review lists exactly what the file carries", () => {
     recurring: Array.from({ length: MAX_ROWS + 5 }, (_, i) => ({
       text: `repeat-${String(i).padStart(3, "0")} <path>`,
       count: 2,
+      calls: 2,
       ruleId: `t.rule-${String(i).padStart(3, "0")}`,
       title: `Guardrail number ${i}`,
     })),
