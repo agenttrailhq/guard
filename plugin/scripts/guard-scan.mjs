@@ -8115,6 +8115,9 @@ function libraryText(text, className = "library-text") {
   return `<p class="${className}">${html}</p>`;
 }
 function headline(result) {
+  if (result.toolCalls === 0) {
+    return result.sessions === 0 ? "No sessions found to scan" : "No tool calls found to scan";
+  }
   const { block, require_approval: ask, warn } = result.riskyByAction;
   const actions = (n) => counted(n, "action", "actions");
   if (block > 0 && ask > 0) {
@@ -8126,11 +8129,12 @@ function headline(result) {
   return "Nothing in these sessions matched a guardrail";
 }
 function topBar(payload) {
+  const scanned = payload.toolCalls > 0;
   const links = [
     ["overview", "Overview"],
-    ["fix-first", "Fix first"],
+    ...scanned ? [["fix-first", "Fix first"]] : [],
     ...payload.owasp.length > 0 ? [["owasp", "OWASP"]] : [],
-    ["findings", "All findings"],
+    ...scanned ? [["findings", "All findings"]] : [],
     ["next-steps", "Next steps"],
     ["privacy", "Privacy"]
   ];
@@ -8164,6 +8168,10 @@ function mostSerious(payload) {
   }
   return `<p class="top-match">Most serious match: ${severityBadge(library.severity)} <span class="top-title">${inlineTitle(library.title)}</span></p>`;
 }
+function emptyLead(result) {
+  const read = result.sessions === 0 ? `The scan found no ${agentName(result.agent)} sessions to read` : `The scan read ${counted(result.sessions, "session", "sessions")} with no tool calls in them`;
+  return `${read}, so nothing was checked. This is not a clean result: check that the folder and the agent are the ones you meant, then scan again.`;
+}
 function heroSection(result, payload, meta, variant) {
   const origin = variant === "artifact" ? "Scanned locally &middot; published by the person who ran it" : "Scanned locally &middot; nothing uploaded";
   const t = result.tokens;
@@ -8177,7 +8185,7 @@ function heroSection(result, payload, meta, variant) {
     const clean = Math.floor((result.toolCalls - result.riskyActions) / result.toolCalls * 100);
     cells.push(stat(`${clean}%`, "matched no guardrail"));
   }
-  if (t !== null) {
+  if (t !== null && result.toolCalls > 0) {
     cells.push(
       stat(
         formatTokens(totalTokens(t)),
@@ -8188,18 +8196,22 @@ function heroSection(result, payload, meta, variant) {
   }
   const fixTarget = payload.findings.some((f) => f.action === "block") ? "fix-first" : "findings";
   const top = mostSerious(payload);
-  return `<section class="intro" id="overview">
-<p class="origin">${origin}</p>
-<p class="agent">Agent: ${escapeHtml(agentName(result.agent))}</p>
-<h1>${escapeHtml(headline(result))}</h1>
-<p class="lead">What your coding agent actually did, and which guardrails would have fired.</p>
+  const next = result.toolCalls === 0 ? `<p class="lead">${escapeHtml(emptyLead(result))}</p>
+<p class="provenance">${provenance(result, meta, variant)}</p>
+${copyable("cmd-scan-hero", `agenttrail-guard scan --agent ${result.agent} --dir <folder>`, "Copy the scan command")}
+<p class="note">Leave out --dir to read the folder ${escapeHtml(agentName(result.agent))} uses by default.</p>` : `<p class="lead">What your coding agent actually did, and which guardrails would have fired.</p>
 <p class="provenance">${provenance(result, meta, variant)}</p>${top === void 0 ? "" : `
 ${top}`}
 <div class="actions">
 <a class="button" href="#${fixTarget}">See what to fix first</a>
 ${outLink(shareLink(payload.shareText, result.agent), "Share on X", "button secondary")}
 </div>
-${copyable("cmd-init-hero", `agenttrail-guard init --agent ${result.agent}`, "Copy the init command")}
+${copyable("cmd-init-hero", `agenttrail-guard init --agent ${result.agent}`, "Copy the init command")}`;
+  return `<section class="intro" id="overview">
+<p class="origin">${origin}</p>
+<p class="agent">Agent: ${escapeHtml(agentName(result.agent))}</p>
+<h1>${escapeHtml(headline(result))}</h1>
+${next}
 </section>
 <section class="stats" aria-label="Summary">
 ${cells.join("\n")}
@@ -8369,8 +8381,7 @@ function owaspSection(payload) {
 <button type="button" class="tool js-only" data-risk="${escapeHtml(t.id)}" aria-label="Show its findings: ${escapeHtml(t.id)}" hidden>Show its findings</button>
 </li>`
   ).join("\n");
-  return `
-<section id="owasp">
+  return `<section id="owasp">
 <h2>OWASP risks</h2>
 <p class="lead">${escapeHtml(summary)}</p>
 <ul class="risks">
@@ -8679,23 +8690,30 @@ function contentSecurityPolicy() {
 function renderReport(result, meta, options = {}) {
   const variant = options.variant ?? "document";
   const payload = reportPayload(result, meta);
+  const scanned = result.toolCalls > 0;
   const head = `<title>${escapeHtml(pageTitle(result, meta))}</title>
 <style>${REPORT_STYLES}</style>`;
+  const sections = [
+    topBar(payload),
+    heroSection(result, payload, meta, variant),
+    ...scanned ? [
+      wouldHaveDoneSection(result, payload),
+      fixFirstSection(payload),
+      owaspSection(payload),
+      findingsSection(payload),
+      recurringSection(payload)
+    ] : [],
+    nextStepsSection(result),
+    scanned ? shareSectionHtml(result, payload) : "",
+    beforeYouShareSection(result, variant),
+    redactionSection(),
+    corpusSection(result),
+    skippedSection(payload),
+    scanned ? tokensSection(result) : "",
+    productNoteSection(result)
+  ].filter((section) => section !== "");
   const body = `<main class="page" lang="en">
-${topBar(payload)}
-${heroSection(result, payload, meta, variant)}
-${wouldHaveDoneSection(result, payload)}
-${fixFirstSection(payload)}${owaspSection(payload)}
-${findingsSection(payload)}
-${recurringSection(payload)}
-${nextStepsSection(result)}
-${shareSectionHtml(result, payload)}
-${beforeYouShareSection(result, variant)}
-${redactionSection()}
-${corpusSection(result)}
-${skippedSection(payload)}
-${tokensSection(result)}
-${productNoteSection(result)}
+${sections.join("\n")}
 <footer>
 <p class="footer-brand">${LOGO_MARK_SVG}<span>agenttrail-guard ${escapeHtml(meta.version)} &middot; ${escapeHtml(payload.catalog)}</span></p>
 <p>Source: ${escapeHtml(REPOSITORY_URL)}</p>
