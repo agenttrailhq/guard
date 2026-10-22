@@ -8660,7 +8660,7 @@ function dataBlockText(payload) {
 }
 function contentSecurityPolicy() {
   const hash = createHash("sha256").update(REPORT_SCRIPT, "utf8").digest("base64");
-  return `default-src 'none'; script-src 'sha256-${hash}'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'`;
+  return `default-src 'none'; script-src 'sha256-${hash}'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; require-trusted-types-for 'script'`;
 }
 function renderReport(result, meta, options = {}) {
   const variant = options.variant ?? "document";

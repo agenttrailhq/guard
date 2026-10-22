@@ -1406,10 +1406,13 @@ export function dataBlockText(payload: ReportPayload): string {
   return JSON.stringify(payload, null, 1).replace(/</g, "\\u003c");
 }
 
-/** The policy for the standalone page: no requests, and only this one script may run. */
+/**
+ * The policy for the standalone page: no requests, and only this one script may run. Trusted
+ * Types makes Chromium refuse the markup sinks (`innerHTML` and the like) at run time too.
+ */
 export function contentSecurityPolicy(): string {
   const hash = createHash("sha256").update(REPORT_SCRIPT, "utf8").digest("base64");
-  return `default-src 'none'; script-src 'sha256-${hash}'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'`;
+  return `default-src 'none'; script-src 'sha256-${hash}'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; require-trusted-types-for 'script'`;
 }
 
 /**

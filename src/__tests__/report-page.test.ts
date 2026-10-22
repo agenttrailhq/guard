@@ -731,6 +731,7 @@ describe("the standalone page's policy", () => {
     expect(policy).toMatch(/^default-src 'none';/);
     expect(policy).toContain("base-uri 'none'");
     expect(policy).toContain("form-action 'none'");
+    expect(policy).toContain("require-trusted-types-for 'script'");
     expect(policy).not.toContain("img-src");
     expect(html).toContain(`content="${policy}"`);
   });
