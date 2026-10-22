@@ -19,6 +19,7 @@ import {
 } from "../core/redact-secrets.js";
 import { redactForReport } from "../core/scan-report.js";
 import { scrubText } from "../core/scrub.js";
+import { BACKSTOP_MS, growth, LINEAR_RATIO } from "./linear-time.js";
 import { QUIET_CORPUS } from "./quiet-corpus.js";
 
 const NAME_PLACEHOLDER = "[REDACTED:secret:env]";
@@ -284,43 +285,56 @@ describe("idempotence and cost", () => {
   // pass can backtrack on the same shapes. 200,000 characters stays well under a second when
   // matching is linear; a quadratic pattern takes tens of seconds on the same input.
   const SIZE = 200_000;
-  const repeat = (unit: string): string => unit.repeat(Math.ceil(SIZE / unit.length));
+  const repeat = (unit: string) => (size: number) => unit.repeat(Math.ceil(size / unit.length));
+  /** Each case is a unit repeated up to the size under test. */
   const ADVERSARIAL: readonly (readonly [string, string])[] = [
-    ["underscores", repeat("_")],
-    ["hyphens", repeat("-")],
-    ["equals signs", repeat("=")],
-    ["KEY=", repeat("KEY=")],
-    ["_KEY=", repeat("_KEY=")],
-    ["ACCOUNT_ID", repeat("ACCOUNT_ID")],
-    ["account_id=", repeat("account_id=")],
-    ["x_ACCOUNT_ID=", repeat("x_ACCOUNT_ID=")],
-    ["single quotes", repeat("'")],
-    ["double quotes", repeat('"')],
-    ["digits", repeat("1234567890")],
-    ["hex", repeat("0123456789abcdef")],
-    ["base64-like", repeat("aGVsbG8gd29ybGQ")],
-    ["base64 with + / =", repeat("aGVs+bG8/gd=")],
-    ["mixed class run", repeat("A1b2-")],
-    ["deployment words", repeat("prod-web-")],
-    ["Authorization:", repeat("Authorization:")],
-    ["Authorization: x", repeat("Authorization: x ")],
-    ["--account-id", repeat("--account-id ")],
-    ["arn:aws:", repeat("arn:aws:x:y:")],
-    ["sha256-", repeat("sha256-")],
-    ["ssh -o User=", repeat("ssh -o User=")],
-    ["a name and a separator", repeat("AbC1_-=:\"' KEY=ACCOUNT_ID ")],
+    ["underscores", "_"],
+    ["hyphens", "-"],
+    ["equals signs", "="],
+    ["KEY=", "KEY="],
+    ["_KEY=", "_KEY="],
+    ["ACCOUNT_ID", "ACCOUNT_ID"],
+    ["account_id=", "account_id="],
+    ["x_ACCOUNT_ID=", "x_ACCOUNT_ID="],
+    ["single quotes", "'"],
+    ["double quotes", '"'],
+    ["digits", "1234567890"],
+    ["hex", "0123456789abcdef"],
+    ["base64-like", "aGVsbG8gd29ybGQ"],
+    ["base64 with + / =", "aGVs+bG8/gd="],
+    ["mixed class run", "A1b2-"],
+    ["deployment words", "prod-web-"],
+    ["Authorization:", "Authorization:"],
+    ["Authorization: x", "Authorization: x "],
+    ["--account-id", "--account-id "],
+    ["arn:aws:", "arn:aws:x:y:"],
+    ["sha256-", "sha256-"],
+    ["ssh -o User=", "ssh -o User="],
+    ["a name and a separator", "AbC1_-=:\"' KEY=ACCOUNT_ID "],
   ];
 
-  it.each(ADVERSARIAL)("redactForReport stays linear on %s", (_name, input) => {
-    expect(input.length).toBeGreaterThanOrEqual(SIZE);
-    const start = performance.now();
-    redactForReport(input);
-    expect(performance.now() - start).toBeLessThan(1000);
+  it.each(ADVERSARIAL)("redactForReport stays linear on %s", (_name, unit) => {
+    expect(repeat(unit)(SIZE).length).toBeGreaterThanOrEqual(SIZE);
+    const { ratio, large } = growth(redactForReport, repeat(unit), SIZE);
+    expect(ratio).toBeLessThan(LINEAR_RATIO);
+    expect(large).toBeLessThan(BACKSTOP_MS);
   });
 
-  it.each(ADVERSARIAL)("redactSecrets stays linear on %s", (_name, input) => {
-    const start = performance.now();
-    redactSecrets(input);
-    expect(performance.now() - start).toBeLessThan(1000);
+  it("negative control — quadratic work fails the growth check", () => {
+    const quadratic = (input: string): number => {
+      let steps = 0;
+      for (let i = 0; i < input.length; i++) {
+        for (let j = i; j < input.length; j += 100) steps++;
+      }
+      return steps;
+    };
+    const { ratio } = growth(quadratic, repeat("a"), SIZE);
+    expect(ratio).toBeGreaterThanOrEqual(LINEAR_RATIO);
+  });
+
+  it.each(ADVERSARIAL)("redactSecrets stays linear on %s", (_name, unit) => {
+    const { ratio, large } = growth(redactSecrets, repeat(unit), SIZE);
+    expect(ratio).toBeLessThan(LINEAR_RATIO);
+    expect(large).toBeLessThan(BACKSTOP_MS);
   });
 });

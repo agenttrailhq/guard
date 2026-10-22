@@ -10,6 +10,7 @@
 
 import { describe, expect, it } from "vitest";
 import { PATTERN_IDS, scrubText } from "../core/scrub.js";
+import { BACKSTOP_MS, growth, LINEAR_RATIO } from "./linear-time.js";
 import {
   ESCAPE_BOUNDARY_FIXTURES,
   GLUED_TO_A_WORD,
@@ -108,17 +109,16 @@ describe("correctness — a secret after an escape sequence or a control code", 
     expect(scrubText(input)).toEqual({ text: input, redactions: {}, total: 0 });
   });
 
-  it("stays linear on long runs of escapes and unterminated control codes", () => {
-    const inputs = [
-      "\\n".repeat(50_000),
-      "\x1b[".repeat(20_000),
-      `\x1b[${"1;".repeat(50_000)}`,
-      "\\u001b[".repeat(20_000),
-      "\\u00".repeat(40_000),
-    ];
-    const start = performance.now();
-    for (const input of inputs) scrubText(input);
-    expect(performance.now() - start).toBeLessThan(2_000);
+  it.each([
+    ["escaped newlines", (n: number) => "\\n".repeat(n)],
+    ["unterminated control codes", (n: number) => "\x1b[".repeat(n)],
+    ["one control code with a long parameter run", (n: number) => `\x1b[${"1;".repeat(n)}`],
+    ["escaped control codes", (n: number) => "\\u001b[".repeat(n)],
+    ["unfinished unicode escapes", (n: number) => "\\u00".repeat(n)],
+  ] as const)("stays linear on %s", (_name, make) => {
+    const { ratio, large } = growth(scrubText, make, 50_000);
+    expect(ratio).toBeLessThan(LINEAR_RATIO);
+    expect(large).toBeLessThan(BACKSTOP_MS);
   });
 });
 
