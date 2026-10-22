@@ -7695,7 +7695,12 @@ if (sortSelect) {
 var pageStatus = byId("page-status");
 
 function say(text) {
-  if (pageStatus) pageStatus.textContent = text;
+  if (!pageStatus) return;
+  // Cleared first and written a moment later, so the same message is announced again.
+  pageStatus.textContent = "";
+  setTimeout(function () {
+    pageStatus.textContent = text;
+  }, 50);
 }
 
 function relabel(button, text, ms) {
@@ -7731,7 +7736,7 @@ function copyByHand(text, button, target) {
   // Copying is blocked here. Select the text where it is shown, for the reader to copy.
   if (target.tagName === "TEXTAREA") target.select();
   else if (window.getSelection) window.getSelection().selectAllChildren(target);
-  relabel(button, "Press Ctrl+C or \u2318C", 4000);
+  relabel(button, "Press Ctrl+C or \\u2318C", 4000);
   say("Copying is blocked here. The text is selected: press Ctrl+C, or Command+C on a Mac.");
 }
 
