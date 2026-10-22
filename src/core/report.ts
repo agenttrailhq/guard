@@ -112,7 +112,8 @@ export interface RenderOptions {
 /** The AgentTrail OS block, in Claude Code reports only. Wording lives here, not in markup. */
 export const PRODUCT_NOTE = {
   eyebrow: "AgentTrail OS",
-  heading: "Guard stops the mistake. OS remembers it and turns it into a rule.",
+  heading:
+    "AgentTrail Guard stops the mistake. AgentTrail OS remembers it and turns it into a rule.",
   body: "This report is one look at the transcripts on one machine. AgentTrail OS watches every agent session, turns each repeated mistake into a guardrail, and proves the fix on your own history. It is a separate product, and nothing in this report was sent to it.",
   primary: { label: "Book a team demo", path: "/agenttrail-os", content: "os-demo" },
   secondary: { label: "Guard vs OS", path: "/guard-vs-os", content: "os-compare" },
@@ -198,7 +199,7 @@ export const MAX_ROWS = 50;
 export const MAX_EXAMPLES = 3;
 /** How many cards "Fix these first" shows. */
 export const FIX_FIRST_MAX = 6;
-/** How many guardrails each "What Guard would have done" column names. */
+/** How many guardrails each "What AgentTrail Guard would have done" column names. */
 const TOP_PER_ACTION = 3;
 /** Longest line of a wrapped description. Keeps every line of the file short. */
 const DESCRIPTION_LINE = 160;
@@ -597,7 +598,7 @@ function severityClass(severity: string): string {
   }
 }
 
-/** What the guard would have done, in words rather than in the engine's vocabulary. */
+/** What AgentTrail Guard would have done, in words rather than in the engine's vocabulary. */
 export function actionLabel(action: string): string {
   switch (action) {
     case "block":
@@ -691,11 +692,11 @@ export function headline(result: ScanResult): string {
   const { block, require_approval: ask, warn } = result.riskyByAction;
   const actions = (n: number): string => counted(n, "action", "actions");
   if (block > 0 && ask > 0) {
-    return `Guard would have stopped ${actions(block)} and asked you about ${formatCount(ask)} more`;
+    return `AgentTrail Guard would have stopped ${actions(block)} and asked you about ${formatCount(ask)} more`;
   }
-  if (block > 0) return `Guard would have stopped ${actions(block)}`;
-  if (ask > 0) return `Guard would have asked you about ${actions(ask)}`;
-  if (warn > 0) return `Guard would have warned you about ${actions(warn)}`;
+  if (block > 0) return `AgentTrail Guard would have stopped ${actions(block)}`;
+  if (ask > 0) return `AgentTrail Guard would have asked you about ${actions(ask)}`;
+  if (warn > 0) return `AgentTrail Guard would have warned you about ${actions(warn)}`;
   return "Nothing in these sessions matched a guardrail";
 }
 
@@ -718,7 +719,7 @@ function topBar(payload: ReportPayload): string {
 <button type="button" id="theme-toggle" class="tool js-only" hidden>Theme</button>
 </div>`;
   return `<header class="masthead">
-<div class="brand" role="img" aria-label="agenttrail">${LOGO_LOCKUP_SVG}</div>
+<div class="brand" role="img" aria-label="AgentTrail">${LOGO_LOCKUP_SVG}</div>
 <span class="product-tag">Guard</span>
 <nav class="sections" aria-label="Report sections"><ul>
 ${nav}
@@ -820,7 +821,7 @@ const ACTION_MEANING: Readonly<Record<GuardAction, string>> = {
 function askOnCodexNote(result: ScanResult, byAction: readonly { action: string }[]): string {
   if (result.agent !== "codex") return "";
   if (!byAction.some((a) => a.action === "require_approval")) return "";
-  return `\n<p class="note"><strong>On Codex, &ldquo;would ask&rdquo; means the action would have been stopped.</strong> Codex gives a guardrail no way to ask you, so the guard sends those as a block. The label above is the guardrail&#39;s own decision, kept the same across apps so one guardrail reads the same way everywhere.</p>`;
+  return `\n<p class="note"><strong>On Codex, &ldquo;would ask&rdquo; means the action would have been stopped.</strong> Codex gives a guardrail no way to ask you, so AgentTrail Guard sends those as a block. The label above is the guardrail&#39;s own decision, kept the same across apps so one guardrail reads the same way everywhere.</p>`;
 }
 
 /** The ask guardrails worth turning down, when a few of them produce most of the asks. */
@@ -967,7 +968,7 @@ function wouldHaveDoneSection(result: ScanResult, payload: ReportPayload): strin
   const actions = byAction.map((a) => item(actionChip(a.action), a.count)).join("\n");
 
   return `<section id="would-do">
-<h2>What Guard would have done</h2>
+<h2>What AgentTrail Guard would have done</h2>
 <p class="note">Tool calls, each counted once under the strictest guardrail it matched.</p>
 <div class="columns">
 ${columns}
@@ -1224,7 +1225,7 @@ function nextStepsSection(result: ScanResult): string {
   return `<section id="next-steps">
 <h2>Next steps</h2>
 <ol class="steps">
-<li><p><strong>Turn on Guard</strong> so these guardrails run before each command.</p>
+<li><p><strong>Turn on AgentTrail Guard</strong> so these guardrails run before each command.</p>
 ${copyable("cmd-init", `agenttrail-guard init --agent ${a}`, "Copy the step 1 command")}</li>
 <li><p><strong>See what it is doing</strong>: whether it is on, and what it decided recently.</p>
 ${copyable("cmd-status", "agenttrail-guard status", "Copy the step 2 command")}</li>
@@ -1448,7 +1449,7 @@ ${outLink(siteLink(secondary.path, a, secondary.content), escapeHtml(secondary.l
 
 /** The page title: the tool, whose sessions, and the day — distinct in a list of reports. */
 function pageTitle(result: ScanResult, meta: ReportMeta): string {
-  return `agenttrail guard scan report · ${agentName(result.agent)} · ${meta.generatedAt.toISOString().slice(0, 10)}`;
+  return `AgentTrail Guard scan report · ${agentName(result.agent)} · ${meta.generatedAt.toISOString().slice(0, 10)}`;
 }
 
 /** The data block's text: the payload, with every `<` as the escape backslash-u003c. */

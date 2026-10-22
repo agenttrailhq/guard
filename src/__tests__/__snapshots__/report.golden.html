@@ -5,13 +5,13 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="light dark">
-<title>agenttrail guard scan report · Claude Code · 2026-10-01</title>
+<title>AgentTrail Guard scan report · Claude Code · 2026-10-01</title>
 <style>(stylesheet)</style>
 </head>
 <body>
 <main class="page" lang="en">
 <header class="masthead">
-<div class="brand" role="img" aria-label="agenttrail"><svg class="lockup">(logo)</svg></div>
+<div class="brand" role="img" aria-label="AgentTrail"><svg class="lockup">(logo)</svg></div>
 <span class="product-tag">Guard</span>
 <nav class="sections" aria-label="Report sections"><ul>
 <li><a href="#overview">Overview</a></li>
@@ -30,7 +30,7 @@
 <section class="intro" id="overview">
 <p class="origin">Scanned locally &middot; nothing uploaded</p>
 <p class="agent">Agent: Claude Code</p>
-<h1>Guard would have stopped 3 actions and asked you about 5 more</h1>
+<h1>AgentTrail Guard would have stopped 3 actions and asked you about 5 more</h1>
 <p class="lead">What your coding agent actually did, and which guardrails would have fired.</p>
 <p class="provenance">Generated 2026-10-01T09:00:00.000Z by agenttrail-guard 9.9.9. Produced entirely on this machine from transcripts already on disk &mdash; no account, nothing uploaded, and no network call: the one exception anywhere in this tool is crash reporting, which is off unless you turn it on and which a scan never uses.</p>
 <p class="top-match">Most serious match: <span class="badge sev-critical">critical</span> <span class="top-title">Recursive delete</span></p>
@@ -49,7 +49,7 @@
 <div class="stat"><div class="stat-value">103.7K</div><div class="stat-label">tokens</div><div class="stat-note">98.0K cache reads (cumulative)</div></div>
 </section>
 <section id="would-do">
-<h2>What Guard would have done</h2>
+<h2>What AgentTrail Guard would have done</h2>
 <p class="note">Tool calls, each counted once under the strictest guardrail it matched.</p>
 <div class="columns">
 <div class="col act-block-col">
@@ -245,7 +245,7 @@
 <section id="next-steps">
 <h2>Next steps</h2>
 <ol class="steps">
-<li><p><strong>Turn on Guard</strong> so these guardrails run before each command.</p>
+<li><p><strong>Turn on AgentTrail Guard</strong> so these guardrails run before each command.</p>
 <div class="command"><code id="cmd-init">agenttrail-guard init --agent claude</code><button type="button" class="copy js-only" data-copy="cmd-init" data-label="Copy" aria-label="Copy the step 1 command" hidden>Copy</button></div></li>
 <li><p><strong>See what it is doing</strong>: whether it is on, and what it decided recently.</p>
 <div class="command"><code id="cmd-status">agenttrail-guard status</code><button type="button" class="copy js-only" data-copy="cmd-status" data-label="Copy" aria-label="Copy the step 2 command" hidden>Copy</button></div></li>
@@ -311,7 +311,7 @@
 <p class="note">"Read from cache" is cumulative — the cached prefix is re-read and re-charged every turn, so this counts the same tokens many times over a session. It is a total of what the model billed for, not of distinct input.</p><p class="note">The 5-minute / 1-hour split is reported separately by the model and is not derived from the total above; on real sessions the two do not always agree, so both are shown as reported.</p></section>
 <aside class="product-note" id="os" aria-label="About AgentTrail OS">
 <p class="eyebrow">AgentTrail OS</p>
-<h2>Guard stops the mistake. OS remembers it and turns it into a rule.</h2>
+<h2>AgentTrail Guard stops the mistake. AgentTrail OS remembers it and turns it into a rule.</h2>
 <p>This report is one look at the transcripts on one machine. AgentTrail OS watches every agent session, turns each repeated mistake into a guardrail, and proves the fix on your own history. It is a separate product, and nothing in this report was sent to it.</p>
 <p class="product-note-action"><a class="button" href="https://www.agenttrail.sh/agenttrail-os?utm_source=guard&amp;utm_medium=scan-report&amp;utm_campaign=claude&amp;utm_content=os-demo" target="_blank" rel="noopener noreferrer">Book a team demo</a>
 <a class="text-link" href="https://www.agenttrail.sh/guard-vs-os?utm_source=guard&amp;utm_medium=scan-report&amp;utm_campaign=claude&amp;utm_content=os-compare" target="_blank" rel="noopener noreferrer">Guard vs OS</a></p>

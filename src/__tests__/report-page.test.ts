@@ -156,11 +156,17 @@ describe("the headline", () => {
   const cases: [ScanResult["riskyByAction"], string][] = [
     [
       { block: 3, require_approval: 2, warn: 9 },
-      "Guard would have stopped 3 actions and asked you about 2 more",
+      "AgentTrail Guard would have stopped 3 actions and asked you about 2 more",
     ],
-    [{ block: 1, require_approval: 0, warn: 0 }, "Guard would have stopped 1 action"],
-    [{ block: 0, require_approval: 4, warn: 1 }, "Guard would have asked you about 4 actions"],
-    [{ block: 0, require_approval: 0, warn: 2 }, "Guard would have warned you about 2 actions"],
+    [{ block: 1, require_approval: 0, warn: 0 }, "AgentTrail Guard would have stopped 1 action"],
+    [
+      { block: 0, require_approval: 4, warn: 1 },
+      "AgentTrail Guard would have asked you about 4 actions",
+    ],
+    [
+      { block: 0, require_approval: 0, warn: 2 },
+      "AgentTrail Guard would have warned you about 2 actions",
+    ],
     [{ block: 0, require_approval: 0, warn: 0 }, "Nothing in these sessions matched a guardrail"],
   ];
   it.each(cases)("%o reads %s", (byAction, text) => {

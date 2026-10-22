@@ -7795,7 +7795,7 @@ var REPORT_FILENAME = "agenttrail-guard-report.html";
 var ARTIFACT_FILENAME = "agenttrail-guard-artifact.html";
 var PRODUCT_NOTE = {
   eyebrow: "AgentTrail OS",
-  heading: "Guard stops the mistake. OS remembers it and turns it into a rule.",
+  heading: "AgentTrail Guard stops the mistake. AgentTrail OS remembers it and turns it into a rule.",
   body: "This report is one look at the transcripts on one machine. AgentTrail OS watches every agent session, turns each repeated mistake into a guardrail, and proves the fix on your own history. It is a separate product, and nothing in this report was sent to it.",
   primary: { label: "Book a team demo", path: "/agenttrail-os", content: "os-demo" },
   secondary: { label: "Guard vs OS", path: "/guard-vs-os", content: "os-compare" }
@@ -8118,11 +8118,11 @@ function headline(result) {
   const { block, require_approval: ask, warn } = result.riskyByAction;
   const actions = (n) => counted(n, "action", "actions");
   if (block > 0 && ask > 0) {
-    return `Guard would have stopped ${actions(block)} and asked you about ${formatCount(ask)} more`;
+    return `AgentTrail Guard would have stopped ${actions(block)} and asked you about ${formatCount(ask)} more`;
   }
-  if (block > 0) return `Guard would have stopped ${actions(block)}`;
-  if (ask > 0) return `Guard would have asked you about ${actions(ask)}`;
-  if (warn > 0) return `Guard would have warned you about ${actions(warn)}`;
+  if (block > 0) return `AgentTrail Guard would have stopped ${actions(block)}`;
+  if (ask > 0) return `AgentTrail Guard would have asked you about ${actions(ask)}`;
+  if (warn > 0) return `AgentTrail Guard would have warned you about ${actions(warn)}`;
   return "Nothing in these sessions matched a guardrail";
 }
 function topBar(payload) {
@@ -8141,7 +8141,7 @@ function topBar(payload) {
 <button type="button" id="theme-toggle" class="tool js-only" hidden>Theme</button>
 </div>`;
   return `<header class="masthead">
-<div class="brand" role="img" aria-label="agenttrail">${LOGO_LOCKUP_SVG}</div>
+<div class="brand" role="img" aria-label="AgentTrail">${LOGO_LOCKUP_SVG}</div>
 <span class="product-tag">Guard</span>
 <nav class="sections" aria-label="Report sections"><ul>
 ${nav}
@@ -8214,7 +8214,7 @@ function askOnCodexNote(result, byAction) {
   if (result.agent !== "codex") return "";
   if (!byAction.some((a) => a.action === "require_approval")) return "";
   return `
-<p class="note"><strong>On Codex, &ldquo;would ask&rdquo; means the action would have been stopped.</strong> Codex gives a guardrail no way to ask you, so the guard sends those as a block. The label above is the guardrail&#39;s own decision, kept the same across apps so one guardrail reads the same way everywhere.</p>`;
+<p class="note"><strong>On Codex, &ldquo;would ask&rdquo; means the action would have been stopped.</strong> Codex gives a guardrail no way to ask you, so AgentTrail Guard sends those as a block. The label above is the guardrail&#39;s own decision, kept the same across apps so one guardrail reads the same way everywhere.</p>`;
 }
 function decidedBy(decided, action) {
   const out = /* @__PURE__ */ new Map();
@@ -8306,7 +8306,7 @@ ${top}
   const severities = bySeverity.map((s) => item(severityBadge(s.severity), s.count)).join("\n");
   const actions = byAction.map((a) => item(actionChip(a.action), a.count)).join("\n");
   return `<section id="would-do">
-<h2>What Guard would have done</h2>
+<h2>What AgentTrail Guard would have done</h2>
 <p class="note">Tool calls, each counted once under the strictest guardrail it matched.</p>
 <div class="columns">
 ${columns}
@@ -8499,7 +8499,7 @@ function nextStepsSection(result) {
   return `<section id="next-steps">
 <h2>Next steps</h2>
 <ol class="steps">
-<li><p><strong>Turn on Guard</strong> so these guardrails run before each command.</p>
+<li><p><strong>Turn on AgentTrail Guard</strong> so these guardrails run before each command.</p>
 ${copyable("cmd-init", `agenttrail-guard init --agent ${a}`, "Copy the step 1 command")}</li>
 <li><p><strong>See what it is doing</strong>: whether it is on, and what it decided recently.</p>
 ${copyable("cmd-status", "agenttrail-guard status", "Copy the step 2 command")}</li>
@@ -8667,7 +8667,7 @@ ${outLink(siteLink(secondary.path, a, secondary.content), escapeHtml(secondary.l
 </aside>`;
 }
 function pageTitle(result, meta) {
-  return `agenttrail guard scan report \xB7 ${agentName(result.agent)} \xB7 ${meta.generatedAt.toISOString().slice(0, 10)}`;
+  return `AgentTrail Guard scan report \xB7 ${agentName(result.agent)} \xB7 ${meta.generatedAt.toISOString().slice(0, 10)}`;
 }
 function dataBlockText(payload) {
   return JSON.stringify(payload, null, 1).replace(/</g, "\\u003c");
