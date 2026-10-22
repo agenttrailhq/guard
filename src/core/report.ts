@@ -1535,6 +1535,7 @@ ${sections.join("\n")}
 <li>${outLink(siteLink("/security", result.agent, "footer-security"), "Security")}</li>
 </ul>
 </footer>
+<p id="page-status" class="sr-only" role="status" aria-live="polite"></p>
 <textarea id="copy-buffer" class="sr-only" tabindex="-1" aria-hidden="true" readonly></textarea>
 </main>`;
 

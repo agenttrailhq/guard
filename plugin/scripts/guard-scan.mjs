@@ -7539,6 +7539,11 @@ function sortLabel(key) {
   return key;
 }
 
+function copiedText(name) {
+  var label = String(name || "");
+  return label.indexOf("Copy ") === 0 ? "Copied " + label.slice(5) : "Copied";
+}
+
 function sortText(key) {
   return "Sorted by " + sortLabel(key) + ". Keyboard and screen-reader order stays most serious first.";
 }
@@ -7682,24 +7687,47 @@ if (sortSelect) {
   });
 }
 
-function copied(button) {
-  button.textContent = "Copied";
-  setTimeout(function () {
-    button.textContent = button.getAttribute("data-label") || "Copy";
-  }, 1500);
+var pageStatus = byId("page-status");
+
+function say(text) {
+  if (pageStatus) pageStatus.textContent = text;
 }
 
-function copyByHand(text, button) {
+function relabel(button, text, ms) {
+  button.textContent = text;
+  setTimeout(function () {
+    button.textContent = button.getAttribute("data-label") || "Copy";
+  }, ms);
+}
+
+function copied(button) {
+  relabel(button, "Copied", 1500);
+  say(copiedText(button.getAttribute("aria-label")));
+}
+
+function copyByHand(text, button, target) {
   var buffer = byId("copy-buffer");
-  if (!buffer) return;
-  buffer.value = text;
-  buffer.select();
-  try {
-    document.execCommand("copy");
-    copied(button);
-  } catch {
-    // Copying is blocked here; the text stays selected for the reader to copy.
+  var done = false;
+  if (buffer) {
+    buffer.value = text;
+    buffer.select();
+    try {
+      done = document.execCommand("copy") === true;
+    } catch {
+      done = false;
+    }
   }
+  // The buffer is hidden: focus goes back to the button either way.
+  button.focus();
+  if (done) {
+    copied(button);
+    return;
+  }
+  // Copying is blocked here. Select the text where it is shown, for the reader to copy.
+  if (target.tagName === "TEXTAREA") target.select();
+  else if (window.getSelection) window.getSelection().selectAllChildren(target);
+  relabel(button, "Press Ctrl+C or \u2318C", 4000);
+  say("Copying is blocked here. The text is selected: press Ctrl+C, or Command+C on a Mac.");
 }
 
 each("[data-copy]", function (button) {
@@ -7713,11 +7741,11 @@ each("[data-copy]", function (button) {
           copied(button);
         },
         function () {
-          copyByHand(text, button);
+          copyByHand(text, button, target);
         },
       );
     } else {
-      copyByHand(text, button);
+      copyByHand(text, button, target);
     }
   });
 });
@@ -8761,6 +8789,7 @@ ${sections.join("\n")}
 <li>${outLink(siteLink("/security", result.agent, "footer-security"), "Security")}</li>
 </ul>
 </footer>
+<p id="page-status" class="sr-only" role="status" aria-live="polite"></p>
 <textarea id="copy-buffer" class="sr-only" tabindex="-1" aria-hidden="true" readonly></textarea>
 </main>`;
   if (variant === "artifact") return `${head}
