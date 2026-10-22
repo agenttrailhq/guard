@@ -93,6 +93,12 @@ const ALLOWED_CALL = "Array.prototype.forEach";
 /** The only statement that may click an element: the export's temporary link. */
 const ALLOWED_CLICKS = ["a.click();"];
 
+/** Names that may be assigned in one statement only: the export's link and the post suffix. */
+const PINNED_ASSIGNMENTS: readonly (readonly [string, string])[] = [
+  ["a", 'var a = document.createElement("a");'],
+  ["suffix", 'var suffix = shareLink ? shareSuffix(shareLink.getAttribute("href")) : null;'],
+];
+
 /** The attributes the script may set, and the one element it may create. */
 const SETTABLE_ATTRIBUTES = new Set(['"data-theme"', '"aria-pressed"', '"data-over"']);
 const CREATABLE_ELEMENTS = new Set(['"a"']);
@@ -150,12 +156,15 @@ function scriptViolations(source: string): string[] {
     out.push(`indirect ${m[1]}`);
   }
   for (const line of code.split("\n").map((l) => l.trim())) {
-    if (
-      /\bclick\b/.test(line) &&
-      !/\.addEventListener\(""/.test(line) &&
-      !ALLOWED_CLICKS.includes(line)
-    ) {
-      out.push(`click: ${line}`);
+    // With the string literals emptied, an event name like "click" is gone: only code is left.
+    if (/\bclick\b/.test(line) && !ALLOWED_CLICKS.includes(line)) out.push(`click: ${line}`);
+  }
+  // The clicked element and the post link's fixed suffix are each set in one place only.
+  for (const line of lines) {
+    for (const [name, only] of PINNED_ASSIGNMENTS) {
+      if (new RegExp(`\\b${name}\\s*(=(?!=)|\\+=)`).test(line) && line !== only) {
+        out.push(`assignment to ${name}: ${line}`);
+      }
     }
   }
   for (const [label, pattern] of BANNED_CODE) {
@@ -188,6 +197,10 @@ function scriptViolations(source: string): string[] {
 describe("the script stays inside its allow-lists", () => {
   it("the shipped script has no violation", () => {
     expect(scriptViolations(REPORT_SCRIPT)).toEqual([]);
+  });
+
+  it("is plain ASCII, so its hash holds whatever encoding a reader's browser picks", () => {
+    expect([...REPORT_SCRIPT].filter((ch) => (ch.codePointAt(0) ?? 0) > 0x7f)).toEqual([]);
   });
 
   it("writes an href in exactly the two allowed statements", () => {
@@ -258,6 +271,16 @@ describe("the script stays inside its allow-lists", () => {
     ],
     ["a stored setAttribute", "var set = el.setAttribute; set(name, u);"],
     ["another borrowed method", "Array.prototype.map.call(rows, f);"],
+    [
+      "a click inside a listener",
+      'x.addEventListener("click", function () { shareLink.click(); });',
+    ],
+    ["a click on another element named a", "var a = shareLink;\na.click();"],
+    [
+      "data added to the post suffix",
+      'suffix = "&d=" + encodeURIComponent(data.textContent) + suffix;',
+    ],
+    ["data appended to the post suffix", "suffix += data.textContent;"],
   ];
 
   it.each(TAMPERED)("negative control — %s is reported", (_label, statement) => {
@@ -942,6 +965,7 @@ describe("the script in the page", () => {
     expect(button.textContent).toBe("Copied");
     // Focus comes back from the hidden buffer to the button.
     expect(button.focused).toBe(true);
+    for (const fn of page.timers) fn();
     expect(page.byId.get("page-status")?.textContent).toBe("Copied the init command");
   });
 
@@ -956,8 +980,8 @@ describe("the script in the page", () => {
     expect(button.textContent).toBe("Press Ctrl+C or ⌘C");
     expect(button.focused).toBe(true);
     expect(page.selectedAll).toEqual([page.byId.get("cmd-init")]);
-    expect(page.byId.get("page-status")?.textContent).toContain("press Ctrl+C");
     for (const fn of page.timers) fn();
+    expect(page.byId.get("page-status")?.textContent).toContain("press Ctrl+C");
     expect(button.textContent).toBe("Copy");
   });
 
@@ -973,6 +997,14 @@ describe("the script in the page", () => {
     const page = loadPage();
     copyButton(page, "cmd-init").click();
     await settle();
+    for (const fn of page.timers) fn();
+    expect(page.byId.get("page-status")?.textContent).toBe("Copied the init command");
+    // A second copy clears the region first, so the same message is announced again.
+    page.timers.length = 0;
+    copyButton(page, "cmd-init").click();
+    await settle();
+    expect(page.byId.get("page-status")?.textContent).toBe("");
+    for (const fn of page.timers) fn();
     expect(page.byId.get("page-status")?.textContent).toBe("Copied the init command");
     expect(logic.copiedText("Copy text of the post")).toBe("Copied text of the post");
     expect(logic.copiedText(null)).toBe("Copied");
@@ -985,9 +1017,9 @@ describe("the script in the page", () => {
     for (const typed of ["javascript:alert(1)", '"><script>alert(1)</script>', "a\nb"]) {
       input.value = typed;
       input.fire("input");
-      expect(link.href.startsWith(SHARE_PREFIX)).toBe(true);
+      // Exactly the prefix, the typed text encoded, and the rendered suffix: nothing else.
+      expect(link.href).toBe(SHARE_PREFIX + encodeURIComponent(typed) + SUFFIX);
       expect(new URL(link.href).searchParams.get("text")).toBe(typed);
-      expect(link.href.endsWith(SUFFIX)).toBe(true);
     }
     input.value = "edited text \uD800";
     input.fire("input");
