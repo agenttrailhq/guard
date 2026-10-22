@@ -8509,7 +8509,7 @@ function riskFilter(payload) {
 ${options}
 </select></label>`;
 }
-function findingsSection(payload) {
+function findingsSection(payload, variant) {
   if (payload.findings.length === 0) {
     return `<section id="findings"><h2>All findings</h2><p class="empty">No guardrail matched anything in these sessions.</p></section>`;
   }
@@ -8531,7 +8531,8 @@ function findingsSection(payload) {
     "guardrails matched"
   );
   return `<section id="findings" class="findings-section">
-<div class="section-head"><h2>All findings</h2><p class="section-meta" id="findings-count">${escapeHtml(matched)}</p></div>
+<div class="section-head"><h2>All findings</h2><p class="section-meta" id="findings-count">${escapeHtml(matched)}</p></div>${variant === "artifact" ? `
+<p class="note artifact-note">Open the downloaded file for filters, sort and export.</p>` : ""}
 <div class="controls js-only" hidden>
 <div class="filters" role="group" aria-label="Show findings">
 ${filters}
@@ -8589,13 +8590,15 @@ ${copyable("cmd-scan-again", `agenttrail-guard scan --agent ${a} --review`, "Cop
 </ul>
 </section>`;
 }
-function shareSectionHtml(result, payload) {
+function shareSectionHtml(result, payload, variant) {
   const length = postLength(payload.shareText);
+  const editable = variant === "document";
+  const edit = editable ? "Edit it before posting." : "This copy cannot change the post: open the downloaded report to edit it.";
   return `<section id="share" class="share">
 <h2>Share your result</h2>
-<p class="note">Totals only: no commands, paths, project names or guardrails you wrote. Edit it before posting.</p>
+<p class="note share-note">Totals and at most one library guardrail&#39;s name: no commands, paths, project names or guardrails you wrote. ${edit}</p>
 <label class="share-label" for="share-text">Post preview</label>
-<textarea id="share-text" rows="4">${escapeHtml(payload.shareText)}</textarea>
+<textarea id="share-text" rows="4"${editable ? "" : " readonly"}>${escapeHtml(payload.shareText)}</textarea>
 <p class="share-actions"><span id="share-count" class="share-count" data-over="${length > POST_LIMIT ? "true" : "false"}">${escapeHtml(`${length} / ${POST_LIMIT}`)}</span>
 <a id="share-link" class="button" href="${escapeHtml(shareLink(payload.shareText, result.agent))}" target="_blank" rel="noopener noreferrer">Post on X</a>
 <button type="button" class="copy js-only" data-copy="share-text" data-label="Copy text" aria-label="Copy text of the post" hidden>Copy text</button></p>
@@ -8765,11 +8768,11 @@ function renderReport(result, meta, options = {}) {
       wouldHaveDoneSection(result, payload),
       fixFirstSection(payload),
       owaspSection(payload),
-      findingsSection(payload),
+      findingsSection(payload, variant),
       recurringSection(payload)
     ] : [],
     nextStepsSection(result),
-    scanned ? shareSectionHtml(result, payload) : "",
+    scanned ? shareSectionHtml(result, payload, variant) : "",
     beforeYouShareSection(result, variant),
     redactionSection(),
     corpusSection(result),

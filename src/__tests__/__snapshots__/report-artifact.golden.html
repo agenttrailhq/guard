@@ -127,6 +127,7 @@
 </section>
 <section id="findings" class="findings-section">
 <div class="section-head"><h2>All findings</h2><p class="section-meta" id="findings-count">4 guardrails matched</p></div>
+<p class="note artifact-note">Open the downloaded file for filters, sort and export.</p>
 <div class="controls js-only" hidden>
 <div class="filters" role="group" aria-label="Show findings">
 <button type="button" class="filter" data-filter="all" aria-pressed="true">All</button>
@@ -252,9 +253,9 @@
 </section>
 <section id="share" class="share">
 <h2>Share your result</h2>
-<p class="note">Totals only: no commands, paths, project names or guardrails you wrote. Edit it before posting.</p>
+<p class="note share-note">Totals and at most one library guardrail&#39;s name: no commands, paths, project names or guardrails you wrote. This copy cannot change the post: open the downloaded report to edit it.</p>
 <label class="share-label" for="share-text">Post preview</label>
-<textarea id="share-text" rows="4">I scanned 11 tool calls from Claude Code with AgentTrail Guard: 3 would block (3 of those: Recursive delete) · 5 would ask · 1 would warn. Checked locally, nothing uploaded.</textarea>
+<textarea id="share-text" rows="4" readonly>I scanned 11 tool calls from Claude Code with AgentTrail Guard: 3 would block (3 of those: Recursive delete) · 5 would ask · 1 would warn. Checked locally, nothing uploaded.</textarea>
 <p class="share-actions"><span id="share-count" class="share-count" data-over="false">209 / 280</span>
 <a id="share-link" class="button" href="https://x.com/intent/post?text=I%20scanned%2011%20tool%20calls%20from%20Claude%20Code%20with%20AgentTrail%20Guard%3A%203%20would%20block%20(3%20of%20those%3A%20Recursive%20delete)%20%C2%B7%205%20would%20ask%20%C2%B7%201%20would%20warn.%20Checked%20locally%2C%20nothing%20uploaded.&amp;url=https%3A%2F%2Fwww.agenttrail.sh%2Fagenttrail-guard%3Futm_source%3Dguard%26utm_medium%3Dscan-report%26utm_campaign%3Dclaude%26utm_content%3Dshare&amp;hashtags=agenttrail" target="_blank" rel="noopener noreferrer">Post on X</a>
 <button type="button" class="copy js-only" data-copy="share-text" data-label="Copy text" aria-label="Copy text of the post" hidden>Copy text</button></p>
