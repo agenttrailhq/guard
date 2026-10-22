@@ -487,6 +487,7 @@ a { color: var(--brand-text); }
   padding: 10px 12px;
   resize: vertical;
 }
+.share textarea[readonly] { background: var(--subtle); resize: none; }
 .share-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; margin-top: 10px; }
 .share-count { font-size: 13px; color: var(--muted-fg); font-variant-numeric: tabular-nums; }
 .share-count[data-over="true"] { color: var(--sev-critical-fg); font-weight: 600; }
