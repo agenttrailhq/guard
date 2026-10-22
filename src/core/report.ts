@@ -646,9 +646,13 @@ function outLink(url: string, text: string, className?: string): string {
   return `<a${cls} href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${text}</a>`;
 }
 
-/** A command with a copy button. The button stays hidden until the page script runs. */
-function copyable(id: string, command: string): string {
-  return `<div class="command"><code id="${escapeHtml(id)}">${escapeHtml(command)}</code><button type="button" class="copy js-only" data-copy="${escapeHtml(id)}" data-label="Copy" hidden>Copy</button></div>`;
+/**
+ * A command with a copy button. The button stays hidden until the page script runs. Its
+ * visible text is "Copy"; `name` is its accessible name, fixed text that starts with "Copy"
+ * and tells the buttons apart.
+ */
+function copyable(id: string, command: string, name: string): string {
+  return `<div class="command"><code id="${escapeHtml(id)}">${escapeHtml(command)}</code><button type="button" class="copy js-only" data-copy="${escapeHtml(id)}" data-label="Copy" aria-label="${escapeHtml(name)}" hidden>Copy</button></div>`;
 }
 
 /** One `<div class="stat">`. The class names are part of what the tests read. */
@@ -791,7 +795,7 @@ function heroSection(
 <a class="button" href="#${fixTarget}">See what to fix first</a>
 ${outLink(shareLink(payload.shareText, result.agent), "Share on X", "button secondary")}
 </div>
-${copyable("cmd-init-hero", `agenttrail-guard init --agent ${result.agent}`)}
+${copyable("cmd-init-hero", `agenttrail-guard init --agent ${result.agent}`, "Copy the init command")}
 </section>
 <section class="stats" aria-label="Summary">
 ${cells.join("\n")}
@@ -862,7 +866,11 @@ function tuningSection(payload: ReportPayload): string {
   const commands = hint.ids
     .map((id, i) =>
       SHELL_SAFE_ID.test(id)
-        ? copyable(`cmd-tune-${i}`, `agenttrail-guard guardrails set-action ${id} warn`)
+        ? copyable(
+            `cmd-tune-${i}`,
+            `agenttrail-guard guardrails set-action ${id} warn`,
+            `Copy set-action command ${i + 1}`,
+          )
         : `<p class="note">Set <code>${escapeHtml(id)}</code> to warn with <code>agenttrail-guard guardrails set-action</code>. Its id has characters a shell would read, so no command is offered to copy.</p>`,
     )
     .join("\n");
@@ -1167,11 +1175,11 @@ function nextStepsSection(result: ScanResult): string {
 <h2>Next steps</h2>
 <ol class="steps">
 <li><p><strong>Turn on Guard</strong> so these guardrails run before each command.</p>
-${copyable("cmd-init", `agenttrail-guard init --agent ${a}`)}</li>
+${copyable("cmd-init", `agenttrail-guard init --agent ${a}`, "Copy the step 1 command")}</li>
 <li><p><strong>See what it is doing</strong>: whether it is on, and what it decided recently.</p>
-${copyable("cmd-status", "agenttrail-guard status")}</li>
+${copyable("cmd-status", "agenttrail-guard status", "Copy the step 2 command")}</li>
 <li><p><strong>Scan again next week</strong>, and read every line before the report is written.</p>
-${copyable("cmd-scan-again", `agenttrail-guard scan --agent ${a} --review`)}</li>
+${copyable("cmd-scan-again", `agenttrail-guard scan --agent ${a} --review`, "Copy the step 3 command")}</li>
 </ol>
 <ul class="links">
 <li>${outLink(siteLink("/get-started/guard", a, "next-commands"), "Every command")}</li>
@@ -1191,7 +1199,7 @@ function shareSectionHtml(result: ScanResult, payload: ReportPayload): string {
 <textarea id="share-text" rows="4">${escapeHtml(payload.shareText)}</textarea>
 <p class="share-actions"><span id="share-count" class="share-count" data-over="${length > POST_LIMIT ? "true" : "false"}">${escapeHtml(`${length} / ${POST_LIMIT}`)}</span>
 <a id="share-link" class="button" href="${escapeHtml(shareLink(payload.shareText, result.agent))}" target="_blank" rel="noopener noreferrer">Post on X</a>
-<button type="button" class="copy js-only" data-copy="share-text" data-label="Copy text" hidden>Copy text</button></p>
+<button type="button" class="copy js-only" data-copy="share-text" data-label="Copy text" aria-label="Copy text of the post" hidden>Copy text</button></p>
 </section>`;
 }
 
