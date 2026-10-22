@@ -287,6 +287,22 @@ describe("the tuning hint", () => {
     expect(tuningHint(...asks(2, 2, 2, 2, 2, 2))).toBeUndefined();
   });
 
+  it("counts only calls asked about, never ones it warned on", () => {
+    const groups: DecidedCalls[] = [
+      { action: "warn", ruleIds: ["a.warner"], calls: 9 },
+      ask(["a.q"], 5),
+    ];
+    const carriedRows = reportPayload(
+      resultWith([lib("a.warner", "warn", 9), lib("a.q", "require_approval", 5)]),
+      META,
+    ).findings;
+    expect(tuningHint(groups, carriedRows)).toMatchObject({ ids: ["a.q"], asks: 5, remaining: 0 });
+    // Warned calls alone, however many, are never asks.
+    expect(
+      tuningHint([{ action: "warn", ruleIds: ["a.warner"], calls: 9 }], carriedRows),
+    ).toBeUndefined();
+  });
+
   it("counts asks in tool calls, not in guardrail matches", () => {
     // Two guardrails asked on the same 4 calls: 8 matches, but only 4 asks.
     expect(tuningHint([ask(["a.x", "a.y"], 4)], carried("a.x", "a.y"))).toBeUndefined();
@@ -989,11 +1005,14 @@ describe("the privacy and coverage sections stay", () => {
 });
 
 describe("the OWASP section", () => {
-  /** A tally row, as `owaspTally` builds one. */
+  /**
+   * A tally row, as `owaspTally` builds one. Guardrail matches are one more than tool calls,
+   * as when one call matched two guardrails with the id, so showing the wrong one is caught.
+   */
   const tally = (id: OwaspId, callCount: number, guardrailCount = 1): OwaspTally => ({
     id,
     callCount,
-    ruleMatches: callCount,
+    ruleMatches: callCount + 1,
     guardrailCount,
   });
 
@@ -1044,6 +1063,16 @@ describe("the OWASP section", () => {
     );
     expect(OWASP_AGENTIC.length).toBe(10);
     expect(OWASP_LLM.length).toBe(10);
+  });
+
+  it("counts each list's risks from that list", () => {
+    const html = renderReport(
+      resultWith([lib("a.b", "block", 2, { owasp: ["ASI02", "LLM02", "LLM03"] })], undefined, {
+        owasp: [tally("ASI02", 2), tally("LLM02", 2), tally("LLM03", 2)],
+      }),
+      META,
+    );
+    expect(html).toContain("These matches touched 1 of 10 agentic and 2 of 10 LLM risks");
   });
 
   it("says the counts overlap and that it covers coding-agent actions only", () => {
