@@ -202,7 +202,7 @@ describe("the script stays inside its allow-lists", () => {
     expect(SHARE_PREFIX).toBe("https://x.com/intent/post?text=");
     expect(EXPORT_PREFIX.startsWith("data:application/json")).toBe(true);
     expect(REPORT_SCRIPT_LOGIC).toContain(
-      "return SHARE_PREFIX + encodeURIComponent(String(text)) + suffix;",
+      "return SHARE_PREFIX + encodeURIComponent(wellFormed(text)) + suffix;",
     );
     expect(REPORT_SCRIPT_LOGIC).toContain("return EXPORT_PREFIX + encodeURIComponent(");
   });
@@ -398,6 +398,17 @@ describe("the share link", () => {
       "https://www.agenttrail.sh/agenttrail-guard?utm_source=guard",
     ]);
     expect(url.searchParams.getAll("hashtags")).toEqual(["agenttrail"]);
+  });
+
+  it.each([
+    ["edited text \uD800", "edited text \uFFFD"],
+    ["\uDC00 at the start", "\uFFFD at the start"],
+    ["pair 🙂 then \uDBFF", "pair 🙂 then \uFFFD"],
+    ["pair 🙂", "pair 🙂"],
+  ])("writes a lone surrogate as the replacement character instead of failing: %j", (typed, sent) => {
+    const href = logic.shareHref(typed, SUFFIX);
+    expect(new URL(href).searchParams.get("text")).toBe(sent);
+    expect(href.endsWith(SUFFIX)).toBe(true);
   });
 
   it("weighs text as X does", () => {
@@ -874,6 +885,9 @@ describe("the script in the page", () => {
       expect(new URL(link.href).searchParams.get("text")).toBe(typed);
       expect(link.href.endsWith(SUFFIX)).toBe(true);
     }
+    input.value = "edited text \uD800";
+    input.fire("input");
+    expect(new URL(link.href).searchParams.get("text")).toBe("edited text \uFFFD");
     input.value = "x".repeat(300);
     input.fire("input");
     expect(page.byId.get("share-count")?.getAttribute("data-over")).toBe("true");

@@ -7474,8 +7474,17 @@ function shareSuffix(href) {
   return at === -1 ? null : href.slice(at);
 }
 
+function wellFormed(text) {
+  var out = "";
+  Array.from(String(text)).forEach(function (ch) {
+    var code = ch.codePointAt(0);
+    out += code >= 0xd800 && code <= 0xdfff ? "\\ufffd" : ch;
+  });
+  return out;
+}
+
 function shareHref(text, suffix) {
-  return SHARE_PREFIX + encodeURIComponent(String(text)) + suffix;
+  return SHARE_PREFIX + encodeURIComponent(wellFormed(text)) + suffix;
 }
 
 function readTheme(value) {
