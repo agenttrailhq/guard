@@ -44,6 +44,7 @@ import {
   singleBraceWarning,
 } from "../core/label-braces.js";
 import { buildGuardSpanContext } from "../core/normalize.js";
+import { isOwaspId, type OwaspId, owaspTitle } from "../core/owasp.js";
 import { guardDir } from "../core/paths.js";
 import { blockFixtureCommands } from "../core/rule-fixtures.js";
 import {
@@ -66,6 +67,7 @@ interface Flags {
   quiet: boolean;
   configDir: string | undefined;
   pack: string | undefined;
+  owasp: string | undefined;
   enabled: boolean;
   disabled: boolean;
   all: boolean;
@@ -78,7 +80,7 @@ interface Scan {
 }
 
 const BOOLEAN_FLAGS = new Set(["--json", "--quiet", "--enabled", "--disabled", "--all"]);
-const VALUE_FLAGS = new Set(["--config", "--pack"]);
+const VALUE_FLAGS = new Set(["--config", "--pack", "--owasp"]);
 
 /**
  * Scan the arguments after the subcommand.
@@ -95,6 +97,7 @@ function scan(args: readonly string[], verbatimAt?: number): Scan {
     quiet: false,
     configDir: undefined,
     pack: undefined,
+    owasp: undefined,
     enabled: false,
     disabled: false,
     all: false,
@@ -142,13 +145,14 @@ function scan(args: readonly string[], verbatimAt?: number): Scan {
         return { positionals, flags, error: `\`${name}\` needs a value.` };
       }
       if (name === "--config") flags.configDir = value;
-      else flags.pack = value;
+      else if (name === "--pack") flags.pack = value;
+      else flags.owasp = value;
       continue;
     }
     return {
       positionals,
       flags,
-      error: `unknown flag \`${name}\`. Shared flags are --json, --quiet, --config <dir>; \`list\` also takes --pack <name>, --enabled, --disabled; \`reset\` takes --all.`,
+      error: `unknown flag \`${name}\`. Shared flags are --json, --quiet, --config <dir>; \`list\` also takes --pack <name>, --owasp <id>, --enabled, --disabled; \`reset\` takes --all.`,
     };
   }
 
@@ -354,7 +358,7 @@ function parseActionArg(word: string): GuardAction | undefined {
 
 const USAGE = `agenttrail-guard guardrails — see and change what the guard enforces
 
-  guardrails list [--pack <name>] [--enabled|--disabled]   what is on, and what is not
+  guardrails list [--pack|--owasp|--enabled|--disabled]    what is on, and what is not
   guardrails show <guardrail-id>                           everything about one guardrail
   guardrails enable|disable <guardrail-id|pack>            turn a guardrail or a whole pack on/off
   guardrails set-action <guardrail-id> block|ask|warn      change what a guardrail does
@@ -365,7 +369,57 @@ const USAGE = `agenttrail-guard guardrails — see and change what the guard enf
   guardrails validate [<file>]                             the same check CI runs
 
 Shared flags: --json  --quiet  --config <dir>
+list filters: --pack <name>  --owasp <id>  --enabled  --disabled
 `;
+
+/**
+ * Read an OWASP id as a person types it: any letter case, with or without the `:2026` suffix
+ * of the lists these ids come from (`asi06`, `LLM06:2026`).
+ *
+ * Any other year is refused rather than stripped. OWASP numbers each edition differently
+ * (LLM03 is Supply Chain in the 2025 list and Excessive Agency in the 2026 one), so reading
+ * `LLM03:2025` as `LLM03` would answer for a different risk than the one asked about.
+ */
+function parseOwaspArg(word: string): { id: OwaspId } | { error: string } {
+  const upper = word.trim().toUpperCase();
+  const year = /:(\d{4})$/.exec(upper);
+  // The id is checked first, so `ASI11:2025` is "not an OWASP id" rather than "another edition".
+  const id = year === null ? upper : upper.slice(0, year.index);
+  if (!isOwaspId(id)) {
+    return {
+      error: `\`${word}\` is not an OWASP id. Use an id from the OWASP Top 10 for Agentic Applications (ASI01 to ASI10) or for LLM Applications 2026 (LLM01 to LLM10), e.g. \`--owasp ASI06\`.`,
+    };
+  }
+  if (year !== null && year[1] !== "2026") {
+    return {
+      error: `\`${word}\` is from another edition of the OWASP lists. The ids here are from the 2026 lists: the Top 10 for Agentic Applications (ASI01 to ASI10) and for LLM Applications 2026 (LLM01 to LLM10). Use the bare id or the \`:2026\` suffix.`,
+    };
+  }
+  return { id };
+}
+
+/** A guardrail's OWASP ids. Only shipped guardrails carry any (see `GuardRule.owasp`). */
+function owaspOf(rule: GuardRule): readonly OwaspId[] {
+  return rule.owasp ?? [];
+}
+
+/** Printed when a guardrail in `guardrails.json` carries `owasp`, which is never read there. */
+export const OWASP_IGNORED_NOTE =
+  "`owasp` is read only on shipped guardrails and is ignored here, so this guardrail claims no OWASP id.";
+
+/**
+ * How `add --json` and `validate --json` report a personal guardrail's ignored `owasp` key:
+ * one entry per guardrail, in file order.
+ */
+export interface IgnoredKey {
+  readonly guardrail: string;
+  readonly key: "owasp";
+}
+
+/** Does a parsed JSON value carry its own `owasp` key? */
+function carriesOwasp(value: unknown): boolean {
+  return value !== null && typeof value === "object" && !Array.isArray(value) && "owasp" in value;
+}
 
 function cmdList(io: SetupIO, flags: Flags, files: Files, deps: RulesDeps): number {
   const r = new Reporter(io, flags, "list");
@@ -379,6 +433,18 @@ function cmdList(io: SetupIO, flags: Flags, files: Files, deps: RulesDeps): numb
         `no pack named \`${flags.pack}\`. Packs: ${[...new Set(views.map((v) => v.rule.category))].join(", ")}.`,
       );
     }
+  }
+  let owaspId: OwaspId | undefined;
+  // Every guardrail tagged with the id, before `--pack`/`--enabled`/`--disabled` narrow it,
+  // so the count line below can say how many exist as well as how many are shown.
+  let taggedCount = 0;
+  if (flags.owasp !== undefined) {
+    const parsed = parseOwaspArg(flags.owasp);
+    if ("error" in parsed) return r.fail(parsed.error);
+    const wanted = parsed.id;
+    owaspId = wanted;
+    taggedCount = views.filter((v) => owaspOf(v.rule).includes(wanted)).length;
+    shown = shown.filter((v) => owaspOf(v.rule).includes(wanted));
   }
   // `--enabled` and `--disabled` partition; both together is the same as neither, and
   // saying so is better than silently returning nothing.
@@ -398,8 +464,20 @@ function cmdList(io: SetupIO, flags: Flags, files: Files, deps: RulesDeps): numb
         disabledBy: v.disabledBy ?? null,
         allowlist: v.allowlist.map((a) => a.pattern),
         warning: v.warning ?? null,
+        owasp: [...owaspOf(v.rule)],
       })),
     });
+  }
+
+  if (owaspId !== undefined) {
+    // Said before the list, and said when it is empty: a blank screen after `--owasp` would
+    // read as "nothing is tagged" or "the flag was ignored", and only one of those is true.
+    r.say(
+      "",
+      `  ${taggedCount} guardrail${taggedCount === 1 ? "" : "s"} tagged ${owaspId} ${owaspTitle(owaspId)}${
+        shown.length === taggedCount ? "" : `; ${shown.length} of them shown with the other filters`
+      }. A tag names the risk a guardrail addresses where it becomes a command or a file change, not full coverage of it.`,
+    );
   }
 
   const byPack = new Map<string, RuleView[]>();
@@ -473,6 +551,7 @@ function cmdShow(io: SetupIO, flags: Flags, files: Files, deps: RulesDeps, id: s
       description: v.rule.description,
       allowlist: v.allowlist.map((a) => a.pattern),
       warning: v.warning ?? null,
+      owasp: [...owaspOf(v.rule)],
       match: v.rule.match,
     });
   }
@@ -501,6 +580,10 @@ function cmdShow(io: SetupIO, flags: Flags, files: Files, deps: RulesDeps, id: s
     // reconstructs exactly those two keys, so an "added" date would be destroyed on the
     // next read.
     for (const a of v.allowlist) r.say(`    ${a.pattern}`);
+  }
+  const ids = owaspOf(v.rule);
+  if (ids.length > 0) {
+    r.say(`  OWASP         ${ids.map((id) => `${id} ${owaspTitle(id)}`).join(", ")}`);
   }
   r.say("", `  ${v.rule.description}`);
   if (v.warning !== undefined) r.say("", `  WARNING: this guardrail ${v.warning}`);
@@ -1074,6 +1157,7 @@ function cmdAdd(io: SetupIO, flags: Flags, files: Files, deps: RulesDeps, path: 
         `Rewrote ${f.path} from \`${f.label}\` to \`${f.corrected}\`: a brace group with one value is not an alternation, and picomatch would have read the braces literally.`,
     ),
     ...braceWarnings.map((f) => `WARNING: ${singleBraceWarning(f)}`),
+    ...(carriesOwasp(candidate) ? [`NOTE: ${OWASP_IGNORED_NOTE}`] : []),
     `Validated. Added ${rule.id} (${displayAction(rule.defaultAction)}) to ${files.rulesPath}.`,
     `${active} guardrails active.`,
   );
@@ -1081,12 +1165,17 @@ function cmdAdd(io: SetupIO, flags: Flags, files: Files, deps: RulesDeps, path: 
   // worth one line even then.
   if (flags.quiet && !flags.json) {
     for (const f of braceWarnings) io.writeStdout(`WARNING: ${singleBraceWarning(f)}\n`);
+    // Kept under `--quiet` for the same reason: the file now holds a key that does nothing.
+    if (carriesOwasp(candidate)) io.writeStdout(`NOTE: ${OWASP_IGNORED_NOTE}\n`);
   }
   return r.ok({
     changed: true,
     guardrail: rule.id,
     ...(rewrote.length > 0 ? { rewrote } : {}),
     ...(braceWarnings.length > 0 ? { warnings: braceWarnings } : {}),
+    ...(carriesOwasp(candidate)
+      ? { ignored: [{ guardrail: rule.id, key: "owasp" } satisfies IgnoredKey] }
+      : {}),
   });
 }
 
@@ -1143,6 +1232,22 @@ function fixtureMatches(rule: GuardRule, fixture: { tool: string; text: string; 
   return decision.matches.length > 0;
 }
 
+/** The installed personal guardrails that carry an `owasp` key, which is ignored. */
+function installedWithOwasp(text: string | undefined): IgnoredKey[] {
+  if (text === undefined || text.trim().length === 0) return [];
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    return []; // `loadUserRules` already reports an unreadable file.
+  }
+  if (!Array.isArray(parsed)) return [];
+  return parsed.filter(carriesOwasp).map((entry) => {
+    const id = (entry as { id?: unknown }).id;
+    return { guardrail: typeof id === "string" ? id : "(no id)", key: "owasp" };
+  });
+}
+
 function cmdValidate(
   io: SetupIO,
   flags: Flags,
@@ -1160,26 +1265,35 @@ function cmdValidate(
     const warnings = user.valid.flatMap((rule) =>
       findSingleBraceLabels(rule.match).map((found) => ({ guardrail: rule.id, ...found })),
     );
+    const ignored = installedWithOwasp(files.rulesText);
     if (flags.json) {
       return user.invalid.length === 0
         ? r.ok({
             valid: user.valid.length,
             invalid: [],
             ...(warnings.length > 0 ? { warnings } : {}),
+            ...(ignored.length > 0 ? { ignored } : {}),
           })
         : r.fail("invalid guardrails", {
             invalid: user.invalid,
             ...(warnings.length > 0 ? { warnings } : {}),
+            ...(ignored.length > 0 ? { ignored } : {}),
           });
     }
-    const warningLines = warnings.map(
-      (w) => `    WARNING ${w.guardrail}: ${singleBraceWarning(w)}`,
-    );
+    const warningLines = [
+      ...warnings.map((w) => `    WARNING ${w.guardrail}: ${singleBraceWarning(w)}`),
+      ...ignored.map((i) => `    NOTE ${i.guardrail}: ${OWASP_IGNORED_NOTE}`),
+    ];
     if (user.invalid.length === 0) {
       r.say(
         `Valid. ${user.valid.length} of your own guardrails in ${files.rulesPath}.`,
         ...warningLines,
       );
+      // Under `--quiet` the owasp notes are still printed, as `add` prints its own: the file
+      // holds a key that does nothing, and silence would read as "no guardrail carries it".
+      if (flags.quiet) {
+        for (const i of ignored) io.writeStdout(`    NOTE ${i.guardrail}: ${OWASP_IGNORED_NOTE}\n`);
+      }
       return r.ok({ valid: user.valid.length });
     }
     io.writeStdout(

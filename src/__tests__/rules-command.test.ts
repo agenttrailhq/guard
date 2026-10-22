@@ -16,9 +16,11 @@
 
 import { PACKS } from "@agenttrail/guardrails";
 import { describe, expect, it } from "vitest";
-import { runRules } from "../commands/rules.js";
+import { OWASP_IGNORED_NOTE, runRules } from "../commands/rules.js";
 import { silenceCommand } from "../commands/status.js";
+import { SHIPPED_CATALOG } from "../core/catalog.js";
 import { parseConfig } from "../core/config.js";
+import { OWASP_IDS, type OwaspId } from "../core/owasp.js";
 import { PATTERN_PLACEHOLDER } from "../core/redaction.js";
 import type { ClaudeRunResult, SetupIO } from "../setup-io.js";
 
@@ -1391,5 +1393,280 @@ describe("--json key contract", () => {
     const h = harness();
     await runRules(["disable", "working-tree", "--json"], h.io);
     expect(parse(h)).toMatchObject({ ok: true, changed: true, pack: "working-tree" });
+  });
+});
+
+describe("guardrails list --owasp", () => {
+  const parse = (h: Harness) =>
+    JSON.parse(h.out()) as { guardrails: { id: string; pack: string; owasp: string[] }[] };
+  const taggedWith = (id: OwaspId) =>
+    SHIPPED_CATALOG.filter((rule) => (rule.owasp ?? []).includes(id))
+      .map((rule) => rule.id)
+      .sort();
+  const listed = (h: Harness) =>
+    parse(h)
+      .guardrails.map((g) => g.id)
+      .sort();
+
+  it("returns exactly the guardrails tagged with the id", async () => {
+    const h = harness();
+    expect(await runRules(["list", "--owasp", "ASI06", "--json"], h.io)).toBe(0);
+    expect(listed(h)).toEqual(taggedWith("ASI06"));
+    expect(listed(h)).toEqual(["ac.instruction-file-edit", "ac.memory-store-edit"]);
+  });
+
+  it.each(
+    OWASP_IDS.map((id) => [id] as const),
+  )("matches the catalog's own tags for %s", async (id) => {
+    const h = harness();
+    await runRules(["list", "--owasp", id, "--json"], h.io);
+    expect(listed(h)).toEqual(taggedWith(id));
+  });
+
+  it("accepts any letter case, the list's year suffix and --owasp=<id>", async () => {
+    for (const argv of [
+      ["list", "--owasp", "asi06", "--json"],
+      ["list", "--owasp", "ASI06:2026", "--json"],
+      ["list", "--owasp=ASI06", "--json"],
+      ["list", "--owasp", " ASI06 ", "--json"],
+    ]) {
+      const h = harness();
+      expect(await runRules(argv, h.io), argv.join(" ")).toBe(0);
+      expect(listed(h), argv.join(" ")).toEqual(taggedWith("ASI06"));
+    }
+  });
+
+  it("refuses any suffix other than a year", async () => {
+    for (const id of ["ASI06:x", "ASI06:", "ASI06:20266"]) {
+      const h = harness();
+      expect(await runRules(["list", "--owasp", id], h.io), id).toBe(1);
+      expect(h.out(), id).toContain(`\`${id}\` is not an OWASP id`);
+    }
+  });
+
+  it("answers an id on no list as unknown, whatever its year suffix", async () => {
+    for (const id of ["ASI11:2025", "LLM00:2024", "ASI11:2026"]) {
+      const h = harness();
+      expect(await runRules(["list", "--owasp", id], h.io), id).toBe(1);
+      expect(h.out(), id).toContain(`\`${id}\` is not an OWASP id`);
+      expect(h.out(), id).not.toContain("another edition");
+    }
+  });
+
+  it("refuses an id from another edition of the lists rather than renumbering it", async () => {
+    // LLM03 is Supply Chain in the 2025 list and Excessive Agency in the 2026 one.
+    for (const id of ["LLM03:2025", "LLM06:2025", "asi02:2024", "ASI02:2027"]) {
+      const h = harness();
+      expect(await runRules(["list", "--owasp", id], h.io), id).toBe(1);
+      expect(h.out(), id).toContain(`\`${id}\` is from another edition of the OWASP lists`);
+      expect(h.out(), id).toContain("2026 lists");
+      const j = harness();
+      expect(await runRules(["list", "--owasp", id, "--json"], j.io), id).toBe(1);
+      expect(JSON.parse(j.out()), id).toMatchObject({ ok: false, command: "list" });
+    }
+    const ok = harness();
+    expect(await runRules(["list", "--owasp", "ASI02:2026", "--json"], ok.io)).toBe(0);
+    expect(listed(ok)).toEqual(taggedWith("ASI02"));
+  });
+
+  it("ANDs with --enabled and --disabled", async () => {
+    const h = harness();
+    await runRules(["disable", "ac.memory-store-edit"], h.io);
+    const config = h.raw(CONFIG) as string;
+
+    const on = harness({ [CONFIG]: config });
+    await runRules(["list", "--owasp", "ASI06", "--enabled", "--json"], on.io);
+    expect(listed(on)).toEqual(["ac.instruction-file-edit"]);
+
+    const off = harness({ [CONFIG]: config });
+    await runRules(["list", "--owasp", "ASI06", "--disabled", "--json"], off.io);
+    expect(listed(off)).toEqual(["ac.memory-store-edit"]);
+  });
+
+  it("counts every tagged guardrail, and says how many the other filters left", async () => {
+    const h = harness();
+    await runRules(["list", "--owasp", "ASI06", "--pack", "agent-context", "--disabled"], h.io);
+    expect(h.out()).toContain(
+      "2 guardrails tagged ASI06 Memory and Context Poisoning; 0 of them shown with the other filters.",
+    );
+    const all = harness();
+    await runRules(["list", "--owasp", "ASI06"], all.io);
+    expect(all.out()).toContain("2 guardrails tagged ASI06 Memory and Context Poisoning. A tag");
+
+    // The tagged count is taken before --pack: ASI10 spans two packs.
+    const asi10 = taggedWith("ASI10");
+    const inPack = SHIPPED_CATALOG.filter(
+      (r) => r.category === "test-integrity" && asi10.includes(r.id),
+    ).length;
+    expect([asi10.length, inPack]).toEqual([6, 2]);
+    const packed = harness();
+    await runRules(["list", "--owasp", "ASI10", "--pack", "test-integrity"], packed.io);
+    expect(packed.out()).toContain(
+      "6 guardrails tagged ASI10 Rogue Agents; 2 of them shown with the other filters.",
+    );
+  });
+
+  it("refuses an id that is on neither list, and names the ranges", async () => {
+    const h = harness();
+    expect(await runRules(["list", "--owasp", "ASI11"], h.io)).toBe(1);
+    expect(h.out()).toContain("`ASI11` is not an OWASP id");
+    expect(h.out()).toContain("ASI01 to ASI10");
+    expect(h.out()).toContain("LLM01 to LLM10");
+  });
+
+  it("ANDs with --pack", async () => {
+    const h = harness();
+    await runRules(["list", "--owasp", "ASI10", "--pack", "test-integrity", "--json"], h.io);
+    expect(listed(h)).toEqual(["ti.test-config-edit", "ti.test-file-delete"]);
+  });
+
+  it("says how many matched, and that a tag is not full coverage, even when none do", async () => {
+    const h = harness();
+    expect(await runRules(["list", "--owasp", "LLM01"], h.io)).toBe(0);
+    expect(h.out()).toContain("0 guardrails tagged LLM01 Prompt Injection");
+    expect(h.out()).toContain("not full coverage");
+  });
+
+  it("every --json row carries the guardrail's own ids, [] when it has none", async () => {
+    const h = harness({ [RULES]: JSON.stringify([USER_RULE]) });
+    await runRules(["list", "--json"], h.io);
+    const rows = parse(h).guardrails;
+    for (const row of rows) {
+      const shipped = SHIPPED_CATALOG.find((rule) => rule.id === row.id);
+      expect(row.owasp, row.id).toEqual([...(shipped?.owasp ?? [])]);
+    }
+    expect(rows.find((r) => r.id === USER_RULE.id)?.owasp).toEqual([]);
+  });
+
+  it("show prints the ids with their titles, and --json carries them", async () => {
+    const h = harness();
+    await runRules(["show", "ac.memory-store-edit"], h.io);
+    expect(h.out()).toContain(
+      "OWASP         ASI06 Memory and Context Poisoning, LLM03 Excessive Agency",
+    );
+    const j = harness();
+    await runRules(["show", "ac.memory-store-edit", "--json"], j.io);
+    expect((JSON.parse(j.out()) as { owasp: string[] }).owasp).toEqual(["ASI06", "LLM03"]);
+  });
+});
+
+describe("a personal guardrail never claims an OWASP id", () => {
+  const withOwasp = (owasp: unknown) => ({ ...USER_RULE, owasp });
+
+  it.each([
+    ["a valid id", ["ASI06"]],
+    ["an invalid id", ["ASI11"]],
+  ])("with %s, it is never listed under --owasp and its row carries []", async (_label, owasp) => {
+    const h = harness({ [RULES]: JSON.stringify([withOwasp(owasp)]) });
+    expect(await runRules(["list", "--owasp", "ASI06", "--json"], h.io)).toBe(0);
+    const listed = JSON.parse(h.out()) as { guardrails: { id: string }[] };
+    // Exactly the shipped ASI06 guardrails: the personal one is absent and nothing else moved.
+    expect(listed.guardrails.map((g) => g.id).sort()).toEqual([
+      "ac.instruction-file-edit",
+      "ac.memory-store-edit",
+    ]);
+
+    const one = harness({ [RULES]: JSON.stringify([withOwasp(owasp)]) });
+    await runRules(["show", USER_RULE.id, "--json"], one.io);
+    expect((JSON.parse(one.out()) as { owasp: unknown }).owasp).toEqual([]);
+  });
+
+  it("add accepts it, keeps the file as written, and says the key is ignored", async () => {
+    const h = harness({ "/tmp/rule.json": JSON.stringify(withOwasp(["ASI06"])) });
+    expect(await runRules(["add", "/tmp/rule.json"], h.io)).toBe(0);
+    expect(h.out()).toContain(OWASP_IGNORED_NOTE);
+    // Written as given: the key is ignored when read, not removed from the user's file.
+    expect(JSON.parse(h.raw(RULES) as string)).toEqual([withOwasp(["ASI06"])]);
+
+    const j = harness({ "/tmp/rule.json": JSON.stringify(withOwasp(["ASI06"])) });
+    await runRules(["add", "/tmp/rule.json", "--json"], j.io);
+    expect(JSON.parse(j.out())).toMatchObject({
+      ok: true,
+      ignored: [{ guardrail: USER_RULE.id, key: "owasp" }],
+    });
+  });
+
+  it("add --quiet still prints the note, as it does a brace warning", async () => {
+    const h = harness({ "/tmp/rule.json": JSON.stringify(withOwasp(["ASI06"])) });
+    expect(await runRules(["add", "/tmp/rule.json", "--quiet"], h.io)).toBe(0);
+    expect(h.out()).toBe(`NOTE: ${OWASP_IGNORED_NOTE}\n`);
+  });
+
+  it("add --quiet prints nothing for a guardrail without owasp, and --json stays parseable", async () => {
+    const plain = harness({ "/tmp/rule.json": JSON.stringify(USER_RULE) });
+    expect(await runRules(["add", "/tmp/rule.json", "--quiet"], plain.io)).toBe(0);
+    expect(plain.out()).toBe("");
+
+    const j = harness({ "/tmp/rule.json": JSON.stringify(withOwasp(["ASI06"])) });
+    expect(await runRules(["add", "/tmp/rule.json", "--quiet", "--json"], j.io)).toBe(0);
+    expect(JSON.parse(j.out())).toMatchObject({
+      ok: true,
+      ignored: [{ guardrail: USER_RULE.id, key: "owasp" }],
+    });
+  });
+
+  it("validate --json reports it on the failing path too, naming an id-less guardrail", async () => {
+    const h = harness({
+      [RULES]: JSON.stringify([
+        withOwasp(["ASI06"]),
+        { id: "local.bad", category: "x", defaultAction: "ask", match: {} },
+        { category: "prod-infra", defaultAction: "warn", owasp: ["ASI06"], match: {} },
+      ]),
+    });
+    expect(await runRules(["validate", "--json"], h.io)).toBe(1);
+    expect(JSON.parse(h.out())).toMatchObject({
+      ok: false,
+      command: "validate",
+      ignored: [
+        { guardrail: USER_RULE.id, key: "owasp" },
+        { guardrail: "(no id)", key: "owasp" },
+      ],
+    });
+  });
+
+  it("validate --quiet still prints the notes, as add --quiet does", async () => {
+    const h = harness({
+      [RULES]: JSON.stringify([withOwasp(["ASI06"]), USER_RULE_OWN_CATEGORY]),
+    });
+    expect(await runRules(["validate", "--quiet"], h.io)).toBe(0);
+    expect(h.out()).toBe(`    NOTE ${USER_RULE.id}: ${OWASP_IGNORED_NOTE}\n`);
+
+    const clean = harness({ [RULES]: JSON.stringify([USER_RULE]) });
+    expect(await runRules(["validate", "--quiet"], clean.io)).toBe(0);
+    expect(clean.out()).toBe("");
+  });
+
+  it("validate --json reports it in the same shape as add --json", async () => {
+    const other = { ...USER_RULE, id: "local.second" };
+    const h = harness({ [RULES]: JSON.stringify([withOwasp(["ASI06"]), other]) });
+    expect(await runRules(["validate", "--json"], h.io)).toBe(0);
+    expect(JSON.parse(h.out())).toEqual({
+      ok: true,
+      command: "validate",
+      valid: 2,
+      invalid: [],
+      ignored: [{ guardrail: USER_RULE.id, key: "owasp" }],
+    });
+
+    const clean = harness({ [RULES]: JSON.stringify([USER_RULE]) });
+    await runRules(["validate", "--json"], clean.io);
+    expect(JSON.parse(clean.out())).not.toHaveProperty("ignored");
+  });
+
+  it("add says nothing about owasp when the key is absent", async () => {
+    const h = harness({ "/tmp/rule.json": JSON.stringify(USER_RULE) });
+    await runRules(["add", "/tmp/rule.json"], h.io);
+    expect(h.out()).not.toContain(OWASP_IGNORED_NOTE);
+  });
+
+  it("validate on the installed file notes it per guardrail", async () => {
+    const h = harness({
+      [RULES]: JSON.stringify([withOwasp(["ASI06"]), USER_RULE_OWN_CATEGORY]),
+    });
+    expect(await runRules(["validate"], h.io)).toBe(0);
+    expect(h.out()).toContain(`NOTE ${USER_RULE.id}: ${OWASP_IGNORED_NOTE}`);
+    // Only the guardrail that carries `owasp` gets a note.
+    expect(h.out().match(/^ {4}NOTE /gm)).toHaveLength(1);
+    expect(h.out()).not.toContain(`NOTE ${USER_RULE_OWN_CATEGORY.id}`);
   });
 });

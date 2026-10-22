@@ -199,8 +199,11 @@ prevent, not the technique used to spot it. By default, 13 guardrails block, 50 
 | `exfiltration` | 4 | Reverse shells, public tunnels, file uploads, paste services | 1 block, 3 ask |
 
 Run `agenttrail-guard guardrails list` for every rule with its current action, or
-`guardrails show <guardrail-id>` for one rule in full. The source for every rule is in
-[agenttrailhq/guardrails](https://github.com/agenttrailhq/guardrails#the-eleven-packs). To browse
+`guardrails show <guardrail-id>` for one rule in full. `guardrails list --owasp ASI06` lists the
+guardrails tagged with one OWASP risk (ids from the 2026 lists: the OWASP Top 10 for Agentic
+Applications and for LLM Applications 2026). A tag names the risk a guardrail addresses where it
+becomes a command or a file change, not full coverage of it. Only shipped guardrails carry tags.
+The source for every rule is in [agenttrailhq/guardrails](https://github.com/agenttrailhq/guardrails#the-eleven-packs). To browse
 every rule online, or paste a command and see which rules match it, use the
 [guardrail library](https://www.agenttrail.sh/guardrails).
 
@@ -325,8 +328,9 @@ $ agenttrail-guard guardrails add my-rule.json
 ```
 
 In JSON, "ask" is written `require_approval`. The CLI accepts `ask`, but a hand-edited file
-does not. See [Managing guardrails](#managing-guardrails) for every rule
-command, and the
+does not. An `owasp` list on your own guardrail is ignored: only shipped guardrails carry OWASP
+ids, and `guardrails add` and `guardrails validate` say so when they see one. See
+[Managing guardrails](#managing-guardrails) for every rule command, and the
 [guardrails rule format](https://github.com/agenttrailhq/guardrails#a-rule-start-to-finish)
 for all fields.
 
@@ -939,7 +943,7 @@ When one guardrail fires repeatedly on something legitimate, `agenttrail-guard g
 fixes it without hand-editing JSON or uninstalling.
 
 ```
-guardrails list [--pack <name>] [--enabled|--disabled]   what is on, and what is not
+guardrails list [--pack|--owasp|--enabled|--disabled]    what is on, and what is not
 guardrails show <guardrail-id>                           everything about one guardrail
 guardrails enable|disable <guardrail-id|pack>            turn a guardrail or a whole pack on/off
 guardrails set-action <guardrail-id> block|ask|warn      change what a guardrail does
@@ -951,6 +955,7 @@ guardrails validate [<file>]                             the same check CI runs
 ```
 
 Shared flags: `--json`, `--quiet`, `--config <dir>`.
+`list` filters: `--pack <name>`, `--owasp <id>`, `--enabled`, `--disabled`.
 
 **`allow` is the one that matters.** It suppresses one guardrail on one command shape
 and nothing else: the same guardrail keeps blocking everything else, and the others are
