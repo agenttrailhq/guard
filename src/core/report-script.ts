@@ -3,7 +3,8 @@
  * The scan report's one inline script, as a constant.
  *
  * ── What it may do ───────────────────────────────────────────────────────────
- * Filters, sort, copy buttons, the theme toggle, print and the JSON export, and keeping the
+ * Filters (by action and by OWASP risk), sort, copy buttons, the theme toggle, print and the
+ * JSON export, and keeping the
  * Post-on-X link in step with the editable share text. Everything it shows is already in the
  * page: it reads the `#report-data` block with `textContent` + `JSON.parse`, writes text with
  * `textContent` only, and never builds markup from data.
@@ -89,6 +90,20 @@ function isFilter(value) {
 
 function rowVisible(filter, action) {
   return filter === "all" || filter === action;
+}
+
+function isRisk(value) {
+  if (typeof value !== "string" || value.length !== 5) return false;
+  var list = value.slice(0, 3);
+  var n = parseInt(value.slice(3), 10);
+  if (list !== "ASI" && list !== "LLM") return false;
+  return n >= 1 && n <= 10 && value.slice(3) === (n < 10 ? "0" + n : "10");
+}
+
+function riskVisible(risk, ids) {
+  if (risk === "") return true;
+  if (!isRisk(risk) || typeof ids !== "string") return false;
+  return (" " + ids + " ").indexOf(" " + risk + " ") !== -1;
 }
 
 function isSort(value) {
@@ -179,23 +194,45 @@ if (themeButton) {
 }
 
 var status = byId("findings-status");
+var riskSelect = byId("risk-filter");
+var actionFilter = "all";
+
+function applyFilters() {
+  var risk = riskSelect && isRisk(riskSelect.value) ? riskSelect.value : "";
+  var shown = 0;
+  var total = 0;
+  each(".finding", function (row) {
+    var visible =
+      rowVisible(actionFilter, row.getAttribute("data-action")) &&
+      riskVisible(risk, row.getAttribute("data-owasp"));
+    row.hidden = !visible;
+    total++;
+    if (visible) shown++;
+  });
+  if (status) status.textContent = statusText(shown, total);
+}
 
 each("[data-filter]", function (button) {
   button.addEventListener("click", function () {
     var filter = button.getAttribute("data-filter");
     if (!isFilter(filter)) return;
+    actionFilter = filter;
     each("[data-filter]", function (other) {
       other.setAttribute("aria-pressed", other === button ? "true" : "false");
     });
-    var shown = 0;
-    var total = 0;
-    each(".finding", function (row) {
-      var visible = rowVisible(filter, row.getAttribute("data-action"));
-      row.hidden = !visible;
-      total++;
-      if (visible) shown++;
-    });
-    if (status) status.textContent = statusText(shown, total);
+    applyFilters();
+  });
+});
+
+if (riskSelect) riskSelect.addEventListener("change", applyFilters);
+
+each("[data-risk]", function (button) {
+  button.addEventListener("click", function () {
+    var risk = button.getAttribute("data-risk");
+    if (!riskSelect || !isRisk(risk)) return;
+    riskSelect.value = risk;
+    applyFilters();
+    riskSelect.focus();
   });
 });
 

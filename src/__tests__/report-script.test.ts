@@ -35,6 +35,7 @@ const ALLOWED_PROPERTIES = new Set([
   "documentElement",
   "download",
   "execCommand",
+  "focus",
   "forEach",
   "from",
   "getAttribute",
@@ -234,7 +235,7 @@ describe("everything the script looks for is in the rendered page", () => {
     action: "block" as const,
     count: 1,
     examples: [{ text: "x", count: 1 }],
-    owasp: [],
+    owasp: ["ASI02" as const],
   };
   const html = renderReport(
     {
@@ -249,7 +250,7 @@ describe("everything the script looks for is in the rendered page", () => {
       riskyByAction: { block: 1, require_approval: 0, warn: 0 },
       findings: [finding],
       recurring: [],
-      owasp: [],
+      owasp: [{ id: "ASI02" as const, callCount: 1, ruleMatches: 1, guardrailCount: 1 }],
       tokens: null,
     },
     META,
@@ -268,6 +269,7 @@ describe("everything the script looks for is in the rendered page", () => {
       "[data-filter]": /\sdata-filter="/,
       ".finding": /class="finding"/,
       "[data-copy]": /\sdata-copy="/,
+      "[data-risk]": /\sdata-risk="/,
       details: /<details\b/,
     };
     const wanted = [...REPORT_SCRIPT.matchAll(/each\("([^"]+)"/g)].map((m) => m[1] ?? "");
@@ -285,10 +287,24 @@ describe("everything the script looks for is in the rendered page", () => {
     for (const id of targets) expect(ids.has(id), id).toBe(true);
   });
 
+  /** The option values of one `<select>`. */
+  const optionsOf = (id: string): string[] => {
+    const at = html.indexOf(`<select id="${id}">`);
+    const select = html.slice(at, html.indexOf("</select>", at));
+    return [...select.matchAll(/<option value="([^"]*)">/g)].map((m) => m[1] ?? "");
+  };
+
   it("the sort control offers exactly the sorts the script accepts", () => {
-    const options = [...html.matchAll(/<option value="([^"]+)">/g)].map((m) => m[1]);
+    const options = optionsOf("sort");
     expect(options).toEqual(["serious", "category", "count", "name"]);
     for (const key of options) expect(html).toMatch(new RegExp(`data-rank-${key}="\\d+"`));
+  });
+
+  it("the risk filter offers any risk, then each risk touched, each one the script accepts", () => {
+    expect(optionsOf("risk-filter")).toEqual(["", "ASI02"]);
+    expect(logic.isRisk("ASI02")).toBe(true);
+    expect(html).toContain('data-owasp="ASI02"');
+    expect(html).toContain('data-risk="ASI02"');
   });
 });
 
@@ -305,13 +321,15 @@ interface Logic {
   rowVisible(filter: string, action: string | null): boolean;
   isSort(value: unknown): boolean;
   rankOf(value: unknown): number;
+  isRisk(value: unknown): boolean;
+  riskVisible(risk: string, ids: string | null): boolean;
   exportHref(raw: string): string;
 }
 
 const logic = runInNewContext(
   `${REPORT_SCRIPT_LOGIC}
 ({ xLength, postLength, shareSuffix, shareHref, readTheme, nextTheme, isFilter, rowVisible,
-   isSort, rankOf, exportHref });`,
+   isSort, rankOf, isRisk, riskVisible, exportHref });`,
 ) as Logic;
 
 const SUFFIX = `&url=${encodeURIComponent("https://www.agenttrail.sh/agenttrail-guard?utm_source=guard")}&hashtags=agenttrail`;
@@ -383,6 +401,22 @@ describe("theme, filters and sort", () => {
     expect(logic.rowVisible("block", "warn")).toBe(false);
   });
 
+  it("accepts an OWASP id only as the two lists spell them", () => {
+    for (const id of ["ASI01", "ASI10", "LLM01", "LLM10"]) expect(logic.isRisk(id)).toBe(true);
+    for (const junk of ["", "ASI00", "ASI11", "ASI1", "asi01", "LLM010", "XYZ01", "ASI0x", null, 1])
+      expect(logic.isRisk(junk)).toBe(false);
+  });
+
+  it("shows a row for a risk it carries, or for any risk", () => {
+    expect(logic.riskVisible("", null)).toBe(true);
+    expect(logic.riskVisible("ASI02", "ASI02 LLM03")).toBe(true);
+    expect(logic.riskVisible("LLM03", "ASI02 LLM03")).toBe(true);
+    expect(logic.riskVisible("ASI02", null)).toBe(false);
+    // A whole id, never part of one.
+    expect(logic.riskVisible("ASI01", "ASI010")).toBe(false);
+    expect(logic.riskVisible("nonsense", "nonsense")).toBe(false);
+  });
+
   it("reads a rank as a whole number, and anything else as zero", () => {
     expect(logic.rankOf("7")).toBe(7);
     for (const junk of ["", "-3", "x", null, "Infinity"]) expect(logic.rankOf(junk)).toBe(0);
@@ -447,6 +481,10 @@ class FakeElement {
   select(): void {
     this.selected = true;
   }
+  focused = false;
+  focus(): void {
+    this.focused = true;
+  }
 }
 
 interface Page {
@@ -484,16 +522,21 @@ function loadPage(options: PageOptions = {}): Page {
     el("button", { "data-filter": "warn", "aria-pressed": "false" }),
     el("button", { "data-filter": "nonsense", "aria-pressed": "false" }),
     el("select", { id: "sort" }),
+    el("select", { id: "risk-filter" }),
+    el("button", { class: "tool js-only", hidden: "", "data-risk": "LLM03" }),
+    el("button", { class: "tool js-only", hidden: "", "data-risk": "nonsense" }),
     el("p", { id: "findings-status" }),
     el("li", {
       class: "finding",
       "data-action": "block",
+      "data-owasp": "ASI02 LLM03",
       "data-rank-name": "2",
       "data-rank-count": "1",
     }),
     el("li", {
       class: "finding",
       "data-action": "warn",
+      "data-owasp": "ASI02",
       "data-rank-name": "0",
       "data-rank-count": "0",
     }),
@@ -560,6 +603,7 @@ function loadPage(options: PageOptions = {}): Page {
     if (selector === ".finding") return classes.includes("finding");
     if (selector === "[data-filter]") return e.getAttribute("data-filter") !== null;
     if (selector === "[data-copy]") return e.getAttribute("data-copy") !== null;
+    if (selector === "[data-risk]") return e.getAttribute("data-risk") !== null;
     if (selector === "details") return e.tagName === "DETAILS";
     throw new Error(`the script asked for a selector this page does not model: ${selector}`);
   };
@@ -632,6 +676,48 @@ describe("the script in the page", () => {
     expect(filterButton(page, "all").getAttribute("aria-pressed")).toBe("false");
     expect(page.byId.get("findings-status")?.textContent).toBe("Showing 1 of 3 guardrails");
     filterButton(page, "all").click();
+    expect(rows(page).map((r) => r.hidden)).toEqual([false, false, false]);
+  });
+
+  it("filters rows by OWASP risk, together with the action filter", () => {
+    const page = loadPage();
+    const risk = page.byId.get("risk-filter") as FakeElement;
+    risk.value = "ASI02";
+    risk.fire("change");
+    expect(rows(page).map((r) => r.hidden)).toEqual([false, false, true]);
+    expect(page.byId.get("findings-status")?.textContent).toBe("Showing 2 of 3 guardrails");
+    filterButton(page, "warn").click();
+    expect(rows(page).map((r) => r.hidden)).toEqual([true, false, true]);
+    risk.value = "";
+    risk.fire("change");
+    expect(rows(page).map((r) => r.hidden)).toEqual([true, false, true]);
+    filterButton(page, "all").click();
+    expect(rows(page).map((r) => r.hidden)).toEqual([false, false, false]);
+  });
+
+  it("treats a risk value it does not know as any risk", () => {
+    const page = loadPage();
+    const risk = page.byId.get("risk-filter") as FakeElement;
+    risk.value = "toString";
+    risk.fire("change");
+    expect(rows(page).map((r) => r.hidden)).toEqual([false, false, false]);
+  });
+
+  it("a risk's button selects it in the filter, applies it, and moves focus there", () => {
+    const page = loadPage();
+    const risk = page.byId.get("risk-filter") as FakeElement;
+    page.elements.find((e) => e.getAttribute("data-risk") === "LLM03")?.click();
+    expect(risk.value).toBe("LLM03");
+    expect(risk.focused).toBe(true);
+    expect(rows(page).map((r) => r.hidden)).toEqual([false, true, true]);
+  });
+
+  it("ignores a risk button with a value it does not know", () => {
+    const page = loadPage();
+    const risk = page.byId.get("risk-filter") as FakeElement;
+    page.elements.find((e) => e.getAttribute("data-risk") === "nonsense")?.click();
+    expect(risk.value).toBe("");
+    expect(risk.focused).toBe(false);
     expect(rows(page).map((r) => r.hidden)).toEqual([false, false, false]);
   });
 

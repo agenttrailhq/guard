@@ -7,6 +7,7 @@
 <nav class="sections" aria-label="Report sections"><ul>
 <li><a href="#overview">Overview</a></li>
 <li><a href="#fix-first">Fix first</a></li>
+<li><a href="#owasp">OWASP</a></li>
 <li><a href="#findings">All findings</a></li>
 <li><a href="#next-steps">Next steps</a></li>
 <li><a href="#privacy">Privacy</a></li>
@@ -100,6 +101,30 @@
 </article>
 </div>
 </section>
+<section id="owasp">
+<h2>OWASP risks</h2>
+<p class="lead">These matches touched 1 of 10 agentic and 2 of 10 LLM risks.</p>
+<ul class="risks">
+<li class="risk" id="risk-asi02">
+<p class="risk-name"><a href="https://www.agenttrail.sh/security/owasp?utm_source=guard&amp;utm_medium=scan-report&amp;utm_campaign=claude&amp;utm_content=owasp-risk#asi02" target="_blank" rel="noopener noreferrer"><span class="risk-id">ASI02</span> Tool Misuse and Exploitation</a></p>
+<p class="risk-counts">4 tool calls &middot; 2 guardrails</p>
+<button type="button" class="tool js-only" data-risk="ASI02" aria-label="Show its findings: ASI02" hidden>Show its findings</button>
+</li>
+<li class="risk" id="risk-llm02">
+<p class="risk-name"><a href="https://www.agenttrail.sh/security/owasp?utm_source=guard&amp;utm_medium=scan-report&amp;utm_campaign=claude&amp;utm_content=owasp-risk#llm02" target="_blank" rel="noopener noreferrer"><span class="risk-id">LLM02</span> Sensitive Information Disclosure</a></p>
+<p class="risk-counts">2 tool calls &middot; 1 guardrail</p>
+<button type="button" class="tool js-only" data-risk="LLM02" aria-label="Show its findings: LLM02" hidden>Show its findings</button>
+</li>
+<li class="risk" id="risk-llm03">
+<p class="risk-name"><a href="https://www.agenttrail.sh/security/owasp?utm_source=guard&amp;utm_medium=scan-report&amp;utm_campaign=claude&amp;utm_content=owasp-risk#llm03" target="_blank" rel="noopener noreferrer"><span class="risk-id">LLM03</span> Excessive Agency</a></p>
+<p class="risk-counts">3 tool calls &middot; 1 guardrail</p>
+<button type="button" class="tool js-only" data-risk="LLM03" aria-label="Show its findings: LLM03" hidden>Show its findings</button>
+</li>
+</ul>
+<p class="note">A guardrail can name more than one risk, and a tool call can match more than one guardrail, so one tool call can count under several risks. These counts do not add up to the totals above.</p>
+<p class="note">Covers coding-agent actions only, not full OWASP coverage. Each id names a risk where it becomes a command or a file change, and is never a claim that a guardrail covers the whole risk.</p>
+<p class="risk-sources"><a href="https://www.agenttrail.sh/security/owasp?utm_source=guard&amp;utm_medium=scan-report&amp;utm_campaign=claude&amp;utm_content=owasp" target="_blank" rel="noopener noreferrer">How the guardrails map to OWASP</a> &middot; <a href="https://genai.owasp.org/resource/owasp-top-10-for-agentic-applications-for-2026/" target="_blank" rel="noopener noreferrer">OWASP Top 10 for Agentic Applications</a> &middot; <a href="https://genai.owasp.org/resource/owasp-genai-llm-top-10-2026/" target="_blank" rel="noopener noreferrer">OWASP Top 10 for LLM Applications</a></p>
+</section>
 <section id="findings" class="findings-section">
 <div class="section-head"><h2>All findings</h2><p class="section-meta">4 guardrails matched</p></div>
 <div class="controls js-only" hidden>
@@ -115,15 +140,25 @@
 <option value="count">Most matches</option>
 <option value="name">Name</option>
 </select></label>
+<label class="sort">OWASP risk <select id="risk-filter">
+<option value="">Any risk</option>
+<option value="ASI02">ASI02 Tool Misuse and Exploitation</option>
+<option value="LLM02">LLM02 Sensitive Information Disclosure</option>
+<option value="LLM03">LLM03 Excessive Agency</option>
+</select></label>
 </div>
 <p id="findings-status" class="sr-only" role="status" aria-live="polite"></p>
 <ol class="finding-list">
-<li class="finding" id="finding-0" data-action="block" data-rank-serious="0" data-rank-category="1" data-rank-count="0" data-rank-name="3">
+<li class="finding" id="finding-0" data-action="block" data-owasp="ASI02 LLM03" data-rank-serious="0" data-rank-category="1" data-rank-count="0" data-rank-name="3">
 <div class="finding-head">
 <div class="guardrail-title">Recursive delete</div>
 <div class="finding-meta"><span class="badge sev-critical">critical</span> <span class="chip act-block">would block</span><span class="num" data-label="Matches">3&times;</span></div>
 </div>
 <div class="guardrail-id"><code>t.rm-rf</code> &middot; <span class="group">Destructive data</span></div>
+<ul class="owasp-ids" aria-label="OWASP risks">
+<li><a href="https://www.agenttrail.sh/security/owasp?utm_source=guard&amp;utm_medium=scan-report&amp;utm_campaign=claude&amp;utm_content=owasp-risk#asi02" target="_blank" rel="noopener noreferrer"><span class="risk-id">ASI02</span> Tool Misuse and Exploitation</a></li>
+<li><a href="https://www.agenttrail.sh/security/owasp?utm_source=guard&amp;utm_medium=scan-report&amp;utm_campaign=claude&amp;utm_content=owasp-risk#llm03" target="_blank" rel="noopener noreferrer"><span class="risk-id">LLM03</span> Excessive Agency</a></li>
+</ul>
 <details class="commands"><summary>The 1 command shape behind it</summary>
 <ul class="shapes">
 <li><code>rm -rf &lt;path&gt;</code><span class="times">3&times;</span></li>
@@ -147,12 +182,15 @@
 </ul>
 </details>
 </li>
-<li class="finding" id="finding-2" data-action="require_approval" data-rank-serious="2" data-rank-category="2" data-rank-count="2" data-rank-name="2">
+<li class="finding" id="finding-2" data-action="require_approval" data-owasp="LLM02" data-rank-serious="2" data-rank-category="2" data-rank-count="2" data-rank-name="2">
 <div class="finding-head">
 <div class="guardrail-title">Reading a .env file</div>
 <div class="finding-meta"><span class="badge sev-high">high</span> <span class="chip act-ask">would ask</span><span class="num" data-label="Matches">2&times;</span></div>
 </div>
 <div class="guardrail-id"><code>t.env-file</code> &middot; <span class="group">Secret exposure</span></div>
+<ul class="owasp-ids" aria-label="OWASP risks">
+<li><a href="https://www.agenttrail.sh/security/owasp?utm_source=guard&amp;utm_medium=scan-report&amp;utm_campaign=claude&amp;utm_content=owasp-risk#llm02" target="_blank" rel="noopener noreferrer"><span class="risk-id">LLM02</span> Sensitive Information Disclosure</a></li>
+</ul>
 <details class="commands"><summary>The 1 command shape behind it</summary>
 <ul class="shapes">
 <li><code>Read &lt;path&gt;</code><span class="times">2&times;</span></li>
@@ -163,12 +201,15 @@
 <p><a href="https://www.agenttrail.sh/guardrails/secret-exposure/t-env-file?utm_source=guard&amp;utm_medium=scan-report&amp;utm_campaign=claude&amp;utm_content=guardrail" target="_blank" rel="noopener noreferrer">Open it in the guardrail library</a></p>
 </details>
 </li>
-<li class="finding" id="finding-3" data-action="warn" data-rank-serious="3" data-rank-category="3" data-rank-count="3" data-rank-name="1">
+<li class="finding" id="finding-3" data-action="warn" data-owasp="ASI02" data-rank-serious="3" data-rank-category="3" data-rank-count="3" data-rank-name="1">
 <div class="finding-head">
 <div class="guardrail-title">Discards uncommitted work</div>
 <div class="finding-meta"><span class="badge sev-medium">medium</span> <span class="chip act-warn">would warn</span><span class="num" data-label="Matches">1&times;</span></div>
 </div>
 <div class="guardrail-id"><code>t.git-checkout</code> &middot; <span class="group">Working tree</span></div>
+<ul class="owasp-ids" aria-label="OWASP risks">
+<li><a href="https://www.agenttrail.sh/security/owasp?utm_source=guard&amp;utm_medium=scan-report&amp;utm_campaign=claude&amp;utm_content=owasp-risk#asi02" target="_blank" rel="noopener noreferrer"><span class="risk-id">ASI02</span> Tool Misuse and Exploitation</a></li>
+</ul>
 <details class="commands"><summary>The 1 command shape behind it</summary>
 <ul class="shapes">
 <li><code>git checkout -- &lt;path&gt;</code><span class="times">1&times;</span></li>

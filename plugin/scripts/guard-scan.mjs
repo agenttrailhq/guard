@@ -5585,8 +5585,43 @@ var OWASP_IDS = [
   "LLM09",
   "LLM10"
 ];
+var OWASP_AGENTIC = [
+  { id: "ASI01", title: "Agent Goal Hijack" },
+  { id: "ASI02", title: "Tool Misuse and Exploitation" },
+  { id: "ASI03", title: "Identity and Privilege Abuse" },
+  { id: "ASI04", title: "Agentic Supply Chain Vulnerabilities" },
+  { id: "ASI05", title: "Unexpected Code Execution" },
+  { id: "ASI06", title: "Memory and Context Poisoning" },
+  { id: "ASI07", title: "Insecure Inter-Agent Communication" },
+  { id: "ASI08", title: "Cascading Failures" },
+  { id: "ASI09", title: "Human-Agent Trust Exploitation" },
+  { id: "ASI10", title: "Rogue Agents" }
+];
+var OWASP_LLM = [
+  { id: "LLM01", title: "Prompt Injection" },
+  { id: "LLM02", title: "Sensitive Information Disclosure" },
+  { id: "LLM03", title: "Excessive Agency" },
+  { id: "LLM04", title: "Supply Chain" },
+  { id: "LLM05", title: "Data and Model Poisoning" },
+  { id: "LLM06", title: "Unbounded Consumption" },
+  { id: "LLM07", title: "Misinformation" },
+  { id: "LLM08", title: "Hidden Context Exposure" },
+  { id: "LLM09", title: "Vector and Embedding Weaknesses" },
+  { id: "LLM10", title: "Improper Output Handling" }
+];
+var OWASP_SOURCES = {
+  agentic: "https://genai.owasp.org/resource/owasp-top-10-for-agentic-applications-for-2026/",
+  llm: "https://genai.owasp.org/resource/owasp-genai-llm-top-10-2026/"
+};
+function isOwaspId(value) {
+  return typeof value === "string" && OWASP_IDS.includes(value);
+}
 function owaspIndex(id) {
   return OWASP_IDS.indexOf(id);
+}
+function owaspTitle(id) {
+  const risk = [...OWASP_AGENTIC, ...OWASP_LLM].find((r) => r.id === id);
+  return risk?.title ?? id;
 }
 
 // src/core/catalog.ts
@@ -6804,6 +6839,32 @@ function formatCatalogStamp(stamp, now) {
   return `${label}, published ${days} day${days === 1 ? "" : "s"} ago`;
 }
 
+// src/core/owasp.ts
+var OWASP_PAGE_URL = "https://www.agenttrail.sh/security/owasp";
+function owaspAnchorUrl(id) {
+  return `${OWASP_PAGE_URL}#${id.toLowerCase()}`;
+}
+function owaspTally(findings, callIds) {
+  const calls = /* @__PURE__ */ new Map();
+  for (const ids of callIds) {
+    for (const id of new Set(ids)) calls.set(id, (calls.get(id) ?? 0) + 1);
+  }
+  const matches = /* @__PURE__ */ new Map();
+  const guardrails = /* @__PURE__ */ new Map();
+  for (const finding of findings) {
+    for (const id of finding.owasp) {
+      matches.set(id, (matches.get(id) ?? 0) + finding.count);
+      guardrails.set(id, (guardrails.get(id) ?? 0) + 1);
+    }
+  }
+  return [...guardrails.keys()].sort((a, b) => owaspIndex(a) - owaspIndex(b)).map((id) => ({
+    id,
+    callCount: calls.get(id) ?? 0,
+    ruleMatches: matches.get(id) ?? 0,
+    guardrailCount: guardrails.get(id) ?? 0
+  }));
+}
+
 // src/core/report-brand.ts
 var LIGHT_TOKENS = {
   bg: "#fafafa",
@@ -7223,6 +7284,20 @@ td.num { font-weight: 600; }
 .finding-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 6px 12px; }
 .finding-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .group { color: var(--muted-fg); }
+.owasp-ids { display: flex; flex-wrap: wrap; gap: 4px 14px; list-style: none; margin: 6px 0 0; padding: 0; font-size: 13px; }
+.risk-id { font-family: var(--font-mono); font-size: 12.5px; font-weight: 600; }
+.risks { display: grid; grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); gap: 10px; list-style: none; margin: 12px 0; padding: 0; }
+.risk {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 14px;
+  box-shadow: var(--shadow);
+}
+.risk p { margin: 0 0 6px; }
+.risk-name { font-size: 14px; font-weight: 600; }
+.risk-counts { font-size: 13px; color: var(--muted-fg); }
+.risk-sources { font-size: 14px; }
 details { margin-top: 8px; font-size: 14px; }
 summary { cursor: pointer; color: var(--brand-text); }
 .how p { color: var(--muted-fg); margin: 8px 0 0; }
@@ -7326,7 +7401,8 @@ ${vars(LIGHT_TOKENS)}
   body { background: #ffffff; }
   .sections, .toolbar, .js-only, .actions, .controls, .copy, .share { display: none; }
   .button, .button.secondary { display: inline; background: none; color: var(--brand-text); border: 0; padding: 0; }
-  .stat, .tally, .table-wrap, .product-note, tr, .card, .finding, .col { break-inside: avoid; }
+  .stat, .tally, .table-wrap, .product-note, tr, .card, .finding, .col, .risk { break-inside: avoid; }
+  .owasp-ids a[href^="http"]::after, .risk-name a[href^="http"]::after { content: none; }
   a[href^="http"]::after { content: " (" attr(href) ")"; font-size: 11px; color: var(--muted-fg); overflow-wrap: anywhere; }
 }
 `;
@@ -7419,6 +7495,20 @@ function rowVisible(filter, action) {
   return filter === "all" || filter === action;
 }
 
+function isRisk(value) {
+  if (typeof value !== "string" || value.length !== 5) return false;
+  var list = value.slice(0, 3);
+  var n = parseInt(value.slice(3), 10);
+  if (list !== "ASI" && list !== "LLM") return false;
+  return n >= 1 && n <= 10 && value.slice(3) === (n < 10 ? "0" + n : "10");
+}
+
+function riskVisible(risk, ids) {
+  if (risk === "") return true;
+  if (!isRisk(risk) || typeof ids !== "string") return false;
+  return (" " + ids + " ").indexOf(" " + risk + " ") !== -1;
+}
+
 function isSort(value) {
   return SORTS.indexOf(value) !== -1;
 }
@@ -7505,23 +7595,45 @@ if (themeButton) {
 }
 
 var status = byId("findings-status");
+var riskSelect = byId("risk-filter");
+var actionFilter = "all";
+
+function applyFilters() {
+  var risk = riskSelect && isRisk(riskSelect.value) ? riskSelect.value : "";
+  var shown = 0;
+  var total = 0;
+  each(".finding", function (row) {
+    var visible =
+      rowVisible(actionFilter, row.getAttribute("data-action")) &&
+      riskVisible(risk, row.getAttribute("data-owasp"));
+    row.hidden = !visible;
+    total++;
+    if (visible) shown++;
+  });
+  if (status) status.textContent = statusText(shown, total);
+}
 
 each("[data-filter]", function (button) {
   button.addEventListener("click", function () {
     var filter = button.getAttribute("data-filter");
     if (!isFilter(filter)) return;
+    actionFilter = filter;
     each("[data-filter]", function (other) {
       other.setAttribute("aria-pressed", other === button ? "true" : "false");
     });
-    var shown = 0;
-    var total = 0;
-    each(".finding", function (row) {
-      var visible = rowVisible(filter, row.getAttribute("data-action"));
-      row.hidden = !visible;
-      total++;
-      if (visible) shown++;
-    });
-    if (status) status.textContent = statusText(shown, total);
+    applyFilters();
+  });
+});
+
+if (riskSelect) riskSelect.addEventListener("change", applyFilters);
+
+each("[data-risk]", function (button) {
+  button.addEventListener("click", function () {
+    var risk = button.getAttribute("data-risk");
+    if (!riskSelect || !isRisk(risk)) return;
+    riskSelect.value = risk;
+    applyFilters();
+    riskSelect.focus();
   });
 });
 
@@ -7744,7 +7856,17 @@ function ruleSlug(id) {
 }
 function siteLink(path, agent, content) {
   const tags = `utm_source=guard&utm_medium=scan-report&utm_campaign=${agent}&utm_content=${content}`;
-  return `${SITE_URL}${path}${path.includes("?") ? "&" : "?"}${tags}`;
+  const hash = path.indexOf("#");
+  const base = hash === -1 ? path : path.slice(0, hash);
+  const fragment = hash === -1 ? "" : path.slice(hash);
+  return `${SITE_URL}${base}${base.includes("?") ? "&" : "?"}${tags}${fragment}`;
+}
+function sitePath(url) {
+  if (!url.startsWith(`${SITE_URL}/`)) throw new Error(`Not a page on the site: ${url}`);
+  return url.slice(SITE_URL.length);
+}
+function owaspRiskLink(id, agent) {
+  return siteLink(sitePath(owaspAnchorUrl(id)), agent, "owasp-risk");
 }
 function libraryLink(category, ruleId, agent) {
   return siteLink(
@@ -7805,7 +7927,8 @@ function payloadFinding(finding) {
     action: finding.action,
     count: finding.count,
     examples: finding.examples.slice(0, MAX_EXAMPLES).map((e) => ({ text: e.text, count: e.count })),
-    moreShapes: Math.max(0, finding.examples.length - MAX_EXAMPLES)
+    moreShapes: Math.max(0, finding.examples.length - MAX_EXAMPLES),
+    owasp: finding.owasp.filter((id) => isOwaspId(id))
   };
   if (finding.source !== "library") return { ...base, source: "yours" };
   return {
@@ -7845,7 +7968,13 @@ function reportPayload(result, meta) {
     })),
     moreRecurring: Math.max(0, result.recurring.length - MAX_ROWS),
     tokens: result.tokens === null ? null : tokenCopy(result.tokens),
-    shareText: shareText(result)
+    shareText: shareText(result),
+    owasp: result.owasp.filter((t) => isOwaspId(t.id)).map((t) => ({
+      id: t.id,
+      callCount: t.callCount,
+      ruleMatches: t.ruleMatches,
+      guardrailCount: t.guardrailCount
+    }))
   };
   const skipped = result.skipped;
   if (skipped === void 0) return payload;
@@ -7999,10 +8128,11 @@ function headline(result) {
   if (warn > 0) return `Guard would have warned you about ${actions(warn)}`;
   return "Nothing in these sessions matched a guardrail";
 }
-function topBar() {
+function topBar(payload) {
   const links = [
     ["overview", "Overview"],
     ["fix-first", "Fix first"],
+    ...payload.owasp.length > 0 ? [["owasp", "OWASP"]] : [],
     ["findings", "All findings"],
     ["next-steps", "Next steps"],
     ["privacy", "Privacy"]
@@ -8198,6 +8328,32 @@ ${cards}
 </div>
 </section>`;
 }
+function riskLabel(id) {
+  return `<span class="risk-id">${escapeHtml(id)}</span> ${escapeHtml(owaspTitle(id))}`;
+}
+function owaspSection(payload) {
+  if (payload.owasp.length === 0) return "";
+  const touched = (list) => payload.owasp.filter((t) => list.some((risk) => risk.id === t.id)).length;
+  const summary = `These matches touched ${touched(OWASP_AGENTIC)} of ${OWASP_AGENTIC.length} agentic and ${touched(OWASP_LLM)} of ${OWASP_LLM.length} LLM risks.`;
+  const risks = payload.owasp.map(
+    (t) => `<li class="risk" id="risk-${escapeHtml(t.id.toLowerCase())}">
+<p class="risk-name">${outLink(owaspRiskLink(t.id, payload.agent), riskLabel(t.id))}</p>
+<p class="risk-counts">${escapeHtml(counted(t.callCount, "tool call", "tool calls"))} &middot; ${escapeHtml(counted(t.guardrailCount, "guardrail", "guardrails"))}</p>
+<button type="button" class="tool js-only" data-risk="${escapeHtml(t.id)}" aria-label="Show its findings: ${escapeHtml(t.id)}" hidden>Show its findings</button>
+</li>`
+  ).join("\n");
+  return `
+<section id="owasp">
+<h2>OWASP risks</h2>
+<p class="lead">${escapeHtml(summary)}</p>
+<ul class="risks">
+${risks}
+</ul>
+<p class="note">A guardrail can name more than one risk, and a tool call can match more than one guardrail, so one tool call can count under several risks. These counts do not add up to the totals above.</p>
+<p class="note">Covers coding-agent actions only, not full OWASP coverage. Each id names a risk where it becomes a command or a file change, and is never a claim that a guardrail covers the whole risk.</p>
+<p class="risk-sources">${outLink(siteLink(sitePath(OWASP_PAGE_URL), payload.agent, "owasp"), "How the guardrails map to OWASP")} &middot; ${outLink(OWASP_SOURCES.agentic, "OWASP Top 10 for Agentic Applications")} &middot; ${outLink(OWASP_SOURCES.llm, "OWASP Top 10 for LLM Applications")}</p>
+</section>`;
+}
 function ranks(findings) {
   const group = (f) => f.category === void 0 ? `~${YOUR_GUARDRAILS}` : packLabel(f.category);
   const rankBy = (cmp) => new Map([...findings].sort(cmp).map((f, i) => [f, i]));
@@ -8222,18 +8378,34 @@ function findingRow(f, index, r, agent) {
 ${libraryText(f.descriptionLines.join(" "))}
 <p>${outLink(libraryLink(f.category ?? "", f.ruleId, agent), "Open it in the guardrail library")}</p>
 </details>`;
-  return `<li class="finding" id="finding-${index}" data-action="${escapeHtml(f.action)}" data-rank-serious="${index}" data-rank-category="${r.category.get(f) ?? index}" data-rank-count="${r.count.get(f) ?? index}" data-rank-name="${r.name.get(f) ?? index}">
+  const risks = f.owasp.length === 0 ? "" : `
+<ul class="owasp-ids" aria-label="OWASP risks">
+${f.owasp.map((id) => `<li>${outLink(owaspRiskLink(id, agent), riskLabel(id))}</li>`).join("\n")}
+</ul>`;
+  const riskData = f.owasp.length === 0 ? "" : ` data-owasp="${escapeHtml(f.owasp.join(" "))}"`;
+  return `<li class="finding" id="finding-${index}" data-action="${escapeHtml(f.action)}"${riskData} data-rank-serious="${index}" data-rank-category="${r.category.get(f) ?? index}" data-rank-count="${r.count.get(f) ?? index}" data-rank-name="${r.name.get(f) ?? index}">
 <div class="finding-head">
 <div class="guardrail-title">${inlineTitle(f.title)}</div>
 <div class="finding-meta">${severityBadge(f.severity)} ${actionChip(f.action)}<span class="num" data-label="Matches">${escapeHtml(formatCount(f.count))}&times;</span></div>
 </div>
-<div class="guardrail-id"><code>${escapeHtml(f.ruleId)}</code> &middot; <span class="group">${escapeHtml(group)}</span></div>
+<div class="guardrail-id"><code>${escapeHtml(f.ruleId)}</code> &middot; <span class="group">${escapeHtml(group)}</span></div>${risks}
 <details class="commands"><summary>The ${escapeHtml(shapes)} behind it</summary>
 <ul class="shapes">
 ${examples}${more}
 </ul>
 </details>${how}
 </li>`;
+}
+function riskFilter(payload) {
+  if (payload.owasp.length === 0) return "";
+  const options = payload.owasp.map(
+    (t) => `<option value="${escapeHtml(t.id)}">${escapeHtml(`${t.id} ${owaspTitle(t.id)}`)}</option>`
+  ).join("\n");
+  return `
+<label class="sort">OWASP risk <select id="risk-filter">
+<option value="">Any risk</option>
+${options}
+</select></label>`;
 }
 function findingsSection(payload) {
   if (payload.findings.length === 0) {
@@ -8267,7 +8439,7 @@ ${filters}
 <option value="category">Category</option>
 <option value="count">Most matches</option>
 <option value="name">Name</option>
-</select></label>
+</select></label>${riskFilter(payload)}
 </div>
 <p id="findings-status" class="sr-only" role="status" aria-live="polite"></p>
 <ol class="finding-list">
@@ -8483,10 +8655,10 @@ function renderReport(result, meta, options = {}) {
   const head = `<title>${escapeHtml(pageTitle(result, meta))}</title>
 <style>${REPORT_STYLES}</style>`;
   const body = `<main class="page" lang="en">
-${topBar()}
+${topBar(payload)}
 ${heroSection(result, payload, meta, variant)}
 ${wouldHaveDoneSection(result, payload)}
-${fixFirstSection(payload)}
+${fixFirstSection(payload)}${owaspSection(payload)}
 ${findingsSection(payload)}
 ${recurringSection(payload)}
 ${nextStepsSection(result)}
@@ -8967,28 +9139,6 @@ function buildGuardSpanContext(mapped) {
     attributes: normalizeSpanAttributes(attributes)
   };
   return { span, agentId: NIL_UUID, projectId: NIL_UUID, developerId: null };
-}
-
-// src/core/owasp.ts
-function owaspTally(findings, callIds) {
-  const calls = /* @__PURE__ */ new Map();
-  for (const ids of callIds) {
-    for (const id of new Set(ids)) calls.set(id, (calls.get(id) ?? 0) + 1);
-  }
-  const matches = /* @__PURE__ */ new Map();
-  const guardrails = /* @__PURE__ */ new Map();
-  for (const finding of findings) {
-    for (const id of finding.owasp) {
-      matches.set(id, (matches.get(id) ?? 0) + finding.count);
-      guardrails.set(id, (guardrails.get(id) ?? 0) + 1);
-    }
-  }
-  return [...guardrails.keys()].sort((a, b) => owaspIndex(a) - owaspIndex(b)).map((id) => ({
-    id,
-    callCount: calls.get(id) ?? 0,
-    ruleMatches: matches.get(id) ?? 0,
-    guardrailCount: guardrails.get(id) ?? 0
-  }));
 }
 
 // src/core/redaction.ts

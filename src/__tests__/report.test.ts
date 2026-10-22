@@ -9,9 +9,14 @@
  * silent failure the assertions exist to prevent.
  */
 
-import { CATALOG_PUBLISHED_AT, CATALOG_VERSION } from "@agenttrail/guardrails/guardrails";
+import {
+  CATALOG_PUBLISHED_AT,
+  CATALOG_VERSION,
+  OWASP_SOURCES,
+} from "@agenttrail/guardrails/guardrails";
 import { describe, expect, it } from "vitest";
 import { compileAllowlist } from "../core/evaluate.js";
+import type { OwaspId } from "../core/owasp.js";
 import {
   ARTIFACT_FILENAME,
   bySeverityThenCount,
@@ -44,7 +49,18 @@ import {
 } from "../core/scan-report.js";
 import { bash, session, TEST_CATALOG, toolUse, turn } from "./scan-fixtures.js";
 
-const CATALOG = compileCatalog(TEST_CATALOG);
+/**
+ * The fixture's rules with OWASP ids, as a shipped guardrail carries them, so every rendering
+ * below has an OWASP section and per-row ids.
+ */
+const FIXTURE_OWASP: Readonly<Record<string, readonly OwaspId[]>> = {
+  "t.rm-rf": ["ASI02", "LLM03"],
+  "t.env-file": ["LLM02"],
+  "t.git-checkout": ["ASI02"],
+};
+const CATALOG = compileCatalog(
+  TEST_CATALOG.map((rule) => ({ ...rule, owasp: FIXTURE_OWASP[rule.id] ?? [] })),
+);
 const META: ReportMeta = { version: "0.1.0", generatedAt: new Date("2026-09-08T09:00:00.000Z") };
 
 function resultOf(corpus: Partial<ScanCorpus> = {}): ScanResult {
@@ -127,6 +143,9 @@ function utmFor(agent: string): Record<string, string> {
 
 const X_INTENT = "https://x.com/intent/post?text=";
 
+/** The only links off the site: where OWASP publishes its two lists. They carry no tags. */
+const OWASP_LISTS: readonly string[] = [OWASP_SOURCES.agentic, OWASP_SOURCES.llm];
+
 describe("the report is self-contained — nothing outside the file is loaded", () => {
   const BANNED: readonly [string, RegExp, string][] = [
     ["a src attribute", /\ssrc\s*=/i, `<img src="x.png">`],
@@ -143,7 +162,7 @@ describe("the report is self-contained — nothing outside the file is loaded", 
       expect(html).not.toMatch(pattern);
     });
 
-    it("links only within the page, to the site with tags, or to an X post", () => {
+    it("links only within the page, to the site with tags, to an X post, or to an OWASP list", () => {
       const agent = html.includes("Agent: Cursor")
         ? "cursor"
         : html.includes("Agent: Codex CLI")
@@ -154,6 +173,8 @@ describe("the report is self-contained — nothing outside the file is loaded", 
         const href = raw.replace(/&amp;/g, "&");
         if (href.startsWith("#")) {
           expect(ids.has(href.slice(1)), `${href} has no target`).toBe(true);
+        } else if (OWASP_LISTS.includes(href)) {
+          expect(new URL(href).search).toBe("");
         } else if (href.startsWith(X_INTENT)) {
           const url = new URL(href);
           expect(url.searchParams.get("hashtags")).toBe("agenttrail");
@@ -215,8 +236,16 @@ describe("the report is self-contained — nothing outside the file is loaded", 
     ];
     expect(pages(CURSOR_HTML)).toEqual(common);
     expect(pages(CODEX_HTML)).toEqual(common);
+    expect(pages(HTML)).toContain("/security/owasp owasp");
+    expect(pages(HTML)).toContain("/security/owasp owasp-risk");
     expect(pages(HTML)).toEqual(
-      [...common, "/agenttrail-os os-demo", "/guard-vs-os os-compare"].sort(),
+      [
+        ...common,
+        "/agenttrail-os os-demo",
+        "/guard-vs-os os-compare",
+        "/security/owasp owasp",
+        "/security/owasp owasp-risk",
+      ].sort(),
     );
     expect(pages(ARTIFACT)).toEqual(pages(HTML));
   });
@@ -231,7 +260,10 @@ describe("the report is self-contained — nothing outside the file is loaded", 
     // The repository URL is deliberately text. Every other URL is a link checked above.
     for (const url of urls(html)) {
       const ok =
-        url.startsWith(`${SITE_URL}/`) || url.startsWith(X_INTENT) || url === REPOSITORY_URL;
+        url.startsWith(`${SITE_URL}/`) ||
+        url.startsWith(X_INTENT) ||
+        url === REPOSITORY_URL ||
+        OWASP_LISTS.includes(url);
       expect(ok, url).toBe(true);
     }
     expect(urls(html)).toContain(REPOSITORY_URL);
@@ -1012,6 +1044,7 @@ describe("an app that cannot ask says so", () => {
     action: "require_approval",
     count: 1,
     examples: [{ text: "chmod 777 note.txt", when: "2026-09-21T10:40:12.000Z" }],
+    owasp: [],
   };
 
   function reportFor(agent: "claude" | "cursor" | "codex", findings: unknown[]): string {
@@ -1026,6 +1059,7 @@ describe("an app that cannot ask says so", () => {
         notRead: 0,
         findings,
         recurring: [],
+        owasp: [],
         tokens: null,
       } as never,
       META,
