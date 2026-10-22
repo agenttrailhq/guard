@@ -312,7 +312,14 @@ describe("the artifact variant is page content, for a host that supplies the ske
         .slice(html.indexOf("<main"), html.indexOf("</main>"))
         .replace(/<p class="provenance">[\s\S]*?<\/p>/, "")
         .replace(/<p class="origin">[\s\S]*?<\/p>/, "")
-        .replace(/<p class="warning">[\s\S]*?<\/p>/, "");
+        .replace(/<p class="warning">[\s\S]*?<\/p>/, "")
+        // The post: editable here, read-only there, and the note says which.
+        .replace(/<p class="note share-note">[\s\S]*?<\/p>/, "")
+        .replace(
+          '<textarea id="share-text" rows="4" readonly>',
+          '<textarea id="share-text" rows="4">',
+        )
+        .replace(/\n<p class="note artifact-note">[\s\S]*?<\/p>/, "");
     expect(body(ARTIFACT)).toBe(body(HTML));
     expect(body(ARTIFACT).length).toBeGreaterThan(2000);
   });

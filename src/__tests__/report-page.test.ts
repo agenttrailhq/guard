@@ -1268,3 +1268,31 @@ describe("a scan that read no tool calls", () => {
     );
   });
 });
+
+describe("the published copy says what only the downloaded file can do", () => {
+  const result = resultWith([lib("a.b", "block", 2)], { block: 2, require_approval: 0, warn: 0 });
+  const doc = renderReport(result, META);
+  const artifact = renderReport(result, META, { variant: "artifact" });
+
+  it("shows the post read-only, and says where to edit it", () => {
+    expect(artifact).toContain('<textarea id="share-text" rows="4" readonly>');
+    expect(artifact).toContain(
+      "This copy cannot change the post: open the downloaded report to edit it.",
+    );
+    expect(doc).toContain('<textarea id="share-text" rows="4">');
+    expect(doc).toContain("Edit it before posting.");
+    expect(doc).not.toContain("open the downloaded report");
+  });
+
+  it("says the filters, sort and export are in the downloaded file", () => {
+    const line = "Open the downloaded file for filters, sort and export.";
+    expect(between(artifact, 'id="findings"', "</section>")).toContain(line);
+    expect(doc).not.toContain(line);
+  });
+
+  it("says what the post carries: totals and at most one library guardrail's name", () => {
+    expect(doc).toContain(
+      "Totals and at most one library guardrail&#39;s name: no commands, paths, project names or guardrails you wrote.",
+    );
+  });
+});
