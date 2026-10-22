@@ -864,7 +864,7 @@ function wouldHaveDoneSection(result: ScanResult, payload: ReportPayload): strin
 ${columns}
 </div>${askOnCodexNote(result, byAction)}
 ${tuningSection(payload)}
-<div class="tally" aria-label="Guardrail matches">
+<div class="tally" role="group" aria-label="Guardrail matches">
 <div class="tally-group"><p class="tally-label">Matches by severity</p><ul class="pills">
 ${severities}
 </ul></div>
