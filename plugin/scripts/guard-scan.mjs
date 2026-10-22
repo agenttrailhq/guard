@@ -8474,14 +8474,17 @@ ${risks}
 </section>`;
 }
 function ranks(findings) {
-  const group = (f) => f.category === void 0 ? `~${YOUR_GUARDRAILS}` : packLabel(f.category);
+  const yours = (f) => f.category === void 0 ? 1 : 0;
+  const pack = (f) => f.category === void 0 ? YOUR_GUARDRAILS : packLabel(f.category);
   const rankBy = (cmp) => new Map([...findings].sort(cmp).map((f, i) => [f, i]));
   return {
     category: rankBy(
-      (a, b) => group(a).localeCompare(group(b)) || findings.indexOf(a) - findings.indexOf(b)
+      (a, b) => yours(a) - yours(b) || pack(a).localeCompare(pack(b), "en") || findings.indexOf(a) - findings.indexOf(b)
     ),
     count: rankBy((a, b) => b.count - a.count || findings.indexOf(a) - findings.indexOf(b)),
-    name: rankBy((a, b) => a.title.localeCompare(b.title) || a.ruleId.localeCompare(b.ruleId))
+    name: rankBy(
+      (a, b) => a.title.localeCompare(b.title, "en") || a.ruleId.localeCompare(b.ruleId, "en")
+    )
   };
 }
 function findingRow(f, index, r, agent) {

@@ -527,6 +527,32 @@ describe("all findings", () => {
     }
   });
 
+  /** One rank attribute of every row, in page order. */
+  const rankOf = (page: string, key: string): number[] =>
+    [...page.matchAll(/<li class="finding" id="finding-\d+"[^>]*>/g)].map((m) =>
+      Number(m[0].match(new RegExp(`data-rank-${key}="(\\d+)"`))?.[1]),
+    );
+
+  it("ranks by category with a user's own guardrails last, by matches most first, by name", () => {
+    // Rows in page order: a.critical (Working tree, 1), a.medium (Destructive data, 30),
+    // t.mine (Your guardrails, 2).
+    expect(rankOf(html, "category")).toEqual([1, 0, 2]);
+    expect(rankOf(html, "count")).toEqual([2, 0, 1]);
+    expect(rankOf(html, "name")).toEqual([0, 1, 2]);
+  });
+
+  it("puts a user's own guardrails after a pack whose name sorts after theirs", () => {
+    const page = renderReport(
+      resultWith([
+        lib("a.z", "block", 1, { severity: "critical", category: "zz-later-pack" }),
+        own("t.mine", "warn", 1, { severity: "low" }),
+      ]),
+      META,
+    );
+    expect(page).toContain('<span class="group">zz-later-pack</span>');
+    expect(rankOf(page, "category")).toEqual([0, 1]);
+  });
+
   it("groups a library guardrail under its pack and a user's own under one fixed group", () => {
     expect(html).toContain(`<span class="group">${packLabel("working-tree")}</span>`);
     expect(html).toContain(`<span class="group">${YOUR_GUARDRAILS}</span>`);

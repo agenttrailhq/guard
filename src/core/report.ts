@@ -1107,16 +1107,24 @@ function ranks(findings: readonly PayloadFinding[]): {
   count: Map<PayloadFinding, number>;
   name: Map<PayloadFinding, number>;
 } {
-  const group = (f: PayloadFinding): string =>
-    f.category === undefined ? `~${YOUR_GUARDRAILS}` : packLabel(f.category);
+  // A user's own guardrails are one group, after every pack. Compared in a fixed locale, so
+  // the ranks are the same on every machine.
+  const yours = (f: PayloadFinding): number => (f.category === undefined ? 1 : 0);
+  const pack = (f: PayloadFinding): string =>
+    f.category === undefined ? YOUR_GUARDRAILS : packLabel(f.category);
   const rankBy = (cmp: (a: PayloadFinding, b: PayloadFinding) => number) =>
     new Map([...findings].sort(cmp).map((f, i) => [f, i]));
   return {
     category: rankBy(
-      (a, b) => group(a).localeCompare(group(b)) || findings.indexOf(a) - findings.indexOf(b),
+      (a, b) =>
+        yours(a) - yours(b) ||
+        pack(a).localeCompare(pack(b), "en") ||
+        findings.indexOf(a) - findings.indexOf(b),
     ),
     count: rankBy((a, b) => b.count - a.count || findings.indexOf(a) - findings.indexOf(b)),
-    name: rankBy((a, b) => a.title.localeCompare(b.title) || a.ruleId.localeCompare(b.ruleId)),
+    name: rankBy(
+      (a, b) => a.title.localeCompare(b.title, "en") || a.ruleId.localeCompare(b.ruleId, "en"),
+    ),
   };
 }
 
