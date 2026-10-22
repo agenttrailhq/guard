@@ -108,11 +108,11 @@ const ONE_CALL = {
   sessions: [session([turn([bash("ls -la", "1")], { input_tokens: 10, output_tokens: 5 })])],
   projects: 1,
 };
-const CURSOR = resultOf({
-  agent: "cursor",
-  capabilities: { tokens: false, skips: true },
-  ...ONE_CALL,
-});
+// As for Codex below: Cursor's reader reads only Cursor's own tool shape.
+const CURSOR = {
+  ...resultOf({ agent: "cursor", capabilities: { tokens: false, skips: true }, ...ONE_CALL }),
+  toolCalls: 1,
+};
 const CURSOR_HTML = renderReport(CURSOR, META);
 const CURSOR_ARTIFACT = renderReport(CURSOR, META, { variant: "artifact" });
 // The Codex reader reads only Codex's own tool shape, so the one call is counted here: these

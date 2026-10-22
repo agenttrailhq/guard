@@ -1412,8 +1412,9 @@ describe("a scan that read no tool calls", () => {
     const html = renderReport(empty(sessions), META);
     expect(html).toContain(`<h1>${h1}</h1>`);
     expect(html).toContain(`${lead}, so nothing was checked. This is not a clean result`);
-    expect(html).toContain("agenttrail-guard scan --agent claude --dir &lt;folder&gt;");
+    expect(html).toContain('<code id="cmd-scan-hero">agenttrail-guard scan --agent claude</code>');
     expect(html).toContain('aria-label="Copy the scan command"');
+    expect(html).toContain("To read another folder, add <code>--dir</code> and its path.");
   });
 
   it.each([
@@ -1435,6 +1436,8 @@ describe("a scan that read no tool calls", () => {
     ]) {
       expect(html, absent).not.toContain(absent);
     }
+    // There are no findings to read before posting.
+    expect(html).not.toContain("Read the findings before");
     // What was scanned, the privacy notes and the next steps stay.
     for (const present of ['id="scanned"', 'id="privacy"', 'id="next-steps"']) {
       expect(html, present).toContain(present);
@@ -1620,5 +1623,45 @@ describe("a hostile string in every free-text field stays text", () => {
     expect(area).not.toBeNull();
     expect(decodeEntities(area?.[1] ?? "")).toBe(shareText(result));
     expect(shareText(result)).toContain(`Library ${HOSTILE.replace(/`/g, "")}`);
+  });
+});
+
+describe("every command offered to copy runs as pasted", () => {
+  it.each([
+    ["an empty scan", resultWith([], undefined, { toolCalls: 0 })],
+    ["a clean scan", resultWith([])],
+    [
+      "a scan with every section",
+      resultWith(
+        [
+          lib("a.b", "block", 2),
+          lib("a.q", "require_approval", 9),
+          own("t.mine", "require_approval", 1),
+          lib("a.w", "warn", 1),
+        ],
+        { block: 2, require_approval: 10, warn: 1 },
+      ),
+    ],
+  ])("in %s: no <, >, | or ; that a shell would read", (_name, result) => {
+    for (const agent of ["claude", "cursor", "codex"] as const) {
+      const html = renderReport({ ...result, agent }, META);
+      const commands = [...html.matchAll(/<code id="cmd-[^"]+">([^<]*)<\/code>/g)].map((m) =>
+        decodeEntities(m[1] ?? ""),
+      );
+      expect(commands.length).toBeGreaterThan(2);
+      for (const command of commands) expect(command, command).not.toMatch(/[<>|;]/);
+    }
+  });
+
+  it("negative control — a placeholder in angle brackets is caught", () => {
+    expect("agenttrail-guard scan --dir <folder>").toMatch(/[<>|;]/);
+  });
+});
+
+describe("a clean scan offers nothing to fix", () => {
+  it("has no fix-first button when nothing matched", () => {
+    const hero = between(renderReport(resultWith([]), META), 'id="overview"', "</section>");
+    expect(hero).not.toContain("See what to fix first");
+    expect(hero).toContain("Share on X");
   });
 });
