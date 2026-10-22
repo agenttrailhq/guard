@@ -26,10 +26,12 @@ import {
   headline,
   MAX_EXAMPLES,
   MAX_ROWS,
+  OWASP_EDITION,
   OWN_CARD_HEADING,
   packLabel,
   postLength,
   type ReportMeta,
+  readableTime,
   renderJson,
   renderReport,
   reportPayload,
@@ -1012,14 +1014,14 @@ describe("the OWASP section", () => {
 
   it("says how many of each list it touched, out of the lists' own lengths", () => {
     expect(section).toContain(
-      `These matches touched 1 of ${OWASP_AGENTIC.length} agentic and 1 of ${OWASP_LLM.length} LLM risks.`,
+      `These matches touched 1 of ${OWASP_AGENTIC.length} agentic and 1 of ${OWASP_LLM.length} LLM risks, in the 2026 edition lists.`,
     );
     expect(OWASP_AGENTIC.length).toBe(10);
     expect(OWASP_LLM.length).toBe(10);
   });
 
   it("says the counts overlap and that it covers coding-agent actions only", () => {
-    expect(section).toContain("These counts do not add up to the totals above.");
+    expect(section).toContain("These counts can add up to more than the totals above.");
     expect(section).toContain("Covers coding-agent actions only, not full OWASP coverage.");
   });
 
@@ -1293,6 +1295,89 @@ describe("the published copy says what only the downloaded file can do", () => {
   it("says what the post carries: totals and at most one library guardrail's name", () => {
     expect(doc).toContain(
       "Totals and at most one library guardrail&#39;s name: no commands, paths, project names or guardrails you wrote.",
+    );
+  });
+});
+
+describe("copy and layout details", () => {
+  it("writes when the report was made as people read it, with the exact time in the markup", () => {
+    expect(readableTime(new Date("2026-10-01T09:05:00.000Z"))).toBe("1 Oct 2026, 09:05 UTC");
+    expect(readableTime(new Date("2026-12-31T23:59:59.999Z"))).toBe("31 Dec 2026, 23:59 UTC");
+    const html = renderReport(resultWith([]), META);
+    expect(html).toContain(
+      '<time datetime="2026-10-01T09:00:00.000Z">1 Oct 2026, 09:00 UTC</time>',
+    );
+  });
+
+  it("says 'the command shape' for one and counts several", () => {
+    const html = renderReport(
+      resultWith([
+        lib("a.one", "warn", 1),
+        lib("a.two", "warn", 2, {
+          examples: [
+            { text: "x <path>", count: 1 },
+            { text: "y <path>", count: 1 },
+          ],
+        }),
+      ]),
+      META,
+    );
+    expect(html).toContain("<summary>The command shape behind it</summary>");
+    expect(html).toContain("<summary>The 2 command shapes behind it</summary>");
+    expect(html).not.toContain("The 1 command shape");
+  });
+
+  it("lists a shape two guardrails matched once, with both guardrails", () => {
+    const html = renderReport(
+      resultWith([lib("a.x", "block", 3), lib("a.y", "warn", 2)], undefined, {
+        recurring: [
+          { text: "rm -rf <path>", count: 3, ruleId: "a.x", title: "Library guardrail a.x" },
+          { text: "rm -rf <path>", count: 2, ruleId: "a.y", title: "Library guardrail a.y" },
+          { text: "ls <path>", count: 2, ruleId: "a.y", title: "Library guardrail a.y" },
+        ],
+      }),
+      META,
+    );
+    const table = between(html, '<table class="recurring"', "</table>");
+    expect(table.split("<code>rm -rf &lt;path&gt;</code>").length - 1).toBe(1);
+    expect(table).toContain(
+      '<td class="num" role="cell">3&times;</td><td class="rule-name" role="cell"><a href="#finding-0">Library guardrail a.x</a><br><a href="#finding-1">Library guardrail a.y</a> (2&times;)</td>',
+    );
+    // The tile counts shapes, as the table lists them.
+    expect(html).toContain(
+      '<div class="stat-value">2</div><div class="stat-label">repeated command shapes</div>',
+    );
+  });
+
+  it("names the OWASP lists' edition, which is the one the links point at", () => {
+    expect(OWASP_EDITION).toBe("2026 edition");
+    // A newer list would change these addresses, and with them this edition.
+    expect(OWASP_SOURCES.agentic).toContain("2026");
+    expect(OWASP_SOURCES.llm).toContain("2026");
+    const html = renderReport(
+      resultWith([lib("a.b", "block", 1, { owasp: ["ASI02"] })], undefined, {
+        owasp: [{ id: "ASI02", callCount: 1, ruleMatches: 1, guardrailCount: 1 }],
+      }),
+      META,
+    );
+    expect(html).toContain(">OWASP Top 10 for Agentic Applications (2026 edition)</a>");
+    expect(html).toContain(">OWASP Top 10 for LLM Applications (2026 edition)</a>");
+  });
+
+  it.each([
+    ["claude", "Set up Cursor or Codex"],
+    ["cursor", "Set up Claude Code or Codex"],
+    ["codex", "Set up Claude Code or Cursor"],
+  ] as const)("on a %s report, offers to set up the other two apps", (agent, label) => {
+    const html = renderReport(resultWith([lib("a.b", "warn", 1)], undefined, { agent }), META);
+    expect(html).toContain(`>${label}</a>`);
+  });
+
+  it("links the post from the top bar when there is one", () => {
+    const nav = (html: string) => between(html, '<nav class="sections"', "</nav>");
+    expect(nav(renderReport(resultWith([lib("a.b", "warn", 1)]), META))).toContain('href="#share"');
+    expect(nav(renderReport(resultWith([], undefined, { toolCalls: 0 }), META))).not.toContain(
+      'href="#share"',
     );
   });
 });

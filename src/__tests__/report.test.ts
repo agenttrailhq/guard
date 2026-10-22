@@ -554,7 +554,7 @@ describe("what the report says", () => {
   it("leads with the counts, and they are the aggregator's", () => {
     expect(HTML).toContain(">5<"); // tool calls
     expect(HTML).toContain("risky actions");
-    expect(HTML).toContain("recurring mistakes");
+    expect(HTML).toContain("repeated command shape<");
   });
 
   it("names each matched guardrail, its severity and what it would have done", () => {

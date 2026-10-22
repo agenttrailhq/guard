@@ -859,9 +859,13 @@ describe("the script in the page", () => {
 
   it("remembers a theme choice, and applies it on the next load", () => {
     const page = loadPage({ systemDark: true });
-    (page.byId.get("theme-toggle") as FakeElement).click();
+    const toggle = page.byId.get("theme-toggle") as FakeElement;
+    // The label says what pressing it does.
+    expect(toggle.textContent).toBe("Switch to light theme");
+    toggle.click();
     expect(page.root.getAttribute("data-theme")).toBe("light");
     expect(page.stored.get(THEME_KEY)).toBe("light");
+    expect(toggle.textContent).toBe("Switch to dark theme");
     const again = loadPage({ stored: "light" });
     expect(again.root.getAttribute("data-theme")).toBe("light");
   });
