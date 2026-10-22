@@ -30,6 +30,7 @@ import {
   type ReportMeta,
   renderJson,
   renderReport,
+  reportPayload,
   reviewStrings,
   SITE_URL,
 } from "../core/report.js";
@@ -1091,9 +1092,17 @@ describe("the pre-flight review lists exactly what the file carries", () => {
     const html = renderReport(OVERSIZED, META);
     expect(html).toContain("further guardrails matched and are not listed here");
     expect(html).toContain("more shapes");
-    expect(flat(OVERSIZED).length).toBeLessThan(
-      OVERSIZED.findings.length * (MAX_EXAMPLES + 2) + OVERSIZED.recurring.length,
+    expect(html).toContain("5 further repeats are not listed here.");
+    const payload = reportPayload(OVERSIZED, META);
+    expect(payload.recurring).toHaveLength(MAX_ROWS);
+    expect(payload.moreRecurring).toBe(5);
+    // Exactly what the caps leave: the carried guardrails (each repeat's guardrail is one of
+    // them), their first shapes, and the carried repeats.
+    const lines = Object.fromEntries(
+      reviewStrings(OVERSIZED).map((g) => [g.label, g.lines.length]),
     );
+    expect(lines["Guardrails named in the report"]).toBe(MAX_ROWS);
+    expect(lines["Command shapes in the report"]).toBe(MAX_ROWS * MAX_EXAMPLES + MAX_ROWS);
   });
 
   it("is empty, and says nothing, when nothing matched", () => {

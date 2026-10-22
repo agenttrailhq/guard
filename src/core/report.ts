@@ -1274,7 +1274,11 @@ function recurringSection(payload: ReportPayload): string {
 <tbody role="rowgroup">
 ${rows}
 </tbody>
-</table></div>
+</table></div>${
+    payload.moreRecurring > 0
+      ? `\n<p class="note">${escapeHtml(counted(payload.moreRecurring, "further repeat is", "further repeats are"))} not listed here.</p>`
+      : ""
+  }
 </section>`;
 }
 

@@ -8597,7 +8597,8 @@ function recurringSection(payload) {
 <tbody role="rowgroup">
 ${rows}
 </tbody>
-</table></div>
+</table></div>${payload.moreRecurring > 0 ? `
+<p class="note">${escapeHtml(counted(payload.moreRecurring, "further repeat is", "further repeats are"))} not listed here.</p>` : ""}
 </section>`;
 }
 var OTHER_AGENTS = {
