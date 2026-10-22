@@ -271,6 +271,9 @@ const PACK_LABELS: Readonly<Record<string, string>> = {
 /** The group a finding is listed under. A user's own guardrails share one fixed group. */
 export const YOUR_GUARDRAILS = "Your guardrails";
 
+/** The heading of a "Fix these first" card for a guardrail the user wrote. */
+export const OWN_CARD_HEADING = "A guardrail you added";
+
 /** A pack's display name. */
 export function packLabel(category: string): string {
   return PACK_LABELS[category] ?? category;
@@ -885,10 +888,15 @@ function fixFirstSection(payload: ReportPayload): string {
   const cards = blocking
     .map((f) => {
       const index = payload.findings.indexOf(f);
-      const why =
-        f.descriptionLines === undefined
-          ? `<p class="note">A guardrail you added.</p>`
-          : libraryText(firstSentence(f.descriptionLines), "library-text note");
+      // A guardrail the user wrote gets a fixed heading. Its own title follows as plain text
+      // and its id in the meta line, so text the user wrote is never a heading.
+      const yours = f.source !== "library";
+      const heading = yours ? OWN_CARD_HEADING : inlineTitle(f.title);
+      const why = yours
+        ? `\n<p class="own-title">${inlineTitle(f.title)}</p>`
+        : f.descriptionLines === undefined
+          ? ""
+          : `\n${libraryText(firstSentence(f.descriptionLines), "library-text note")}`;
       const example = f.examples[0];
       const exampleHtml =
         example === undefined
@@ -901,8 +909,7 @@ function fixFirstSection(payload: ReportPayload): string {
           : `\n<p>${outLink(libraryLink(f.category, f.ruleId, payload.agent), "How this guardrail works")}</p>`;
       return `<article class="card">
 <div class="card-head">${severityBadge(f.severity)} ${actionChip(f.action)}<span class="times">${escapeHtml(formatCount(f.count))}&times;</span></div>
-<h3><a href="#finding-${index}">${inlineTitle(f.title)}</a></h3>
-${why}${exampleHtml}
+<h3><a href="#finding-${index}">${heading}</a></h3>${why}${exampleHtml}
 <p class="card-meta">${escapeHtml(group)} &middot; <code>${escapeHtml(f.ruleId)}</code></p>${link}
 </article>`;
     })

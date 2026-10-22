@@ -7767,6 +7767,7 @@ var PACK_LABELS = {
   exfiltration: "Data leaving the machine"
 };
 var YOUR_GUARDRAILS = "Your guardrails";
+var OWN_CARD_HEADING = "A guardrail you added";
 function packLabel(category) {
   return PACK_LABELS[category] ?? category;
 }
@@ -8172,7 +8173,11 @@ function fixFirstSection(payload) {
   }
   const cards = blocking.map((f) => {
     const index = payload.findings.indexOf(f);
-    const why = f.descriptionLines === void 0 ? `<p class="note">A guardrail you added.</p>` : libraryText(firstSentence(f.descriptionLines), "library-text note");
+    const yours = f.source !== "library";
+    const heading = yours ? OWN_CARD_HEADING : inlineTitle(f.title);
+    const why = yours ? `
+<p class="own-title">${inlineTitle(f.title)}</p>` : f.descriptionLines === void 0 ? "" : `
+${libraryText(firstSentence(f.descriptionLines), "library-text note")}`;
     const example = f.examples[0];
     const exampleHtml = example === void 0 ? "" : `
 <p class="example"><code>${escapeHtml(example.text)}</code></p>`;
@@ -8181,8 +8186,7 @@ function fixFirstSection(payload) {
 <p>${outLink(libraryLink(f.category, f.ruleId, payload.agent), "How this guardrail works")}</p>`;
     return `<article class="card">
 <div class="card-head">${severityBadge(f.severity)} ${actionChip(f.action)}<span class="times">${escapeHtml(formatCount(f.count))}&times;</span></div>
-<h3><a href="#finding-${index}">${inlineTitle(f.title)}</a></h3>
-${why}${exampleHtml}
+<h3><a href="#finding-${index}">${heading}</a></h3>${why}${exampleHtml}
 <p class="card-meta">${escapeHtml(group)} &middot; <code>${escapeHtml(f.ruleId)}</code></p>${link}
 </article>`;
   }).join("\n");
