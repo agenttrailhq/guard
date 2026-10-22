@@ -102,10 +102,24 @@ const ARTIFACT = renderReport(POPULATED, META, { variant: "artifact" });
 // Each app's corpus declares what its own reader's records support, as the reader does:
 // Cursor's session files carry no token counts, Codex's do, and both readers count what
 // they could not use.
-const CURSOR = resultOf({ agent: "cursor", capabilities: { tokens: false, skips: true } });
+/** One session with one tool call that matches nothing, so the report has a scan to show. */
+const ONE_CALL = {
+  sessions: [session([turn([bash("ls -la", "1")], { input_tokens: 10, output_tokens: 5 })])],
+  projects: 1,
+};
+const CURSOR = resultOf({
+  agent: "cursor",
+  capabilities: { tokens: false, skips: true },
+  ...ONE_CALL,
+});
 const CURSOR_HTML = renderReport(CURSOR, META);
 const CURSOR_ARTIFACT = renderReport(CURSOR, META, { variant: "artifact" });
-const CODEX = resultOf({ agent: "codex", capabilities: { tokens: true, skips: true } });
+// The Codex reader reads only Codex's own tool shape, so the one call is counted here: these
+// tests are about the sections a scan with calls shows, not about that reader.
+const CODEX = {
+  ...resultOf({ agent: "codex", capabilities: { tokens: true, skips: true }, ...ONE_CALL }),
+  toolCalls: 1,
+};
 const CODEX_HTML = renderReport(CODEX, META);
 const CODEX_ARTIFACT = renderReport(CODEX, META, { variant: "artifact" });
 
@@ -598,6 +612,9 @@ describe("what the report says", () => {
     // Nothing matched, so drive the renderer through a hand-built finding instead.
     const withExotic = {
       ...exotic,
+      toolCalls: 1,
+      riskyActions: 1,
+      riskyByAction: { block: 0, require_approval: 0, warn: 1 },
       findings: [
         {
           ruleId: "t.exotic",
@@ -859,10 +876,17 @@ describe("the token section only claims what it can source", () => {
 describe("the empty state is a report, not an error", () => {
   const html = renderReport(resultOf(), META);
 
-  it("renders a whole document with zeroes", () => {
+  it("renders a whole document that says nothing was scanned", () => {
     expect(html.startsWith("<!doctype html>")).toBe(true);
-    expect(html).toContain("No guardrail matched anything in these sessions.");
-    expect(html).toContain("Nothing matched more than once.");
+    expect(html).toContain("<h1>No sessions found to scan</h1>");
+    expect(html).toContain("This is not a clean result");
+  });
+
+  it("says nothing matched when calls were scanned and none matched", () => {
+    const clean = renderReport(resultOf(ONE_CALL), META);
+    expect(clean).toContain("<h1>Nothing in these sessions matched a guardrail</h1>");
+    expect(clean).toContain("No guardrail matched anything in these sessions.");
+    expect(clean).toContain("Nothing matched more than once.");
   });
 
   it("uses the singular where the count is one", () => {

@@ -689,6 +689,9 @@ function libraryText(text: string, className = "library-text"): string {
  * One function, so a later headline can be put in front of it with this as the fallback.
  */
 export function headline(result: ScanResult): string {
+  if (result.toolCalls === 0) {
+    return result.sessions === 0 ? "No sessions found to scan" : "No tool calls found to scan";
+  }
   const { block, require_approval: ask, warn } = result.riskyByAction;
   const actions = (n: number): string => counted(n, "action", "actions");
   if (block > 0 && ask > 0) {
@@ -702,11 +705,12 @@ export function headline(result: ScanResult): string {
 
 /** The top bar: the mark, the section links, and the export and theme controls. */
 function topBar(payload: ReportPayload): string {
+  const scanned = payload.toolCalls > 0;
   const links: [string, string][] = [
     ["overview", "Overview"],
-    ["fix-first", "Fix first"],
+    ...(scanned ? [["fix-first", "Fix first"] as [string, string]] : []),
     ...(payload.owasp.length > 0 ? [["owasp", "OWASP"] as [string, string]] : []),
-    ["findings", "All findings"],
+    ...(scanned ? [["findings", "All findings"] as [string, string]] : []),
     ["next-steps", "Next steps"],
     ["privacy", "Privacy"],
   ];
@@ -754,6 +758,15 @@ function mostSerious(payload: ReportPayload): string | undefined {
   return `<p class="top-match">Most serious match: ${severityBadge(library.severity)} <span class="top-title">${inlineTitle(library.title)}</span></p>`;
 }
 
+/** What a scan that read no tool calls says instead of a result. */
+function emptyLead(result: ScanResult): string {
+  const read =
+    result.sessions === 0
+      ? `The scan found no ${agentName(result.agent)} sessions to read`
+      : `The scan read ${counted(result.sessions, "session", "sessions")} with no tool calls in them`;
+  return `${read}, so nothing was checked. This is not a clean result: check that the folder and the agent are the ones you meant, then scan again.`;
+}
+
 /** The hero: where it came from, the headline, the numbers, and what to do next. */
 function heroSection(
   result: ScanResult,
@@ -776,7 +789,8 @@ function heroSection(
     const clean = Math.floor(((result.toolCalls - result.riskyActions) / result.toolCalls) * 100);
     cells.push(stat(`${clean}%`, "matched no guardrail"));
   }
-  if (t !== null) {
+  // A scan that read no tool calls has no token count worth a tile.
+  if (t !== null && result.toolCalls > 0) {
     cells.push(
       stat(
         formatTokens(totalTokens(t)),
@@ -787,17 +801,24 @@ function heroSection(
   }
   const fixTarget = payload.findings.some((f) => f.action === "block") ? "fix-first" : "findings";
   const top = mostSerious(payload);
-  return `<section class="intro" id="overview">
-<p class="origin">${origin}</p>
-<p class="agent">Agent: ${escapeHtml(agentName(result.agent))}</p>
-<h1>${escapeHtml(headline(result))}</h1>
-<p class="lead">What your coding agent actually did, and which guardrails would have fired.</p>
+  const next =
+    result.toolCalls === 0
+      ? `<p class="lead">${escapeHtml(emptyLead(result))}</p>
+<p class="provenance">${provenance(result, meta, variant)}</p>
+${copyable("cmd-scan-hero", `agenttrail-guard scan --agent ${result.agent} --dir <folder>`, "Copy the scan command")}
+<p class="note">Leave out --dir to read the folder ${escapeHtml(agentName(result.agent))} uses by default.</p>`
+      : `<p class="lead">What your coding agent actually did, and which guardrails would have fired.</p>
 <p class="provenance">${provenance(result, meta, variant)}</p>${top === undefined ? "" : `\n${top}`}
 <div class="actions">
 <a class="button" href="#${fixTarget}">See what to fix first</a>
 ${outLink(shareLink(payload.shareText, result.agent), "Share on X", "button secondary")}
 </div>
-${copyable("cmd-init-hero", `agenttrail-guard init --agent ${result.agent}`, "Copy the init command")}
+${copyable("cmd-init-hero", `agenttrail-guard init --agent ${result.agent}`, "Copy the init command")}`;
+  return `<section class="intro" id="overview">
+<p class="origin">${origin}</p>
+<p class="agent">Agent: ${escapeHtml(agentName(result.agent))}</p>
+<h1>${escapeHtml(headline(result))}</h1>
+${next}
 </section>
 <section class="stats" aria-label="Summary">
 ${cells.join("\n")}
@@ -1035,10 +1056,7 @@ function riskLabel(id: OwaspId): string {
   return `<span class="risk-id">${escapeHtml(id)}</span> ${escapeHtml(owaspTitle(id))}`;
 }
 
-/**
- * The OWASP risks the matched guardrails name, with a leading line break, or nothing when no
- * matched guardrail carries an id.
- */
+/** The OWASP risks the matched guardrails name, or nothing when no matched guardrail carries an id. */
 function owaspSection(payload: ReportPayload): string {
   if (payload.owasp.length === 0) return "";
   const touched = (list: readonly { readonly id: string }[]): number =>
@@ -1053,8 +1071,7 @@ function owaspSection(payload: ReportPayload): string {
 </li>`,
     )
     .join("\n");
-  return `
-<section id="owasp">
+  return `<section id="owasp">
 <h2>OWASP risks</h2>
 <p class="lead">${escapeHtml(summary)}</p>
 <ul class="risks">
@@ -1479,23 +1496,34 @@ export function renderReport(
 ): string {
   const variant = options.variant ?? "document";
   const payload = reportPayload(result, meta);
+  // A scan that read no tool calls has no result to show or share: the page says so instead.
+  const scanned = result.toolCalls > 0;
   const head = `<title>${escapeHtml(pageTitle(result, meta))}</title>
 <style>${REPORT_STYLES}</style>`;
+  // Each section on its own lines; one that has nothing to say is left out entirely.
+  const sections = [
+    topBar(payload),
+    heroSection(result, payload, meta, variant),
+    ...(scanned
+      ? [
+          wouldHaveDoneSection(result, payload),
+          fixFirstSection(payload),
+          owaspSection(payload),
+          findingsSection(payload),
+          recurringSection(payload),
+        ]
+      : []),
+    nextStepsSection(result),
+    scanned ? shareSectionHtml(result, payload) : "",
+    beforeYouShareSection(result, variant),
+    redactionSection(),
+    corpusSection(result),
+    skippedSection(payload),
+    scanned ? tokensSection(result) : "",
+    productNoteSection(result),
+  ].filter((section) => section !== "");
   const body = `<main class="page" lang="en">
-${topBar(payload)}
-${heroSection(result, payload, meta, variant)}
-${wouldHaveDoneSection(result, payload)}
-${fixFirstSection(payload)}${owaspSection(payload)}
-${findingsSection(payload)}
-${recurringSection(payload)}
-${nextStepsSection(result)}
-${shareSectionHtml(result, payload)}
-${beforeYouShareSection(result, variant)}
-${redactionSection()}
-${corpusSection(result)}
-${skippedSection(payload)}
-${tokensSection(result)}
-${productNoteSection(result)}
+${sections.join("\n")}
 <footer>
 <p class="footer-brand">${LOGO_MARK_SVG}<span>agenttrail-guard ${escapeHtml(meta.version)} &middot; ${escapeHtml(payload.catalog)}</span></p>
 <p>Source: ${escapeHtml(REPOSITORY_URL)}</p>

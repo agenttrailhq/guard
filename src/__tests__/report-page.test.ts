@@ -1208,3 +1208,63 @@ describe("every copy button", () => {
     for (const b of buttons) expect(b.name).not.toMatch(/a\.q|a\.b/);
   });
 });
+
+describe("a scan that read no tool calls", () => {
+  const empty = (sessions: number) =>
+    resultWith([], undefined, {
+      sessions,
+      toolCalls: 0,
+      tokens: {
+        input: 0,
+        output: 0,
+        cacheRead: 0,
+        cacheCreation: 0,
+        cacheCreation5m: 0,
+        cacheCreation1h: 0,
+        turnsWithSplit: 0,
+        turns: 0,
+      },
+    });
+
+  it.each([
+    [0, "No sessions found to scan", "The scan found no Claude Code sessions to read"],
+    [2, "No tool calls found to scan", "The scan read 2 sessions with no tool calls in them"],
+  ])("with %i sessions says so, and that it is not a clean result", (sessions, h1, lead) => {
+    const html = renderReport(empty(sessions), META);
+    expect(html).toContain(`<h1>${h1}</h1>`);
+    expect(html).toContain(`${lead}, so nothing was checked. This is not a clean result`);
+    expect(html).toContain("agenttrail-guard scan --agent claude --dir &lt;folder&gt;");
+    expect(html).toContain('aria-label="Copy the scan command"');
+  });
+
+  it.each([
+    "document",
+    "artifact",
+  ] as const)("offers nothing to share or fix, in the %s", (variant) => {
+    const html = renderReport(empty(0), META, { variant });
+    for (const absent of [
+      'id="share"',
+      "Share on X",
+      "See what to fix first",
+      'id="fix-first"',
+      'id="findings"',
+      'href="#fix-first"',
+      'href="#findings"',
+      'id="tokens"',
+      "<h2>Tokens</h2>",
+      ">tokens<",
+    ]) {
+      expect(html, absent).not.toContain(absent);
+    }
+    // What was scanned, the privacy notes and the next steps stay.
+    for (const present of ['id="scanned"', 'id="privacy"', 'id="next-steps"']) {
+      expect(html, present).toContain(present);
+    }
+  });
+
+  it("lists no post in the review", () => {
+    expect(reviewStrings(empty(0)).map((g) => g.label)).not.toContain(
+      "The suggested post, which you can edit",
+    );
+  });
+});
