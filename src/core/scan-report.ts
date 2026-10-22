@@ -52,6 +52,7 @@ import type { CompiledAllowlist } from "./evaluate.js";
 import { evaluateCall } from "./evaluate.js";
 import { mapToolCall, TRUNCATION_MARKER } from "./mapper.js";
 import { buildGuardSpanContext } from "./normalize.js";
+import { type OwaspId, type OwaspTally, owaspTally } from "./owasp.js";
 import { redactIdentifiers } from "./redact-identifiers.js";
 import { redactMcpPayload } from "./redact-mcp.js";
 import { redactPaths } from "./redact-path.js";
@@ -210,6 +211,11 @@ export interface ScanFinding {
   readonly count: number;
   /** Distinct redacted shapes, most frequent first. */
   readonly examples: readonly ExampleShape[];
+  /**
+   * The matched guardrail's own `owasp` ids, copied as published; `[]` for a guardrail with
+   * none, which includes every guardrail from `guardrails.json`. Never inferred.
+   */
+  readonly owasp: readonly OwaspId[];
 }
 
 /** One command shape that happened more than once and matched a rule. */
@@ -280,6 +286,11 @@ export interface ScanResult {
   readonly findings: readonly ScanFinding[];
   /** Shapes seen two or more times, most frequent first. */
   readonly recurring: readonly RecurringItem[];
+  /**
+   * The OWASP risks this scan found activity for, in `OWASP_IDS` order, built only from the
+   * matched guardrails' own ids. A risk with no match is absent rather than zero.
+   */
+  readonly owasp: readonly OwaspTally[];
   /** `null` when the sessions that were read record no token counts, as Cursor's do not. */
   readonly tokens: TokenTotals | null;
   /** What was read but not evaluated, by kind, for a reader that counts it. */
@@ -437,6 +448,9 @@ export function aggregateScan(
   let notActions = 0;
   const unmapped = new Map<string, number>();
   let tokens = EMPTY_TOKEN_TOTALS;
+  // One entry per matched call: the OWASP ids of every guardrail that matched it, so the
+  // per-risk tally can count calls as well as guardrail matches.
+  const callOwasp: OwaspId[][] = [];
 
   for (const session of corpus.sessions) {
     skippedLines += session.skippedLines;
@@ -463,6 +477,7 @@ export function aggregateScan(
       // per rule, so doing it inside the inner loop would be a per-rule cost for a
       // per-call value.
       const text = displayTextOf(mapped);
+      callOwasp.push(decision.matches.flatMap((m) => ruleOf.get(m.ruleId)?.rule.owasp ?? []));
       for (const match of decision.matches) {
         let acc = byRule.get(match.ruleId);
         if (acc === undefined) {
@@ -510,7 +525,11 @@ export function aggregateScan(
       .map(([text, count]) => ({ text, count }))
       .sort(byCountThenText);
 
-    findings.push({ ruleId, title, severity, action, count: acc.count, examples });
+    // The guardrail's own ids, as published. A guardrail from `guardrails.json` has none:
+    // `user-rules.ts` never copies `owasp` onto it.
+    const owasp = [...(entry?.rule.owasp ?? [])];
+
+    findings.push({ ruleId, title, severity, action, count: acc.count, examples, owasp });
 
     for (const example of examples) {
       if (example.count >= 2) {
@@ -533,6 +552,7 @@ export function aggregateScan(
     riskyActions,
     findings,
     recurring,
+    owasp: owaspTally(findings, callOwasp),
     // Withheld, not zeroed, when the records carry no counts: a total of 0 is a
     // measurement nobody made.
     tokens: capabilities.tokens ? tokens : null,
