@@ -926,11 +926,9 @@ export function tuningHint(
   }
   const drop = removed(chosen);
   if (drop / total < TUNING_MIN_SHARE) return undefined;
-  // Drop any choice the others make unnecessary, so every command offered removes asks.
-  for (const id of [...chosen]) {
-    const without = new Set([...chosen].filter((other) => other !== id));
-    if (removed(without) === drop) chosen.delete(id);
-  }
+  // Every choice is needed: a pick either completes a group of asks it is in, or ties at
+  // nothing removed and is then needed by the pick that completes a group with it. A
+  // property test over random overlaps checks that each guardrail offered removes asks.
   return {
     ids: [...chosen].sort((a, b) => (own.get(b) ?? 0) - (own.get(a) ?? 0) || a.localeCompare(b)),
     share: drop / total,
