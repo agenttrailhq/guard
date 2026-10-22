@@ -1381,3 +1381,67 @@ describe("copy and layout details", () => {
     );
   });
 });
+
+describe("a hostile string in every free-text field stays text", () => {
+  // Quotes, a closing tag for each element text is written into, and a tag of its own.
+  const HOSTILE = `"</textarea></code>"'<b>x`;
+  const result = resultWith(
+    [
+      // A library blocker: its title reaches the hero, Fix first and the post.
+      lib("a.blk", "block", 3, {
+        title: `Library ${HOSTILE}`,
+        examples: [{ text: `rm ${HOSTILE}`, count: 3 }],
+      }),
+      // A user's own blocker: its id reaches the meta line of its Fix-first card.
+      own(`u.${HOSTILE}`, "block", 2, { title: `Mine ${HOSTILE}` }),
+      // A user's own asker: its id reaches the tuning hint, named as text.
+      own(`q.${HOSTILE}`, "require_approval", 9, { title: `Ask ${HOSTILE}` }),
+      lib("a.warn", "warn", 1, { title: `Warn ${HOSTILE}` }),
+    ],
+    { block: 5, require_approval: 9, warn: 1 },
+    {
+      recurring: [
+        { text: `rm ${HOSTILE}`, count: 3, ruleId: "a.blk", title: `Library ${HOSTILE}` },
+      ],
+      skipped: {
+        unreadableFiles: 0,
+        truncatedLastLines: 0,
+        unparseableLines: 0,
+        unknownRecords: 0,
+        turnsEndedWithError: 0,
+        notActions: 0,
+        unmappedTools: [{ name: HOSTILE, count: 2 }],
+      },
+    },
+  );
+
+  it.each(["document", "artifact"] as const)("in the %s", (variant) => {
+    const page = renderReport(result, META, { variant }).replace(/<script[\s\S]*?<\/script>/g, "");
+    // Every sink is reached.
+    for (const part of [
+      '<div class="hint">',
+      'id="fix-first"',
+      'id="not-evaluated"',
+      'id="share"',
+    ]) {
+      expect(page, part).toContain(part);
+    }
+    // Nowhere raw, and no element of its own.
+    expect(page).not.toContain(HOSTILE);
+    expect(page).not.toContain("<b>");
+    const tags = page.match(/<[a-z][a-z0-9]*\b[^>]*>/g) ?? [];
+    for (const tag of tags) expect(tag).toMatch(WELL_FORMED_TAG);
+    // Each sink shows the text as written.
+    const fixFirst = between(page, 'id="fix-first"', "</section>");
+    expect(decodeEntities(fixFirst)).toContain(`<code>u.${HOSTILE}</code>`);
+    const notEvaluated = between(page, 'id="not-evaluated"', "</section>");
+    expect(decodeEntities(notEvaluated)).toContain(HOSTILE);
+    const hint = between(page, '<div class="hint">', "</div>\n<div");
+    expect(decodeEntities(hint)).toContain(`q.${HOSTILE}`);
+    // The post preview reads back as exactly the post.
+    const area = page.match(/<textarea id="share-text" rows="4"(?: readonly)?>([^<]*)<\/textarea>/);
+    expect(area).not.toBeNull();
+    expect(decodeEntities(area?.[1] ?? "")).toBe(shareText(result));
+    expect(shareText(result)).toContain(`Library ${HOSTILE.replace(/`/g, "")}`);
+  });
+});
