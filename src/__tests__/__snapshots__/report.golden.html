@@ -19,6 +19,7 @@
 <li><a href="#owasp">OWASP</a></li>
 <li><a href="#findings">All findings</a></li>
 <li><a href="#next-steps">Next steps</a></li>
+<li><a href="#share">Share</a></li>
 <li><a href="#privacy">Privacy</a></li>
 </ul></nav>
 <div class="toolbar">
@@ -32,7 +33,7 @@
 <p class="agent">Agent: Claude Code</p>
 <h1>AgentTrail Guard would have stopped 3 actions and asked you about 5 more</h1>
 <p class="lead">What your coding agent actually did, and which guardrails would have fired.</p>
-<p class="provenance">Generated 2026-10-01T09:00:00.000Z by agenttrail-guard 9.9.9. Produced entirely on this machine from transcripts already on disk &mdash; no account, nothing uploaded, and no network call: the one exception anywhere in this tool is crash reporting, which is off unless you turn it on and which a scan never uses.</p>
+<p class="provenance">Generated <time datetime="2026-10-01T09:00:00.000Z">1 Oct 2026, 09:00 UTC</time> by agenttrail-guard 9.9.9. Produced entirely on this machine from transcripts already on disk &mdash; no account, nothing uploaded, and no network call: the one exception anywhere in this tool is crash reporting, which is off unless you turn it on and which a scan never uses.</p>
 <p class="top-match">Most serious match: <span class="badge sev-critical">critical</span> <span class="top-title">Recursive delete</span></p>
 <div class="actions">
 <a class="button" href="#fix-first">See what to fix first</a>
@@ -44,7 +45,7 @@
 <div class="stat"><div class="stat-value">1</div><div class="stat-label">session</div></div>
 <div class="stat"><div class="stat-value">11</div><div class="stat-label">tool calls</div></div>
 <div class="stat"><div class="stat-value">9</div><div class="stat-label">risky actions</div></div>
-<div class="stat"><div class="stat-value">3</div><div class="stat-label">recurring mistakes</div></div>
+<div class="stat"><div class="stat-value">3</div><div class="stat-label">repeated command shapes</div></div>
 <div class="stat"><div class="stat-value">18%</div><div class="stat-label">matched no guardrail</div></div>
 <div class="stat"><div class="stat-value">103.7K</div><div class="stat-label">tokens</div><div class="stat-note">98.0K cache reads (cumulative)</div></div>
 </section>
@@ -112,7 +113,7 @@
 </section>
 <section id="owasp">
 <h2>OWASP risks</h2>
-<p class="lead">These matches touched 1 of 10 agentic and 2 of 10 LLM risks.</p>
+<p class="lead">These matches touched 1 of 10 agentic and 2 of 10 LLM risks, in the 2026 edition lists.</p>
 <ul class="risks">
 <li class="risk" id="risk-asi02">
 <p class="risk-name"><a href="https://www.agenttrail.sh/security/owasp?utm_source=guard&amp;utm_medium=scan-report&amp;utm_campaign=claude&amp;utm_content=owasp-risk#asi02" target="_blank" rel="noopener noreferrer"><span class="risk-id">ASI02</span> Tool Misuse and Exploitation</a></p>
@@ -130,9 +131,9 @@
 <button type="button" class="tool js-only" data-risk="LLM03" aria-label="Show its findings: LLM03" hidden>Show its findings</button>
 </li>
 </ul>
-<p class="note">A guardrail can name more than one risk, and a tool call can match more than one guardrail, so one tool call can count under several risks. These counts do not add up to the totals above.</p>
+<p class="note">A guardrail can name more than one risk, and a tool call can match more than one guardrail, so one tool call can count under several risks. These counts can add up to more than the totals above.</p>
 <p class="note">Covers coding-agent actions only, not full OWASP coverage. Each id names a risk where it becomes a command or a file change, and is never a claim that a guardrail covers the whole risk.</p>
-<p class="risk-sources"><a href="https://www.agenttrail.sh/security/owasp?utm_source=guard&amp;utm_medium=scan-report&amp;utm_campaign=claude&amp;utm_content=owasp" target="_blank" rel="noopener noreferrer">How the guardrails map to OWASP</a> &middot; <a href="https://genai.owasp.org/resource/owasp-top-10-for-agentic-applications-for-2026/" target="_blank" rel="noopener noreferrer">OWASP Top 10 for Agentic Applications</a> &middot; <a href="https://genai.owasp.org/resource/owasp-genai-llm-top-10-2026/" target="_blank" rel="noopener noreferrer">OWASP Top 10 for LLM Applications</a></p>
+<p class="risk-sources"><a href="https://www.agenttrail.sh/security/owasp?utm_source=guard&amp;utm_medium=scan-report&amp;utm_campaign=claude&amp;utm_content=owasp" target="_blank" rel="noopener noreferrer">How the guardrails map to OWASP</a> &middot; <a href="https://genai.owasp.org/resource/owasp-top-10-for-agentic-applications-for-2026/" target="_blank" rel="noopener noreferrer">OWASP Top 10 for Agentic Applications (2026 edition)</a> &middot; <a href="https://genai.owasp.org/resource/owasp-genai-llm-top-10-2026/" target="_blank" rel="noopener noreferrer">OWASP Top 10 for LLM Applications (2026 edition)</a></p>
 </section>
 <section id="findings" class="findings-section">
 <div class="section-head"><h2>All findings</h2><p class="section-meta" id="findings-count">4 guardrails matched</p></div>
@@ -168,7 +169,7 @@
 <li><a href="https://www.agenttrail.sh/security/owasp?utm_source=guard&amp;utm_medium=scan-report&amp;utm_campaign=claude&amp;utm_content=owasp-risk#asi02" target="_blank" rel="noopener noreferrer"><span class="risk-id">ASI02</span> Tool Misuse and Exploitation</a></li>
 <li><a href="https://www.agenttrail.sh/security/owasp?utm_source=guard&amp;utm_medium=scan-report&amp;utm_campaign=claude&amp;utm_content=owasp-risk#llm03" target="_blank" rel="noopener noreferrer"><span class="risk-id">LLM03</span> Excessive Agency</a></li>
 </ul>
-<details class="commands"><summary>The 1 command shape behind it</summary>
+<details class="commands"><summary>The command shape behind it</summary>
 <ul class="shapes">
 <li><code>rm -rf &lt;path&gt;</code><span class="times">3&times;</span></li>
 </ul>
@@ -200,7 +201,7 @@
 <ul class="owasp-ids" aria-label="OWASP risks">
 <li><a href="https://www.agenttrail.sh/security/owasp?utm_source=guard&amp;utm_medium=scan-report&amp;utm_campaign=claude&amp;utm_content=owasp-risk#llm02" target="_blank" rel="noopener noreferrer"><span class="risk-id">LLM02</span> Sensitive Information Disclosure</a></li>
 </ul>
-<details class="commands"><summary>The 1 command shape behind it</summary>
+<details class="commands"><summary>The command shape behind it</summary>
 <ul class="shapes">
 <li><code>Read &lt;path&gt;</code><span class="times">2&times;</span></li>
 </ul>
@@ -219,7 +220,7 @@
 <ul class="owasp-ids" aria-label="OWASP risks">
 <li><a href="https://www.agenttrail.sh/security/owasp?utm_source=guard&amp;utm_medium=scan-report&amp;utm_campaign=claude&amp;utm_content=owasp-risk#asi02" target="_blank" rel="noopener noreferrer"><span class="risk-id">ASI02</span> Tool Misuse and Exploitation</a></li>
 </ul>
-<details class="commands"><summary>The 1 command shape behind it</summary>
+<details class="commands"><summary>The command shape behind it</summary>
 <ul class="shapes">
 <li><code>git checkout -- &lt;path&gt;</code><span class="times">1&times;</span></li>
 </ul>
@@ -271,7 +272,7 @@
 <section class="callout" id="privacy">
 <h2>Before you share this</h2>
 <p class="note">This report was made on one machine from transcripts already on its disk, and the scan sent nothing anywhere.</p>
-<p class="note">Every command below has been through a secret scrubber, a path redactor, a pass for secret-named values and long random-looking strings, and an identifier redactor, and every MCP tool call has had its payload values structurally redacted. Redaction runs before anything is written, so this file has never held the original text.</p>
+<p class="note">Every command in this report has been through a secret scrubber, a path redactor, a pass for secret-named values and long random-looking strings, and an identifier redactor, and every MCP tool call has had its payload values structurally redacted. Redaction runs before anything is written, so this file has never held the original text.</p>
 <dl class="legend">
 <div><dt><code>&lt;path&gt;</code></dt><dd>stands for a redacted filesystem path or URL</dd></div>
 <div><dt><code>&lt;name&gt;</code> <code>&lt;host&gt;</code> <code>&lt;user&gt;</code> <code>&lt;message&gt;</code> <code>&lt;comment&gt;</code></dt><dd>stand for an identifying operand of a command &mdash; a container, a namespace, a machine, a login, a commit message or heredoc body, a shell comment</dd></div>

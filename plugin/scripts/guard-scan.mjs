@@ -7048,7 +7048,7 @@ code {
 .provenance { color: var(--muted-fg); font-size: 13px; margin: 0; }
 .stats {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
   gap: 12px;
   margin-top: 28px;
 }
@@ -7219,6 +7219,7 @@ td.num { font-weight: 600; }
 .button.secondary:hover { background: var(--subtle); }
 .command { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 8px 0; }
 .command code { font-size: 13px; padding: 4px 8px; }
+.columns + .note { margin-top: 12px; }
 .columns { display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); gap: 12px; margin-top: 12px; }
 .col {
   background: var(--card);
@@ -7405,6 +7406,7 @@ ${vars(LIGHT_TOKENS)}
   .button, .button.secondary { display: inline; background: none; color: var(--brand-text); border: 0; padding: 0; }
   .stat, .tally, .product-note, tr, .card, .col, .risk, .finding-head, .shapes li { break-inside: avoid; }
   h1, h2, h3, .section-head, summary, h2 + .note, h2 + .lead { break-after: avoid; }
+  .chip::before { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
   .owasp-ids a[href^="http"]::after, .risk-name a[href^="http"]::after { content: none; }
   .how a[href^="http"]::after, .card a[href^="http"]::after { content: none; }
   a[href^="http"]::after { content: " (" attr(href) ")"; font-size: 11px; color: var(--muted-fg); overflow-wrap: anywhere; }
@@ -7590,7 +7592,8 @@ function storeTheme(value) {
 function themeLabel(button) {
   var current = readTheme(page.getAttribute("data-theme"));
   var dark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
-  button.textContent = nextTheme(current, dark) === "dark" ? "Dark theme" : "Light theme";
+  button.textContent =
+    nextTheme(current, dark) === "dark" ? "Switch to dark theme" : "Switch to light theme";
 }
 
 var saved = storedTheme();
@@ -8180,6 +8183,11 @@ function libraryText(text, className = "library-text") {
   const html = wrapLines(inlineTitle(text), DESCRIPTION_LINE).join("\n");
   return `<p class="${className}">${html}</p>`;
 }
+var MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+function readableTime(at) {
+  const two = (n) => String(n).padStart(2, "0");
+  return `${at.getUTCDate()} ${MONTHS[at.getUTCMonth()]} ${at.getUTCFullYear()}, ${two(at.getUTCHours())}:${two(at.getUTCMinutes())} UTC`;
+}
 function headline(result) {
   if (result.toolCalls === 0) {
     return result.sessions === 0 ? "No sessions found to scan" : "No tool calls found to scan";
@@ -8202,6 +8210,7 @@ function topBar(payload) {
     ...payload.owasp.length > 0 ? [["owasp", "OWASP"]] : [],
     ...scanned ? [["findings", "All findings"]] : [],
     ["next-steps", "Next steps"],
+    ...scanned ? [["share", "Share"]] : [],
     ["privacy", "Privacy"]
   ];
   const nav = links.map(([id, label]) => `<li><a href="#${id}">${label}</a></li>`).join("\n");
@@ -8220,7 +8229,8 @@ ${controls}
 </header>`;
 }
 function provenance(result, meta, variant) {
-  const stamp = `Generated ${escapeHtml(meta.generatedAt.toISOString())} by agenttrail-guard ${escapeHtml(meta.version)}`;
+  const iso = meta.generatedAt.toISOString();
+  const stamp = `Generated <time datetime="${escapeHtml(iso)}">${escapeHtml(readableTime(meta.generatedAt))}</time> by agenttrail-guard ${escapeHtml(meta.version)}`;
   if (variant === "artifact") {
     return `${stamp} on the publisher&#39;s own machine, from their own ${escapeHtml(agentName(result.agent))} transcripts. The scan itself made no network call &mdash; crash reporting is the one exception anywhere in this tool, off unless turned on, and a scan never uses it. This copy was published to claude.ai by the person who ran it, through Claude Code.`;
   }
@@ -8241,11 +8251,15 @@ function emptyLead(result) {
 function heroSection(result, payload, meta, variant) {
   const origin = variant === "artifact" ? "Scanned locally &middot; published by the person who ran it" : "Scanned locally &middot; nothing uploaded";
   const t = result.tokens;
+  const repeatedShapes = new Set(result.recurring.map((r) => r.text)).size;
   const cells = [
     stat(formatCount(result.sessions), result.sessions === 1 ? "session" : "sessions"),
     stat(formatCount(result.toolCalls), "tool calls"),
     stat(formatCount(result.riskyActions), "risky actions"),
-    stat(formatCount(result.recurring.length), "recurring mistakes")
+    stat(
+      formatCount(repeatedShapes),
+      repeatedShapes === 1 ? "repeated command shape" : "repeated command shapes"
+    )
   ];
   if (result.toolCalls > 0) {
     const clean = Math.floor((result.toolCalls - result.riskyActions) / result.toolCalls * 100);
@@ -8433,13 +8447,14 @@ ${cards}
 </div>
 </section>`;
 }
+var OWASP_EDITION = "2026 edition";
 function riskLabel(id) {
   return `<span class="risk-id">${escapeHtml(id)}</span> ${escapeHtml(owaspTitle(id))}`;
 }
 function owaspSection(payload) {
   if (payload.owasp.length === 0) return "";
   const touched = (list) => payload.owasp.filter((t) => list.some((risk) => risk.id === t.id)).length;
-  const summary = `These matches touched ${touched(OWASP_AGENTIC)} of ${OWASP_AGENTIC.length} agentic and ${touched(OWASP_LLM)} of ${OWASP_LLM.length} LLM risks.`;
+  const summary = `These matches touched ${touched(OWASP_AGENTIC)} of ${OWASP_AGENTIC.length} agentic and ${touched(OWASP_LLM)} of ${OWASP_LLM.length} LLM risks, in the ${OWASP_EDITION} lists.`;
   const risks = payload.owasp.map(
     (t) => `<li class="risk" id="risk-${escapeHtml(t.id.toLowerCase())}">
 <p class="risk-name">${outLink(owaspRiskLink(t.id, payload.agent), riskLabel(t.id))}</p>
@@ -8453,9 +8468,9 @@ function owaspSection(payload) {
 <ul class="risks">
 ${risks}
 </ul>
-<p class="note">A guardrail can name more than one risk, and a tool call can match more than one guardrail, so one tool call can count under several risks. These counts do not add up to the totals above.</p>
+<p class="note">A guardrail can name more than one risk, and a tool call can match more than one guardrail, so one tool call can count under several risks. These counts can add up to more than the totals above.</p>
 <p class="note">Covers coding-agent actions only, not full OWASP coverage. Each id names a risk where it becomes a command or a file change, and is never a claim that a guardrail covers the whole risk.</p>
-<p class="risk-sources">${outLink(siteLink(sitePath(OWASP_PAGE_URL), payload.agent, "owasp"), "How the guardrails map to OWASP")} &middot; ${outLink(OWASP_SOURCES.agentic, "OWASP Top 10 for Agentic Applications")} &middot; ${outLink(OWASP_SOURCES.llm, "OWASP Top 10 for LLM Applications")}</p>
+<p class="risk-sources">${outLink(siteLink(sitePath(OWASP_PAGE_URL), payload.agent, "owasp"), "How the guardrails map to OWASP")} &middot; ${outLink(OWASP_SOURCES.agentic, `OWASP Top 10 for Agentic Applications (${OWASP_EDITION})`)} &middot; ${outLink(OWASP_SOURCES.llm, `OWASP Top 10 for LLM Applications (${OWASP_EDITION})`)}</p>
 </section>`;
 }
 function ranks(findings) {
@@ -8476,7 +8491,8 @@ function findingRow(f, index, r, agent) {
   ).join("\n");
   const more = f.moreShapes > 0 ? `
 <li class="more">and ${escapeHtml(formatCount(f.moreShapes))} more shapes</li>` : "";
-  const shapes = counted(f.examples.length + f.moreShapes, "command shape", "command shapes");
+  const shapeCount = f.examples.length + f.moreShapes;
+  const shapes = shapeCount === 1 ? "command shape" : `${formatCount(shapeCount)} command shapes`;
   const how = f.descriptionLines === void 0 ? "" : `
 <details class="how"><summary>How this guardrail decides, and what it misses</summary>
 ${libraryText(f.descriptionLines.join(" "))}
@@ -8557,11 +8573,19 @@ function recurringSection(payload) {
   if (payload.recurring.length === 0) {
     return `<section id="repeats"><h2>Repeat offenders</h2><p class="empty">Nothing matched more than once.</p></section>`;
   }
-  const rows = payload.recurring.map((item) => {
-    const index = payload.findings.findIndex((f) => f.ruleId === item.ruleId);
-    const title = inlineTitle(item.title);
-    const named = index === -1 ? title : `<a href="#finding-${index}">${title}</a>`;
-    return `<tr role="row"><td class="shape" role="cell"><code>${escapeHtml(item.text)}</code></td><td class="num" role="cell">${escapeHtml(formatCount(item.count))}&times;</td><td class="rule-name" role="cell">${named}</td></tr>`;
+  const byShape = /* @__PURE__ */ new Map();
+  for (const item of payload.recurring) {
+    byShape.set(item.text, [...byShape.get(item.text) ?? [], item]);
+  }
+  const rows = [...byShape].map(([text, items]) => {
+    const times = Math.max(...items.map((item) => item.count));
+    const names = items.map((item) => {
+      const index = payload.findings.findIndex((f) => f.ruleId === item.ruleId);
+      const title = inlineTitle(item.title);
+      const named = index === -1 ? title : `<a href="#finding-${index}">${title}</a>`;
+      return item.count === times ? named : `${named} (${escapeHtml(formatCount(item.count))}&times;)`;
+    }).join("<br>");
+    return `<tr role="row"><td class="shape" role="cell"><code>${escapeHtml(text)}</code></td><td class="num" role="cell">${escapeHtml(formatCount(times))}&times;</td><td class="rule-name" role="cell">${names}</td></tr>`;
   }).join("\n");
   return `<section id="repeats"><h2>Repeat offenders</h2>
 <p class="note">The same shape, seen more than once. Paths are redacted before counting, so many different paths under one command become one repeat.</p>
@@ -8573,6 +8597,11 @@ ${rows}
 </table></div>
 </section>`;
 }
+var OTHER_AGENTS = {
+  claude: "Cursor or Codex",
+  cursor: "Claude Code or Codex",
+  codex: "Claude Code or Cursor"
+};
 function nextStepsSection(result) {
   const a = result.agent;
   return `<section id="next-steps">
@@ -8588,7 +8617,7 @@ ${copyable("cmd-scan-again", `agenttrail-guard scan --agent ${a} --review`, "Cop
 <ul class="links">
 <li>${outLink(siteLink("/get-started/guard", a, "next-commands"), "Every command")}</li>
 <li>${outLink(siteLink("/guardrails", a, "next-library"), "The guardrail library")}</li>
-<li>${outLink(siteLink("/get-started/guard", a, "next-agents"), "Set up Cursor or Codex")}</li>
+<li>${outLink(siteLink("/get-started/guard", a, "next-agents"), `Set up ${OTHER_AGENTS[a]}`)}</li>
 </ul>
 </section>`;
 }
@@ -8612,7 +8641,7 @@ function beforeYouShareSection(result, variant) {
   return `<section class="callout" id="privacy">
 <h2>Before you share this</h2>
 <p class="note">This report was made on one machine from transcripts already on its disk, and the scan sent nothing anywhere.</p>
-<p class="note">Every command below has been through a secret scrubber, a path redactor, a pass for secret-named values and long random-looking strings, and an identifier redactor, and every MCP tool call has had its payload values structurally redacted. Redaction runs before anything is written, so this file has never held the original text.</p>
+<p class="note">Every command in this report has been through a secret scrubber, a path redactor, a pass for secret-named values and long random-looking strings, and an identifier redactor, and every MCP tool call has had its payload values structurally redacted. Redaction runs before anything is written, so this file has never held the original text.</p>
 <dl class="legend">
 <div><dt><code>&lt;path&gt;</code></dt><dd>stands for a redacted filesystem path or URL</dd></div>
 <div><dt><code>&lt;name&gt;</code> <code>&lt;host&gt;</code> <code>&lt;user&gt;</code> <code>&lt;message&gt;</code> <code>&lt;comment&gt;</code></dt><dd>stand for an identifying operand of a command &mdash; a container, a namespace, a machine, a login, a commit message or heredoc body, a shell comment</dd></div>

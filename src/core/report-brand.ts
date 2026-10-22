@@ -211,7 +211,7 @@ code {
 .provenance { color: var(--muted-fg); font-size: 13px; margin: 0; }
 .stats {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
   gap: 12px;
   margin-top: 28px;
 }
@@ -382,6 +382,7 @@ td.num { font-weight: 600; }
 .button.secondary:hover { background: var(--subtle); }
 .command { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 8px 0; }
 .command code { font-size: 13px; padding: 4px 8px; }
+.columns + .note { margin-top: 12px; }
 .columns { display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); gap: 12px; margin-top: 12px; }
 .col {
   background: var(--card);
@@ -568,6 +569,7 @@ ${vars(LIGHT_TOKENS)}
   .button, .button.secondary { display: inline; background: none; color: var(--brand-text); border: 0; padding: 0; }
   .stat, .tally, .product-note, tr, .card, .col, .risk, .finding-head, .shapes li { break-inside: avoid; }
   h1, h2, h3, .section-head, summary, h2 + .note, h2 + .lead { break-after: avoid; }
+  .chip::before { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
   .owasp-ids a[href^="http"]::after, .risk-name a[href^="http"]::after { content: none; }
   .how a[href^="http"]::after, .card a[href^="http"]::after { content: none; }
   a[href^="http"]::after { content: " (" attr(href) ")"; font-size: 11px; color: var(--muted-fg); overflow-wrap: anywhere; }

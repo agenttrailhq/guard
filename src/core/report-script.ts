@@ -185,7 +185,8 @@ function storeTheme(value) {
 function themeLabel(button) {
   var current = readTheme(page.getAttribute("data-theme"));
   var dark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
-  button.textContent = nextTheme(current, dark) === "dark" ? "Dark theme" : "Light theme";
+  button.textContent =
+    nextTheme(current, dark) === "dark" ? "Switch to dark theme" : "Switch to light theme";
 }
 
 var saved = storedTheme();

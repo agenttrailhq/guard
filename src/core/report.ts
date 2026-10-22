@@ -683,6 +683,14 @@ function libraryText(text: string, className = "library-text"): string {
 
 // ── Sections ──────────────────────────────────────────────────────────────────
 
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/** A time as people read it, in UTC so every reader sees the same: "1 Oct 2026, 09:00 UTC". */
+export function readableTime(at: Date): string {
+  const two = (n: number): string => String(n).padStart(2, "0");
+  return `${at.getUTCDate()} ${MONTHS[at.getUTCMonth()]} ${at.getUTCFullYear()}, ${two(at.getUTCHours())}:${two(at.getUTCMinutes())} UTC`;
+}
+
 /**
  * The one-line headline, from tool calls by their strictest action.
  *
@@ -712,6 +720,7 @@ function topBar(payload: ReportPayload): string {
     ...(payload.owasp.length > 0 ? [["owasp", "OWASP"] as [string, string]] : []),
     ...(scanned ? [["findings", "All findings"] as [string, string]] : []),
     ["next-steps", "Next steps"],
+    ...(scanned ? [["share", "Share"] as [string, string]] : []),
     ["privacy", "Privacy"],
   ];
   const nav = links.map(([id, label]) => `<li><a href="#${id}">${label}</a></li>`).join("\n");
@@ -741,7 +750,8 @@ ${controls}
  * itself: it made no network call, crash reporting being the one exception in this tool.
  */
 function provenance(result: ScanResult, meta: ReportMeta, variant: ReportVariant): string {
-  const stamp = `Generated ${escapeHtml(meta.generatedAt.toISOString())} by agenttrail-guard ${escapeHtml(meta.version)}`;
+  const iso = meta.generatedAt.toISOString();
+  const stamp = `Generated <time datetime="${escapeHtml(iso)}">${escapeHtml(readableTime(meta.generatedAt))}</time> by agenttrail-guard ${escapeHtml(meta.version)}`;
   if (variant === "artifact") {
     return `${stamp} on the publisher&#39;s own machine, from their own ${escapeHtml(agentName(result.agent))} transcripts. The scan itself made no network call &mdash; crash reporting is the one exception anywhere in this tool, off unless turned on, and a scan never uses it. This copy was published to claude.ai by the person who ran it, through Claude Code.`;
   }
@@ -779,11 +789,16 @@ function heroSection(
       ? "Scanned locally &middot; published by the person who ran it"
       : "Scanned locally &middot; nothing uploaded";
   const t = result.tokens;
+  // Distinct shapes: one shape two guardrails matched is one repeat, as Repeat offenders lists it.
+  const repeatedShapes = new Set(result.recurring.map((r) => r.text)).size;
   const cells = [
     stat(formatCount(result.sessions), result.sessions === 1 ? "session" : "sessions"),
     stat(formatCount(result.toolCalls), "tool calls"),
     stat(formatCount(result.riskyActions), "risky actions"),
-    stat(formatCount(result.recurring.length), "recurring mistakes"),
+    stat(
+      formatCount(repeatedShapes),
+      repeatedShapes === 1 ? "repeated command shape" : "repeated command shapes",
+    ),
   ];
   if (result.toolCalls > 0) {
     const clean = Math.floor(((result.toolCalls - result.riskyActions) / result.toolCalls) * 100);
@@ -1051,6 +1066,9 @@ ${cards}
 </section>`;
 }
 
+/** The edition of the two OWASP lists the ids follow, as `OWASP_SOURCES` links them. */
+export const OWASP_EDITION = "2026 edition";
+
 /** An OWASP id and its name, as the page shows it. */
 function riskLabel(id: OwaspId): string {
   return `<span class="risk-id">${escapeHtml(id)}</span> ${escapeHtml(owaspTitle(id))}`;
@@ -1061,7 +1079,7 @@ function owaspSection(payload: ReportPayload): string {
   if (payload.owasp.length === 0) return "";
   const touched = (list: readonly { readonly id: string }[]): number =>
     payload.owasp.filter((t) => list.some((risk) => risk.id === t.id)).length;
-  const summary = `These matches touched ${touched(OWASP_AGENTIC)} of ${OWASP_AGENTIC.length} agentic and ${touched(OWASP_LLM)} of ${OWASP_LLM.length} LLM risks.`;
+  const summary = `These matches touched ${touched(OWASP_AGENTIC)} of ${OWASP_AGENTIC.length} agentic and ${touched(OWASP_LLM)} of ${OWASP_LLM.length} LLM risks, in the ${OWASP_EDITION} lists.`;
   const risks = payload.owasp
     .map(
       (t) => `<li class="risk" id="risk-${escapeHtml(t.id.toLowerCase())}">
@@ -1077,9 +1095,9 @@ function owaspSection(payload: ReportPayload): string {
 <ul class="risks">
 ${risks}
 </ul>
-<p class="note">A guardrail can name more than one risk, and a tool call can match more than one guardrail, so one tool call can count under several risks. These counts do not add up to the totals above.</p>
+<p class="note">A guardrail can name more than one risk, and a tool call can match more than one guardrail, so one tool call can count under several risks. These counts can add up to more than the totals above.</p>
 <p class="note">Covers coding-agent actions only, not full OWASP coverage. Each id names a risk where it becomes a command or a file change, and is never a claim that a guardrail covers the whole risk.</p>
-<p class="risk-sources">${outLink(siteLink(sitePath(OWASP_PAGE_URL), payload.agent, "owasp"), "How the guardrails map to OWASP")} &middot; ${outLink(OWASP_SOURCES.agentic, "OWASP Top 10 for Agentic Applications")} &middot; ${outLink(OWASP_SOURCES.llm, "OWASP Top 10 for LLM Applications")}</p>
+<p class="risk-sources">${outLink(siteLink(sitePath(OWASP_PAGE_URL), payload.agent, "owasp"), "How the guardrails map to OWASP")} &middot; ${outLink(OWASP_SOURCES.agentic, `OWASP Top 10 for Agentic Applications (${OWASP_EDITION})`)} &middot; ${outLink(OWASP_SOURCES.llm, `OWASP Top 10 for LLM Applications (${OWASP_EDITION})`)}</p>
 </section>`;
 }
 
@@ -1120,7 +1138,8 @@ function findingRow(
     f.moreShapes > 0
       ? `\n<li class="more">and ${escapeHtml(formatCount(f.moreShapes))} more shapes</li>`
       : "";
-  const shapes = counted(f.examples.length + f.moreShapes, "command shape", "command shapes");
+  const shapeCount = f.examples.length + f.moreShapes;
+  const shapes = shapeCount === 1 ? "command shape" : `${formatCount(shapeCount)} command shapes`;
   const how =
     f.descriptionLines === undefined
       ? ""
@@ -1218,12 +1237,26 @@ function recurringSection(payload: ReportPayload): string {
   if (payload.recurring.length === 0) {
     return `<section id="repeats"><h2>Repeat offenders</h2><p class="empty">Nothing matched more than once.</p></section>`;
   }
-  const rows = payload.recurring
-    .map((item) => {
-      const index = payload.findings.findIndex((f) => f.ruleId === item.ruleId);
-      const title = inlineTitle(item.title);
-      const named = index === -1 ? title : `<a href="#finding-${index}">${title}</a>`;
-      return `<tr role="row"><td class="shape" role="cell"><code>${escapeHtml(item.text)}</code></td><td class="num" role="cell">${escapeHtml(formatCount(item.count))}&times;</td><td class="rule-name" role="cell">${named}</td></tr>`;
+  // One row per shape: a shape that two guardrails matched lists both, once.
+  const byShape = new Map<string, RecurringItem[]>();
+  for (const item of payload.recurring) {
+    byShape.set(item.text, [...(byShape.get(item.text) ?? []), item]);
+  }
+  const rows = [...byShape]
+    .map(([text, items]) => {
+      const times = Math.max(...items.map((item) => item.count));
+      const names = items
+        .map((item) => {
+          const index = payload.findings.findIndex((f) => f.ruleId === item.ruleId);
+          const title = inlineTitle(item.title);
+          const named = index === -1 ? title : `<a href="#finding-${index}">${title}</a>`;
+          // When the guardrails matched the shape a different number of times, say each.
+          return item.count === times
+            ? named
+            : `${named} (${escapeHtml(formatCount(item.count))}&times;)`;
+        })
+        .join("<br>");
+      return `<tr role="row"><td class="shape" role="cell"><code>${escapeHtml(text)}</code></td><td class="num" role="cell">${escapeHtml(formatCount(times))}&times;</td><td class="rule-name" role="cell">${names}</td></tr>`;
     })
     .join("\n");
   return `<section id="repeats"><h2>Repeat offenders</h2>
@@ -1236,6 +1269,13 @@ ${rows}
 </table></div>
 </section>`;
 }
+
+/** The two apps a report was not made from, for the set-up link. */
+const OTHER_AGENTS: Readonly<Record<AgentSource, string>> = {
+  claude: "Cursor or Codex",
+  cursor: "Claude Code or Codex",
+  codex: "Claude Code or Cursor",
+};
 
 /** Three steps, each with a command to copy, and where to read more. */
 function nextStepsSection(result: ScanResult): string {
@@ -1253,7 +1293,7 @@ ${copyable("cmd-scan-again", `agenttrail-guard scan --agent ${a} --review`, "Cop
 <ul class="links">
 <li>${outLink(siteLink("/get-started/guard", a, "next-commands"), "Every command")}</li>
 <li>${outLink(siteLink("/guardrails", a, "next-library"), "The guardrail library")}</li>
-<li>${outLink(siteLink("/get-started/guard", a, "next-agents"), "Set up Cursor or Codex")}</li>
+<li>${outLink(siteLink("/get-started/guard", a, "next-agents"), `Set up ${OTHER_AGENTS[a]}`)}</li>
 </ul>
 </section>`;
 }
@@ -1292,7 +1332,7 @@ function beforeYouShareSection(result: ScanResult, variant: ReportVariant): stri
   return `<section class="callout" id="privacy">
 <h2>Before you share this</h2>
 <p class="note">This report was made on one machine from transcripts already on its disk, and the scan sent nothing anywhere.</p>
-<p class="note">Every command below has been through a secret scrubber, a path redactor, a pass for secret-named values and long random-looking strings, and an identifier redactor, and every MCP tool call has had its payload values structurally redacted. Redaction runs before anything is written, so this file has never held the original text.</p>
+<p class="note">Every command in this report has been through a secret scrubber, a path redactor, a pass for secret-named values and long random-looking strings, and an identifier redactor, and every MCP tool call has had its payload values structurally redacted. Redaction runs before anything is written, so this file has never held the original text.</p>
 <dl class="legend">
 <div><dt><code>&lt;path&gt;</code></dt><dd>stands for a redacted filesystem path or URL</dd></div>
 <div><dt><code>&lt;name&gt;</code> <code>&lt;host&gt;</code> <code>&lt;user&gt;</code> <code>&lt;message&gt;</code> <code>&lt;comment&gt;</code></dt><dd>stand for an identifying operand of a command &mdash; a container, a namespace, a machine, a login, a commit message or heredoc body, a shell comment</dd></div>
