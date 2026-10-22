@@ -1847,7 +1847,7 @@ function detectAgent(payload) {
   return void 0;
 }
 
-// node_modules/@agenttrail/guardrails/dist/chunk-3NDBRXP3.js
+// node_modules/@agenttrail/guardrails/dist/chunk-6YROGDEH.js
 var SHELL_AND_MCP = "{Bash,PowerShell,mcp__*}";
 var OUTSIDE = "[^\"'|;&`$<>()]";
 var OUTSIDE_PIPEABLE = "[^\"';&`$<>()]";
@@ -1925,6 +1925,7 @@ var acAgentAutonomyFlag = {
   category: "agent-context",
   severity: "high",
   defaultAction: "require_approval",
+  owasp: ["ASI03", "ASI10", "LLM03"],
   title: "Switching off an agent's approvals or sandbox",
   description: "Holds the flags that make a coding agent act without asking: Claude Code's `--dangerously-skip-permissions`, `--allow-dangerously-skip-permissions` and `--permission-mode bypassPermissions`; Codex's `--dangerously-bypass-approvals-and-sandbox`, `--yolo`, `--full-auto`, `-a never` or `--ask-for-approval never`, `--sandbox danger-full-access`, and the same two settings passed as `approval_policy` or `sandbox_mode` config values; Gemini's `--yolo`, `-y` and `--approval-mode yolo`; `cursor-agent --force`, `-f` or `--yolo`; and Aider's `--yes-always`, its accepted short form `--yes`, and `AIDER_YES_ALWAYS`. Deliberately NOT matched: the narrower modes (`--permission-mode plan` or `acceptEdits`, `--sandbox workspace-write`, `-a on-request`, `--approval-mode auto_edit`), and `--auto-approve` or `-y` on any other command \u2014 `terraform apply --auto-approve` and `apt-get install -y` are not agents. Misses Cursor's CLI under its primary name `agent`, which is too generic to match on, and a setting written to an agent's config file with a file tool, which `fs.agent-self-config` holds for Claude Code and Codex. A quoted MENTION is not a use: a search, a `git commit -m` message, an `echo` or a `curl --data` body that only names this command is left alone, as long as every shell metacharacter stays inside the quotes.",
   match: {
@@ -1998,8 +1999,9 @@ var acInstructionFileEdit = {
   category: "agent-context",
   severity: "high",
   defaultAction: "require_approval",
+  owasp: ["ASI06", "ASI10", "LLM03"],
   title: "The agent editing its standing instructions",
-  description: "Holds a file tool opening the instructions a coding agent loads at the start of every session: `CLAUDE.md`, `CLAUDE.local.md` and `.claude/rules/`; `AGENTS.md` and `AGENTS.override.md`, which Codex, Cursor, Windsurf, Copilot and Cline all read; `GEMINI.md`; `.cursorrules`; Windsurf's `.windsurfrules`, `.windsurf/rules/` and `.devin/rules/`; Cline's `.clinerules` file or directory and its global `Cline/Rules/` folder; Copilot's `.github/copilot-instructions.md` and `.github/instructions/**/*.instructions.md`; and `.aider.conf.yml`, which sets the files Aider reads on every launch. A line written into one of these is followed in every later session. Matched in any directory and in any letter case. File tools carry a path and no content, so it cannot see what was written, and it does not tell reading apart from editing. Does not cover `.cursor/rules/`, which `fs.agent-self-config` holds. Misses a context file renamed through Gemini's `context.fileName` or Codex's `project_doc_fallback_filenames`, Aider's `CONVENTIONS.md`, which Aider loads only when asked and which is too common a name to match, and any of these files written by a shell command instead of a file tool.",
+  description: "Holds a file tool opening the instructions a coding agent loads at the start of every session: `CLAUDE.md`, `CLAUDE.local.md` and `.claude/rules/`; `AGENTS.md` and `AGENTS.override.md`, which Codex, Cursor, Windsurf, Copilot and Cline all read; `GEMINI.md`; `.cursorrules`; Windsurf's `.windsurfrules`, `.windsurf/rules/` and `.devin/rules/`; Cline's `.clinerules` file or directory and its global `Cline/Rules/` folder; Copilot's `.github/copilot-instructions.md` and `.github/instructions/**/*.instructions.md`; and `.aider.conf.yml`, which sets the files Aider reads on every launch. A line written into one of these is followed in every later session. Matched in any directory and in any letter case. Reading is excluded \u2014 the `Read` and `Grep` tools never match \u2014 so an agent opening its instructions to read them is not held; every other file tool is, including one this corpus does not know. File tools carry a path and no content, so it still cannot see what was written. Does not cover `.cursor/rules/`, which `fs.agent-self-config` holds. Misses a context file renamed through Gemini's `context.fileName` or Codex's `project_doc_fallback_filenames`, Aider's `CONVENTIONS.md`, which Aider loads only when asked and which is too common a name to match, and any of these files written by a shell command instead of a file tool.",
   match: {
     any_of: [
       {
@@ -2015,6 +2017,11 @@ var acInstructionFileEdit = {
       { kind: "execute_tool", file_glob: "**/.github/copilot-instructions.md" },
       { kind: "execute_tool", file_glob: "**/.github/instructions/**/*.instructions.md" },
       { kind: "execute_tool", file_glob: "**/.aider.conf.yml" }
+    ],
+    none_of: [
+      // A read is not an edit. Named as a deny-list rather than an `any_of` over
+      // the write tools, so an unknown file tool on a matched path still holds.
+      { kind: "execute_tool", label: "{Read,Grep}" }
     ]
   },
   fixtures: {
@@ -2049,7 +2056,9 @@ var acInstructionFileEdit = {
       file(".github/workflows/ci.yml"),
       file(".cursor/rules/style.mdc"),
       file(".claude/settings.json"),
-      file(".aider.chat.history.md")
+      file(".aider.chat.history.md"),
+      file("CLAUDE.md", "Read"),
+      file(".github/copilot-instructions.md", "Grep")
     ]
   }
 };
@@ -2060,8 +2069,9 @@ var acMcpServerAdd = {
   category: "agent-context",
   severity: "high",
   defaultAction: "require_approval",
+  owasp: ["ASI04", "ASI10", "LLM03"],
   title: "Adding an MCP server to an agent",
-  description: "Holds the commands that register an MCP server with a coding agent \u2014 `claude mcp add`, `claude mcp add-json`, `claude mcp add-from-claude-desktop`, `codex mcp add` and `gemini mcp add` \u2014 and `claude --mcp-config`, which attaches servers to a single session. Each gives an agent a new set of tools, often a program fetched and started on the spot, with nobody reviewing the change. Deliberately NOT matched: listing or removing servers (`claude mcp list`, `claude mcp remove`), and the MCP Inspector (`npx @modelcontextprotocol/inspector`), which is a debugging tool rather than a registration. Cursor has no command for this, so its `.cursor/mcp.json`, in a project or the home directory, is matched as a file instead; a project's `.mcp.json` is held by `fs.agent-self-config`. Misses servers written into `~/.claude.json` or Gemini's `settings.json` with a file tool, and a global flag whose value is quoted when it sits before `mcp`. A quoted MENTION is not a use: a search, a `git commit -m` message, an `echo` or a `curl --data` body that only names this command is left alone, as long as every shell metacharacter stays inside the quotes.",
+  description: "Holds the commands that register an MCP server with a coding agent \u2014 `claude mcp add`, `claude mcp add-json`, `claude mcp add-from-claude-desktop`, `codex mcp add` and `gemini mcp add` \u2014 and `claude --mcp-config`, which attaches servers to a single session. Each gives an agent a new set of tools, often a program fetched and started on the spot, with nobody reviewing the change. Deliberately NOT matched: listing or removing servers (`claude mcp list`, `claude mcp remove`), and the MCP Inspector (`npx @modelcontextprotocol/inspector`), which is a debugging tool rather than a registration. Cursor has no command for this, so its `.cursor/mcp.json`, in a project or the home directory, is matched as a file instead \u2014 written, not read: the `Read` and `Grep` tools never match it, and every other file tool does, including one this corpus does not know; a project's `.mcp.json` is held by `fs.agent-self-config`. Misses servers written into `~/.claude.json` or Gemini's `settings.json` with a file tool, and a global flag whose value is quoted when it sits before `mcp`. A quoted MENTION is not a use: a search, a `git commit -m` message, an `echo` or a `curl --data` body that only names this command is left alone, as long as every shell metacharacter stays inside the quotes.",
   match: {
     any_of: [
       {
@@ -2076,7 +2086,14 @@ var acMcpServerAdd = {
       // Cursor has no `mcp add` command; its servers are added by editing this file.
       { kind: "execute_tool", file_glob: "**/.cursor/mcp.json" }
     ],
-    none_of: [...QUOTED_MENTION]
+    none_of: [
+      // A read is not an addition. This covers the `.cursor/mcp.json` arm — the
+      // shell arm already pins its own tool family. Named as a deny-list rather
+      // than an `any_of` over the write tools, so an unknown file tool on that
+      // path still holds.
+      { kind: "execute_tool", label: "{Read,Grep}" },
+      ...QUOTED_MENTION
+    ]
   },
   fixtures: {
     block: [
@@ -2101,7 +2118,9 @@ var acMcpServerAdd = {
       bash("npx @modelcontextprotocol/inspector"),
       file("config/mcp.json"),
       file(".cursor/rules/style.mdc"),
-      bash("pnpm run test")
+      bash("pnpm run test"),
+      file(".cursor/mcp.json", "Read"),
+      file("/Users/dev/.cursor/mcp.json", "Grep")
     ]
   }
 };
@@ -2110,8 +2129,9 @@ var acMemoryStoreEdit = {
   category: "agent-context",
   severity: "high",
   defaultAction: "require_approval",
+  owasp: ["ASI06", "LLM03"],
   title: "The agent editing its own memory",
-  description: "Holds a file tool opening the memory a coding agent carries between sessions: Claude Code's auto memory under `.claude/projects/<project>/memory/`, and its sub-agent memory in `.claude/agent-memory/` and `.claude/agent-memory-local/`; Codex's `.codex/memories/`; Gemini's private `.gemini/tmp/<project>/memory/`; Windsurf's `.codeium/windsurf/memories/`, including `global_rules.md`; and `.cursor/memory/`. A false fact saved here is recalled as true in every later session. A `MEMORY.md` outside those directories deliberately does NOT match, and neither does a project's own `docs/memory/` folder: the name alone is not an agent's memory. File tools carry a path and no content, so it cannot see what was written, and it does not tell reading apart from editing, so an agent recalling a memory by reading its file is asked too. Misses a memory directory moved with Claude Code's `autoMemoryDirectory` setting, and Cursor memories kept anywhere other than `.cursor/memory/`, since Cursor does not document where it stores them. Gemini memories saved into `GEMINI.md` are held by `ac.instruction-file-edit` instead.",
+  description: "Holds a file tool opening the memory a coding agent carries between sessions: Claude Code's auto memory under `.claude/projects/<project>/memory/`, and its sub-agent memory in `.claude/agent-memory/` and `.claude/agent-memory-local/`; Codex's `.codex/memories/`; Gemini's private `.gemini/tmp/<project>/memory/`; Windsurf's `.codeium/windsurf/memories/`, including `global_rules.md`; and `.cursor/memory/`. A false fact saved here is recalled as true in every later session. A `MEMORY.md` outside those directories deliberately does NOT match, and neither does a project's own `docs/memory/` folder: the name alone is not an agent's memory. Reading is excluded \u2014 the `Read` and `Grep` tools never match \u2014 so an agent recalling a memory by reading its file is not asked; every other file tool is, including one this corpus does not know. File tools carry a path and no content, so it still cannot see what was written. Misses a memory directory moved with Claude Code's `autoMemoryDirectory` setting, and Cursor memories kept anywhere other than `.cursor/memory/`, since Cursor does not document where it stores them. Gemini memories saved into `GEMINI.md` are held by `ac.instruction-file-edit` instead.",
   match: {
     any_of: [
       { kind: "execute_tool", file_glob: "**/.claude/projects/*/memory/**" },
@@ -2120,6 +2140,11 @@ var acMemoryStoreEdit = {
       { kind: "execute_tool", file_glob: "**/.gemini/tmp/*/memory/**" },
       { kind: "execute_tool", file_glob: "**/.codeium/windsurf/memories/**" },
       { kind: "execute_tool", file_glob: "**/.cursor/memory/**" }
+    ],
+    none_of: [
+      // A read is not an edit. Named as a deny-list rather than an `any_of` over
+      // the write tools, so an unknown file tool on a matched path still holds.
+      { kind: "execute_tool", label: "{Read,Grep}" }
     ]
   },
   fixtures: {
@@ -2143,7 +2168,9 @@ var acMemoryStoreEdit = {
       file("packages/memory-store/src/index.ts"),
       file("/Users/dev/.claude/projects/-Users-dev-shop/transcript.jsonl"),
       file("/home/dev/.gemini/settings.json"),
-      file(".claude/settings.json")
+      file(".claude/settings.json"),
+      file(".claude/agent-memory/reviewer/MEMORY.md", "Read"),
+      file("/home/dev/.codex/memories/project.md", "Grep")
     ]
   }
 };
@@ -2154,8 +2181,9 @@ var acRecursiveAgentInvoke = {
   category: "agent-context",
   severity: "high",
   defaultAction: "require_approval",
+  owasp: ["LLM03"],
   title: "An agent starting another agent non-interactively",
-  description: "Holds a coding agent started from a shell to run a task on its own: `claude -p` or `--print` (including through `npx @anthropic-ai/claude-code`), `codex exec` or `codex e`, `gemini -p` or `--prompt`, `cursor-agent -p` or `--print`, and `aider` run non-interactively with `--message`, `--msg`, `-m`, or `-f` \u2014 the short form of `--message-file`, which disables chat mode. `--message-file` needs no arm of its own: the `--message` arm is a prefix of it and catches it. Every spawned agent reads, writes and runs commands of its own and can start more, which is how spend and reach multiply without anyone watching. This catches the shape, not the cost: no rule can count calls or tokens before a tool runs. Deliberately NOT matched: `codex -p`, which selects a profile rather than a prompt, `--version` and `--help`, and listing commands such as `claude mcp list`. Misses Cursor's CLI when it is invoked by its primary name `agent`, which is too generic to match on, Gemini run headless by piping into it without `-p`, and a flag placed after a quoted argument. A quoted MENTION is not a use: a search, a `git commit -m` message, an `echo` or a `curl --data` body that only names this command is left alone, as long as every shell metacharacter stays inside the quotes.",
+  description: "Holds a coding agent started from a shell to run a task on its own: `claude -p` or `--print` (including through `npx @anthropic-ai/claude-code`), `codex exec` or `codex e`, `gemini -p` or `--prompt`, `cursor-agent -p` or `--print`, and `aider` run non-interactively with `--message`, `--msg`, `-m`, or `-f` \u2014 the short form of `--message-file`, which disables chat mode. `--message-file` needs no arm of its own: the `--message` arm is a prefix of it and catches it. Every spawned agent reads, writes and runs commands of its own and can start more, which is how spend and reach multiply without anyone watching. This catches the shape, not the cost: nothing here can count calls or tokens before a tool runs. Deliberately NOT matched: `codex -p`, which selects a profile rather than a prompt, `--version` and `--help`, and listing commands such as `claude mcp list`. Misses Cursor's CLI when it is invoked by its primary name `agent`, which is too generic to match on, Gemini run headless by piping into it without `-p`, and a flag placed after a quoted argument. A quoted MENTION is not a use: a search, a `git commit -m` message, an `echo` or a `curl --data` body that only names this command is left alone, as long as every shell metacharacter stays inside the quotes.",
   match: {
     any_of: [
       {
@@ -2208,8 +2236,9 @@ var acSkillInstall = {
   category: "agent-context",
   severity: "high",
   defaultAction: "require_approval",
+  owasp: ["ASI10", "LLM03"],
   title: "The agent installing a skill, command or sub-agent",
-  description: "Holds a file tool opening a skill, slash command, sub-agent or output style that a coding agent loads by name: Claude Code's `.claude/skills/`, `.claude/commands/`, `.claude/agents/` and `.claude/output-styles/`; the shared `.agents/skills/`; Codex's `.codex/skills/`, `.codex/prompts/` and `.codex/agents/`; Gemini's `.gemini/commands/`, `.gemini/skills/` and `.gemini/agents/`; Cursor's `.cursor/skills/`, `.cursor/agents/` and `.cursor/commands/`; Windsurf's `.windsurf/workflows/` and `.windsurf/skills/` and their global copies under `.codeium/windsurf/`; Cline's `.cline/skills/`; and a `SKILL.md` anywhere, which is how a plugin ships a skill. Each becomes a reusable instruction the agent may follow later, often with a script beside it that the agent runs. Matched at project or home level and in any letter case. File tools carry a path and no content, so it cannot see what was written, and it does not tell reading apart from editing. Deliberately NOT matched: an ordinary `skills/`, `commands/` or `agents/` folder in a project's source, and `.clinerules/skills/`, which `ac.instruction-file-edit` holds. Misses a skill copied into one of these folders by a shell command such as `cp` or `git clone`, and the managed system-wide workflow folders.",
+  description: "Holds a file tool opening a skill, slash command, sub-agent or output style that a coding agent loads by name: Claude Code's `.claude/skills/`, `.claude/commands/`, `.claude/agents/` and `.claude/output-styles/`; the shared `.agents/skills/`; Codex's `.codex/skills/`, `.codex/prompts/` and `.codex/agents/`; Gemini's `.gemini/commands/`, `.gemini/skills/` and `.gemini/agents/`; Cursor's `.cursor/skills/`, `.cursor/agents/` and `.cursor/commands/`; Windsurf's `.windsurf/workflows/` and `.windsurf/skills/` and their global copies under `.codeium/windsurf/`; Cline's `.cline/skills/`; and a `SKILL.md` anywhere, which is how a plugin ships a skill. Each becomes a reusable instruction the agent may follow later, often with a script beside it that the agent runs. Matched at project or home level and in any letter case. Reading is excluded \u2014 the `Read` and `Grep` tools never match \u2014 so an agent opening an installed skill to read it is not held; every other file tool is, including one this corpus does not know. File tools carry a path and no content, so it still cannot see what was written. Deliberately NOT matched: an ordinary `skills/`, `commands/` or `agents/` folder in a project's source, and `.clinerules/skills/`, which `ac.instruction-file-edit` holds. Misses a skill copied into one of these folders by a shell command such as `cp` or `git clone`, and the managed system-wide workflow folders.",
   match: {
     any_of: [
       { kind: "execute_tool", file_glob: "**/.claude/{skills,commands,agents,output-styles}/**" },
@@ -2221,6 +2250,11 @@ var acSkillInstall = {
       { kind: "execute_tool", file_glob: "**/.codeium/windsurf/{skills,global_workflows}/**" },
       { kind: "execute_tool", file_glob: "**/.cline/skills/**" },
       { kind: "execute_tool", file_glob: "**/SKILL.md" }
+    ],
+    none_of: [
+      // A read is not an edit. Named as a deny-list rather than an `any_of` over
+      // the write tools, so an unknown file tool on a matched path still holds.
+      { kind: "execute_tool", label: "{Read,Grep}" }
     ]
   },
   fixtures: {
@@ -2250,7 +2284,9 @@ var acSkillInstall = {
       file(".claude/settings.json"),
       file(".github/workflows/release.yml"),
       file("scripts/release.sh"),
-      file(".gemini/settings.json")
+      file(".gemini/settings.json"),
+      file(".claude/skills/deploy/SKILL.md", "Read"),
+      file(".claude/commands/deploy.md", "Grep")
     ]
   }
 };
@@ -2267,8 +2303,9 @@ var blockDestructiveSql = {
   category: "destructive-data",
   severity: "critical",
   defaultAction: "block",
-  title: "Block destructive SQL in production",
-  description: 'Blocks shell commands that execute destructive SQL DDL \u2014 DROP TABLE, TRUNCATE or DROP DATABASE. The two-word phrases are matched in any case with any spacing. Bare TRUNCATE is matched only in UPPER case, and this rule is therefore CASE-SENSITIVE on that arm by design: lower-case `truncate` is also the coreutils binary and a common identifier, so matching it would block routine work \u2014 the cost is that a lower-case `truncate users;` without the `table` keyword is NOT caught. A command naming a read-only search or history tool (grep, rg, ag, ack, git commit/log/grep/blame/show) is left alone, because searching for the words is not executing them; a compound command that both searches and executes is therefore missed. Shell commands only: SQL issued from inside application code is invisible here. A quoted MENTION is not a use: a search, a `git commit -m` message, an `echo` or a `curl --data` body that only names this command is left alone. That holds only while every shell metacharacter stays inside the quotes, so `git commit -m "x" && \u2026` is still caught; and the carrier must be the first word, so `sudo grep \u2026` is not exempt.',
+  owasp: ["ASI02", "LLM03", "LLM10"],
+  title: "Block destructive SQL",
+  description: 'Blocks shell commands that execute destructive SQL DDL \u2014 DROP TABLE, TRUNCATE or DROP DATABASE. The two-word phrases are matched in any case with any spacing. Bare TRUNCATE is matched only in UPPER case, so that arm is CASE-SENSITIVE by design: lower-case `truncate` is also the coreutils binary and a common identifier, so matching it would block routine work \u2014 the cost is that a lower-case `truncate users;` without the `table` keyword is NOT caught. A command naming a read-only search or history tool (grep, rg, ag, ack, git commit/log/grep/blame/show) is left alone, because searching for the words is not executing them; a compound command that both searches and executes is therefore missed. Shell commands only: SQL issued from inside application code is invisible here. A quoted MENTION is not a use: a search, a `git commit -m` message, an `echo` or a `curl --data` body that only names this command is left alone. That holds only while every shell metacharacter stays inside the quotes, so `git commit -m "x" && \u2026` is still caught; and the carrier must be the first word, so `sudo grep \u2026` is not exempt.',
   match: {
     any_of: [
       {
@@ -2314,6 +2351,7 @@ var ddAcceptDataLoss = {
   category: "destructive-data",
   severity: "critical",
   defaultAction: "block",
+  owasp: ["ASI02", "LLM03"],
   title: "A flag that explicitly accepts data loss",
   description: 'Matches the flags whose own names admit the consequence \u2014 `--accept-data-loss` (Prisma), `--force-reset`, and `prisma db push --force`. A tool that makes you type those words has already decided a human should be in the loop. Does NOT match `prisma db push` without a flag, which is the ordinary spelling, and it cannot tell a scratch database from a real one because no connection string reaches the guard. A quoted MENTION is not a use: a search, a `git commit -m` message, an `echo` or a `curl --data` body that only names this command is left alone. That holds only while every shell metacharacter stays inside the quotes, so `git commit -m "x" && \u2026` is still caught; and the carrier must be the first word, so `sudo grep \u2026` is not exempt.',
   match: {
@@ -2350,8 +2388,9 @@ var ddDatabaseDrop = {
   category: "destructive-data",
   severity: "critical",
   defaultAction: "block",
+  owasp: ["ASI02", "LLM03"],
   title: "Dropping a database from the command line",
-  description: 'Deletes a whole database through a shell tool rather than through SQL \u2014 `dropdb`, MongoDB\'s `dropDatabase()`, and the AWS RDS delete calls. It is the companion to block-destructive-sql, which sees the SQL statement but not `dropdb myapp`, because that command contains no DROP DATABASE phrase. Known over-match: `dropdb --help` is matched too, since the rule reads command text and cannot tell a help flag from a target. It does NOT cover a drop issued by application code or by a migration tool (see dd.migration-reset). A global flag between `aws` and `rds` is tolerated (`aws --profile <p> rds delete-db-instance \u2026`, `--region <r>`); `dropdb` and `dropDatabase()` are single commands with no subcommand gap to exploit, and an absolute tool path still matches. A quoted MENTION is not a use: a search, a `git commit -m` message, an `echo` or a `curl --data` body that only names this command is left alone. That holds only while every shell metacharacter stays inside the quotes, so `git commit -m "x" && \u2026` is still caught; and the carrier must be the first word, so `sudo grep \u2026` is not exempt.',
+  description: 'Deletes a whole database through a shell tool rather than through SQL \u2014 `dropdb`, MongoDB\'s `dropDatabase()`, and the AWS RDS delete calls. It is the companion to block-destructive-sql, which sees the SQL statement but not `dropdb myapp`, because that command contains no DROP DATABASE phrase. Known over-match: `dropdb --help` is matched too, since the match reads command text and cannot tell a help flag from a target. It does NOT cover a drop issued by application code or by a migration tool (see dd.migration-reset). A global flag between `aws` and `rds` is tolerated (`aws --profile <p> rds delete-db-instance \u2026`, `--region <r>`); `dropdb` and `dropDatabase()` are single commands with no subcommand gap to exploit, and an absolute tool path still matches. A quoted MENTION is not a use: a search, a `git commit -m` message, an `echo` or a `curl --data` body that only names this command is left alone. That holds only while every shell metacharacter stays inside the quotes, so `git commit -m "x" && \u2026` is still caught; and the carrier must be the first word, so `sudo grep \u2026` is not exempt.',
   match: {
     any_of: [
       {
@@ -2390,6 +2429,7 @@ var ddDockerPruneVolumes = {
   category: "destructive-data",
   severity: "high",
   defaultAction: "require_approval",
+  owasp: ["ASI02", "LLM03"],
   title: "Docker prune with volumes deletes unused data",
   description: 'Prunes Docker volumes, deleting the data of every project whose containers are not currently running \u2014 on a developer laptop that is usually several other repositories\' databases. Routine housekeeping is deliberately NOT matched: `docker system prune -f` without `--volumes`, `docker image prune` and `docker builder prune` all pass. It cannot tell a volume you meant to discard from one you forgot was there. Global flags between `docker` and its subcommand are tolerated (`docker --context <name> system prune --volumes`, `-H <host>`), and an absolute tool path still matches; a flag that itself runs a program is not read. A quoted MENTION is not a use: a search, a `git commit -m` message, an `echo` or a `curl --data` body that only names this command is left alone. That holds only while every shell metacharacter stays inside the quotes, so `git commit -m "x" && \u2026` is still caught; and the carrier must be the first word, so `sudo grep \u2026` is not exempt.',
   match: {
@@ -2426,6 +2466,7 @@ var ddDockerVolumeDestroy = {
   category: "destructive-data",
   severity: "high",
   defaultAction: "require_approval",
+  owasp: ["ASI02", "LLM03"],
   title: "Docker volume deletion destroys container data",
   description: 'Deletes Docker volumes, which is where a database running in a container keeps its data \u2014 `docker compose down -v` is one character away from `docker compose down` and the character is the difference between stopping the stack and losing its contents. Does NOT match `docker compose down` without the flag, `docker ps`, or `docker volume ls`, and it cannot tell a throwaway test volume from the one holding your local development data. Global flags between `docker` and its subcommand are tolerated (`docker --context <name> compose down -v`, `-H <host>`), and an absolute tool path still matches; a flag that itself runs a program is not read. A quoted MENTION is not a use: a search, a `git commit -m` message, an `echo` or a `curl --data` body that only names this command is left alone. That holds only while every shell metacharacter stays inside the quotes, so `git commit -m "x" && \u2026` is still caught; and the carrier must be the first word, so `sudo grep \u2026` is not exempt.',
   match: {
@@ -2464,6 +2505,7 @@ var ddMigrationReset = {
   category: "destructive-data",
   severity: "high",
   defaultAction: "require_approval",
+  owasp: ["ASI02", "LLM03"],
   title: "Migration reset drops and rebuilds the schema",
   description: "Drops the schema and replays migrations from scratch \u2014 Prisma's `migrate reset`, Alembic's `downgrade base`, `rails db:reset`, Django's `flush`, Sequelize's `migrate:undo:all` and Drizzle's `drop`. Held for approval rather than blocked because it is the correct thing to do against a scratch database many times a day. The guard cannot see WHICH database is configured (no environment, no connection string reaches it), so it cannot distinguish a local reset from a production one. Does NOT match the forward commands (`migrate dev`, `migrate deploy`, `upgrade head`, `migrate:latest`). A quoted MENTION is not a use: a search, a `git commit -m` message, an `echo` or a `curl --data` body that only names this command is left alone. That holds only while every shell metacharacter stays inside the quotes, so `git commit -m \"x\" && \u2026` is still caught; and the carrier must be the first word, so `sudo grep \u2026` is not exempt.",
   match: {
@@ -2506,6 +2548,7 @@ var ddRmRfAbsolute = {
   category: "destructive-data",
   severity: "critical",
   defaultAction: "block",
+  owasp: ["ASI02", "LLM03"],
   title: "rm -rf against an absolute path",
   description: 'Recursive-force delete rooted at `/` rather than at a relative path. Deliberately does NOT fire on `rm -rf ./node_modules` or `rm -rf build`, which are safe and happen many times a day. Both the r and the f flag are required, so `rm -f /tmp/app.pid` is not blocked either. Known misses: the long forms (`rm --recursive --force /`), a quoted target (`rm -rf "/"`), and a variable target (`rm -rf $DIR`) whose value is only known at run time \u2014 for those, see require-approval-rm-rf, which holds them for approval instead. A quoted MENTION is not a use: a search, a `git commit -m` message, an `echo` or a `curl --data` body that only names this command is left alone. That holds only while every shell metacharacter stays inside the quotes, so `git commit -m "x" && \u2026` is still caught; and the carrier must be the first word, so `sudo grep \u2026` is not exempt.',
   match: {
@@ -2544,6 +2587,7 @@ var ddShadowCopyDelete = {
   category: "destructive-data",
   severity: "critical",
   defaultAction: "block",
+  owasp: ["ASI02", "LLM03"],
   title: "Deleting Windows shadow copies or recovery data",
   description: 'Deletes Windows shadow copies, the backup catalog, or the recovery boot entry \u2014 the standard opening move of ransomware, because it removes the only local route back from an encrypted disk. There is no legitimate reason for a coding agent to run any of it. Does NOT match the read-only siblings (`vssadmin list shadows`, `wbadmin get status`, `bcdedit /enum`), which are reasonable while diagnosing a backup. Windows-only by nature; the equivalent on macOS (`tmutil delete`) is not covered. A quoted MENTION is not a use: a search, a `git commit -m` message, an `echo` or a `curl --data` body that only names this command is left alone. That holds only while every shell metacharacter stays inside the quotes, so `git commit -m "x" && \u2026` is still caught; and the carrier must be the first word, so `sudo grep \u2026` is not exempt.',
   match: {
@@ -2592,8 +2636,9 @@ var exFileUpload = {
   category: "exfiltration",
   severity: "high",
   defaultAction: "require_approval",
+  owasp: ["ASI02", "ASI03", "LLM02"],
   title: "Uploading a local file to a remote host",
-  description: 'Holds a command that sends a local file out: `curl -T` / `--upload-file`, `curl -F name=@file`, `curl --data-binary @file`, `curl --data @file` / `-d @file`, `wget --post-file`, and an `scp` or `rsync` whose LAST argument is a remote `host:path` (an upload). It matches only the `@`-file reference forms, so a plain `curl --data "text"` or `--data-raw`, and a `curl -F name=value` with no `@`, pass \u2014 the false positive that the `mentionInPost` helper exists to prevent. Deliberately NOT matched: `scp host:path ./local` and `rsync host:src ./dst` (downloads, remote is not last), and a local-to-local `rsync ./a/ ./b/`. MISSES `-d @-` reading from stdin, a body built by command substitution (`--data "$(cat f)"`, which runs the substitution), a colon inside a local path mistaken for a host, and an upload through an SDK or MCP tool rather than a shell command. A quoted MENTION is not a use: a search, a `git commit -m` message or an `echo` that only names this command is left alone. That holds only while every shell metacharacter stays inside the quotes, so `git commit -m "x" && \u2026` is still caught; and the carrier must be the first word, so `sudo grep \u2026` is not exempt. `curl --data` is NOT one of those carriers here, because this rule\'s own trigger names `curl`: a POST body quoting an upload still asks.',
+  description: 'Holds a command that sends a local file out: `curl -T` / `--upload-file`, `curl -F name=@file`, `curl --data-binary @file`, `curl --data @file` / `-d @file`, `wget --post-file`, and an `scp` or `rsync` whose LAST argument is a remote `host:path` (an upload). It matches only the `@`-file reference forms, so a plain `curl --data "text"` or `--data-raw`, and a `curl -F name=value` with no `@`, pass \u2014 the false positive that the `mentionInPost` helper exists to prevent. Deliberately NOT matched: `scp host:path ./local` and `rsync host:src ./dst` (downloads, remote is not last), and a local-to-local `rsync ./a/ ./b/`. MISSES `-d @-` reading from stdin, a body built by command substitution (`--data "$(cat f)"`, which runs the substitution), a colon inside a local path mistaken for a host, and an upload through an SDK or MCP tool rather than a shell command. A quoted MENTION is not a use: a search, a `git commit -m` message or an `echo` that only names this command is left alone. That holds only while every shell metacharacter stays inside the quotes, so `git commit -m "x" && \u2026` is still caught; and the carrier must be the first word, so `sudo grep \u2026` is not exempt. `curl --data` is NOT one of those carriers here, because the trigger here names `curl`: a POST body quoting an upload still asks.',
   match: {
     any_of: [
       {
@@ -2644,8 +2689,9 @@ var exPasteService = {
   category: "exfiltration",
   severity: "high",
   defaultAction: "require_approval",
+  owasp: ["ASI02", "ASI03", "LLM02"],
   title: "Posting to a public paste or file-drop service",
-  description: 'Holds a command that sends content to a public paste or file-drop service: `gh gist create`, and the services `transfer.sh`, `0x0.st`, `termbin.com`, `ix.io`, `sprunge.us`, `paste.rs`, `bashupload.com`, `file.io`, `catbox.moe`, `oshi.at`, `dpaste.com` and `pastebin.com/api`. Each returns a public URL with no account, which is the fastest way to move a secret or a dump off the machine. Matched by destination \u2014 the service name, or the `gh gist create` subcommand \u2014 because the exposure is where the content lands, not how it gets there. The two whose names collide with ordinary paths \u2014 `paste.rs` (also a Rust source filename) and `file.io` \u2014 match only in a host position: after a scheme (`//`), an `@`, or a space, and ending at a `/`, a quote, or the command, so `git add src/paste.rs` and `\u2026/file.io.json` are left alone. Deliberately NOT matched: reading a paste (`gh gist list` / `view`, `curl pastebin.com/raw/\u2026`). Some of these hosts were offline at authoring time (`transfer.sh`, `ix.io`, `sprunge.us`, `bashupload.com`, `oshi.at`); their names are kept because domains revive and can be run privately. MISSES a paste service this list does not name, a private instance on another domain, an upload made through an SDK rather than a shell command, and a `paste.rs` / `file.io` upload written with no scheme (a bare host). A quoted MENTION is not a use: a search, a `git commit -m` message or an `echo` that only names this command is left alone. That holds only while every shell metacharacter stays inside the quotes, so `git commit -m "x" && \u2026` is still caught; and the carrier must be the first word, so `sudo grep \u2026` is not exempt. `curl --data` is NOT one of those carriers here, because this rule\'s own trigger can be a `curl` upload: a POST body quoting a paste command still asks.',
+  description: 'Holds a command that sends content to a public paste or file-drop service: `gh gist create`, and the services `transfer.sh`, `0x0.st`, `termbin.com`, `ix.io`, `sprunge.us`, `paste.rs`, `bashupload.com`, `file.io`, `catbox.moe`, `oshi.at`, `dpaste.com` and `pastebin.com/api`. Each returns a public URL with no account, which is the fastest way to move a secret or a dump off the machine. Matched by destination \u2014 the service name, or the `gh gist create` subcommand \u2014 because the exposure is where the content lands, not how it gets there. The two whose names collide with ordinary paths \u2014 `paste.rs` (also a Rust source filename) and `file.io` \u2014 match only in a host position: after a scheme (`//`), an `@`, or a space, and ending at a `/`, a quote, or the command, so `git add src/paste.rs` and `\u2026/file.io.json` are left alone. Deliberately NOT matched: reading a paste (`gh gist list` / `view`, `curl pastebin.com/raw/\u2026`). Some of these hosts were offline at authoring time (`transfer.sh`, `ix.io`, `sprunge.us`, `bashupload.com`, `oshi.at`); their names are kept because domains revive and can be run privately. MISSES a paste service this list does not name, a private instance on another domain, an upload made through an SDK rather than a shell command, and a `paste.rs` / `file.io` upload written with no scheme (a bare host). A quoted MENTION is not a use: a search, a `git commit -m` message or an `echo` that only names this command is left alone. That holds only while every shell metacharacter stays inside the quotes, so `git commit -m "x" && \u2026` is still caught; and the carrier must be the first word, so `sudo grep \u2026` is not exempt. `curl --data` is NOT one of those carriers here, because the trigger here can be a `curl` upload: a POST body quoting a paste command still asks.',
   match: {
     any_of: [
       {
@@ -2695,8 +2741,9 @@ var exReverseShell = {
   category: "exfiltration",
   severity: "critical",
   defaultAction: "block",
+  owasp: ["ASI02", "ASI03", "LLM02"],
   title: "Opening a reverse shell to a remote host",
-  description: 'Blocks a command that hands an interactive shell to another machine: a bash/zsh/ksh redirection to `/dev/tcp/` or `/dev/udp/`, `nc`/`ncat` with `-e` pointed at a shell, `ncat --exec` or `--sh-exec`, `socat` with an `EXEC:` or `SYSTEM:` address, and a `python -c` one-liner that imports `socket` together with `subprocess`, `pty.spawn` or `os.dup2`. This is the one rule in the pack that denies rather than asks: none of these has an ordinary use in coding work. Note that plain `sh`/`dash` lack `/dev/tcp`, which is a bash/zsh/ksh feature. Deliberately NOT matched: `nc -zv host port` (a port check), `nc -l` (a listener), `socat -V`, and a `python -c` that imports `socket` alone. MISSES a `mkfifo` back-pipe shell, whose halves are split across `;`/`|` separators, a reverse shell written in Perl, Ruby, PHP or PowerShell\'s `.NET` sockets, and `nc -e` on the OpenBSD build, where `-e` means a TLS certificate name rather than a command. A quoted MENTION is not a use: a search, a `git commit -m` message, an `echo` or a `curl --data` body that only names this command is left alone. That holds only while every shell metacharacter stays inside the quotes, so `git commit -m "x" && \u2026` is still caught; and the carrier must be the first word, so `sudo grep \u2026` is not exempt.',
+  description: 'Blocks a command that hands an interactive shell to another machine: a bash/zsh/ksh redirection to `/dev/tcp/` or `/dev/udp/`, `nc`/`ncat` with `-e` pointed at a shell, `ncat --exec` or `--sh-exec`, `socat` with an `EXEC:` or `SYSTEM:` address, and a `python -c` one-liner that imports `socket` together with `subprocess`, `pty.spawn` or `os.dup2`. This is the only one in the pack that denies rather than asks: none of these has an ordinary use in coding work. Note that plain `sh`/`dash` lack `/dev/tcp`, which is a bash/zsh/ksh feature. Deliberately NOT matched: `nc -zv host port` (a port check), `nc -l` (a listener), `socat -V`, and a `python -c` that imports `socket` alone. MISSES a `mkfifo` back-pipe shell, whose halves are split across `;`/`|` separators, a reverse shell written in Perl, Ruby, PHP or PowerShell\'s `.NET` sockets, and `nc -e` on the OpenBSD build, where `-e` means a TLS certificate name rather than a command. A quoted MENTION is not a use: a search, a `git commit -m` message, an `echo` or a `curl --data` body that only names this command is left alone. That holds only while every shell metacharacter stays inside the quotes, so `git commit -m "x" && \u2026` is still caught; and the carrier must be the first word, so `sudo grep \u2026` is not exempt.',
   match: {
     any_of: [
       {
@@ -2744,6 +2791,7 @@ var exTunnelExpose = {
   category: "exfiltration",
   severity: "high",
   defaultAction: "require_approval",
+  owasp: ["ASI02", "ASI03", "LLM02"],
   title: "Exposing a local port through a public tunnel",
   description: 'Holds a command that puts a local service on a public URL through a tunnel: `ngrok http|tcp|start`, `cloudflared tunnel`, `localtunnel` / `lt --port`, `tailscale funnel`, an `ssh -R` remote forward (including `-NR`, matched only when `ssh` is the command being run), the `serveo.net` and `localhost.run` SSH relays, `bore local`, `frpc` invoked with a flag (`frpc -c \u2026`), and `pinggy.io`. Each reaches past the firewall and gives the outside world a route in, which is a demo convenience and an exfiltration channel both. Deliberately NOT matched: `ssh -L` (a local forward, inbound to you) and `ssh -D` (a SOCKS proxy), `ngrok config check` / `--version`, `cloudflared --version`, `tailscale status` / `serve` (which stays inside the tailnet), `ssh-keygen -R host` (host-key removal, not a tunnel), a `-R` that appears only inside a quoted remote command (`ssh host "grep -R \u2026"`), and a path or filename that merely contains `frpc` (`scripts/frpc-parser.js`). MISSES a tunnel binary run under another name, a raw `ssh -R` to a private relay this list does not name, `frp` driven from its config file rather than the `frpc` command, `sudo frpc`, and an `frpc` subcommand invoked without a leading flag. A quoted MENTION is not a use: a search, a `git commit -m` message, an `echo` or a `curl --data` body that only names this command is left alone. That holds only while every shell metacharacter stays inside the quotes, so `git commit -m "x" && \u2026` is still caught; and the carrier must be the first word, so `sudo grep \u2026` is not exempt.',
   match: {
@@ -2809,8 +2857,9 @@ var fsAgentSelfConfig = {
   category: "file-scope",
   severity: "high",
   defaultAction: "require_approval",
+  owasp: ["ASI02", "LLM03"],
   title: "The agent editing its own configuration",
-  description: "Holds a file tool opening the files that define what the agent itself is allowed to do \u2014 Claude Code settings and hooks, an MCP server list, a plugin manifest, Cursor rules, a Codex config, and the guard's own config.json and guardrails.json. An agent that can edit these can widen its own reach with nobody reviewing the change. Does NOT match ordinary project files, or `.claude/commands/*.md`, which are prompts rather than permissions. Bounded to WELL-KNOWN paths: no working directory or project root reaches the guard, so it can only match names it already knows.",
+  description: "Holds a file tool opening the files that define what the agent itself is allowed to do \u2014 Claude Code settings and hooks, an MCP server list, a plugin manifest, Cursor rules, a Codex config, and the guard's own config.json and guardrails.json. An agent that can edit these can widen its own reach with nobody reviewing the change. Reading is excluded \u2014 the `Read` and `Grep` tools never match \u2014 so opening one of these files to read it is not held; every other file tool is, including one this corpus does not know. Does NOT match ordinary project files, or `.claude/commands/*.md`, which are prompts rather than permissions. Bounded to WELL-KNOWN paths: no working directory or project root reaches the guard, so it can only match names it already knows.",
   match: {
     any_of: [
       { kind: "execute_tool", file_glob: "**/.claude/settings*.json" },
@@ -2821,6 +2870,11 @@ var fsAgentSelfConfig = {
       { kind: "execute_tool", file_glob: "**/.codex/config.toml" },
       { kind: "execute_tool", file_glob: "**/.agenttrail/guard/config.json" },
       { kind: "execute_tool", file_glob: "**/.agenttrail/guard/guardrails.json" }
+    ],
+    none_of: [
+      // A read is not an edit. Named as a deny-list rather than an `any_of` over
+      // the write tools, so an unknown file tool on a matched path still holds.
+      { kind: "execute_tool", label: "{Read,Grep}" }
     ]
   },
   fixtures: {
@@ -2834,7 +2888,9 @@ var fsAgentSelfConfig = {
       file(".claude/commands/deploy.md"),
       file("src/index.ts"),
       file("package.json"),
-      file("README.md")
+      file("README.md"),
+      file(".claude/settings.json", "Read"),
+      file(".mcp.json", "Grep")
     ]
   }
 };
@@ -2843,8 +2899,9 @@ var fsCiDefinition = {
   category: "file-scope",
   severity: "medium",
   defaultAction: "require_approval",
+  owasp: ["ASI02", "LLM03"],
   title: "Editing the CI pipeline definition",
-  description: "Holds a file tool opening a CI definition \u2014 GitHub Actions workflows and composite actions, .gitlab-ci.yml, a Jenkinsfile, CircleCI, Azure Pipelines, Buildkite or Bitbucket pipelines. This is where the checks that gate every merge are written down, and where a new step would run with the repository's secrets; both edits look like an ordinary diff. Does NOT match other files under .github/ (CODEOWNERS, issue templates), which gate nothing. It MISSES a CI system whose definition lives outside the repository.",
+  description: "Holds a file tool opening a CI definition \u2014 GitHub Actions workflows and composite actions, .gitlab-ci.yml, a Jenkinsfile, CircleCI, Azure Pipelines, Buildkite or Bitbucket pipelines. This is where the checks that gate every merge are written down, and where a new step would run with the repository's secrets; both edits look like an ordinary diff. Reading is excluded \u2014 the Read and Grep tools never match \u2014 so opening a CI definition to read it is not held; every other file tool is, including one this corpus does not know. Does NOT match other files under .github/ (CODEOWNERS, issue templates), which gate nothing. It MISSES a CI system whose definition lives outside the repository.",
   match: {
     any_of: [
       { kind: "execute_tool", file_glob: "**/.github/workflows/**" },
@@ -2855,6 +2912,11 @@ var fsCiDefinition = {
       { kind: "execute_tool", file_glob: "**/azure-pipelines.yml" },
       { kind: "execute_tool", file_glob: "**/.buildkite/**" },
       { kind: "execute_tool", file_glob: "**/bitbucket-pipelines.yml" }
+    ],
+    none_of: [
+      // A read is not an edit. Named as a deny-list rather than an `any_of` over
+      // the write tools, so an unknown file tool on a matched path still holds.
+      { kind: "execute_tool", label: "{Read,Grep}" }
     ]
   },
   fixtures: {
@@ -2868,7 +2930,9 @@ var fsCiDefinition = {
       file(".github/CODEOWNERS"),
       file(".github/PULL_REQUEST_TEMPLATE.md"),
       file("package.json"),
-      file("README.md")
+      file("README.md"),
+      file(".github/workflows/ci.yml", "Read"),
+      file(".gitlab-ci.yml", "Grep")
     ]
   }
 };
@@ -2877,8 +2941,9 @@ var fsSystemPaths = {
   category: "file-scope",
   severity: "high",
   defaultAction: "require_approval",
+  owasp: ["ASI02", "LLM03"],
   title: "Writing to a system directory",
-  description: "Holds a file tool opening a path under a system directory \u2014 /etc, /bin, /sbin, /usr/bin, /usr/local/bin, /boot, /System, /Library/LaunchDaemons, or Windows/System32. HONEST CEILING: this is a list of well-known ABSOLUTE paths and it cannot be anything else. No working directory and no project root reaches the guard, so the rule you would actually want \u2014 'the agent wrote outside the project' \u2014 is inexpressible, and would match everything or nothing. It therefore MISSES a write anywhere else outside your repository, including another project on the same machine.",
+  description: "Holds a file tool writing to a path under a system directory \u2014 /etc, /bin, /sbin, /usr/bin, /usr/local/bin, /boot, /System, /Library/LaunchDaemons, or Windows/System32. Reading is excluded \u2014 the Read and Grep tools never match \u2014 so reading /etc/hosts is not held; every other file tool is, including one this corpus does not know. HONEST CEILING: this is a list of well-known ABSOLUTE paths and it cannot be anything else. No working directory and no project root reaches the guard, so the check you would actually want \u2014 'the agent wrote outside the project' \u2014 is inexpressible, and would match everything or nothing. It therefore MISSES a write anywhere else outside your repository, including another project on the same machine.",
   match: {
     any_of: [
       { kind: "execute_tool", file_glob: "/etc/**" },
@@ -2890,6 +2955,11 @@ var fsSystemPaths = {
       { kind: "execute_tool", file_glob: "/System/**" },
       { kind: "execute_tool", file_glob: "/Library/LaunchDaemons/**" },
       { kind: "execute_tool", file_glob: "**/Windows/System32/**" }
+    ],
+    none_of: [
+      // A read is not an edit. Named as a deny-list rather than an `any_of` over
+      // the write tools, so an unknown file tool on a matched path still holds.
+      { kind: "execute_tool", label: "{Read,Grep}" }
     ]
   },
   fixtures: {
@@ -2903,7 +2973,9 @@ var fsSystemPaths = {
       file("src/index.ts"),
       file("/home/dev/project/src/main.rs"),
       file("/tmp/scratch.txt", "Write"),
-      file("docs/etc-notes.md")
+      file("docs/etc-notes.md"),
+      file("/etc/hosts", "Read"),
+      file("/usr/local/bin/app", "Grep")
     ]
   }
 };
@@ -2912,8 +2984,9 @@ var fsVcsInternals = {
   category: "file-scope",
   severity: "high",
   defaultAction: "require_approval",
+  owasp: ["ASI02", "LLM03"],
   title: "Editing git's internals directly",
-  description: "Holds a file tool opening git's own bookkeeping \u2014 .git/config, .git/hooks/, .git/refs/, .git/HEAD, .git/info/exclude \u2014 where a change alters what future git commands do rather than what the repository contains. Deliberately NARROW: all of .git/** would include COMMIT_EDITMSG and the index, which change during every ordinary commit, so the rule would fire constantly and be switched off. It does NOT match .gitignore, .gitattributes or anything under .github/, which are tracked project files.",
+  description: "Holds a file tool opening git's own bookkeeping \u2014 .git/config, .git/hooks/, .git/refs/, .git/HEAD, .git/info/exclude \u2014 where a change alters what future git commands do rather than what the repository contains. Deliberately NARROW: all of .git/** would include COMMIT_EDITMSG and the index, which change during every ordinary commit, so it would fire constantly and be switched off. Reading is excluded \u2014 the Read and Grep tools never match \u2014 so opening .git/config to read it is not held; every other file tool is, including one this corpus does not know. It does NOT match .gitignore, .gitattributes or anything under .github/, which are tracked project files.",
   match: {
     any_of: [
       { kind: "execute_tool", file_glob: "**/.git/config" },
@@ -2921,6 +2994,11 @@ var fsVcsInternals = {
       { kind: "execute_tool", file_glob: "**/.git/refs/**" },
       { kind: "execute_tool", file_glob: "**/.git/HEAD" },
       { kind: "execute_tool", file_glob: "**/.git/info/exclude" }
+    ],
+    none_of: [
+      // A read is not an edit. Named as a deny-list rather than an `any_of` over
+      // the write tools, so an unknown file tool on a matched path still holds.
+      { kind: "execute_tool", label: "{Read,Grep}" }
     ]
   },
   fixtures: {
@@ -2934,7 +3012,9 @@ var fsVcsInternals = {
       file(".gitignore"),
       file(".gitattributes"),
       file(".github/CODEOWNERS"),
-      file("src/index.ts")
+      file("src/index.ts"),
+      file(".git/config", "Read"),
+      file(".git/hooks/pre-commit", "Grep")
     ]
   }
 };
@@ -2949,6 +3029,7 @@ var flagDependencyInstall = {
   category: "privilege-supply-chain",
   severity: "low",
   defaultAction: "warn",
+  owasp: ["ASI04", "LLM04", "LLM07"],
   title: "Flag new dependency installs",
   description: 'Surfaces a new third-party dependency being added \u2014 npm/pnpm/yarn/bun, pip/pipx/poetry/uv, gem, cargo, go get, composer, bundle, dotnet and mix. Non-blocking. Each form requires a PACKAGE ARGUMENT, so a lockfile restore that adds nothing \u2014 `npm ci`, `pnpm install`, `pnpm install --frozen-lockfile` \u2014 is deliberately not flagged. A global flag between the tool and its subcommand is tolerated (`npm --silent install pkg`, `pnpm -C apps/web add react`). MISSES a package named after more than one flag between the subcommand and the package, an install run through a wrapper, a dependency added by hand-editing a manifest, and the system package managers (apt, brew, apk), which install machine software rather than project dependencies. A quoted MENTION is not a use: a search, a `git commit -m` message, an `echo` or a `curl --data` body that only names this command is left alone. That holds only while every shell metacharacter stays inside the quotes, so `git commit -m "x" && \u2026` is still caught; and the carrier must be the first word, so `sudo grep \u2026` is not exempt.',
   match: {
@@ -3006,6 +3087,7 @@ var psIamGrant = {
   category: "privilege-supply-chain",
   severity: "high",
   defaultAction: "require_approval",
+  owasp: ["ASI03", "LLM03"],
   title: "Granting permissions to an identity",
   description: 'Holds a command that attaches a policy, creates an access key, adds an IAM binding or creates a Kubernetes role binding. Nothing breaks at the moment it runs \u2014 the consequence is what some other identity can do afterwards, which is exactly why a person should see it. The read verbs are deliberately NOT matched (`iam list-users`, `get-iam-policy`, `get clusterrolebindings`). It cannot judge whether the grant is narrow or wide, only that one is being made. Global flags between a cloud CLI or `kubectl` and its subcommand are tolerated (`aws --profile <p> iam \u2026`, `kubectl --context <ctx> create \u2026`), and an absolute tool path still matches; a flag that itself runs a program is not read. A quoted MENTION is not a use: a search, a `git commit -m` message, an `echo` or a `curl --data` body that only names this command is left alone. That holds only while every shell metacharacter stays inside the quotes, so `git commit -m "x" && \u2026` is still caught; and the carrier must be the first word, so `sudo grep \u2026` is not exempt.',
   match: {
@@ -3055,6 +3137,7 @@ var psPermissionWiden = {
   category: "privilege-supply-chain",
   severity: "high",
   defaultAction: "require_approval",
+  owasp: ["ASI03"],
   title: "Making a file writable by everyone",
   description: 'Holds a permission change that opens a file or directory to every account on the machine \u2014 `chmod 777`, `chmod a+rwx`, a setuid bit, or an icacls grant of full control to Everyone. It is the reflex fix for a permissions error and almost never the right one. The ordinary chmods that sit beside it are deliberately NOT matched: `chmod +x`, `chmod 644`, `chmod 755`. It cannot see WHAT is being widened, only that it is. A quoted MENTION is not a use: a search, a `git commit -m` message, an `echo` or a `curl --data` body that only names this command is left alone. That holds only while every shell metacharacter stays inside the quotes, so `git commit -m "x" && \u2026` is still caught; and the carrier must be the first word, so `sudo grep \u2026` is not exempt.',
   match: {
@@ -3093,6 +3176,7 @@ var psPersistence = {
   category: "privilege-supply-chain",
   severity: "high",
   defaultAction: "require_approval",
+  owasp: ["ASI03"],
   title: "Arranging to run again after the session ends",
   description: 'Holds a command that installs something which outlives the session \u2014 editing a crontab, loading a launch agent, creating a scheduled task, enabling a systemd unit, appending to a shell profile, or writing a Windows Run key. Reading the same things is deliberately NOT matched (`crontab -l`, `launchctl list`, `systemctl status`, `cat ~/.zshrc`). It cannot see WHAT is being scheduled, only that something is; and it MISSES persistence installed by writing a file with a file tool rather than by a shell command. A quoted MENTION is not a use: a search, a `git commit -m` message, an `echo` or a `curl --data` body that only names this command is left alone. That holds only while every shell metacharacter stays inside the quotes, so `git commit -m "x" && \u2026` is still caught; and the carrier must be the first word, so `sudo grep \u2026` is not exempt.',
   match: {
@@ -3135,6 +3219,7 @@ var psPublishArtifact = {
   category: "privilege-supply-chain",
   severity: "high",
   defaultAction: "require_approval",
+  owasp: ["ASI04", "LLM04"],
   title: "Publishing an artifact to a public registry",
   description: 'Holds a publish \u2014 npm, PyPI via twine or poetry, crates.io, RubyGems, a Docker registry, a GitHub release, or a Maven deploy. Once a version is out it is effectively permanent and other people\'s builds will fetch it, which makes this the one action in the pack whose blast radius is outside the machine. The dry runs and local builds are deliberately NOT matched (`npm pack`, `cargo package`, `docker build`, `gh release list`). It cannot tell a private registry from a public one. Global flags between `npm`/`docker` and the subcommand are tolerated (`npm --silent publish`, `docker --context <name> push \u2026`), and an absolute tool path still matches; a flag that itself runs a program is not read. A quoted MENTION is not a use: a search, a `git commit -m` message, an `echo` or a `curl --data` body that only names this command is left alone. That holds only while every shell metacharacter stays inside the quotes, so `git commit -m "x" && \u2026` is still caught; and the carrier must be the first word, so `sudo grep \u2026` is not exempt.',
   match: {
@@ -3179,6 +3264,7 @@ var psSudoWrite = {
   category: "privilege-supply-chain",
   severity: "high",
   defaultAction: "require_approval",
+  owasp: ["ASI03"],
   title: "sudo used to write or to run a shell",
   description: 'Holds a `sudo` that writes or spawns a shell \u2014 `sudo tee`, `sudo dd`, `sudo cp/mv/rm/ln/install`, `sudo chown`, `sudo sh -c` \u2014 as opposed to a `sudo` that reads or queries. The read/query forms are deliberately NOT matched: `sudo apt-get update`, `sudo -l` and `sudo systemctl status` are ordinary. It reads the command\'s own words, so it MISSES a write performed by a script invoked with sudo, and it cannot tell which path is being written to. A quoted MENTION is not a use: a search, a `git commit -m` message, an `echo` or a `curl --data` body that only names this command is left alone. That holds only while every shell metacharacter stays inside the quotes, so `git commit -m "x" && \u2026` is still caught; and the carrier must be the first word, so `sudo grep \u2026` is not exempt.',
   match: {
@@ -3226,8 +3312,9 @@ var blockProdConfigEdit = {
   category: "prod-infra",
   severity: "high",
   defaultAction: "require_approval",
+  owasp: ["ASI02", "LLM03"],
   title: "Approve production config edits",
-  description: "Routes edits to production configuration files to human approval. Matched by path: `*.prod.*` and `*.production.*`, the bare `prod.*` / `production.*` spellings, and any file under a `prod/` or `production/` directory. Prose is excluded \u2014 `.md`, `.mdx` and `.txt` never match \u2014 so writing a runbook under `docs/production/` does not ask for approval to change production. It matches the PATH only: it cannot tell a real production config from a file that merely spells prod in its name, and it MISSES a production config named something else entirely, such as `values-live.yaml`.",
+  description: "Routes edits to production configuration files to human approval. Matched by path: `*.prod.*` and `*.production.*`, the bare `prod.*` / `production.*` spellings, and any file under a `prod/` or `production/` directory. Reading is excluded \u2014 the `Read` and `Grep` tools never match \u2014 so opening a production config to look at it does not ask for approval; every other file tool does, including one this corpus does not know. Prose is excluded too \u2014 `.md`, `.mdx` and `.txt` never match \u2014 so writing a runbook under `docs/production/` does not ask for approval to change production. It matches the PATH only: it cannot tell a real production config from a file that merely spells prod in its name, and it MISSES a production config named something else entirely, such as `values-live.yaml`.",
   match: {
     any_of: [
       { kind: "execute_tool", file_glob: "**/*.prod.*" },
@@ -3238,6 +3325,9 @@ var blockProdConfigEdit = {
       { kind: "execute_tool", file_glob: "**/production/**" }
     ],
     none_of: [
+      // A read is not an edit. Named as a deny-list rather than an `any_of` over
+      // the write tools, so an unknown file tool on a matched path still holds.
+      { kind: "execute_tool", label: "{Read,Grep}" },
       { kind: "execute_tool", file_glob: "**/*.md" },
       { kind: "execute_tool", file_glob: "**/*.mdx" },
       { kind: "execute_tool", file_glob: "**/*.txt" }
@@ -3255,7 +3345,9 @@ var blockProdConfigEdit = {
       file("docs/production/README.md"),
       file("config/database.dev.yml"),
       file("src/index.ts"),
-      file("package.json")
+      file("package.json"),
+      file("config/database.prod.yml", "Read"),
+      file("k8s/production/deployment.yaml", "Grep")
     ]
   }
 };
@@ -3264,8 +3356,9 @@ var piCloudResourceDelete = {
   category: "prod-infra",
   severity: "high",
   defaultAction: "require_approval",
+  owasp: ["ASI02", "LLM03"],
   title: "Deleting a cloud resource from a vendor CLI",
-  description: 'Deletes or terminates a cloud resource through the AWS, gcloud or Azure CLI, including emptying an S3 bucket. The read verbs that sit right beside them \u2014 describe, list, get \u2014 are deliberately NOT matched. This rule reads the command\'s own words, so it cannot tell which account or project is configured, and it MISSES a delete performed through an SDK, a Terraform apply (see pi.terraform-auto-approve), or a vendor CLI other than these three. Global flags between a cloud CLI and its subcommand are tolerated (`aws --profile <p> \u2026`, `aws --region <r> \u2026`, `gcloud --project=<p> \u2026`), and an absolute tool path still matches; a flag that itself runs a program is not read. A quoted MENTION is not a use: a search, a `git commit -m` message, an `echo` or a `curl --data` body that only names this command is left alone. That holds only while every shell metacharacter stays inside the quotes, so `git commit -m "x" && \u2026` is still caught; and the carrier must be the first word, so `sudo grep \u2026` is not exempt.',
+  description: 'Deletes or terminates a cloud resource through the AWS, gcloud or Azure CLI, including emptying an S3 bucket. The read verbs that sit right beside them \u2014 describe, list, get \u2014 are deliberately NOT matched. This reads the command\'s own words, so it cannot tell which account or project is configured, and it MISSES a delete performed through an SDK, a Terraform apply (see pi.terraform-auto-approve), or a vendor CLI other than these three. Global flags between a cloud CLI and its subcommand are tolerated (`aws --profile <p> \u2026`, `aws --region <r> \u2026`, `gcloud --project=<p> \u2026`), and an absolute tool path still matches; a flag that itself runs a program is not read. A quoted MENTION is not a use: a search, a `git commit -m` message, an `echo` or a `curl --data` body that only names this command is left alone. That holds only while every shell metacharacter stays inside the quotes, so `git commit -m "x" && \u2026` is still caught; and the carrier must be the first word, so `sudo grep \u2026` is not exempt.',
   match: {
     any_of: [
       {
@@ -3306,8 +3399,9 @@ var piDeployToProd = {
   category: "prod-infra",
   severity: "high",
   defaultAction: "require_approval",
+  owasp: ["ASI02", "LLM03"],
   title: "A deploy command that names production",
-  description: 'Ships code to a production environment through a hosting CLI whose command text says so \u2014 `vercel --prod`, `netlify deploy --prod`, `serverless deploy --stage prod`, `fly deploy`, `eb deploy`, `wrangler deploy` and Capistrano\'s production task. The preview and staging siblings are deliberately NOT matched, because a rule that asks on every preview deploy is switched off before it ever sees a real one. It MISSES a deploy triggered by a git push, by CI, or by any script whose own text does not name the environment. A quoted MENTION is not a use: a search, a `git commit -m` message, an `echo` or a `curl --data` body that only names this command is left alone. That holds only while every shell metacharacter stays inside the quotes, so `git commit -m "x" && \u2026` is still caught; and the carrier must be the first word, so `sudo grep \u2026` is not exempt.',
+  description: 'Ships code to a production environment through a hosting CLI whose command text says so \u2014 `vercel --prod`, `netlify deploy --prod`, `serverless deploy --stage prod`, `fly deploy`, `eb deploy`, `wrangler deploy` and Capistrano\'s production task. The preview and staging siblings are deliberately NOT matched, because a check that asks on every preview deploy is switched off before it ever sees a real one. It MISSES a deploy triggered by a git push, by CI, or by any script whose own text does not name the environment. A quoted MENTION is not a use: a search, a `git commit -m` message, an `echo` or a `curl --data` body that only names this command is left alone. That holds only while every shell metacharacter stays inside the quotes, so `git commit -m "x" && \u2026` is still caught; and the carrier must be the first word, so `sudo grep \u2026` is not exempt.',
   match: {
     any_of: [
       {
@@ -3347,8 +3441,9 @@ var piHelmRelease = {
   category: "prod-infra",
   severity: "high",
   defaultAction: "require_approval",
+  owasp: ["ASI02", "LLM03"],
   title: "Helm uninstall / rollback / forced upgrade",
-  description: 'Removes or rewinds a Helm release, or forces an upgrade past Helm\'s own safety checks \u2014 all of which change what is running in a cluster. Does NOT match the idempotent deploy everyone actually uses (`helm upgrade --install`), nor `helm list`, `helm template` or `helm diff`. Like every rule in this pack it cannot see which cluster is selected, so it treats a local kind cluster and production identically. Global flags between `helm` and its subcommand are tolerated (`helm -n <ns> uninstall \u2026`, `--kube-context <ctx>`), and an absolute tool path still matches; a flag that itself runs a program is not read. A quoted MENTION is not a use: a search, a `git commit -m` message, an `echo` or a `curl --data` body that only names this command is left alone. That holds only while every shell metacharacter stays inside the quotes, so `git commit -m "x" && \u2026` is still caught; and the carrier must be the first word, so `sudo grep \u2026` is not exempt.',
+  description: 'Removes or rewinds a Helm release, or forces an upgrade past Helm\'s own safety checks \u2014 all of which change what is running in a cluster. Does NOT match the idempotent deploy everyone actually uses (`helm upgrade --install`), nor `helm list`, `helm template` or `helm diff`. Like everything in this pack it cannot see which cluster is selected, so it treats a local kind cluster and production identically. Global flags between `helm` and its subcommand are tolerated (`helm -n <ns> uninstall \u2026`, `--kube-context <ctx>`), and an absolute tool path still matches; a flag that itself runs a program is not read. A quoted MENTION is not a use: a search, a `git commit -m` message, an `echo` or a `curl --data` body that only names this command is left alone. That holds only while every shell metacharacter stays inside the quotes, so `git commit -m "x" && \u2026` is still caught; and the carrier must be the first word, so `sudo grep \u2026` is not exempt.',
   match: {
     any_of: [
       {
@@ -3385,6 +3480,7 @@ var piKubectlDelete = {
   category: "prod-infra",
   severity: "high",
   defaultAction: "require_approval",
+  owasp: ["ASI02", "LLM03"],
   title: "kubectl delete / drain removes running workloads",
   description: 'Deletes Kubernetes objects or drains a node, both of which stop running workloads. Held for approval rather than blocked because deleting a test deployment is routine. The guard CANNOT tell which cluster is selected \u2014 no kubeconfig, context or environment variable reaches it \u2014 so this fires the same way against a kind cluster and against production; pi.prod-namespace covers the case where the command itself names the environment. Does NOT match the read verbs (`get`, `describe`, `logs`) or `kubectl apply`. Global flags between `kubectl` and its verb are tolerated (`kubectl -n <ns> delete \u2026`, `--context <ctx>`, `--kubeconfig <f>`), and an absolute tool path still matches; a flag that itself runs a program is not read. A quoted MENTION is not a use: a search, a `git commit -m` message, an `echo` or a `curl --data` body that only names this command is left alone. That holds only while every shell metacharacter stays inside the quotes, so `git commit -m "x" && \u2026` is still caught; and the carrier must be the first word, so `sudo grep \u2026` is not exempt.',
   match: {
@@ -3426,8 +3522,9 @@ var piProdNamespace = {
   category: "prod-infra",
   severity: "high",
   defaultAction: "require_approval",
+  owasp: ["ASI02", "LLM03"],
   title: "A mutating kubectl command that names production",
-  description: 'A kubectl command that both MUTATES (delete, apply, scale, patch, replace, rollout, drain, exec, edit, set) and names a production namespace or context in its own text. Reads are deliberately NOT matched \u2014 `kubectl get pods -n production` and `kubectl logs -n production` are how you find out what is wrong. This is the only environment signal the guard has: no kubeconfig or current-context reaches it, so a mutating command against production that does not SAY production is invisible to this rule. The mutating verb and the production namespace or context may now appear in either order and after a global flag (`kubectl -n prod delete \u2026`, `kubectl --context=prod-cluster apply \u2026`), and an absolute tool path still matches; as a consequence a config write that names production (`kubectl config set-context \u2026 --namespace prod`) is also held, which is acceptable for a prompt rather than a block. A quoted MENTION is not a use: a search, a `git commit -m` message, an `echo` or a `curl --data` body that only names this command is left alone. That holds only while every shell metacharacter stays inside the quotes, so `git commit -m "x" && \u2026` is still caught; and the carrier must be the first word, so `sudo grep \u2026` is not exempt.',
+  description: 'A kubectl command that both MUTATES (delete, apply, scale, patch, replace, rollout, drain, exec, edit, set) and names a production namespace or context in its own text. Reads are deliberately NOT matched \u2014 `kubectl get pods -n production` and `kubectl logs -n production` are how you find out what is wrong. This is the only environment signal the guard has: no kubeconfig or current-context reaches it, so a mutating command against production that does not SAY production is invisible here. The mutating verb and the production namespace or context may now appear in either order and after a global flag (`kubectl -n prod delete \u2026`, `kubectl --context=prod-cluster apply \u2026`), and an absolute tool path still matches; as a consequence a config write that names production (`kubectl config set-context \u2026 --namespace prod`) is also held, which is acceptable for a prompt rather than a block. A quoted MENTION is not a use: a search, a `git commit -m` message, an `echo` or a `curl --data` body that only names this command is left alone. That holds only while every shell metacharacter stays inside the quotes, so `git commit -m "x" && \u2026` is still caught; and the carrier must be the first word, so `sudo grep \u2026` is not exempt.',
   match: {
     any_of: [
       {
@@ -3463,6 +3560,7 @@ var piTerraformAutoApprove = {
   category: "prod-infra",
   severity: "high",
   defaultAction: "require_approval",
+  owasp: ["ASI02", "LLM03"],
   title: "Terraform apply/destroy without the confirmation prompt",
   description: 'Applies or destroys infrastructure with `-auto-approve`, which removes the interactive confirmation Terraform puts there on purpose. Held for approval rather than blocked, because it is the correct flag inside CI. Does NOT match `terraform plan`, `terraform validate`, `terraform fmt`, or `terraform apply tf.plan` against a saved plan file \u2014 a saved plan was already reviewed, which is the whole point of saving it. It cannot tell which workspace or account is selected, because no environment reaches the guard. A global option between the tool and its subcommand is tolerated (`terraform -chdir=<dir> apply -auto-approve`, `--no-color`), and an absolute tool path still matches; a flag that itself runs a program is not read. A quoted MENTION is not a use: a search, a `git commit -m` message, an `echo` or a `curl --data` body that only names this command is left alone. That holds only while every shell metacharacter stays inside the quotes, so `git commit -m "x" && \u2026` is still caught; and the carrier must be the first word, so `sudo grep \u2026` is not exempt.',
   match: {
@@ -3498,6 +3596,7 @@ var piTerraformStateMutate = {
   category: "prod-infra",
   severity: "high",
   defaultAction: "require_approval",
+  owasp: ["ASI02", "LLM03"],
   title: "Hand-editing Terraform state",
   description: 'Mutates the Terraform state file directly \u2014 `state rm`, `state mv`, `state push`, `taint`, `untaint`, `force-unlock`. None of these changes any infrastructure by itself; they change what the NEXT apply believes exists, which is how a `state rm` turns into a destroyed resource two commands later. The read-only commands are deliberately NOT matched (`state list`, `state show`, `state pull`, `show`). It cannot see which backend or workspace is selected. A global option between the tool and `state`/`taint`/`force-unlock` is tolerated (`terraform -chdir=<dir> state rm \u2026`, `--no-color`), and an absolute tool path still matches; a flag that itself runs a program is not read. A quoted MENTION is not a use: a search, a `git commit -m` message, an `echo` or a `curl --data` body that only names this command is left alone. That holds only while every shell metacharacter stays inside the quotes, so `git commit -m "x" && \u2026` is still caught; and the carrier must be the first word, so `sudo grep \u2026` is not exempt.',
   match: {
@@ -3546,8 +3645,9 @@ var blockCurlPipeToShell = {
   category: "rce-supply-chain",
   severity: "critical",
   defaultAction: "block",
+  owasp: ["ASI04", "ASI05", "LLM04"],
   title: "Block curl/wget piped to a shell",
-  description: 'Blocks a downloaded script piped straight into a shell \u2014 remote code execution \u2014 so the id and the verdict agree. Catches the shell named directly, behind a path (`| /bin/bash`), or behind sudo with its own flags (`| sudo -E bash -`) \u2014 the canonical NodeSource installer \u2014 and covers sh, bash, zsh, ksh and dash. The downloader and the pipe must be on the SAME line and in that order, with no second pipe between them. Does NOT match `curl \u2026 | jq .` or `| shasum`. MISSES the command-substitution spelling (see rce.eval-dynamic), and a download followed by a separate later execution. A quoted MENTION is not a use: a search, a `git commit -m` message, an `echo` or a `curl --data` body that only names this command is left alone. That holds only while every shell metacharacter stays inside the quotes, so `git commit -m "x" && \u2026` is still caught; and the carrier must be the first word, so `sudo grep \u2026` is not exempt. `curl --data` is NOT one of those carriers here, because this rule\'s own trigger is a `curl`/`wget` pipeline: a POST body quoting a pipe-to-shell one-liner still blocks.',
+  description: 'Blocks a downloaded script piped straight into a shell \u2014 remote code execution \u2014 so the id and the verdict agree. Catches the shell named directly, behind a path (`| /bin/bash`), or behind sudo with its own flags (`| sudo -E bash -`) \u2014 the canonical NodeSource installer \u2014 and covers sh, bash, zsh, ksh and dash. The downloader and the pipe must be on the SAME line and in that order, with no second pipe between them. Does NOT match `curl \u2026 | jq .` or `| shasum`. MISSES the command-substitution spelling (see rce.eval-dynamic), and a download followed by a separate later execution. A quoted MENTION is not a use: a search, a `git commit -m` message, an `echo` or a `curl --data` body that only names this command is left alone. That holds only while every shell metacharacter stays inside the quotes, so `git commit -m "x" && \u2026` is still caught; and the carrier must be the first word, so `sudo grep \u2026` is not exempt. `curl --data` is NOT one of those carriers here, because the trigger here is a `curl`/`wget` pipeline: a POST body quoting a pipe-to-shell one-liner still blocks.',
   match: {
     any_of: [
       {
@@ -3582,8 +3682,9 @@ var rceEvalDynamic = {
   category: "rce-supply-chain",
   severity: "high",
   defaultAction: "require_approval",
+  owasp: ["ASI04", "ASI05", "LLM04"],
   title: "Executing the output of a download",
-  description: 'Holds the command-substitution spelling of remote code execution \u2014 `bash -c "$(curl \u2026)"`, `eval "$(wget \u2026)"`, and PowerShell\'s `iex (irm \u2026)`. This is the shape block-curl-pipe-to-shell cannot see, because there is no pipe. Deliberately NOT matched: `eval` of a local command, which is how direnv, ssh-agent and every shell init line work \u2014 a rule that held those would be gone by the first morning. It therefore MISSES an eval of a variable that was filled by a download two commands earlier. A quoted MENTION is not a use: a search, a `git commit -m` message, an `echo` or a `curl --data` body that only names this command is left alone. That holds only while every shell metacharacter stays inside the quotes, so `git commit -m "x" && \u2026` is still caught; and the carrier must be the first word, so `sudo grep \u2026` is not exempt. `curl --data` is NOT one of those carriers here, because this rule\'s own trigger names `curl`/`wget`; and a `$(` inside double quotes is never exempt anywhere, because the shell expands it.',
+  description: 'Holds the command-substitution spelling of remote code execution \u2014 `bash -c "$(curl \u2026)"`, `eval "$(wget \u2026)"`, and PowerShell\'s `iex (irm \u2026)`. This is the shape block-curl-pipe-to-shell cannot see, because there is no pipe. Deliberately NOT matched: `eval` of a local command, which is how direnv, ssh-agent and every shell init line work \u2014 a check that held those would be gone by the first morning. It therefore MISSES an eval of a variable that was filled by a download two commands earlier. A quoted MENTION is not a use: a search, a `git commit -m` message, an `echo` or a `curl --data` body that only names this command is left alone. That holds only while every shell metacharacter stays inside the quotes, so `git commit -m "x" && \u2026` is still caught; and the carrier must be the first word, so `sudo grep \u2026` is not exempt. `curl --data` is NOT one of those carriers here, because the trigger here names `curl`/`wget`; and a `$(` inside double quotes is never exempt anywhere, because the shell expands it.',
   match: {
     any_of: [
       {
@@ -3622,6 +3723,7 @@ var rceForeignRegistry = {
   category: "rce-supply-chain",
   severity: "high",
   defaultAction: "require_approval",
+  owasp: ["ASI04", "LLM04"],
   title: "Redirecting a package manager to another registry",
   description: "Holds a command that points npm, yarn, pip or poetry at a registry other than the default, whether for one install or by writing the config. The guard CANNOT tell a company's own Artifactory from an attacker's mirror: it has no allow-list, and nothing in a tool call would let it be given one \u2014 so it surfaces the redirection and leaves the judgement to a person. Does NOT match reading the config (`npm config get registry`) or an ordinary install. MISSES a registry set in a committed .npmrc, which is a file edit rather than a command. Global flags between the package manager and its subcommand are tolerated (`npm --silent config set registry \u2026`, `pip --no-cache-dir install \u2026`), and an absolute tool path still matches; a flag that itself runs a program is not read. A quoted MENTION is not a use: a search, a `git commit -m` message, an `echo` or a `curl --data` body that only names this command is left alone. That holds only while every shell metacharacter stays inside the quotes, so `git commit -m \"x\" && \u2026` is still caught; and the carrier must be the first word, so `sudo grep \u2026` is not exempt.",
   match: {
@@ -3662,8 +3764,9 @@ var rceRemoteRunner = {
   category: "rce-supply-chain",
   severity: "high",
   defaultAction: "require_approval",
+  owasp: ["ASI04", "ASI05", "LLM04"],
   title: "Running code straight from a URL",
-  description: 'Holds process substitution from a downloader (`bash <(curl \u2026)`) and a package runner handed a bare URL (`npx https://\u2026`, `bunx https://\u2026`). Both execute code that was never written to disk where a human could look at it. Deliberately NOT matched: `curl \u2026 | jq .`, `curl \u2026 -o setup.sh`, and `npx --yes prettier` \u2014 downloading data and running a named package are not this. MISSES a two-step download-then-execute, where each half is ordinary on its own. A quoted MENTION is not a use: a search, a `git commit -m` message, an `echo` or a `curl --data` body that only names this command is left alone. That holds only while every shell metacharacter stays inside the quotes, so `git commit -m "x" && \u2026` is still caught; and the carrier must be the first word, so `sudo grep \u2026` is not exempt. `curl --data` is NOT one of those carriers here, because this rule\'s own trigger names `curl`/`wget`: a POST body quoting one still asks.',
+  description: 'Holds process substitution from a downloader (`bash <(curl \u2026)`) and a package runner handed a bare URL (`npx https://\u2026`, `bunx https://\u2026`). Both execute code that was never written to disk where a human could look at it. Deliberately NOT matched: `curl \u2026 | jq .`, `curl \u2026 -o setup.sh`, and `npx --yes prettier` \u2014 downloading data and running a named package are not this. MISSES a two-step download-then-execute, where each half is ordinary on its own. A quoted MENTION is not a use: a search, a `git commit -m` message, an `echo` or a `curl --data` body that only names this command is left alone. That holds only while every shell metacharacter stays inside the quotes, so `git commit -m "x" && \u2026` is still caught; and the carrier must be the first word, so `sudo grep \u2026` is not exempt. `curl --data` is NOT one of those carriers here, because the trigger here names `curl`/`wget`: a POST body quoting one still asks.',
   match: {
     any_of: [
       {
@@ -3700,8 +3803,9 @@ var rceTlsVerifyOff = {
   category: "rce-supply-chain",
   severity: "high",
   defaultAction: "require_approval",
+  owasp: ["ASI04", "LLM04"],
   title: "Disabling TLS certificate verification",
-  description: "Holds a command that switches off certificate verification \u2014 curl's -k/--insecure, wget's --no-check-certificate, NODE_TLS_REJECT_UNAUTHORIZED=0, git's http.sslVerify=false, pip's --trusted-host, npm's --strict-ssl=false. Each turns an encrypted channel into one anyone on the path can rewrite, which is how a dependency download becomes an arbitrary payload. Does NOT match ordinary https requests. Known over-match: any curl short-flag cluster containing the letter k is treated as -k, since the guard parses no argv. A quoted MENTION is not a use: a search, a `git commit -m` message, an `echo` or a `curl --data` body that only names this command is left alone. That holds only while every shell metacharacter stays inside the quotes, so `git commit -m \"x\" && \u2026` is still caught; and the carrier must be the first word, so `sudo grep \u2026` is not exempt. `curl --data` is NOT one of those carriers here, because this rule's own trigger IS a `curl`/`wget` flag.",
+  description: "Holds a command that switches off certificate verification \u2014 curl's -k/--insecure, wget's --no-check-certificate, NODE_TLS_REJECT_UNAUTHORIZED=0, git's http.sslVerify=false, pip's --trusted-host, npm's --strict-ssl=false. Each turns an encrypted channel into one anyone on the path can rewrite, which is how a dependency download becomes an arbitrary payload. Does NOT match ordinary https requests. Known over-match: any curl short-flag cluster containing the letter k is treated as -k, since the guard parses no argv. A quoted MENTION is not a use: a search, a `git commit -m` message, an `echo` or a `curl --data` body that only names this command is left alone. That holds only while every shell metacharacter stays inside the quotes, so `git commit -m \"x\" && \u2026` is still caught; and the carrier must be the first word, so `sudo grep \u2026` is not exempt. `curl --data` is NOT one of those carriers here, because the trigger here IS a `curl`/`wget` flag.",
   match: {
     any_of: [
       {
@@ -3743,6 +3847,7 @@ var rceUnverifiedPackage = {
   category: "rce-supply-chain",
   severity: "medium",
   defaultAction: "require_approval",
+  owasp: ["ASI04", "ASI05", "LLM04", "LLM07"],
   title: "Installing a package from a URL or a git ref",
   description: 'Holds an install whose source is a URL, a git reference or a tarball rather than a registry name \u2014 `npm i git+https://\u2026`, `pip install git+\u2026`, `cargo install --git`, `go install \u2026@main`. A registry entry is at least a name a person recognises and a version a lockfile can pin; a moving git ref is neither. Does NOT match an ordinary registry install, which is flag-dependency-install\'s job. It MISSES a git dependency declared in a manifest file rather than typed as a command. Global flags between the package manager and its subcommand are tolerated (`npm --silent i git+\u2026`, `pip --no-cache-dir install \u2026`), and an absolute tool path still matches; `cargo` and `go` are matched by their own contiguous forms, and a flag that itself runs a program is not read. A quoted MENTION is not a use: a search, a `git commit -m` message, an `echo` or a `curl --data` body that only names this command is left alone. That holds only while every shell metacharacter stays inside the quotes, so `git commit -m "x" && \u2026` is still caught; and the carrier must be the first word, so `sudo grep \u2026` is not exempt.',
   match: {
@@ -3791,6 +3896,7 @@ var gbAdminMerge = {
   category: "safety-bypass",
   severity: "high",
   defaultAction: "require_approval",
+  owasp: ["ASI09"],
   title: "Merging past branch protection, or deleting it",
   description: 'Holds `gh pr merge --admin` (which merges without the required reviews or checks), a `gh api` call that deletes or replaces a branch-protection rule, and `gh ruleset delete`. Does NOT match an ordinary merge (`gh pr merge --squash`) or a READ of the protection settings, which is how you find out what is configured. It only sees the GitHub CLI: the same change made in the web UI, or through another client, is invisible to it. A quoted MENTION is not a use: a search, a `git commit -m` message, an `echo` or a `curl --data` body that only names this command is left alone. That holds only while every shell metacharacter stays inside the quotes, so `git commit -m "x" && \u2026` is still caught; and the carrier must be the first word, so `sudo grep \u2026` is not exempt.',
   match: {
@@ -3828,6 +3934,7 @@ var gbAnsiTerminalForgery = {
   category: "safety-bypass",
   severity: "medium",
   defaultAction: "warn",
+  owasp: ["ASI09", "LLM10"],
   title: "Emitting raw terminal control sequences",
   description: "Warns when `echo` or `printf` emits a raw terminal control sequence \u2014 the escape introducer `\\x1b`, `\\033` or `\\e` followed by `[` (a CSI: cursor moves, screen clears, colour) or `]` (an OSC: `]0;` sets the window title, `]8;;` plants a clickable hyperlink). Rendered into a terminal, log or IDE that does not neutralise them, these forge what a human reads back. This is a broad `warn` on purpose: a colourised build line trips it too, and that is an acceptable cost for a warning. Because its own trigger is an `echo`/`printf`, the `echo` quoted-MENTION carrier is NOT exempt here \u2014 an `echo` that prints an escape is exactly the case \u2014 while a search, a `git commit -m` message and a `curl --data` body that only name one are left alone. Matches the escape written as a backslash sequence in the command text. MISSES a raw ESC byte pasted literally, a sequence printed by a compiled program or a script file rather than an inline `echo`/`printf`, and `tput`, which reads terminfo and emits nothing literal in the command. The exemption holds only while every shell metacharacter stays inside the quotes.",
   match: {
@@ -3865,6 +3972,7 @@ var gbAuditTrailPurge = {
   category: "safety-bypass",
   severity: "high",
   defaultAction: "require_approval",
+  owasp: ["ASI09"],
   title: "Erasing shell history or system logs",
   description: 'Holds a command that erases the record of what ran: `history -c` / `-w`, `unset HISTFILE`, `HISTFILE=/dev/null`, `HISTSIZE=0`, `set +o history`, PowerShell\'s `Clear-History`; deleting or truncating a `*_history` file (`rm`, `truncate`, `shred`, `: >`); `journalctl --vacuum-time` / `--vacuum-size` / `--vacuum-files` / `--rotate`; `rm -rf`, `truncate` or `shred` against `/var/log`; and `git reflog expire --expire=now` or `git gc --prune=now`, which drop the safety net a history rewrite would otherwise leave. A READ is not matched: `history` on its own, `history | tail`, `journalctl --since`, `git reflog`, `git reflog show`, and a plain `git gc`. MISSES `HISTFILE` unset in a shell profile rather than at the prompt, a log truncated with an editor or a file tool, and a purge run by a tool other than these. A global flag between `git` and `reflog`/`gc` is tolerated (`git -C <dir> reflog expire \u2026`, `--no-pager`, `-c k=v`), and an absolute tool path such as `/usr/bin/git` still matches; a flag that itself runs a program is not read. A quoted MENTION is not a use: a search, a `git commit -m` message, an `echo` or a `curl --data` body that only names this command is left alone. That holds only while every shell metacharacter stays inside the quotes, so `git commit -m "x" && \u2026` is still caught; and the carrier must be the first word, so `sudo grep \u2026` is not exempt.',
   match: {
@@ -3925,6 +4033,7 @@ var gbExecutionPolicyBypass = {
   category: "safety-bypass",
   severity: "high",
   defaultAction: "require_approval",
+  owasp: ["ASI09"],
   title: "Bypassing the PowerShell execution policy",
   description: 'Holds `Set-ExecutionPolicy Bypass/Unrestricted` and the `-ExecutionPolicy Bypass` launch flag, which together are the opening line of essentially every PowerShell-based loader. It is also occasionally what a developer legitimately needs, which is why it holds rather than blocks. Does NOT match reading the policy (`Get-ExecutionPolicy`), setting it to RemoteSigned, or an ordinary `powershell -Command`. Windows-only by nature. A quoted MENTION is not a use: a search, a `git commit -m` message, an `echo` or a `curl --data` body that only names this command is left alone. That holds only while every shell metacharacter stays inside the quotes, so `git commit -m "x" && \u2026` is still caught; and the carrier must be the first word, so `sudo grep \u2026` is not exempt.',
   match: {
@@ -3960,8 +4069,9 @@ var gbGitNoVerify = {
   category: "safety-bypass",
   severity: "medium",
   defaultAction: "require_approval",
+  owasp: ["ASI09"],
   title: "git --no-verify skips the hooks the team installed",
-  description: 'Commits, pushes or merges with `--no-verify`, which skips the pre-commit and pre-push hooks a team installed on purpose \u2014 the formatter, the type check, the secret scanner. It is the most common way a check everyone believes is running turns out not to be. Deliberately does NOT widen to skipping tests in general: `mvn -DskipTests package` is ordinary work and is asserted as a negative. Known over-match: a `-n` anywhere in a `git commit` line, including inside a message. Global flags between `git` and its subcommand are tolerated (`git -C <dir> commit --no-verify`, `--no-pager`, `-c k=v`), and an absolute tool path such as `/usr/bin/git` still matches; a flag that itself runs a program is not read. A quoted MENTION is not a use: a search, a `git commit -m` message, an `echo` or a `curl --data` body that only names this command is left alone. That holds only while every shell metacharacter stays inside the quotes, so `git commit -m "x" && \u2026` is still caught; and the carrier must be the first word, so `sudo grep \u2026` is not exempt. `git commit` is NOT one of those carriers here, because this rule\'s own trigger is a flag of `git commit`: a commit message that quotes `--no-verify` still asks.',
+  description: 'Commits, pushes or merges with `--no-verify`, which skips the pre-commit and pre-push hooks a team installed on purpose \u2014 the formatter, the type check, the secret scanner. It is the most common way a check everyone believes is running turns out not to be. Deliberately does NOT widen to skipping tests in general: `mvn -DskipTests package` is ordinary work and is asserted as a negative. Known over-match: a `-n` anywhere in a `git commit` line, including inside a message. Global flags between `git` and its subcommand are tolerated (`git -C <dir> commit --no-verify`, `--no-pager`, `-c k=v`), and an absolute tool path such as `/usr/bin/git` still matches; a flag that itself runs a program is not read. A quoted MENTION is not a use: a search, a `git commit -m` message, an `echo` or a `curl --data` body that only names this command is left alone. That holds only while every shell metacharacter stays inside the quotes, so `git commit -m "x" && \u2026` is still caught; and the carrier must be the first word, so `sudo grep \u2026` is not exempt. `git commit` is NOT one of those carriers here, because the trigger here is a flag of `git commit`: a commit message that quotes `--no-verify` still asks.',
   match: {
     any_of: [
       {
@@ -4000,6 +4110,7 @@ var gbHooksDisable = {
   category: "safety-bypass",
   severity: "medium",
   defaultAction: "require_approval",
+  owasp: ["ASI09"],
   title: "Disabling git hooks at the source",
   description: 'Holds a command that turns git hooks off permanently rather than for one commit \u2014 repointing `core.hooksPath`, setting HUSKY=0 or HUSKY_SKIP_HOOKS, or deleting/unsetting the executable bit on files in `.git/hooks/`. A READ of the setting (`git config core.hooksPath` with no value) is not matched. Nothing about the next commit looks any different afterwards, which is what makes it worth a prompt. Does NOT match other `git config` writes (`user.email`, `core.pager`) or installing hooks (`husky install`). It MISSES a hooksPath set through an environment variable in a shell profile. A global flag between `git` and `config` is tolerated (`git -C <dir> config \u2026`, `--no-pager`, `-c k=v`), and an absolute tool path such as `/usr/bin/git` still matches; a flag that itself runs a program is not read. A quoted MENTION is not a use: a search, a `git commit -m` message, an `echo` or a `curl --data` body that only names this command is left alone. That holds only while every shell metacharacter stays inside the quotes, so `git commit -m "x" && \u2026` is still caught; and the carrier must be the first word, so `sudo grep \u2026` is not exempt.',
   match: {
@@ -4039,6 +4150,7 @@ var gbHostKeyBypass = {
   category: "safety-bypass",
   severity: "high",
   defaultAction: "require_approval",
+  owasp: ["ASI09"],
   title: "Accepting any SSH host key",
   description: 'Holds `StrictHostKeyChecking=no`, a `UserKnownHostsFile` pointed at /dev/null, or a blind `ssh-keyscan` appended to known_hosts. Host-key checking exists to notice one thing \u2014 that the machine you reached is the machine you meant \u2014 and each of these is how it stops noticing. Does NOT match ordinary ssh, git-over-ssh or key generation. It cannot tell a CI runner (where this is sometimes the pragmatic answer) from a developer laptop, because no environment reaches the guard. A quoted MENTION is not a use: a search, a `git commit -m` message, an `echo` or a `curl --data` body that only names this command is left alone. That holds only while every shell metacharacter stays inside the quotes, so `git commit -m "x" && \u2026` is still caught; and the carrier must be the first word, so `sudo grep \u2026` is not exempt.',
   match: {
@@ -4085,6 +4197,7 @@ var blockEnvFileRead = {
   category: "secret-exposure",
   severity: "high",
   defaultAction: "warn",
+  owasp: ["ASI02", "ASI03", "LLM02"],
   title: "Flag reading a .env file",
   description: "Warns when a file tool READS a dotenv file \u2014 the `Read` and `Grep` tools \u2014 at both the `.env*` spelling at any depth and the `<name>.env` spelling (production.env, secrets.env). A WRITE is deliberately NOT flagged (`Edit`, `Write`, `MultiEdit`, `NotebookEdit`, and Cursor's `Delete`), because creating or editing config is ordinary work and the exposure this catches is an agent reading an existing secret, so the id names the read. A committed placeholder is NOT flagged either (.env.example, .env.sample, .env.template), because warning on a file that holds no secret teaches the reader to ignore the warning. Matches file-tool access by path: reading a .env through a shell command such as `cat .env` is a command span and is covered by se.env-print instead. It also cannot tell whether the file actually contains a secret.",
   match: {
@@ -4122,8 +4235,9 @@ var blockHardcodedSecrets = {
   category: "secret-exposure",
   severity: "critical",
   defaultAction: "block",
+  owasp: ["ASI02", "ASI03", "LLM02"],
   title: "Block hard-coded secrets in commands",
-  description: "Blocks a shell command carrying a credential with the right SHAPE \u2014 an AWS access-key id (AKIA/ASIA plus 16 more characters), a GitHub token (gh?_ with a body of at least 36 characters, or github_pat_ with a long one), a Stripe live key, or PEM PRIVATE key material. Three arms are CASE-SENSITIVE and use detail_contains deliberately: these prefixes are upper- or lower-case by specification, so case IS the signal, and the length check in the same condition is what makes the difference between a mention and a key. Requiring the body is why auditing your own repo for a leak (`grep -rn AKIA .`) is not itself blocked, and requiring PRIVATE KEY beside -----BEGIN is why a public certificate is not. MISSES formats not listed (Slack, OpenAI, Google) and any secret that is not self-identifying, such as a bare password; and it sees command text only, never the contents of a file edit. A quoted MENTION is exempt on only TWO of the four carriers this corpus recognises, and this is the one rule where they are not equivalent \u2014 because here the carrier IS the exposure rather than a mention of it. A search (`grep -rn AKIA .`) and an `echo` are exempt: the key goes nowhere, and searching for one is how you find it to rotate. A `git commit -m` message and a `curl --data` body are NOT: a key in a commit message is written into history and then pushed, and a key in a POST body has already left the machine. The cost of that, stated in the other direction: documenting a REAL-looking key in a commit message is still blocked, and the only ways through are to redact the body of the key or to use a placeholder that fails the length check. Exemption also holds only while every shell metacharacter stays inside the quotes, and a single leading `sudo` aside, the carrier must be the first word.",
+  description: "Blocks a shell command carrying a credential with the right SHAPE \u2014 an AWS access-key id (AKIA/ASIA plus 16 more characters), a GitHub token (gh?_ with a body of at least 36 characters, or github_pat_ with a long one), a Stripe live key, or PEM PRIVATE key material. Three arms are CASE-SENSITIVE and use detail_contains deliberately: these prefixes are upper- or lower-case by specification, so case IS the signal, and the length check in the same condition is what makes the difference between a mention and a key. Requiring the body is why auditing your own repo for a leak (`grep -rn AKIA .`) is not itself blocked, and requiring PRIVATE KEY beside -----BEGIN is why a public certificate is not. MISSES formats not listed (Slack, OpenAI, Google) and any secret that is not self-identifying, such as a bare password; and it sees command text only, never the contents of a file edit. A quoted MENTION is exempt on only TWO of the four carriers this corpus recognises, and this is the only case where they are not equivalent \u2014 because here the carrier IS the exposure rather than a mention of it. A search (`grep -rn AKIA .`) and an `echo` are exempt: the key goes nowhere, and searching for one is how you find it to rotate. A `git commit -m` message and a `curl --data` body are NOT: a key in a commit message is written into history and then pushed, and a key in a POST body has already left the machine. The cost of that, stated in the other direction: documenting a REAL-looking key in a commit message is still blocked, and the only ways through are to redact the body of the key or to use a placeholder that fails the length check. Exemption also holds only while every shell metacharacter stays inside the quotes, and a single leading `sudo` aside, the carrier must be the first word.",
   match: {
     any_of: [
       { kind: "execute_tool", detail_contains: ["AKIA"], detail_matches: ["AKIA[0-9A-Z]{16}"] },
@@ -4139,8 +4253,8 @@ var blockHardcodedSecrets = {
       },
       { kind: "execute_tool", detail_contains: ["-----BEGIN ", "PRIVATE KEY"] }
     ],
-    // Only TWO of the four carriers are exempt here, and this is the one rule where
-    // that is true. For every other rule a carrier is inert — a commit message naming
+    // Only TWO of the four carriers are exempt here, and this is the one guardrail where
+    // that is true. For every other guardrail a carrier is inert — a commit message naming
     // `rm -rf /` deletes nothing. Here the carrier IS the exposure: a live key in a
     // commit message is written into history and pushed, and a live key in a POST
     // body has already left the machine. Searching for a key is how you find one to
@@ -4153,7 +4267,7 @@ var blockHardcodedSecrets = {
       bash(`export AWS_ACCESS_KEY_ID=ASIA${"EXAMPLE".repeat(3).slice(0, 16)}`),
       bash(`export GH_TOKEN=ghp_${"EXAMPLE".repeat(6)}`),
       bash("ssh-add - <<< '-----BEGIN OPENSSH PRIVATE KEY-----'"),
-      // The carrier rule above, as fixtures. These two are `block` — MUST
+      // The carrier exemption above, as fixtures. These two are `block` — MUST
       // match — precisely because they are quoted mentions, which everywhere else
       // in this corpus means "leave it alone".
       mentionInCommit("export AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE"),
@@ -4175,8 +4289,9 @@ var requireAuthOnPiiEndpoints = {
   category: "secret-exposure",
   severity: "medium",
   defaultAction: "require_approval",
+  owasp: ["ASI02", "ASI03", "LLM02"],
   title: "Review API endpoint changes for auth",
-  description: "Routes edits to API route/handler SOURCE files to human approval so a reviewer can confirm authentication is present on new or changed endpoints. Matched by path: a source file under routes/, handlers/ or controllers/; an api/ directory nested inside a source tree (src/api/, app/api/, pages/api/); Next's route.ts convention; and the <name>.controller.* / <name>.routes.* spellings. HEURISTIC: a path signal only \u2014 it cannot inspect the edit for a missing auth check or exposed PII, so treat a match as confirm auth on this endpoint, not as a finding. It deliberately does NOT match every file in a package merely NAMED api, nor a client-side router table such as routes.tsx, which defines no endpoint; and it MISSES endpoints declared inline in a server file or by a framework convention not listed above.",
+  description: "Routes edits to API route/handler SOURCE files to human approval so a reviewer can confirm authentication is present on new or changed endpoints. Matched by path: a source file under routes/, handlers/ or controllers/; an api/ directory nested inside a source tree (src/api/, app/api/, pages/api/); Next's route.ts convention; and the <name>.controller.* / <name>.routes.* spellings. Reading is excluded \u2014 the Read and Grep tools never match \u2014 so opening an endpoint's source to read it does not ask for approval; every other file tool does, including one this corpus does not know. HEURISTIC: a path signal only \u2014 it cannot inspect the edit for a missing auth check or exposed PII, so treat a match as confirm auth on this endpoint, not as a finding. It deliberately does NOT match every file in a package merely NAMED api, nor a client-side router table such as routes.tsx, which defines no endpoint; and it MISSES endpoints declared inline in a server file or by a framework convention not listed above.",
   match: {
     any_of: [
       { kind: "execute_tool", file_glob: `**/routes/**/*.${SOURCE}` },
@@ -4188,6 +4303,11 @@ var requireAuthOnPiiEndpoints = {
       { kind: "execute_tool", file_glob: `**/route.${SOURCE}` },
       { kind: "execute_tool", file_glob: `**/*.controller.${SOURCE}` },
       { kind: "execute_tool", file_glob: `**/*.routes.${SOURCE}` }
+    ],
+    none_of: [
+      // A read is not an edit. Named as a deny-list rather than an `any_of` over
+      // the write tools, so an unknown file tool on a matched path still holds.
+      { kind: "execute_tool", label: "{Read,Grep}" }
     ]
   },
   fixtures: {
@@ -4201,7 +4321,9 @@ var requireAuthOnPiiEndpoints = {
       file("apps/api/README.md"),
       file("apps/api/package.json"),
       file("apps/api/src/lib/logger.ts"),
-      file("apps/web/src/app/routes.tsx")
+      file("apps/web/src/app/routes.tsx"),
+      file("src/api/users.ts", "Read"),
+      file("src/controllers/payments.ts", "Grep")
     ]
   }
 };
@@ -4210,6 +4332,7 @@ var seCredentialFile = {
   category: "secret-exposure",
   severity: "high",
   defaultAction: "require_approval",
+  owasp: ["ASI02", "ASI03", "LLM02"],
   title: "Opening a file that holds credentials",
   description: "Holds a file tool opening a path where credentials live \u2014 an SSH private key, an AWS credentials file, a PEM/P12/PFX/JKS keystore, `.npmrc` or `.pypirc` (which hold registry tokens), a Docker config, or a kubeconfig. Public keys are excluded (`*.pub`). It matches the PATH ONLY: it cannot tell whether the file actually holds a secret, so a `.pem` that is a public certificate is held too, and a credential in a file named something else is missed entirely. `.env` files are covered separately by block-env-file-read.",
   match: {
@@ -4247,6 +4370,7 @@ var seEnvPrint = {
   category: "secret-exposure",
   severity: "medium",
   defaultAction: "warn",
+  owasp: ["ASI02", "ASI03", "LLM02"],
   title: "Printing the environment or a dotenv file",
   description: 'Surfaces the environment or a dotenv file being printed into the terminal, where it lands in scrollback and in the session transcript. Committed placeholder files are excluded (`.env.example`, `.env.sample`, `.env.template`). Does NOT match the POSIX `env VAR=value <command>` form, which sets a variable rather than printing one, and does NOT match a `.env` opened by a file tool \u2014 that travels the file channel and is covered by block-env-file-read. A quoted MENTION is not a use: a search, a `git commit -m` message, an `echo` or a `curl --data` body that only names this command is left alone. That holds only while every shell metacharacter stays inside the quotes, so `git commit -m "x" && \u2026` is still caught; and the carrier must be the first word, so `sudo grep \u2026` is not exempt.',
   match: {
@@ -4294,6 +4418,7 @@ var sePublicAcl = {
   category: "secret-exposure",
   severity: "high",
   defaultAction: "require_approval",
+  owasp: ["ASI02", "ASI03", "LLM02"],
   title: "Making cloud storage publicly readable",
   description: 'Holds a command that opens object storage to the public \u2014 an S3 `--acl public-read`, a GCS binding to allUsers, an Azure container set to blob or container access, or turning off S3 public-access blocking. The private spellings of the same commands are deliberately NOT matched. It reads the command\'s own words, so a bucket made public through a console, a Terraform apply, or a bucket policy JSON file is invisible to it. Global flags between a storage CLI and its subcommand are tolerated (`aws --profile <p> s3api \u2026`, `gcloud --project=<p> storage \u2026`), and an absolute tool path still matches; a flag that itself runs a program is not read. A quoted MENTION is not a use: a search, a `git commit -m` message, an `echo` or a `curl --data` body that only names this command is left alone. That holds only while every shell metacharacter stays inside the quotes, so `git commit -m "x" && \u2026` is still caught; and the carrier must be the first word, so `sudo grep \u2026` is not exempt.',
   match: {
@@ -4335,8 +4460,9 @@ var seSecretEgress = {
   category: "secret-exposure",
   severity: "high",
   defaultAction: "require_approval",
+  owasp: ["ASI02", "ASI03", "LLM02"],
   title: "Sending a credential file off the machine",
-  description: 'Holds a command that both names a credential-shaped file (.env, .pem, id_rsa, a credentials file) and hands it to a transport (curl, wget, nc, scp, rsync) in the same pipeline segment. Either half alone is ordinary, which is why both are required. It cannot read the file, so it judges by the PATH: a secret copied into a differently-named file first, or sent by application code, is invisible to it. It also does not cover an upload through a browser or an SDK. A quoted MENTION is not a use: a search, a `git commit -m` message, an `echo` or a `curl --data` body that only names this command is left alone. That holds only while every shell metacharacter stays inside the quotes, so `git commit -m "x" && \u2026` is still caught; and the carrier must be the first word, so `sudo grep \u2026` is not exempt. `curl --data` is NOT one of those carriers here: POSTing the quoted text off the box is precisely the harm this rule exists to catch.',
+  description: 'Holds a command that both names a credential-shaped file (.env, .pem, id_rsa, a credentials file) and hands it to a transport (curl, wget, nc, scp, rsync) in the same pipeline segment. Either half alone is ordinary, which is why both are required. It cannot read the file, so it judges by the PATH: a secret copied into a differently-named file first, or sent by application code, is invisible to it. It also does not cover an upload through a browser or an SDK. A quoted MENTION is not a use: a search, a `git commit -m` message, an `echo` or a `curl --data` body that only names this command is left alone. That holds only while every shell metacharacter stays inside the quotes, so `git commit -m "x" && \u2026` is still caught; and the carrier must be the first word, so `sudo grep \u2026` is not exempt. `curl --data` is NOT one of those carriers here: POSTing the quoted text off the box is precisely the harm this exists to catch.',
   match: {
     any_of: [
       {
@@ -4373,6 +4499,7 @@ var seSecretManagerRead = {
   category: "secret-exposure",
   severity: "medium",
   defaultAction: "warn",
+  owasp: ["ASI02", "ASI03", "LLM02"],
   title: "Reading a secret out of a secrets manager",
   description: 'Surfaces a secret being read from AWS Secrets Manager or SSM, HashiCorp Vault, Google Secret Manager, Azure Key Vault, a Kubernetes secret dumped as yaml or json, or Doppler. Non-blocking: this is a normal step in a normal day, and the value is that it is visible afterwards. The listing commands are deliberately NOT matched (`list-secrets`, `vault status`, `kubectl get secrets` without an output flag). It does NOT see a secret read by application code, by an SDK, or from an environment variable already in the process. Global flags between a secrets CLI and its subcommand are tolerated (`aws --profile <p> secretsmanager \u2026`, `kubectl -n <ns> get secret \u2026`, `--region <r>`), and an absolute tool path still matches; a flag that itself runs a program is not read. A quoted MENTION is not a use: a search, a `git commit -m` message, an `echo` or a `curl --data` body that only names this command is left alone. That holds only while every shell metacharacter stays inside the quotes, so `git commit -m "x" && \u2026` is still caught; and the carrier must be the first word, so `sudo grep \u2026` is not exempt.',
   match: {
@@ -4416,8 +4543,9 @@ var seTokenPrint = {
   category: "secret-exposure",
   severity: "medium",
   defaultAction: "warn",
+  owasp: ["ASI02", "ASI03", "LLM02"],
   title: "Printing an access token into the terminal",
-  description: 'Surfaces a command that prints a live credential \u2014 `gh auth token`, `npm token list`, an `echo` of a token-shaped variable, a `docker login` with the password on the command line, or a `.netrc` dump. Non-blocking, because seeing your own token is sometimes exactly what you need. The status siblings are deliberately NOT matched (`gh auth status`, `npm whoami`). It cannot tell whether the output is redirected, and it does NOT match a variable whose name does not contain token, secret, key or password. Global flags between `npm`/`docker` and the subcommand are tolerated (`npm --silent token list`, `docker --context <name> login \u2026`), and an absolute tool path still matches; `gh` has no global flag before its subcommand, and a flag that itself runs a program is not read. A quoted MENTION is not a use: a search, a `git commit -m` message, an `echo` or a `curl --data` body that only names this command is left alone. That holds only while every shell metacharacter stays inside the quotes, so `git commit -m "x" && \u2026` is still caught; and the carrier must be the first word, so `sudo grep \u2026` is not exempt. `echo` is NOT one of those carriers here, because this rule\'s own trigger IS an `echo`: printing a quoted `$TOKEN` still warns.',
+  description: 'Surfaces a command that prints a live credential \u2014 `gh auth token`, `npm token list`, an `echo` of a token-shaped variable, a `docker login` with the password on the command line, or a `.netrc` dump. Non-blocking, because seeing your own token is sometimes exactly what you need. The status siblings are deliberately NOT matched (`gh auth status`, `npm whoami`). It cannot tell whether the output is redirected, and it does NOT match a variable whose name does not contain token, secret, key or password. Global flags between `npm`/`docker` and the subcommand are tolerated (`npm --silent token list`, `docker --context <name> login \u2026`), and an absolute tool path still matches; `gh` has no global flag before its subcommand, and a flag that itself runs a program is not read. A quoted MENTION is not a use: a search, a `git commit -m` message, an `echo` or a `curl --data` body that only names this command is left alone. That holds only while every shell metacharacter stays inside the quotes, so `git commit -m "x" && \u2026` is still caught; and the carrier must be the first word, so `sudo grep \u2026` is not exempt. `echo` is NOT one of those carriers here, because the trigger here IS an `echo`: printing a quoted `$TOKEN` still warns.',
   match: {
     any_of: [
       {
@@ -4459,6 +4587,7 @@ var warnOpReadSecret = {
   category: "secret-exposure",
   severity: "info",
   defaultAction: "warn",
+  owasp: ["ASI02", "ASI03", "LLM02"],
   title: "Flag `op read` secret access",
   description: 'Surfaces a secret read through the 1Password CLI (op read, op item get, op document get, op inject) so secret access gets a second look without breaking routine dev flow. Severity is `info` rather than `low` deliberately: it is warn-only over one narrow path, and `low` would overstate it. The words are matched on WORD BOUNDARIES, so a commit message containing `stop reading from cache` no longer trips it. MISSES secrets read via another CLI (aws, vault, gcloud \u2014 see se.secret-manager-read), a .env opened by a file tool, and an `op` wrapper script whose own text does not name the subcommand. A quoted MENTION is not a use: a search, a `git commit -m` message, an `echo` or a `curl --data` body that only names this command is left alone. That holds only while every shell metacharacter stays inside the quotes, so `git commit -m "x" && \u2026` is still caught; and the carrier must be the first word, so `sudo grep \u2026` is not exempt.',
   match: {
@@ -4504,6 +4633,7 @@ var tiCiSkipMarker = {
   category: "test-integrity",
   severity: "medium",
   defaultAction: "warn",
+  owasp: ["ASI09"],
   title: "Telling CI to skip a commit or push",
   description: "Warns on a commit or push that tells CI not to run: a `git commit` whose message carries `[skip ci]`, `[ci skip]`, `[no ci]`, `[skip actions]`, `[actions skip]`, Azure Pipelines' `[skip azp]` family or `***NO_CI***`, or a `skip-checks: true` trailer, and `git push -o ci.skip` / `--push-option=ci.skip`. GitHub Actions, GitLab, Azure Pipelines, CircleCI and Bitbucket each honour some of these, in any letter case, so the change lands with no check run against it. Deliberately NOT matched: `skip-checks: false`, near misses such as `[ci-skip]` or `[skip deploy]`, other push options, and a commit message that only names `git push -o ci.skip`. Misses a message read from a file (`git commit -F msg.txt`), a marker added when a pull request is merged on the hosting site, and a push option set in git config. A global flag between `git` and `commit`/`push` is tolerated (`git -C <dir> commit \u2026`, `--no-pager`, `-c k=v`), and an absolute tool path such as `/usr/bin/git` still matches; a flag that itself runs a program is not read. A quoted MENTION is not a use: a search, an `echo` or a `curl --data` body that only names this command is left alone, as long as every shell metacharacter stays inside the quotes. `git commit` is NOT one of those carriers here: the marker is read from the commit message, so a message that quotes `[skip ci]` does skip CI and still warns.",
   match: {
@@ -4561,6 +4691,7 @@ var tiCoverageBypass = {
   category: "test-integrity",
   severity: "medium",
   defaultAction: "warn",
+  owasp: ["ASI09"],
   title: "Passing a test run with no tests or no coverage gate",
   description: "Warns on a test run told to pass with nothing to check, or with its coverage gate off: `--passWithNoTests` (Jest, Vitest), pytest-cov's `--no-cov` and `--cov-fail-under=0`, `--coverage=false`, `--collectCoverage=false`, `--coverage.enabled=false` and `--no-coverage`, nyc's and c8's `--check-coverage=false` and `--no-check-coverage`, and a Vitest coverage threshold set to 0 on the command line. Each turns a check that would fail into one that reports success. A warning, not a hold: running without coverage locally is common. Deliberately NOT matched: `--no-cov-on-fail`, `--check-coverage` on its own, which makes the gate stricter, and a non-zero threshold. Misses a threshold lowered to any other number, a gate switched off in a config file (`ti.test-config-edit` holds the dedicated ones), and a coverage step removed from a CI workflow (`fs.ci-definition` holds those files). A quoted MENTION is not a use: a search, a `git commit -m` message, an `echo` or a `curl --data` body that only names this command is left alone. That holds only while every shell metacharacter stays inside the quotes, so `git commit -m \"x\" && \u2026` is still caught; and the carrier must be the first word, so `sudo grep \u2026` is not exempt.",
   match: {
@@ -4625,6 +4756,7 @@ var tiInlineSuppressBulk = {
   category: "test-integrity",
   severity: "medium",
   defaultAction: "warn",
+  owasp: ["ASI09"],
   title: "Inserting suppressions or test skips with sed or perl",
   description: "Warns on an in-place `sed` or `perl` edit whose script contains a suppression or skip marker: `@ts-ignore`, `@ts-expect-error`, `@ts-nocheck`, `eslint-disable`, `# type: ignore`, `# noqa`, `# pragma: no cover`, `it.skip` / `test.skip` / `describe.skip`, `xit` / `xdescribe` / `xtest`, `@pytest.mark.skip`, Rust's `#[ignore]` and Go's `t.Skip`. One such command can silence a type error, a lint rule or a failing test across many files at once. It matches the in-place flag (`-i`, `-i.bak`, `-Ei`, `--in-place`, `perl -pi`) followed by a script naming a marker. It cannot parse the script, so it does not tell a replacement that inserts a marker from one that removes it, except the `/\u2026/d` delete-line form, which is deliberately NOT matched; neither are `sed -n` and `perl -ne`, which only print. Misses a marker added with a file tool \u2014 the Edit tool carries no content \u2014 an in-place flag written after the script, and a marker assembled from pieces. Over-matches `perl -I<dir>`, which the case-insensitive match reads as `-i`. A quoted MENTION is not a use: a search, a `git commit -m` message, an `echo` or a `curl --data` body that only names this command is left alone. That holds only while every shell metacharacter stays inside the quotes, so `git commit -m \"x\" && \u2026` is still caught; and the carrier must be the first word, so `sudo grep \u2026` is not exempt.",
   match: {
@@ -4673,6 +4805,7 @@ var tiSnapshotBlanketUpdate = {
   category: "test-integrity",
   severity: "medium",
   defaultAction: "warn",
+  owasp: ["ASI09"],
   title: "Overwriting every stored snapshot with current output",
   description: "Warns on a test run told to overwrite stored snapshots with whatever the code produces now: Jest's `-u` / `--updateSnapshot`, Vitest's `-u` / `--update`, Playwright's and Bun's `--update-snapshots`, the same flags passed through `npm test`, `pnpm test` or `yarn test`, pytest's `--snapshot-update` (syrupy and pytest-snapshot), `cargo insta accept`, `cargo insta test --accept`, and `INSTA_UPDATE=always`. A snapshot that no longer matches is a failing test, and accepting every difference at once makes it pass without anyone reading the diff. A warning, not a hold: regenerating snapshots after an intended change is ordinary work. Deliberately NOT matched: writing only NEW snapshots (`--update=new`, `--update-snapshots=missing`, `--snapshot-update-new-only`, `INSTA_UPDATE=new`), `cargo insta review`, and Jest's `--ci`. Misses a runner started through any other script name or wrapper, and snapshot files rewritten with a file tool. A quoted MENTION is not a use: a search, a `git commit -m` message, an `echo` or a `curl --data` body that only names this command is left alone. That holds only while every shell metacharacter stays inside the quotes, so `git commit -m \"x\" && \u2026` is still caught; and the carrier must be the first word, so `sudo grep \u2026` is not exempt.",
   match: {
@@ -4731,8 +4864,9 @@ var tiTestConfigEdit = {
   category: "test-integrity",
   severity: "medium",
   defaultAction: "require_approval",
+  owasp: ["ASI09", "ASI10"],
   title: "Editing a test runner or coverage configuration",
-  description: "Holds a file tool opening a test runner's or coverage tool's own configuration: Jest's `jest.config.*`, Vitest's `vitest.config.*` and legacy `vitest.workspace.*`, `pytest.ini`, `pytest.toml` and their dotted forms, `tox.ini`, Mocha's `.mocharc.*`, PHPUnit's `phpunit.xml`, `phpunit.xml.dist` and `phpunit.dist.xml`, `codecov.yml`, nyc's `.nycrc*` and `nyc.config.*`, `.c8rc`, coverage.py's `.coveragerc`, `karma.conf.*`, and the Playwright and Cypress configs. One line in any of these can exclude a failing file, lower a coverage threshold or retry a flaky test until it passes. File tools carry a path and no content, so it cannot tell a harmless edit from a weakening one, and it does not tell reading apart from editing. Deliberately NOT matched: general files that can also hold test settings \u2014 `pyproject.toml`, `setup.cfg`, `package.json`, `vite.config.*` \u2014 and test files themselves, since editing a test is how a test gets fixed. Misses test settings kept in those general files, and a config at a path passed with `--config`.",
+  description: "Holds a file tool opening a test runner's or coverage tool's own configuration: Jest's `jest.config.*`, Vitest's `vitest.config.*` and legacy `vitest.workspace.*`, `pytest.ini`, `pytest.toml` and their dotted forms, `tox.ini`, Mocha's `.mocharc.*`, PHPUnit's `phpunit.xml`, `phpunit.xml.dist` and `phpunit.dist.xml`, `codecov.yml`, nyc's `.nycrc*` and `nyc.config.*`, `.c8rc`, coverage.py's `.coveragerc`, `karma.conf.*`, and the Playwright and Cypress configs. One line in any of these can exclude a failing file, lower a coverage threshold or retry a flaky test until it passes. Reading is excluded \u2014 the `Read` and `Grep` tools never match \u2014 so opening one of these configs to read it is not held; every other file tool is, including one this corpus does not know. File tools carry a path and no content, so it still cannot tell a harmless edit from a weakening one. Deliberately NOT matched: general files that can also hold test settings \u2014 `pyproject.toml`, `setup.cfg`, `package.json`, `vite.config.*` \u2014 and test files themselves, since editing a test is how a test gets fixed. Misses test settings kept in those general files, and a config at a path passed with `--config`.",
   match: {
     any_of: [
       { kind: "execute_tool", file_glob: "**/jest.config.{js,ts,mjs,mts,cjs,cts,json}" },
@@ -4757,6 +4891,11 @@ var tiTestConfigEdit = {
         kind: "execute_tool",
         file_glob: "**/{playwright,cypress}.config.{js,ts,mjs,mts,cjs,cts}"
       }
+    ],
+    none_of: [
+      // A read is not an edit. Named as a deny-list rather than an `any_of` over
+      // the write tools, so an unknown file tool on a matched path still holds.
+      { kind: "execute_tool", label: "{Read,Grep}" }
     ]
   },
   fixtures: {
@@ -4789,7 +4928,9 @@ var tiTestConfigEdit = {
       file("jest.setup.js"),
       file(".env.test"),
       file("docs/testing.md"),
-      file("biome.json")
+      file("biome.json"),
+      file("vitest.config.ts", "Read"),
+      file("jest.config.js", "Grep")
     ]
   }
 };
@@ -4800,6 +4941,7 @@ var tiTestFileDelete = {
   category: "test-integrity",
   severity: "high",
   defaultAction: "require_approval",
+  owasp: ["ASI09", "ASI10"],
   title: "Deleting a test file or test directory",
   description: "Holds a command that deletes a test: `rm`, `unlink`, `git rm` or PowerShell's `Remove-Item` naming a file that follows a test runner's naming convention \u2014 `*.test.*`, `*.spec.*`, `*_test.go`, `*_test.py`, `test_*.py` \u2014 or a `__tests__/`, `test/`, `tests/` or `spec/` directory, or a file inside one. Deleting the failing test instead of fixing the code leaves a suite that still passes. Deliberately NOT matched: build, report and dependency output \u2014 anything under `dist/`, `build/`, `out/`, `coverage/` or `node_modules/`, and `test-results/`, `playwright-report/` and `.pytest_cache` \u2014 and moving or staging a test (`mv`, `git add`). Misses a test deleted with `find \u2026 -delete`, moved out of the tree, emptied or disabled with a file tool, and a test directory with any other name. A quoted MENTION is not a use: a search, a `git commit -m` message, an `echo` or a `curl --data` body that only names this command is left alone. That holds only while every shell metacharacter stays inside the quotes, so `git commit -m \"x\" && \u2026` is still caught; and the carrier must be the first word, so `sudo grep \u2026` is not exempt.",
   match: {
@@ -4859,6 +5001,7 @@ var blockForcePush = {
   category: "working-tree",
   severity: "high",
   defaultAction: "block",
+  owasp: ["ASI02", "LLM03"],
   title: "Block git force-push",
   description: 'Overwrites a remote branch\'s history, destroying commits other people may already have pulled. The command must contain `git push` and the force flag must sit in the same pipeline segment, so searching for the phrase is not blocked. A global flag between `git` and `push` is tolerated (`git -C <dir> push --force`, `git --no-pager push \u2026`), and an absolute tool path such as `/usr/bin/git` still matches. The safer `--force-with-lease` form IS still blocked; exempting it needs a negative lookahead this corpus does not use. MISSES an alias such as `git pf`, and a force-push issued by a wrapper script whose own text does not say `git push`. A quoted MENTION is not a use: a search, a `git commit -m` message, an `echo` or a `curl --data` body that only names this command is left alone. That holds only while every shell metacharacter stays inside the quotes, so `git commit -m "x" && \u2026` is still caught; and the carrier must be the first word, so `sudo grep \u2026` is not exempt.',
   match: {
@@ -4897,8 +5040,9 @@ var requireApprovalRmRf = {
   category: "working-tree",
   severity: "high",
   defaultAction: "require_approval",
+  owasp: ["ASI02", "LLM03"],
   title: "Hold `rm -rf` for approval",
-  description: 'Recursive-force delete: held for approval rather than blocked, which is the honest strength for an operation that is destructive but often legitimate. Catches -rf, -Rf, -rvf and the reversed -fr spelling in any case, `rm --recursive`, and PowerShell\'s `Remove-Item -Recurse`. Clearing a build directory is EXEMPT (node_modules, dist, build, out, coverage, target, .next, .turbo, .cache, .vite, .parcel-cache): that shape appears about 220 times in real Claude Code traces against about 3 for a dangerous delete, and a rule that asks every time is a rule people switch off. An absolute path, a $VARIABLE, a ~ path or a source directory still asks. Does NOT match a delete via a file tool, or flags split across arguments such as `rm -r -f x`. A quoted MENTION is not a use: a search, a `git commit -m` message, an `echo` or a `curl --data` body that only names this command is left alone. That holds only while every shell metacharacter stays inside the quotes, so `git commit -m "x" && \u2026` is still caught; and the carrier must be the first word, so `sudo grep \u2026` is not exempt.',
+  description: 'Recursive-force delete: held for approval rather than blocked, which is the honest strength for an operation that is destructive but often legitimate. Catches -rf, -Rf, -rvf and the reversed -fr spelling in any case, `rm --recursive`, and PowerShell\'s `Remove-Item -Recurse`. Clearing a build directory is EXEMPT (node_modules, dist, build, out, coverage, target, .next, .turbo, .cache, .vite, .parcel-cache): that shape appears about 220 times in real Claude Code traces against about 3 for a dangerous delete, and a check that asks every time is one people switch off. An absolute path, a $VARIABLE, a ~ path or a source directory still asks. Does NOT match a delete via a file tool, or flags split across arguments such as `rm -r -f x`. A quoted MENTION is not a use: a search, a `git commit -m` message, an `echo` or a `curl --data` body that only names this command is left alone. That holds only while every shell metacharacter stays inside the quotes, so `git commit -m "x" && \u2026` is still caught; and the carrier must be the first word, so `sudo grep \u2026` is not exempt.',
   match: {
     any_of: [
       {
@@ -4946,8 +5090,9 @@ var wtBranchForceDelete = {
   category: "working-tree",
   severity: "medium",
   defaultAction: "require_approval",
+  owasp: ["ASI02", "LLM03"],
   title: "git branch -D force-deletes an unmerged branch",
-  description: 'Deletes a branch even when its commits are not merged anywhere, so the work becomes unreachable. This rule is CASE-SENSITIVE on purpose and that is why it uses detail_contains: `-D` force-deletes while `-d` refuses to delete unmerged work, and the engine\'s regex matcher is case-insensitive, so a regex here would fire on the safe spelling every time a developer cleans up after a merge. Known miss: the flags written separately as `--delete --force` in the reverse order, and any alias. The `git branch` anchor tolerates repeated or tab whitespace and a global flag in between (`git  branch -D \u2026`, `git -C <dir> branch -D \u2026`), and an absolute tool path such as `/usr/bin/git` still matches, while `-D` stays a case-sensitive substring so the safe `-d` is not caught. A quoted MENTION is not a use: a search, a `git commit -m` message, an `echo` or a `curl --data` body that only names this command is left alone. That holds only while every shell metacharacter stays inside the quotes, so `git commit -m "x" && \u2026` is still caught; and the carrier must be the first word, so `sudo grep \u2026` is not exempt.',
+  description: 'Deletes a branch even when its commits are not merged anywhere, so the work becomes unreachable. This match is CASE-SENSITIVE on purpose, which is why it uses detail_contains: `-D` force-deletes while `-d` refuses to delete unmerged work, and the engine\'s regex matcher is case-insensitive, so a regex here would fire on the safe spelling every time a developer cleans up after a merge. Known miss: the flags written separately as `--delete --force` in the reverse order, and any alias. The `git branch` anchor tolerates repeated or tab whitespace and a global flag in between (`git  branch -D \u2026`, `git -C <dir> branch -D \u2026`), and an absolute tool path such as `/usr/bin/git` still matches, while `-D` stays a case-sensitive substring so the safe `-d` is not caught. A quoted MENTION is not a use: a search, a `git commit -m` message, an `echo` or a `curl --data` body that only names this command is left alone. That holds only while every shell metacharacter stays inside the quotes, so `git commit -m "x" && \u2026` is still caught; and the carrier must be the first word, so `sudo grep \u2026` is not exempt.',
   match: {
     any_of: [
       {
@@ -4988,6 +5133,7 @@ var wtCheckoutDiscard = {
   category: "working-tree",
   severity: "high",
   defaultAction: "block",
+  owasp: ["ASI02", "LLM03"],
   title: "git checkout used to discard working-tree changes",
   description: 'Overwrites files in the working tree from the index or from another commit, discarding uncommitted edits. Matches the discard spellings only \u2014 `git checkout -- <path>`, a bare `git checkout .`, and the `-f`/`--force` forms. It deliberately does NOT match an ordinary branch switch (`git checkout main`, `git checkout -b feature/x`), which is the same command doing something else entirely. It also MISSES `git checkout <commit> <path>` written without the `--` separator. Global flags between `git` and `checkout` are tolerated (`git -C <dir> checkout -- .`, `--no-pager`, `-c k=v`), and an absolute tool path such as `/usr/bin/git` still matches; a flag that itself runs a program is not read. A quoted MENTION is not a use: a search, a `git commit -m` message, an `echo` or a `curl --data` body that only names this command is left alone. That holds only while every shell metacharacter stays inside the quotes, so `git commit -m "x" && \u2026` is still caught; and the carrier must be the first word, so `sudo grep \u2026` is not exempt.',
   match: {
@@ -5028,6 +5174,7 @@ var wtCleanFdx = {
   category: "working-tree",
   severity: "high",
   defaultAction: "block",
+  owasp: ["ASI02", "LLM03"],
   title: "git clean -fd deletes untracked files",
   description: 'Deletes untracked files and directories, and with `-x` the git-ignored ones too \u2014 which on a working checkout means local `.env` files, certificates and scratch work that exist nowhere else. Git holds no copy of any of it. The dry-run forms (`git clean -nd`, `--dry-run`) are deliberately NOT matched, since that is what a careful person runs first. Known miss: `git clean` driven from a wrapper script whose own text does not name it. Global flags between `git` and `clean` are tolerated on both the block and the dry-run exemption (`git -C <dir> clean -fd`, `--no-pager`, `-c k=v`), and an absolute tool path such as `/usr/bin/git` still matches; a flag that itself runs a program is not read. A quoted MENTION is not a use: a search, a `git commit -m` message, an `echo` or a `curl --data` body that only names this command is left alone. That holds only while every shell metacharacter stays inside the quotes, so `git commit -m "x" && \u2026` is still caught; and the carrier must be the first word, so `sudo grep \u2026` is not exempt.',
   match: {
@@ -5075,6 +5222,7 @@ var wtResetHard = {
   category: "working-tree",
   severity: "high",
   defaultAction: "block",
+  owasp: ["ASI02", "LLM03"],
   title: "git reset --hard discards uncommitted work",
   description: 'Discards every uncommitted change in the working tree, irrecoverably \u2014 there is no reflog for work that was never committed. Does NOT match `git restore` (see wt.restore-path), `git checkout -- .` (see wt.checkout-discard), or a reset spelled `--hard=...`; and it cannot tell a scratch clone from your only copy of the work, so a deliberate reset in a throwaway checkout is blocked too. A global flag between `git` and `reset` is tolerated (`git -C <dir> reset --hard`, `git --no-pager \u2026`, `git -c k=v \u2026`), and an absolute tool path such as `/usr/bin/git` still matches; a flag that itself runs a program is not read. A quoted MENTION is not a use: a search, a `git commit -m` message, an `echo` or a `curl --data` body that only names this command is left alone. That holds only while every shell metacharacter stays inside the quotes, so `git commit -m "x" && \u2026` is still caught; and the carrier must be the first word, so `sudo grep \u2026` is not exempt.',
   match: {
@@ -5114,6 +5262,7 @@ var wtResetMerge = {
   category: "working-tree",
   severity: "medium",
   defaultAction: "require_approval",
+  owasp: ["ASI02", "LLM03"],
   title: "git reset --merge / --keep can discard local changes",
   description: 'Resets with `--merge` or `--keep`, both of which can silently drop uncommitted changes to files that differ between HEAD and the target commit. They read as the cautious options, which is why they are worth a prompt rather than a block. Does NOT match `git reset --soft` or a bare `git reset`, neither of which touches the working tree, and it does not cover `git merge --abort`. Global flags between `git` and `reset` are tolerated (`git -C <dir> reset --merge`, `--no-pager`, `-c k=v`), and an absolute tool path such as `/usr/bin/git` still matches; a flag that itself runs a program is not read. A quoted MENTION is not a use: a search, a `git commit -m` message, an `echo` or a `curl --data` body that only names this command is left alone. That holds only while every shell metacharacter stays inside the quotes, so `git commit -m "x" && \u2026` is still caught; and the carrier must be the first word, so `sudo grep \u2026` is not exempt.',
   match: {
@@ -5151,6 +5300,7 @@ var wtRestorePath = {
   category: "working-tree",
   severity: "high",
   defaultAction: "block",
+  owasp: ["ASI02", "LLM03"],
   title: "git restore discards uncommitted changes to a path",
   description: 'Overwrites files in the working tree from the index, discarding uncommitted edits to them. `git restore --staged` is deliberately NOT matched: it only unstages, and the file on disk is untouched. The cost of that exclusion is a known miss \u2014 `git restore --staged --worktree <path>` DOES discard and is exempted here, because expressing the distinction needs a negative lookahead this corpus does not use. Global flags between `git` and `restore` are tolerated on both the block and the `--staged` exemption (`git -C <dir> restore .`, `--no-pager`, `-c k=v`), and an absolute tool path such as `/usr/bin/git` still matches; a flag that itself runs a program is not read. A quoted MENTION is not a use: a search, a `git commit -m` message, an `echo` or a `curl --data` body that only names this command is left alone. That holds only while every shell metacharacter stays inside the quotes, so `git commit -m "x" && \u2026` is still caught; and the carrier must be the first word, so `sudo grep \u2026` is not exempt.',
   match: {
@@ -5192,6 +5342,7 @@ var wtStashDrop = {
   category: "working-tree",
   severity: "medium",
   defaultAction: "require_approval",
+  owasp: ["ASI02", "LLM03"],
   title: "git stash drop / clear deletes stashed work",
   description: 'Deletes stashed work, which has no undo \u2014 the stash commit becomes unreachable and there is no `git stash undrop`. Held for approval rather than blocked, because clearing an old stash is a normal deliberate act. Does NOT match `git stash pop` (which applies and then drops, and whose failure mode is a conflict rather than a loss) or `git stash push`. Global flags between `git` and `stash` are tolerated (`git -C <dir> stash drop`, `--no-pager`, `-c k=v`), and an absolute tool path such as `/usr/bin/git` still matches; a flag that itself runs a program is not read. A quoted MENTION is not a use: a search, a `git commit -m` message, an `echo` or a `curl --data` body that only names this command is left alone. That holds only while every shell metacharacter stays inside the quotes, so `git commit -m "x" && \u2026` is still caught; and the carrier must be the first word, so `sudo grep \u2026` is not exempt.',
   match: {

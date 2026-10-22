@@ -8,6 +8,7 @@
  * bundle; see `normalize.ts`.
  */
 
+import type { OwaspId } from "@agenttrail/guardrails/guardrails";
 import type { Match } from "../engine/policy-predicate.js";
 
 /** What a rule asks for when it matches. Mirrors the engine's `ActionSchema`. */
@@ -61,6 +62,13 @@ export interface GuardRule {
   readonly description: string;
   /** The predicate's `match` sub-object — the engine's own DSL. */
   readonly match: Match;
+  /**
+   * The OWASP risks this guardrail addresses, as published by `@agenttrail/guardrails`.
+   * Only shipped guardrails carry it: a guardrail from `guardrails.json` is built field by
+   * field in `user-rules.ts`, which never copies `owasp`, so a person's own guardrail never
+   * claims an OWASP id. Read it as `rule.owasp ?? []`.
+   */
+  readonly owasp?: readonly OwaspId[] | undefined;
 }
 
 /**
