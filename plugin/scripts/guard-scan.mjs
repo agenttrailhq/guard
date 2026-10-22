@@ -7403,8 +7403,10 @@ ${vars(LIGHT_TOKENS)}
   body { background: #ffffff; }
   .sections, .toolbar, .js-only, .actions, .controls, .copy, .share { display: none; }
   .button, .button.secondary { display: inline; background: none; color: var(--brand-text); border: 0; padding: 0; }
-  .stat, .tally, .table-wrap, .product-note, tr, .card, .finding, .col, .risk { break-inside: avoid; }
+  .stat, .tally, .product-note, tr, .card, .col, .risk, .finding-head, .shapes li { break-inside: avoid; }
+  h1, h2, h3, .section-head, summary, h2 + .note, h2 + .lead { break-after: avoid; }
   .owasp-ids a[href^="http"]::after, .risk-name a[href^="http"]::after { content: none; }
+  .how a[href^="http"]::after, .card a[href^="http"]::after { content: none; }
   a[href^="http"]::after { content: " (" attr(href) ")"; font-size: 11px; color: var(--muted-fg); overflow-wrap: anywhere; }
 }
 `;
