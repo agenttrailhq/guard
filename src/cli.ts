@@ -75,7 +75,7 @@ Crash reporting is OFF by default and sends stack traces only. It is the one net
 call this tool can make, and only when you turn it on and run --send yourself.
 
 guardrails subcommands: list  show  enable  disable  set-action  add  remove  allow
-                        reset  validate  (run "agenttrail-guard guardrails --help")
+                        reset  validate  export  (run "agenttrail-guard guardrails --help")
 
 scan flags: --agent <claude|cursor|codex> (required) --dir <root> --out <file> --artifact
             --no-open --review --json

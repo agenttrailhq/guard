@@ -963,6 +963,7 @@ guardrails remove <guardrail-id>                         delete one of your own 
 guardrails allow <guardrail-id> <pattern>                silence ONE guardrail on ONE shape
 guardrails reset [<guardrail-id>|--all]                  undo your changes
 guardrails validate [<file>]                             the same check CI runs
+guardrails export <guardrail-id|draft.json>              share one of yours with everyone
 ```
 
 Shared flags: `--json`, `--quiet`, `--config <dir>`.

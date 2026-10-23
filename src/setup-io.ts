@@ -84,6 +84,13 @@ export interface SetupIO {
    * guard's own plugin-cache tree.
    */
   removeDirRecursive?(path: string): void;
+  /**
+   * Is stdout an interactive terminal?
+   *
+   * OPTIONAL, for the same reason as `readdir`. When absent the output is treated as not a
+   * terminal, so a line meant only for a person at a terminal stays silent.
+   */
+  isTTY?(): boolean;
 }
 
 /**
@@ -154,6 +161,10 @@ export function createRealSetupIO(): SetupIO {
       } catch {
         return undefined;
       }
+    },
+
+    isTTY(): boolean {
+      return process.stdout.isTTY === true;
     },
 
     removeDirRecursive(path: string): void {

@@ -287,7 +287,7 @@ describe("the README's usage table is the one the CLI prints", () => {
       .split("\n")
       .filter((l) => l.startsWith("  guardrails "))
       .map((l) => l.slice(2));
-    expect(rows).toHaveLength(9);
+    expect(rows).toHaveLength(10);
 
     const readme = readFileSync(join(PKG_ROOT, "README.md"), "utf8");
     expect(readme).toContain(`\n\`\`\`\n${rows.join("\n")}\n\`\`\`\n`);

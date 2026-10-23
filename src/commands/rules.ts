@@ -32,7 +32,7 @@
  * the stored spelling, because its reader is a machine.
  */
 
-import { isPack, MatchSchema, PACKS, parseRule } from "@agenttrail/guardrails";
+import { isPack, MatchSchema, PACKS, parseRule, type Rule } from "@agenttrail/guardrails";
 import { checkAllowPattern, GLOB_NOTE, hasGlob } from "../core/allow-guard.js";
 import { SHIPPED_CATALOG } from "../core/catalog.js";
 import { parseConfig, updateConfigText } from "../core/config.js";
@@ -59,6 +59,21 @@ import type { GuardAction, GuardRule, MappedCall } from "../core/types.js";
 import { loadUserRules } from "../core/user-rules.js";
 import { parseUserRulesData } from "../core/user-rules-data.js";
 import type { SetupIO } from "../setup-io.js";
+import {
+  addFollowUp,
+  addFollowUpAllowed,
+  BLANK,
+  draftFor,
+  exportId,
+  fileStem,
+  findBlanks,
+  indexLines,
+  LIBRARY_REPO,
+  libraryWarnings,
+  packPrefixes,
+  renderRuleModule,
+  SUBMIT_GUIDE,
+} from "./guardrail-export.js";
 
 // ── Arguments ───────────────────────────────────────────────────────────────
 
@@ -71,6 +86,7 @@ interface Flags {
   enabled: boolean;
   disabled: boolean;
   all: boolean;
+  out: string | undefined;
 }
 
 interface Scan {
@@ -80,7 +96,7 @@ interface Scan {
 }
 
 const BOOLEAN_FLAGS = new Set(["--json", "--quiet", "--enabled", "--disabled", "--all"]);
-const VALUE_FLAGS = new Set(["--config", "--pack", "--owasp"]);
+const VALUE_FLAGS = new Set(["--config", "--pack", "--owasp", "--out"]);
 
 /**
  * Scan the arguments after the subcommand.
@@ -101,6 +117,7 @@ function scan(args: readonly string[], verbatimAt?: number): Scan {
     enabled: false,
     disabled: false,
     all: false,
+    out: undefined,
   };
   let endOfFlags = false;
 
@@ -146,13 +163,14 @@ function scan(args: readonly string[], verbatimAt?: number): Scan {
       }
       if (name === "--config") flags.configDir = value;
       else if (name === "--pack") flags.pack = value;
+      else if (name === "--out") flags.out = value;
       else flags.owasp = value;
       continue;
     }
     return {
       positionals,
       flags,
-      error: `unknown flag \`${name}\`. Shared flags are --json, --quiet, --config <dir>; \`list\` also takes --pack <name>, --owasp <id>, --enabled, --disabled; \`reset\` takes --all.`,
+      error: `unknown flag \`${name}\`. Shared flags are --json, --quiet, --config <dir>; \`list\` also takes --pack <name>, --owasp <id>, --enabled, --disabled; \`reset\` takes --all; \`export\` takes --out <dir>.`,
     };
   }
 
@@ -367,6 +385,7 @@ const USAGE = `agenttrail-guard guardrails — see and change what the guard enf
   guardrails allow <guardrail-id> <pattern>                silence ONE guardrail on ONE shape
   guardrails reset [<guardrail-id>|--all]                  undo your changes
   guardrails validate [<file>]                             the same check CI runs
+  guardrails export <guardrail-id|draft.json>              share one of yours with everyone
 
 Shared flags: --json  --quiet  --config <dir>
 list filters: --pack <name>  --owasp <id>  --enabled  --disabled
@@ -965,6 +984,10 @@ export async function runRules(
           : 1;
       case "validate":
         return cmdValidate(io, flags, files, deps, positionals[0]);
+      case "export":
+        return need(1, "guardrails export <guardrail-id|draft.json> [--out <dir>]")
+          ? cmdExport(io, flags, files, deps, positionals[0] as string)
+          : 1;
       default:
         io.writeStdout(`agenttrail-guard guardrails: unknown subcommand "${sub}".\n\n${USAGE}`);
         return 1;
@@ -1160,6 +1183,9 @@ function cmdAdd(io: SetupIO, flags: Flags, files: Files, deps: RulesDeps, path: 
     ...(carriesOwasp(candidate) ? [`NOTE: ${OWASP_IGNORED_NOTE}`] : []),
     `Validated. Added ${rule.id} (${displayAction(rule.defaultAction)}) to ${files.rulesPath}.`,
     `${active} guardrails active.`,
+    ...(addFollowUpAllowed({ quiet: flags.quiet, json: flags.json, isTTY: io.isTTY?.() === true })
+      ? [addFollowUp(rule.id)]
+      : []),
   );
   // `--quiet` drops the lines above, but a guardrail that was written and will never fire is
   // worth one line even then.
@@ -1313,6 +1339,19 @@ function cmdValidate(
     return r.fail(`${path} is not valid JSON: ${(error as Error).message}`);
   }
 
+  // A blank left by `guardrails export` would otherwise pass silently: an `allow` example
+  // that is placeholder text matches nothing, which reads as proof of quietness.
+  const blanks = findBlanks(raw);
+  if (blanks.length > 0) {
+    if (flags.json) return r.fail("blanks", { blanks });
+    io.writeStdout(
+      `Not ready — ${blanks.length} blank${blanks.length === 1 ? "" : "s"} still to fill in:\n${blanks
+        .map((b) => `    ${b}`)
+        .join("\n")}\nReplace each \`${BLANK}: …\` with real text, then run validate again.\n`,
+    );
+    return 1;
+  }
+
   // A FILE argument is the contributor's question — "would CI accept this rule?" — so
   // it is checked against `@agenttrail/guardrails`' `parseRule`, which is literally the
   // function `defineRule` calls at module load and therefore the one CI runs.
@@ -1402,4 +1441,156 @@ function cmdValidate(
   ];
   io.writeStdout(`${lines.join("\n")}\n`);
   return failed === 0 ? 0 : 1;
+}
+
+// ── export ──────────────────────────────────────────────────────────────────
+
+/**
+ * `export <id>` writes a JSON draft of one of the user's own guardrails with blanks for
+ * the examples. `export <draft.json>` checks the filled draft exactly as `validate` does
+ * and only then writes the library module and prints how to submit it.
+ */
+function cmdExport(io: SetupIO, flags: Flags, files: Files, deps: RulesDeps, arg: string): number {
+  const r = new Reporter(io, flags, "export");
+  const out = (flags.out ?? ".").replace(/\/+$/, "") || "/";
+  if (!io.exists(out)) {
+    return r.fail(`the --out directory ${out} does not exist. Nothing was written.`);
+  }
+  const catalog = deps.catalog ?? SHIPPED_CATALOG;
+  const shipped = new Set(catalog.map((rule) => rule.id));
+  const prefixes = packPrefixes(catalog);
+
+  if (arg.endsWith(".json") && io.exists(arg)) {
+    return exportModule(io, flags, files, deps, { r, path: arg, out, shipped, prefixes });
+  }
+
+  const { views } = viewsFor(files, deps);
+  const v = findView(views, arg);
+  if (v !== undefined && v.source === "library") {
+    return r.fail(
+      `${arg} is one of ours, so it is already in the public library. Nothing to export.`,
+    );
+  }
+  if (v === undefined) {
+    return r.fail(
+      `no guardrail of yours with id \`${arg}\`. Run \`agenttrail-guard guardrails list\` to see what is there.`,
+    );
+  }
+  const rule = v.rule;
+  if (!isPack(rule.category)) {
+    return r.fail(
+      `${rule.id} is filed under \`${rule.category}\`, which is not a library pack. Use one of: ${PACKS.join(", ")}.`,
+    );
+  }
+  const braces = findSingleBraceLabels(rule.match);
+  if (braces[0] !== undefined) return r.fail(singleBraceWarning(braces[0]));
+
+  const named = exportId(rule.id, rule.category, prefixes);
+  if (shipped.has(named.id)) {
+    return r.fail(
+      `the library already has a guardrail with id \`${named.id}\`. Rename yours first. Nothing was written.`,
+    );
+  }
+  const draft = draftFor(rule, named.id);
+  const path = `${out}/${fileStem(named.id)}.json`;
+  if (io.exists(path)) return r.fail(`${path} already exists. Move it or pass --out <dir>.`);
+  io.writeFileAtomic(path, `${JSON.stringify(draft, null, 2)}\n`);
+
+  const blanks = findBlanks(draft);
+  const containsWarning = libraryWarnings({ ...rule, id: named.id }).filter((w) =>
+    w.includes("detail_contains"),
+  );
+  r.say(
+    ...(named.warning !== undefined ? [`WARNING: ${named.warning}`] : []),
+    ...containsWarning.map((w) => `WARNING: the library will reject this draft: ${w}`),
+    `Wrote ${path}. Fill in the ${blanks.length} blanks marked ${BLANK}, then run:`,
+    `    agenttrail-guard guardrails validate ${path}`,
+    `    agenttrail-guard guardrails export ${path}`,
+  );
+  return r.ok({
+    written: path,
+    guardrail: named.id,
+    blanks,
+    ...(named.warning !== undefined ? { warning: named.warning } : {}),
+  });
+}
+
+interface ExportTarget {
+  readonly r: Reporter;
+  readonly path: string;
+  readonly out: string;
+  readonly shipped: ReadonlySet<string>;
+  readonly prefixes: ReadonlyMap<string, string>;
+}
+
+function exportModule(
+  io: SetupIO,
+  flags: Flags,
+  files: Files,
+  deps: RulesDeps,
+  { r, path, out, shipped, prefixes }: ExportTarget,
+): number {
+  const text = io.readFile(path);
+  if (text === undefined) return r.fail(`could not read ${path}.`);
+  let raw: unknown;
+  try {
+    raw = JSON.parse(text);
+  } catch (error) {
+    return r.fail(`${path} is not valid JSON: ${(error as Error).message}`);
+  }
+  const parsed = parseRule(raw);
+  if (findBlanks(raw).length > 0 || !parsed.success || !fixturesPass(parsed.data)) {
+    // The same report `validate` prints, so the two can never disagree.
+    const code = cmdValidate(io, flags, files, deps, path);
+    if (!flags.json) io.writeStdout("Not exported. Nothing was written.\n");
+    return code === 0 ? 1 : code;
+  }
+  const rule = parsed.data;
+  if (shipped.has(rule.id)) {
+    return r.fail(
+      `the library already has a guardrail with id \`${rule.id}\`. Rename yours first.`,
+    );
+  }
+  const prefix = prefixes.get(rule.category);
+  const modulePath = `${out}/${fileStem(rule.id)}.ts`;
+  if (io.exists(modulePath)) {
+    return r.fail(`${modulePath} already exists. Move it or pass --out <dir>.`);
+  }
+  io.writeFileAtomic(modulePath, renderRuleModule(rule));
+
+  const lines = indexLines(rule);
+  r.say(
+    ...(prefix !== undefined && !rule.id.startsWith(prefix)
+      ? [
+          `WARNING: \`${rule.id}\` does not start with \`${prefix}\`, the prefix pack \`${rule.category}\` uses.`,
+        ]
+      : []),
+    ...libraryWarnings(rule).map((w) => `WARNING: the library's tests will reject this: ${w}`),
+    `Wrote ${modulePath}. To submit it:`,
+    `  1. Fork ${LIBRARY_REPO} and clone your fork.`,
+    `  2. Copy ${fileStem(rule.id)}.ts to src/packs/${rule.category}/`,
+    `  3. In src/packs/${rule.category}/index.ts add`,
+    `       ${lines.importLine}`,
+    `     and add \`${lines.listEntry.trim()}\` to the \`rules\` list.`,
+    "  4. Add one to the guardrail counts in __tests__/corpus.test.ts, __tests__/dedup.test.ts",
+    "     and README.md. Add its OWASP ids to OWASP_TAGS in __tests__/corpus.test.ts, and to",
+    "     the README's OWASP coverage table if its pack's row does not list them yet.",
+    "  5. Run pnpm test, pnpm lint, pnpm spell and pnpm typecheck.",
+    "  6. Commit with a sign-off (git commit -s) and open a pull request.",
+    `  Guide: ${SUBMIT_GUIDE}`,
+  );
+  return r.ok({ written: modulePath, guardrail: rule.id, pack: rule.category, index: lines });
+}
+
+/** Whether every example of a parsed rule behaves: `block` matches, `allow` does not. */
+function fixturesPass(rule: Rule): boolean {
+  const guardRule: GuardRule = { ...rule };
+  const asFixture = (f: Rule["fixtures"]["block"][number]) =>
+    "command" in f
+      ? { tool: f.tool, text: f.command, file: false }
+      : { tool: f.tool, text: f.file_path, file: true };
+  return (
+    rule.fixtures.block.every((f) => fixtureMatches(guardRule, asFixture(f))) &&
+    rule.fixtures.allow.every((f) => !fixtureMatches(guardRule, asFixture(f)))
+  );
 }
