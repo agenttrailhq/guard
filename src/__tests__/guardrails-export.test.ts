@@ -273,11 +273,98 @@ describe("the line after add", () => {
     return h.out();
   }
 
-  it("in an interactive terminal, the AgentTrail OS line takes its place", async () => {
-    const out = await addWith(true);
-    const osLine = productLineText({ surface: "add", guardrailId: "local.no-deploy-friday" });
-    expect(out).toContain(`guardrails active.\n${osLine}\n`);
-    expect(out).not.toContain(ADD_FOLLOW_UP);
+  const GUARD_DIR = `${HOME}/.agenttrail/guard`;
+  const STATE = `${GUARD_DIR}/.product-line`;
+  const CONFIG = `${GUARD_DIR}/config.json`;
+  const NOW = new Date("2026-03-10T12:00:00.000Z");
+  const SHOWN_TODAY = JSON.stringify({ add: "2026-03-10T01:00:00.000Z" });
+  const OS_LINE = productLineText({
+    surface: "add",
+    guardrailId: "local.no-deploy-friday",
+  }) as string;
+
+  async function addAt(files: Record<string, string>, tty: boolean, ...flags: string[]) {
+    const h = harness(files, tty);
+    h.put("/in/rule.json", JSON.stringify(COMMAND_RULE));
+    expect(await runRules(["add", "/in/rule.json", ...flags], h.io, { now: NOW })).toBe(0);
+    return h;
+  }
+
+  /** `harness`, but `.product-line` cannot be written, as in a read-only home. */
+  function readOnlyState(files: Record<string, string> = {}) {
+    const h = harness(files, true);
+    const write = h.io.writeFileAtomic;
+    h.io.writeFileAtomic = (p, text) => {
+      if (p === STATE) throw new Error("EROFS: read-only file system");
+      write(p, text);
+    };
+    return h;
+  }
+
+  it("first add of the day: the AgentTrail OS line, which names export, and not the export line", async () => {
+    const h = await addAt({}, true);
+    expect(h.out()).toContain(`guardrails active.\n${OS_LINE}\n`);
+    expect(h.out()).not.toContain(ADD_FOLLOW_UP);
+    expect(JSON.parse(h.raw(STATE) ?? "{}").add).toBe(NOW.toISOString());
+  });
+
+  it("the OS line already showed today: the export line takes its place", async () => {
+    const h = await addAt({ [STATE]: SHOWN_TODAY }, true);
+    expect(h.out()).toContain(`guardrails active.\n${ADD_FOLLOW_UP} local.no-deploy-friday\n`);
+    expect(h.out()).not.toContain("AgentTrail OS");
+  });
+
+  it("two adds in one day: the OS line, then the export line", async () => {
+    const h = harness({}, true);
+    h.put("/in/a.json", JSON.stringify(COMMAND_RULE));
+    h.put("/in/b.json", JSON.stringify(FILE_RULE));
+    await runRules(["add", "/in/a.json"], h.io, { now: NOW });
+    const before = h.out().length;
+    await runRules(["add", "/in/b.json"], h.io, { now: NOW });
+    expect(h.out().slice(0, before)).toContain("AgentTrail OS");
+    expect(h.out().slice(before)).toContain(`${ADD_FOLLOW_UP} team.env-local-edit`);
+    expect(h.out().slice(before)).not.toContain("AgentTrail OS");
+  });
+
+  it("the once-a-day record cannot be written: the export line takes its place", async () => {
+    const h = readOnlyState();
+    h.put("/in/a.json", JSON.stringify(COMMAND_RULE));
+    h.put("/in/b.json", JSON.stringify(FILE_RULE));
+    expect(await runRules(["add", "/in/a.json"], h.io, { now: NOW })).toBe(0);
+    const before = h.out().length;
+    expect(h.out()).toContain(`guardrails active.\n${ADD_FOLLOW_UP} local.no-deploy-friday\n`);
+    expect(h.raw(STATE)).toBeUndefined();
+    // Every add after it, too: the OS line never shows when it cannot be recorded.
+    expect(await runRules(["add", "/in/b.json"], h.io, { now: NOW })).toBe(0);
+    expect(h.out().slice(before)).toContain(`${ADD_FOLLOW_UP} team.env-local-edit`);
+    expect(h.out()).not.toContain("AgentTrail OS");
+  });
+
+  it.each([
+    ["--quiet", [{}, true, "--quiet"]],
+    ["--json", [{}, true, "--json"]],
+    ["not a terminal", [{}, false]],
+    ['"productLine": false', [{ [CONFIG]: '{"productLine": false}' }, true]],
+  ] as const)("%s: neither line, even when the OS line already showed today", async (_l, args) => {
+    const [files, tty, ...flags] = args;
+    const states: Record<string, string>[] = [{}, { [STATE]: SHOWN_TODAY }];
+    for (const state of states) {
+      const h = await addAt({ ...files, ...state }, tty, ...flags);
+      expect(h.out()).not.toContain(ADD_FOLLOW_UP);
+      expect(h.out()).not.toContain("AgentTrail OS");
+    }
+  });
+
+  it.each([
+    ["--quiet", ["--quiet"], {}],
+    ["--json", ["--json"], {}],
+    ['"productLine": false', [], { [CONFIG]: '{"productLine": false}' }],
+  ] as const)("%s with a record that cannot be written: neither line", async (_l, flags, files) => {
+    const h = readOnlyState(files);
+    h.put("/in/rule.json", JSON.stringify(COMMAND_RULE));
+    expect(await runRules(["add", "/in/rule.json", ...flags], h.io, { now: NOW })).toBe(0);
+    expect(h.out()).not.toContain(ADD_FOLLOW_UP);
+    expect(h.out()).not.toContain("AgentTrail OS");
   });
 
   it("is silent under --quiet, even in a terminal", async () => {

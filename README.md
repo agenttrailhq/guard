@@ -707,12 +707,14 @@ shows it only when the scan matched something. There is no line for Codex CLI, w
 AgentTrail OS does not support yet.
 
 - It shows at most once a day per command, and only when the output is a terminal.
+- After `guardrails add`, when it has already shown today or `.product-line` cannot be
+  written, a line naming `guardrails export` takes its place. You never get both.
 - It never appears in a hook's answer, so your agent never sees it.
 - It is printed text: showing it sends nothing, and nothing opens unless you click the link.
 
-To turn it off, pass `--quiet` (or `--json` where a command has it), or set
-`"productLine": false` in `~/.agenttrail/guard/config.json`. The setting covers these
-terminal lines only; it does not change the scan report.
+To turn it off, and the export line with it, pass `--quiet` (or `--json` where a
+command has it), or set `"productLine": false` in `~/.agenttrail/guard/config.json`.
+The setting covers these terminal lines only; it does not change the scan report.
 
 ## Troubleshooting
 
