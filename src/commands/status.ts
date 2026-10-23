@@ -20,7 +20,7 @@
  *
  * 3. **The most frequent match, with the exact command to silence THAT rule.** The
  *    single most likely reason someone uninstalls is one rule firing repeatedly on
- *    something legitimate. A user who has to work out which of 56 rules fired, and then
+ *    something legitimate. A user who has to work out which guardrail fired, and then
  *    find the syntax, uninstalls instead.
  *
  * ── One section per app ──────────────────────────────────────────────────────

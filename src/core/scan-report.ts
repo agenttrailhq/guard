@@ -489,8 +489,8 @@ function byCountThenText<T extends { count: number; text: string }>(a: T, b: T):
  * Aggregate a corpus into a `ScanResult`.
  *
  * A rule that matched nothing is absent from `findings` rather than present with a
- * zero: a table of 74 rules with 71 zeroes buries the three that fired, and "this rule
- * never matched" is not a finding.
+ * zero: a table of every guardrail, nearly all of them zero, buries the few that fired,
+ * and "this rule never matched" is not a finding.
  */
 export function aggregateScan(
   corpus: ScanCorpus,

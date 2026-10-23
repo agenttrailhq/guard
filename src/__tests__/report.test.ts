@@ -614,7 +614,7 @@ describe("what the report says", () => {
   });
 
   it("renders a severity and an action it has never seen, rather than dropping the row", () => {
-    // Not hypothetical: the 56 shipped rules are authored against a shared schema
+    // Not hypothetical: the shipped guardrails are authored against a shared schema
     // whose `severity` is a free string, and `@agenttrail/guardrails` is a separate
     // package on a separate release cadence. A rule carrying `severity: "informational"`
     // must still produce a row — a report that silently omits a finding because it did

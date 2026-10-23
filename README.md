@@ -331,7 +331,7 @@ In JSON, "ask" is written `require_approval`. The CLI accepts `ask`, but a hand-
 does not. An `owasp` list on your own guardrail is ignored: only shipped guardrails carry OWASP
 ids, and `guardrails add` and `guardrails validate` say so when they see one. See
 [Managing guardrails](#managing-guardrails) for every rule command, and the
-[guardrails rule format](https://github.com/agenttrailhq/guardrails#a-rule-start-to-finish)
+[guardrail format](https://github.com/agenttrailhq/guardrails#a-guardrail-start-to-finish)
 for all fields.
 
 ## Scan past sessions
