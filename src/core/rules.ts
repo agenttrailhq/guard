@@ -2,7 +2,7 @@
  * Catalog loading and the COMPILE-ONCE step.
  *
  * Compiling a predicate inside the per-rule loop — compile, evaluate, discard, per
- * rule, per call — is the one thing that could push a 74-rule call toward the 10s
+ * rule, per call — is the one thing that could push a call toward the 10s
  * ceiling set in `plugin/hooks/hooks.json`, and the guard has no internal watchdog by
  * design. So the catalog is compiled once: parse, skip anything malformed, and keep
  * `{rule, evaluate}` closures.
@@ -30,7 +30,7 @@ export interface CompiledRule {
  * Compile a catalog once.
  *
  * A rule whose predicate cannot be compiled is SKIPPED, never fatal — one bad rule
- * must not disable the other 55. It is also the fail-open rule:
+ * must not disable the rest. It is also the fail-open rule:
  * a throw here would take the whole hook down, and a hook that crashes is a hook
  * that stops protecting anyone.
  */

@@ -151,7 +151,7 @@ describe("the shipped bundles exist and are self-contained", () => {
     expect(bundle).not.toContain("ZodType");
   });
 
-  it("the hook bundle DOES carry the real 74-rule corpus", () => {
+  it("the hook bundle DOES carry the real guardrails corpus", () => {
     // The other half of the wiring, asserted against the shipped bytes: without
     // this, deleting the `@agenttrail/guardrails` import would leave every source
     // test green and ship a guard that enforces nothing.
@@ -826,8 +826,8 @@ describe("a guardrail the user wrote actually enforces", () => {
   });
 
   /**
-   * The per-rule allowlist, against the shipped bytes — and a consequence of the
-   * 56-rule catalog.
+   * The per-rule allowlist, against the shipped bytes — and a consequence of
+   * guardrails that overlap.
    *
    * `rm -rf /var/tmp/scratch` is matched by TWO rules: `dd.rm-rf-absolute`
    * denies an absolute-rooted recursive delete, and `require-approval-rm-rf` holds the

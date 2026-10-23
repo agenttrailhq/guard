@@ -11,7 +11,7 @@
  *
  * ── The allowlist is per-rule, never global ──────────────────────────────────
  * A `{guardrail, pattern}` entry suppresses THAT guardrail on THAT shape. Silencing
- * one noisy rule must leave the other 55 firing — a global mute is how a security tool
+ * one noisy rule must leave the rest firing — a global mute is how a security tool
  * becomes decorative while still looking installed.
  *
  * ── The message names the product ────────────────────────────────────────────

@@ -1,7 +1,7 @@
 /**
- * Compile-once, and the "one bad rule must not disable the other 55" property.
+ * Compile-once, and the "one bad guardrail must not disable the rest" property.
  *
- * The compile-once assertion is the one that protects the 10s budget: with a 56-rule
+ * The compile-once assertion is the one that protects the 10s budget: with the whole
  * catalog and no internal watchdog by design, compiling inside the per-rule loop is
  * the only thing that could push a call toward the ceiling.
  */

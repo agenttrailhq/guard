@@ -58,7 +58,7 @@
  * call through too, unless the entry sets `failClosed`.
  *
  * That also makes compile-once (`rules.ts`) a requirement rather than an
- * optimization: nothing else keeps a 56-rule catalog inside a 10s budget.
+ * optimization: nothing else keeps the whole catalog inside a 10s budget.
  */
 
 import { detectAgent, hookProtocolOf, unhandledAgent } from "../core/agent.js";

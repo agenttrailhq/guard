@@ -20,7 +20,7 @@ Code changes to Guard itself land here; the rules it enforces live in
 | --- | --- |
 | Report a bundled rule firing on a legitimate command (a false positive) | [Guardrails issues](https://github.com/agenttrailhq/guardrails/issues) |
 | Report a dangerous command no rule catches | [Guardrails issues](https://github.com/agenttrailhq/guardrails/issues) |
-| Contribute a rule, with matching and non-matching examples | [Guardrails](https://github.com/agenttrailhq/guardrails#contributing-a-rule) |
+| Contribute a guardrail, with matching and non-matching examples | [Guardrails](https://github.com/agenttrailhq/guardrails#contributing-a-guardrail) |
 | Fix a hook, install, `status`, `scan`, or CLI problem | [Guard issues](https://github.com/agenttrailhq/guard/issues) and pull requests |
 | Improve documentation | The repository the document lives in |
 
@@ -47,7 +47,7 @@ it.
 To try a rule before proposing it, use `agenttrail-guard guardrails validate <file.json>`,
 then `agenttrail-guard guardrails add <file.json>`. The rule format and what a contributed
 rule needs are in the
-[guardrails README](https://github.com/agenttrailhq/guardrails#contributing-a-rule).
+[guardrails README](https://github.com/agenttrailhq/guardrails#contributing-a-guardrail).
 
 ## Development setup
 

@@ -1,5 +1,5 @@
 /**
- * The guard actually loads the real 74-rule corpus.
+ * The guard actually loads the real guardrails corpus.
  *
  * `hook.ts`, `status.ts`, `init.ts` and `rules.ts` all read
  * `deps.catalog ?? SHIPPED_CATALOG`, and every other test in this package passes
@@ -70,8 +70,8 @@ describe("the shipped catalog is the real one", () => {
   });
 
   it("compiles all 74 — a guardrail that will not compile is SKIPPED, so a drop is silent", () => {
-    // `compileCatalog` swallows a bad predicate per-rule by design ("one bad rule
-    // must not disable the other 55"), which means a corpus-wide breakage shows up
+    // `compileCatalog` swallows a bad predicate per-rule by design ("one bad guardrail
+    // must not disable the rest"), which means a corpus-wide breakage shows up
     // as a smaller catalog rather than as an error. This is where that is noticed.
     expect(compileCatalog(SHIPPED_CATALOG)).toHaveLength(74);
   });

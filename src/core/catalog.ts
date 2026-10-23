@@ -1,5 +1,5 @@
 /**
- * The catalog the guard ships — `@agenttrail/guardrails`, 74 rules.
+ * The catalog the guard ships — `@agenttrail/guardrails`.
  *
  * Every call site reads `deps.catalog ?? <this catalog>`, so tests inject their own.
  *
@@ -10,11 +10,11 @@
  * no `ZodType`: the hook is a fresh Node process on every tool call and cannot
  * afford to parse a validator it never calls.
  *
- * Importing the root would put zod here AND run 74 `safeParse` calls per tool call to
- * re-check data that has not changed since publish. In a cold `node` process, an empty
- * process takes about 20ms and a root import that validates all 74 rules about 40ms,
- * so the subpath saves about 20ms a call — five times the cost of compiling every
- * rule's regexes and globs (3.8ms).
+ * Importing the root would put zod here AND run a `safeParse` call per guardrail on
+ * every tool call to re-check data that has not changed since publish. In a cold `node`
+ * process, an empty process takes about 20ms and a root import that validates every
+ * guardrail about 40ms, so the subpath saves about 20ms a call — five times the cost of
+ * compiling every rule's regexes and globs (3.8ms).
  *
  * ── The type assertion, and why it holds ────────────────────────────────────
  *

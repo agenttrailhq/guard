@@ -33,7 +33,7 @@
  * ── What it does NOT check ───────────────────────────────────────────────────
  * The predicate. `compileCatalog` hands each rule to `compilePolicy` inside a
  * `try/catch` that skips on a throw, so a rule whose `match` cannot compile is dropped
- * there — one bad rule never disabling the other 55. Validating the predicate here
+ * there — one bad rule never disabling the rest. Validating the predicate here
  * would mean shipping the validator, which is the thing this module exists to avoid.
  */
 
