@@ -11,6 +11,39 @@ For this package, breaking means a change to the installed hook entry (which sil
 the guard checking an existing install until it is re-approved) or a removed command or flag;
 adding a command, a flag, or support for a new agent is a feature.
 
+## [0.4.7](https://github.com/agenttrailhq/guard/compare/v0.4.6...v0.4.7) (2026-10-23)
+
+### Features
+
+* count risky calls by strictest action and mark library findings ([21917fd](https://github.com/agenttrailhq/guard/commit/21917fd3af6910ecd15127018ba81cd55436374a))
+* rebuild the scan report page ([3c2d431](https://github.com/agenttrailhq/guard/commit/3c2d431397fcdc3994b8a88bbf2192f5388fa598))
+* show the OWASP risks a scan touched in the report ([c00c573](https://github.com/agenttrailhq/guard/commit/c00c57374ac263957e4f1c77f2f9920ee206be4f))
+
+### Bug Fixes
+
+* announce a repeated copy, and pin the post link's suffix ([5971e5e](https://github.com/agenttrailhq/guard/commit/5971e5e625fb4940f2bf5fe0856cb0fc3775d739))
+* announce copies and keep focus on the copy button ([adfcdd9](https://github.com/agenttrailhq/guard/commit/adfcdd9952322315cb2d0ca16c473ff9244c947e))
+* count the tool calls behind each repeated shape ([371aa7c](https://github.com/agenttrailhq/guard/commit/371aa7c5818bde1005b4103d47a181181beacbbb))
+* count the tuning hint and column lists in tool calls ([6d9d701](https://github.com/agenttrailhq/guard/commit/6d9d701053bd0e761fd8029c10b0be72c068c448))
+* give each copy button in the report its own accessible name ([1d18269](https://github.com/agenttrailhq/guard/commit/1d1826960b585a13ea4c30bb0afe00f4bc07641f))
+* head a card for a user's own guardrail with fixed text ([52c4346](https://github.com/agenttrailhq/guard/commit/52c43468df5257281a2c97261e734d04086f874e))
+* keep the post link in step when the post has a lone surrogate ([d72047d](https://github.com/agenttrailhq/guard/commit/d72047d67a3dc79e73b67ab07b7a0b48ea175341))
+* let long findings break across printed pages ([bd86c10](https://github.com/agenttrailhq/guard/commit/bd86c102df7977b08c709c2a5004fabccb1f962a))
+* make the published copy's post read-only ([d216bc8](https://github.com/agenttrailhq/guard/commit/d216bc862de542e775f090d8ffa79dfef915c013))
+* name AgentTrail Guard and AgentTrail OS in full in the report ([2f55720](https://github.com/agenttrailhq/guard/commit/2f55720c1296180f66c673514638c55be0bd07cd))
+* offer a copyable set-action command only for a plain guardrail id ([7db5910](https://github.com/agenttrailhq/guard/commit/7db59104b5caba5a2dbd5118e0776d0b297a5d43))
+* offer a scan command that runs as pasted when a scan read nothing ([a450009](https://github.com/agenttrailhq/guard/commit/a4500094ad7255e4e161a9ec87498c5a6f16cf29))
+* print button links as text and announce the match tally ([8ca74d8](https://github.com/agenttrailhq/guard/commit/8ca74d8deac790492abb8de7db2da12180f378d4))
+* require Trusted Types in the report page's policy ([2dccb25](https://github.com/agenttrailhq/guard/commit/2dccb25b3b6a0719e8f58e3c1ddfeba2d35548ec))
+* say a scan with no tool calls checked nothing ([6779d85](https://github.com/agenttrailhq/guard/commit/6779d858494f9f2df21c1665e9ab96eda984d876))
+* say how many repeats Repeat offenders leaves out ([dc27930](https://github.com/agenttrailhq/guard/commit/dc27930817136273511c37745fcfa3ad39b74c81))
+* show a severity the user wrote as unknown in the report ([df37870](https://github.com/agenttrailhq/guard/commit/df37870a69e1b09afd4d8df2fd4d286969449e83))
+* show what the findings filters left, and a way back from none ([3b0e450](https://github.com/agenttrailhq/guard/commit/3b0e450aef3788a57c6360c4331d1163d96276ec))
+* sort a user's own guardrails last in the category sort ([5a4d035](https://github.com/agenttrailhq/guard/commit/5a4d035c728fe0376fafafcb0b73aa2108b451aa))
+* tidy the report's wording and layout ([326c8df](https://github.com/agenttrailhq/guard/commit/326c8df40e70b660d64b6c25ad2ef52227285ba0))
+* word the published copy's notes for a reader without the file ([95b6e89](https://github.com/agenttrailhq/guard/commit/95b6e89ed911a41e1ae1e761aa77d43bddad609a))
+* write the report's labels in sentence case ([0d302a8](https://github.com/agenttrailhq/guard/commit/0d302a8bd97f08c03eb00fff117aa7699411456b))
+
 ## [0.4.6](https://github.com/agenttrailhq/guard/compare/v0.4.5...v0.4.6) (2026-10-23)
 
 ### Features
