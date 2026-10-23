@@ -202,3 +202,67 @@ describe("engine semantics carried over from the source of truth", () => {
     expect(twice.total).toBe(0);
   });
 });
+
+describe("an attached -p password needs mysql or mariadb as the statement's program", () => {
+  it.each([
+    ["mysqldump -uroot -p'S3cret Pass' db", "mysqldump -uroot -p[REDACTED:secret:password] db"],
+    ['mysql -uroot -p"S3cret" db', "mysql -uroot -p[REDACTED:secret:password] db"],
+    [
+      "sudo -u root /usr/bin/mysql -pletmein",
+      "sudo -u root /usr/bin/mysql -p[REDACTED:secret:password]",
+    ],
+    [
+      "timeout 5 nice -n 10 mariadb -psecretpw",
+      "timeout 5 nice -n 10 mariadb -p[REDACTED:secret:password]",
+    ],
+    ["echo q | mysql -psecretpw shop", "echo q | mysql -p[REDACTED:secret:password] shop"],
+    [
+      '{"command":"mysql -u root -p\\"S3cret\\" shop"}',
+      '{"command":"mysql -u root -p[REDACTED:secret:password] shop"}',
+    ],
+  ])("redacts: %s", (input, expected) => {
+    expect(scrubText(input).text).toBe(expected);
+  });
+
+  it.each([
+    "docker run --name mysql -p3306:3306 mysql:8",
+    "find /var/lib/mysql -print",
+    "docker compose -f mysql.yml -pmyproj up",
+    "systemctl status mysql -pager",
+    "kubectl exec mysql-0 -- ls -pla",
+    "sudo -u mysql find /var/lib/mysql -print",
+    "mysql -u root -p shop",
+  ])("leaves alone: %s", (input) => {
+    expect(scrubText(input).text).toBe(input);
+  });
+});
+
+describe("key names: env assignments, quoted keys and headers, not code", () => {
+  it.each([
+    ["VENDOR_KEY=abc123def456", "VENDOR_KEY=[REDACTED:secret:env]"],
+    ['"VENDOR_KEY": "abc123def456"', '"VENDOR_KEY": "[REDACTED:secret:env]"'],
+    ["x-api-key: abc123def456", "x-api-key: [REDACTED:secret:env]"],
+    [
+      "Proxy-Authorization: Basic dXNlcjpwYXNzd29yZA==",
+      "Proxy-Authorization: Basic [REDACTED:secret:auth]",
+    ],
+  ])("redacts: %s", (input, expected) => {
+    expect(scrubText(input).text).toBe(expected);
+  });
+
+  it.each([
+    "primary_key=True",
+    "foreign_key: :user_id",
+    'hash_key = "LockID"',
+    'cache_key = "v1-deps"',
+    "idempotency_key: order-1234",
+    "data-key={item.id}",
+    'public_key = file("~/.ssh/id_rsa.pub")',
+    "SSH_KEY=~/.ssh/id_rsa",
+    'const STORAGE_KEY = "app-theme";',
+    "TEAM_KEY: string;",
+    "Idempotency-Key: abc123def456",
+  ])("leaves alone: %s", (input) => {
+    expect(scrubText(input).text).toBe(input);
+  });
+});

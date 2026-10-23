@@ -10194,17 +10194,26 @@ var ENV_SECRET_ASSIGNMENT = (() => {
 })();
 var SLOT = String.fromCharCode(57344);
 var KEY_NAME_ASSIGNMENT2 = new RegExp(
-  `${NAME_LEAD}${NOT_IN_PLACEHOLDER}([A-Za-z0-9]+(?:[_-][A-Za-z0-9]+)*[_-]key)(["']?\\s*[=:]\\s*)${NOT_A_PLACEHOLDER}(?:(")([^"${SLOT}]{4,})"|(')([^'${SLOT}]{4,})'|([^\\s"',;${SLOT}]{4,}))`,
-  "gi"
-);
-var AUTHORIZATION_HEADER = new RegExp(
-  `${NAME_LEAD}(Authorization["']?\\s*[=:]\\s*["']?)((?:Basic|Token|Digest|Negotiate|ApiKey|Api-Key)\\s+)?(?!Bearer\\s)${NOT_A_PLACEHOLDER}([^\\s"',;${SLOT}]{8,})`,
-  "gi"
-);
-var MYSQL_PASSWORD_FLAG = new RegExp(
-  `(?<=\\b(?:mysql\\w*|mariadb\\w*)\\b[^\\n;|&${SLOT}]{0,200}?)(\\s-p)${NOT_A_PLACEHOLDER}([^\\s"'${SLOT}]+)`,
+  `${NAME_LEAD}${NOT_IN_PLACEHOLDER}([A-Z0-9]+(?:_[A-Z0-9]+)*_KEY(?==|["']\\s*:)|(?![Ii]dempotency-)[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*-[Kk][Ee][Yy](?=["']?\\s*:))(["']?\\s*[=:]\\s*)${NOT_A_PLACEHOLDER}(?!["']?[~.]{0,2}/)(?:(")([^"${SLOT}]{4,})"|(')([^'${SLOT}]{4,})'|([^\\s"',;${SLOT}]{4,}))`,
   "g"
 );
+var AUTHORIZATION_HEADER = new RegExp(
+  `${NAME_LEAD}((?:Proxy-)?Authorization["']?\\s*[=:]\\s*["']?)((?:Basic|Token|Digest|Negotiate|ApiKey|Api-Key)\\s+)?(?!Bearer\\s)${NOT_A_PLACEHOLDER}([^\\s"',;${SLOT}]{8,})`,
+  "gi"
+);
+var MYSQL_PASSWORD_FLAG = (() => {
+  const blank = "[ \\t]";
+  const assignment = `[A-Za-z_]\\w*=[^\\s${SLOT}]*${blank}+`;
+  const option = `(?:-[ugnskcdUCD]${blank}+[^\\s${SLOT}-][^\\s${SLOT}]*|-(?![ugnskcdUCD]${blank})[^\\s${SLOT}]*|\\d[^\\s${SLOT}]*)${blank}+`;
+  const wrapper = `(?:sudo|env|nice|nohup|time|timeout|xargs|exec|command)${blank}+(?:${option}|${assignment})*`;
+  const start = `(?<=^|[;|&(\\n]|[:,[{]${blank}*"|\\\\n)`;
+  const program = `(?:[^\\s${SLOT}"']*/)?(?:mysql\\w*|mariadb\\w*)(?![\\w.-])`;
+  const value = `(?:'[^'\\n${SLOT}]*'|\\\\"[^"\\\\\\n${SLOT}]*\\\\"|"[^"\\n${SLOT}]*"|[^\\s"'${SLOT}]+)`;
+  return new RegExp(
+    `${start}(${blank}*(?:${assignment})*(?:${wrapper})*${program}[^\\n;|&${SLOT}]{0,200}?\\s-p)${NOT_A_PLACEHOLDER}${value}`,
+    "g"
+  );
+})();
 var CLOUD_ACCOUNT_ID = new RegExp(
   [
     `${NAME_LEAD}([A-Za-z0-9_]*(?:ACCOUNT[_-]?ID|CF_ACCOUNT|CLOUDFLARE_ACCOUNT|AWS_ACCOUNT|GOOGLE_CLOUD_PROJECT|GCLOUD_PROJECT|GCP_PROJECT|CORE_PROJECT))(["']?\\s*[=:]\\s*)(["']?)([^\\s"',;<[${SLOT}][^\\s"',;${SLOT}]*)\\3`,
@@ -10218,6 +10227,7 @@ var GENERIC_SECRET_CANDIDATE = new RegExp(
   `(?:(?<![A-Za-z0-9_+/.%-])|${ESCAPE_BOUNDARY})(?<!==)(?<!sha(?:1|224|256|384|512)[-:])(?<!base64,)[A-Za-z0-9_-]{${FALLBACK_MIN_LENGTH},}(?![A-Za-z0-9_+/=.%-])`,
   "g"
 );
+var GENERIC_SECRET_PREFILTER = new RegExp(`[A-Za-z0-9_-]{${FALLBACK_MIN_LENGTH}}`);
 function aroundValue(name, separator, quote, label) {
   const q = quote ?? "";
   return `${name}${separator}${q}${label}${q}`;
@@ -10296,21 +10306,25 @@ var PATTERNS = [
   {
     id: "key-name-secret",
     regex: KEY_NAME_ASSIGNMENT2,
+    prefilter: /_KEY|-key/i,
     placeholder: (g) => aroundValue(g[1] ?? "", g[2] ?? "", g[3] ?? g[5], redacted("secret:env"))
   },
   {
     id: "authorization-header",
     regex: AUTHORIZATION_HEADER,
+    prefilter: /authorization/i,
     placeholder: (g) => `${g[1] ?? ""}${g[2] ?? ""}${redacted("secret:auth")}`
   },
   {
     id: "mysql-password-flag",
     regex: MYSQL_PASSWORD_FLAG,
+    prefilter: /mysql|mariadb/i,
     placeholder: (g) => `${g[1] ?? ""}${redacted("secret:password")}`
   },
   {
     id: "cloud-account-id",
     regex: CLOUD_ACCOUNT_ID,
+    prefilter: /account|project|owner-id|arn:aws/i,
     placeholder: (g) => {
       const label = redacted("pii:account");
       if (g[1] !== void 0) return aroundValue(g[1], g[2] ?? "", g[3], label);
@@ -10322,6 +10336,7 @@ var PATTERNS = [
   {
     id: "generic-secret",
     regex: GENERIC_SECRET_CANDIDATE,
+    prefilter: GENERIC_SECRET_PREFILTER,
     accept: looksRandom,
     placeholder: () => redacted("secret:generic")
   },
@@ -10365,6 +10380,7 @@ function sentinel(index) {
   return `${SENTINEL_CHAR}${index}${SENTINEL_CHAR}`;
 }
 function applyPattern(text, pattern, tally, slots) {
+  if (pattern.prefilter && !pattern.prefilter.test(text)) return text;
   const needsLuhn = LUHN_VALIDATED_IDS.has(pattern.id);
   return text.replace(pattern.regex, (...args2) => {
     const match = args2[0];
