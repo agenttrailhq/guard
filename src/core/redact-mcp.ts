@@ -7,7 +7,7 @@
  * (`scrubText` → `redactPaths` → `redactIdentifiers`) each miss a JSON value:
  *
  *   - `scrubText` matches a secret SHAPE. A team id, a record id, or a sentence of
- *     free-text prose is none of the fourteen shapes it knows.
+ *     free-text prose is none of the nineteen shapes it knows.
  *   - `redactPaths` matches path STRUCTURE — a separator. An opaque id has none.
  *   - `redactIdentifiers` matches operand POSITION inside a KNOWN shell command, from a
  *     deny-list of shell tools. An MCP server is never on that list, so the whole blob

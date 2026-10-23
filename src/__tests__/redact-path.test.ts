@@ -152,7 +152,7 @@ describe("composition with the secret scrubber (the order scan uses)", () => {
   });
 
   it("the scrubber alone does NOT catch the path — the other half of the control", () => {
-    // None of the fourteen scrubber patterns match a filesystem path.
+    // None of the nineteen scrubber patterns match a filesystem path.
     const command = `cat ${HOME_PATH}/.env`;
     const scrubbed = scrubText(command);
     expect(scrubbed.total).toBe(0);

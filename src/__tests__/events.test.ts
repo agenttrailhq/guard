@@ -305,12 +305,12 @@ describe("scrubbing: the field, then serialize", () => {
     // The order this module actually uses.
     const fieldFirst = JSON.stringify({ command: scrubText(command).text });
     expect(fieldFirst).not.toContain("abcd1234efgh");
-    expect(JSON.parse(fieldFirst).command).toBe("export API_KEY=[REDACTED:secret:env]");
+    expect(JSON.parse(fieldFirst).command).toBe('export API_KEY="[REDACTED:secret:env]"');
   });
 
-  it("PINNED: the written command must never be scrubbed a second time", () => {
-    // `scrubText` is not idempotent. If any consumer re-scrubs a recorded command,
-    // this is what it does to it.
+  it("PINNED: scrubbing a written command a second time changes nothing", () => {
+    // A name rule never starts inside a placeholder or takes one as its value, so a
+    // consumer that re-scrubs a recorded command gets it back unchanged.
     const { io, files } = fakeFs();
     createEventRecorder(io).record({
       mapped: call("aws s3 cp x s3://b --profile AKIAIOSFODNN7EXAMPLE"),
@@ -320,9 +320,9 @@ describe("scrubbing: the field, then serialize", () => {
     const once = JSON.parse(lines(files.get(LOG))[0] as string).command as string;
     expect(once).toContain("[REDACTED:secret:aws]");
 
-    const twice = scrubText(once).text;
-    expect(twice).not.toBe(once);
-    expect(twice).toContain("[REDACTED:secret:[REDACTED:");
+    const twice = scrubText(once);
+    expect(twice.text).toBe(once);
+    expect(twice.total).toBe(0);
   });
 });
 

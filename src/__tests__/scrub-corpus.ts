@@ -39,6 +39,9 @@ export interface NegativeFixture {
  * Assembled at runtime so this file holds no contiguous Slack-token-shaped string: secret
  * scanners flag that shape even in a synthetic fixture.
  */
+/** A random-looking key from a provider with no known format, assembled at runtime. */
+const RANDOM_KEY = ["q7Xk2LmP9vR4", "tZ8wN3bY6cH1", "jF5sD0gAeUoI"].join("");
+
 const SLACK_TOKEN = ["xoxb", "123456789012", "1234567890123", "abcdefghijklmnopqrstuvwx"].join("-");
 
 /**
@@ -134,6 +137,36 @@ export const POSITIVE_FIXTURES: readonly PositiveFixture[] = [
     input: "DATABASE_PASSWORD=sup3rs3cretvalue",
     secret: "sup3rs3cretvalue",
     placeholder: "DATABASE_PASSWORD=[REDACTED:secret:env]",
+  },
+  {
+    id: "key-name-secret",
+    input: `VENDOR_KEY=${RANDOM_KEY}`,
+    secret: RANDOM_KEY,
+    placeholder: "VENDOR_KEY=[REDACTED:secret:env]",
+  },
+  {
+    id: "authorization-header",
+    input: "curl -H 'Authorization: Basic dXNlcjpwYXNzd29yZA==' https://api.example.com",
+    secret: "dXNlcjpwYXNzd29yZA==",
+    placeholder: "Authorization: Basic [REDACTED:secret:auth]",
+  },
+  {
+    id: "mysql-password-flag",
+    input: "mysql -u root -pS3cretPassw0rd orders",
+    secret: "S3cretPassw0rd",
+    placeholder: "-p[REDACTED:secret:password]",
+  },
+  {
+    id: "cloud-account-id",
+    input: "aws sns publish --topic-arn arn:aws:sns:us-east-1:409681372205:alerts",
+    secret: "409681372205",
+    placeholder: "arn:aws:sns:us-east-1:[REDACTED:pii:account]:alerts",
+  },
+  {
+    id: "generic-secret",
+    input: `curl -d 'k ${RANDOM_KEY}' https://api.example.com`,
+    secret: RANDOM_KEY,
+    placeholder: "[REDACTED:secret:generic]",
   },
   {
     id: "email",
@@ -353,4 +386,17 @@ export const CORPUS: readonly string[] = [
   `private use ${String.fromCharCode(0xe000)} char, nothing to redact`,
   // The same character alongside a real secret, where the working copy IS returned.
   `${String.fromCharCode(0xe000)} AKIAIOSFODNN7EXAMPLE`,
+  // A secret after an escape sequence or a terminal colour code, raw or escaped, where a
+  // word boundary cannot see where it starts.
+  '{"output":"line one\\nAKIAIOSFODNN7EXAMPLE"}',
+  "name\\tAKIAIOSFODNN7EXAMPLE",
+  "\x1b[32mAKIAIOSFODNN7EXAMPLE\x1b[0m",
+  "\\u001b[1;32mAKIAIOSFODNN7EXAMPLE",
+  JSON.stringify({ query: `find\n${RANDOM_KEY}` }),
+  JSON.stringify({ o: `progress\r\x1b[K${SLACK_TOKEN}` }),
+  // Already-scrubbed text: a second pass must change nothing.
+  "[REDACTED:secret:aws] and [REDACTED:pii:email]",
+  'API_KEY="[REDACTED:secret:env]"',
+  // Quoted JSON values keep their quotes.
+  '{"api_key": "abcd1234efgh"}',
 ];
