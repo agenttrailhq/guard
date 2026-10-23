@@ -11,6 +11,18 @@ For this package, breaking means a change to the installed hook entry (which sil
 the guard checking an existing install until it is re-approved) or a removed command or flag;
 adding a command, a flag, or support for a new agent is a feature.
 
+## [0.4.6](https://github.com/agenttrailhq/guard/compare/v0.4.5...v0.4.6) (2026-10-23)
+
+### Features
+
+* add OWASP ids to scan findings ([6b51156](https://github.com/agenttrailhq/guard/commit/6b511562974bec0756b37aef4925c6af2a10a34d))
+* filter guardrails list by OWASP id ([f3f55d4](https://github.com/agenttrailhq/guard/commit/f3f55d4ccc0a5c253f1207f77dec33abf02b08de))
+
+### Bug Fixes
+
+* ask again before reads of secret files (guardrails 0.2.6) ([2978b90](https://github.com/agenttrailhq/guard/commit/2978b907c247a149b12ef4de52b41c8592137dfc))
+* guardrails 0.2.4 no longer asks before reading some secret files ([dd072dd](https://github.com/agenttrailhq/guard/commit/dd072ddbb8f92b78b018ef033fb20aec5634abee))
+
 ## [0.4.5](https://github.com/agenttrailhq/guard/compare/v0.4.4...v0.4.5) (2026-10-14)
 
 ### Bug Fixes
