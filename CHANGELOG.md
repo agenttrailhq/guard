@@ -11,6 +11,12 @@ For this package, breaking means a change to the installed hook entry (which sil
 the guard checking an existing install until it is re-approved) or a removed command or flag;
 adding a command, a flag, or support for a new agent is a feature.
 
+## [0.4.10](https://github.com/agenttrailhq/guard/compare/v0.4.9...v0.4.10) (2026-10-23)
+
+### Bug Fixes
+
+* slow matching of the mysql -p rule on long input ([5e9a36b](https://github.com/agenttrailhq/guard/commit/5e9a36b822af32ecc26292a4248c9c5ed868382d))
+
 ## [0.4.9](https://github.com/agenttrailhq/guard/compare/v0.4.8...v0.4.9) (2026-10-23)
 
 ### Bug Fixes
