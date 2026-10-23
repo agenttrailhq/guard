@@ -27,9 +27,9 @@ describe("the corpus itself is complete", () => {
     expect(POSITIVE_FIXTURES.map((f) => f.id).sort()).toEqual([...PATTERN_IDS].sort());
   });
 
-  it("carries the full standard catalog — 14 patterns, no subset", () => {
-    expect(PATTERN_IDS).toHaveLength(14);
-    expect(new Set(PATTERN_IDS).size).toBe(14);
+  it("carries the full standard catalog — 19 patterns, no subset", () => {
+    expect(PATTERN_IDS).toHaveLength(19);
+    expect(new Set(PATTERN_IDS).size).toBe(19);
   });
 });
 
@@ -178,19 +178,10 @@ describe("engine semantics carried over from the source of truth", () => {
     expect(scrubText("api_key: abcd1234efgh").text).toBe("api_key: [REDACTED:secret:env]");
   });
 
-  it("PINNED: a quoted JSON value loses its quotes, so the output is not valid JSON", () => {
-    // Known behavior, pinned so it is visible rather than discovered.
-    //
-    // The separator group covers the KEY's closing quote (`": `); the VALUE's own
-    // quotes are consumed by the value alternation and are not re-emitted. So a
-    // JSON object comes back with an unquoted placeholder and no longer parses.
-    //
-    // It matters for the `scan` report and `events.jsonl` only if they ever scrub a JSON
-    // blob and then re-parse it — they must scrub for DISPLAY, after serializing, not
-    // before.
-    expect(scrubText('{"api_key": "abcd1234efgh"}').text).toBe(
-      '{"api_key": [REDACTED:secret:env]}',
-    );
+  it("a quoted JSON value keeps its quotes, so the output is still valid JSON", () => {
+    const out = scrubText('{"api_key": "abcd1234efgh"}').text;
+    expect(out).toBe('{"api_key": "[REDACTED:secret:env]"}');
+    expect(() => JSON.parse(out)).not.toThrow();
   });
 
   it("is safe to call repeatedly — the shared global regexes carry no state", () => {
@@ -202,22 +193,12 @@ describe("engine semantics carried over from the source of truth", () => {
     for (let i = 0; i < 5; i++) expect(scrubText(input)).toEqual(first);
   });
 
-  it("PINNED: scrubbing is NOT idempotent — scrub once, at the boundary", () => {
-    // Known behavior, pinned because the opposite is the natural assumption.
-    //
-    // The `.env` heuristic matches the word `secret` inside the placeholder the
-    // catalog itself emits (`[REDACTED:secret:aws]` is `secret` + `:` + a value), so a
-    // second pass mangles the first pass's output and inflates the tally.
-    //
-    // The consequence for the consumers: **scrub exactly once, at the point of
-    // display/write.** The `scan` report and `events.jsonl` read independent sources
-    // today, so nothing double-scrubs — but if either ever scrubs a value that came
-    // from the other, this is what happens.
+  it("scrubbing twice changes nothing: a placeholder is never rescrubbed", () => {
     const once = scrubText("AKIAIOSFODNN7EXAMPLE and priya@acme.io").text;
     expect(once).toBe("[REDACTED:secret:aws] and [REDACTED:pii:email]");
 
     const twice = scrubText(once);
-    expect(twice.text).not.toBe(once);
-    expect(twice.redactions).toEqual({ "env-secret": 1 });
+    expect(twice.text).toBe(once);
+    expect(twice.total).toBe(0);
   });
 });

@@ -6158,11 +6158,111 @@ function cursorHooksPath(homedir2) {
   return join(homedir2, ".cursor", "hooks.json");
 }
 
+// src/core/redact-secrets.ts
+var FALLBACK_MIN_LENGTH = 32;
+var NAME_SEGMENT_MAX = 12;
+var WORDLIKE_SHARE = 0.7;
+var FALLBACK_MIN_ENTROPY = 4;
+var KEY_NAME = "[A-Za-z0-9]+(?:[_-][A-Za-z0-9]+)*[_-]key";
+var UNQUOTED_VALUE = `[^\\s"',;\\[<]`;
+var KEY_NAME_ASSIGNMENT = new RegExp(
+  `(?<![A-Za-z0-9_-])(${KEY_NAME})(["']?\\s*[=:]\\s*)(?:(")(?!\\[REDACTED:|<)[^"]{4,}"|(')(?!\\[REDACTED:|<)[^']{4,}'|${UNQUOTED_VALUE}{4,})`,
+  "gi"
+);
+var AUTHORIZATION = new RegExp(
+  `(?<![A-Za-z0-9_-])(Authorization["']?\\s*[=:]\\s*["']?)((?:Basic|Token|Digest|Negotiate|ApiKey|Api-Key)\\s+)?(?!Bearer\\s|\\[REDACTED:|<)(${UNQUOTED_VALUE}{8,})`,
+  "gi"
+);
+var UUID_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+var CANDIDATE = new RegExp(
+  `(?<![A-Za-z0-9_+/.%-])(?<!==)(?<!sha(?:1|224|256|384|512)[-:])(?<!base64,)[A-Za-z0-9_-]{${FALLBACK_MIN_LENGTH},}(?![A-Za-z0-9_+/=.%-])`,
+  "g"
+);
+function entropyOf(value) {
+  const counts = /* @__PURE__ */ new Map();
+  for (const ch of value) counts.set(ch, (counts.get(ch) ?? 0) + 1);
+  let bits = 0;
+  for (const n of counts.values()) {
+    const p = n / value.length;
+    bits -= p * Math.log2(p);
+  }
+  return bits;
+}
+var WORD = /[A-Z][a-z]{3,}|[a-z]{4,}|[A-Z]{4,}/g;
+function looksLikeWords(candidate) {
+  let wordChars = 0;
+  for (const word of candidate.match(WORD) ?? []) wordChars += word.length;
+  return wordChars / candidate.replace(/[-_]/g, "").length >= WORDLIKE_SHARE;
+}
+var NAME_WORDS = /* @__PURE__ */ new Set([
+  "api",
+  "app",
+  "auth",
+  "backend",
+  "billing",
+  "blue",
+  "build",
+  "canary",
+  "checkout",
+  "cluster",
+  "controller",
+  "default",
+  "deploy",
+  "deployment",
+  "dev",
+  "east",
+  "frontend",
+  "gateway",
+  "green",
+  "ingest",
+  "ingress",
+  "internal",
+  "job",
+  "main",
+  "migration",
+  "north",
+  "prod",
+  "production",
+  "release",
+  "replica",
+  "rollout",
+  "service",
+  "south",
+  "staging",
+  "stage",
+  "test",
+  "web",
+  "west",
+  "worker"
+]);
+function looksLikeSegmentedName(candidate) {
+  const segments = candidate.split(/[-_]/);
+  if (segments.length < 5 || segments.some((segment) => segment.length > NAME_SEGMENT_MAX)) {
+    return false;
+  }
+  return segments.filter((segment) => NAME_WORDS.has(segment.toLowerCase())).length >= 3;
+}
+function looksRandom(candidate) {
+  if (UUID_SHAPE.test(candidate)) return false;
+  if (/^sha(?:1|224|256|384|512)-/i.test(candidate)) return false;
+  if (looksLikeWords(candidate) || looksLikeSegmentedName(candidate)) return false;
+  if (/\d{8,}/.test(candidate)) return false;
+  if (candidate.split(/[-_]/).some((segment) => segment.length >= 32 && /^[0-9a-fA-F]+$/.test(segment)))
+    return false;
+  if (/^[0-9a-fA-F]+$/.test(candidate)) return false;
+  if (!/[A-Za-z]/.test(candidate) || !/[0-9]/.test(candidate)) return false;
+  return entropyOf(candidate) >= FALLBACK_MIN_ENTROPY;
+}
+
 // src/core/scrub.ts
 function redacted(kind, hint) {
   return hint ? `[REDACTED:${kind}:${hint}]` : `[REDACTED:${kind}]`;
 }
-var LEAD2 = String.raw`(?:\b|(?<=\\[nrtfb])|(?<=\\u[0-9A-Fa-f]{4})|(?<=\x1b\[[0-9;:?]{0,32}[@-~])|(?<=\\(?:u001[bB]|x1[bB]|033)\[[0-9;:?]{0,32}[@-~])|(?<=\x1b\([0-9A-Za-z])|(?<=\\(?:u001[bB]|x1[bB]|033)\([0-9A-Za-z]))`;
+var ESCAPE_BOUNDARY = String.raw`(?<=\\[nrtfb])|(?<=\\u[0-9A-Fa-f]{4})|(?<=\x1b\[[0-9;:?]{0,32}[@-~])|(?<=\\(?:u001[bB]|x1[bB]|033)\[[0-9;:?]{0,32}[@-~])|(?<=\x1b\([0-9A-Za-z])|(?<=\\(?:u001[bB]|x1[bB]|033)\([0-9A-Za-z])`;
+var LEAD2 = `(?:\\b|${ESCAPE_BOUNDARY})`;
+var NAME_LEAD = `(?:(?<![A-Za-z0-9_-])|${ESCAPE_BOUNDARY})`;
+var NOT_IN_PLACEHOLDER = String.raw`(?<!\[REDACTED:)`;
+var NOT_A_PLACEHOLDER = String.raw`(?!["']?\[REDACTED:[a-z0-9:-]+\]["']?(?:[\s,;}\])]|$))`;
 function led(source, flags) {
   return new RegExp(`${LEAD2}${source}`, flags);
 }
@@ -6191,9 +6291,42 @@ var BASIC_AUTH_URL = led(String.raw`(https?|ftp|wss?):\/\/[^\s/@:]+:[^\s]*@(?=[^
 var ENV_SECRET_ASSIGNMENT = (() => {
   const sentinel2 = String.fromCharCode(57344);
   const key = "([A-Z0-9_]*(?:PASSWORD|PASSWD|SECRET|TOKEN|API[_-]?KEY|APIKEY|ACCESS[_-]?KEY|PRIVATE[_-]?KEY|CLIENT[_-]?SECRET|AUTH[_-]?TOKEN|CREDENTIALS?)[A-Z0-9_]*)";
-  const value = `(?:"([^"${sentinel2}]{4,})"|'([^'${sentinel2}]{4,})'|([^\\s"',;${sentinel2}]{4,}))`;
-  return new RegExp(`${LEAD2}${key}(["']?\\s*[=:]\\s*)${value}`, "gi");
+  const value = `(?:(")([^"${sentinel2}]{4,})"|(')([^'${sentinel2}]{4,})'|([^\\s"',;${sentinel2}]{4,}))`;
+  return new RegExp(
+    `${LEAD2}${NOT_IN_PLACEHOLDER}${key}(["']?\\s*[=:]\\s*)${NOT_A_PLACEHOLDER}${value}`,
+    "gi"
+  );
 })();
+var SLOT = String.fromCharCode(57344);
+var KEY_NAME_ASSIGNMENT2 = new RegExp(
+  `${NAME_LEAD}${NOT_IN_PLACEHOLDER}([A-Za-z0-9]+(?:[_-][A-Za-z0-9]+)*[_-]key)(["']?\\s*[=:]\\s*)${NOT_A_PLACEHOLDER}(?:(")([^"${SLOT}]{4,})"|(')([^'${SLOT}]{4,})'|([^\\s"',;${SLOT}]{4,}))`,
+  "gi"
+);
+var AUTHORIZATION_HEADER = new RegExp(
+  `${NAME_LEAD}(Authorization["']?\\s*[=:]\\s*["']?)((?:Basic|Token|Digest|Negotiate|ApiKey|Api-Key)\\s+)?(?!Bearer\\s)${NOT_A_PLACEHOLDER}([^\\s"',;${SLOT}]{8,})`,
+  "gi"
+);
+var MYSQL_PASSWORD_FLAG = new RegExp(
+  `(?<=\\b(?:mysql\\w*|mariadb\\w*)\\b[^\\n;|&${SLOT}]{0,200}?)(\\s-p)${NOT_A_PLACEHOLDER}([^\\s"'${SLOT}]+)`,
+  "g"
+);
+var CLOUD_ACCOUNT_ID = new RegExp(
+  [
+    `${NAME_LEAD}([A-Za-z0-9_]*(?:ACCOUNT[_-]?ID|CF_ACCOUNT|CLOUDFLARE_ACCOUNT|AWS_ACCOUNT|GOOGLE_CLOUD_PROJECT|GCLOUD_PROJECT|GCP_PROJECT|CORE_PROJECT))(["']?\\s*[=:]\\s*)(["']?)([^\\s"',;<[${SLOT}][^\\s"',;${SLOT}]*)\\3`,
+    `(--(?:account-id|account|owner-id|account-number))(=|\\s+)(["']?)(\\d{12}|[0-9a-f]{32})\\7(?![A-Za-z0-9])`,
+    `(?<=\\barn:aws[a-z-]*:[a-z0-9-]*:[a-z0-9-]*:)\\d{12}(?![A-Za-z0-9])`,
+    `(?<=\\b(?:gcloud|gsutil|bq|firebase)\\b[^\\n;|&${SLOT}]{0,200}?)(--project(?:_id|-id)?)(=|\\s+)(["']?)([a-z][a-z0-9-]{4,28}[a-z0-9])\\11(?![A-Za-z0-9-])`
+  ].join("|"),
+  "gi"
+);
+var GENERIC_SECRET_CANDIDATE = new RegExp(
+  `(?:(?<![A-Za-z0-9_+/.%-])|${ESCAPE_BOUNDARY})(?<!==)(?<!sha(?:1|224|256|384|512)[-:])(?<!base64,)[A-Za-z0-9_-]{${FALLBACK_MIN_LENGTH},}(?![A-Za-z0-9_+/=.%-])`,
+  "g"
+);
+function aroundValue(name, separator, quote, label) {
+  const q = quote ?? "";
+  return `${name}${separator}${q}${label}${q}`;
+}
 var EMAIL = led(String.raw`[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9.-]{1,255}\.[A-Za-z]{2,24}\b`, "g");
 var SSN = led(String.raw`(?!000|666|9\d\d)\d{3}[- ](?!00)\d{2}[- ](?!0000)\d{4}\b`, "g");
 var CREDIT_CARD = led(String.raw`(?:\d{13,19}\b|\d{3,6}([ -])\d{3,6}(?:\1\d{3,6}){1,3}\b)`, "g");
@@ -6258,9 +6391,44 @@ var PATTERNS = [
   {
     id: "env-secret",
     regex: ENV_SECRET_ASSIGNMENT,
-    // Preserve the key name (g1) + the original separator (g2); redact only the
-    // value (g3/g4/g5 — which branch matched is irrelevant).
-    placeholder: (g) => `${g[1]}${g[2]}${redacted("secret:env")}`
+    // Preserve the key name (g1) and the original separator (g2); redact only the value
+    // (g4/g6/g7), putting back its quotes (g3/g5), so quoted JSON stays valid.
+    placeholder: (g) => {
+      const quote = g[3] ?? g[5] ?? "";
+      return `${g[1]}${g[2]}${quote}${redacted("secret:env")}${quote}`;
+    }
+  },
+  {
+    id: "key-name-secret",
+    regex: KEY_NAME_ASSIGNMENT2,
+    placeholder: (g) => aroundValue(g[1] ?? "", g[2] ?? "", g[3] ?? g[5], redacted("secret:env"))
+  },
+  {
+    id: "authorization-header",
+    regex: AUTHORIZATION_HEADER,
+    placeholder: (g) => `${g[1] ?? ""}${g[2] ?? ""}${redacted("secret:auth")}`
+  },
+  {
+    id: "mysql-password-flag",
+    regex: MYSQL_PASSWORD_FLAG,
+    placeholder: (g) => `${g[1] ?? ""}${redacted("secret:password")}`
+  },
+  {
+    id: "cloud-account-id",
+    regex: CLOUD_ACCOUNT_ID,
+    placeholder: (g) => {
+      const label = redacted("pii:account");
+      if (g[1] !== void 0) return aroundValue(g[1], g[2] ?? "", g[3], label);
+      if (g[5] !== void 0) return aroundValue(g[5], g[6] ?? "", g[7], label);
+      if (g[9] !== void 0) return aroundValue(g[9], g[10] ?? "", g[11], label);
+      return label;
+    }
+  },
+  {
+    id: "generic-secret",
+    regex: GENERIC_SECRET_CANDIDATE,
+    accept: looksRandom,
+    placeholder: () => redacted("secret:generic")
   },
   {
     id: "email",
@@ -6306,6 +6474,7 @@ function applyPattern(text, pattern, tally, slots) {
   return text.replace(pattern.regex, (...args2) => {
     const match = args2[0];
     if (needsLuhn && !passesLuhn(match)) return match;
+    if (pattern.accept && !pattern.accept(match)) return match;
     const groups = args2.slice(0, args2.length - 2);
     tally[pattern.id] = (tally[pattern.id] ?? 0) + 1;
     const slot = slots.length;
