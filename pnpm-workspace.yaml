@@ -2,6 +2,8 @@
 allowBuilds:
   esbuild: false
 
-# The pinned guardrails release is newer than pnpm's minimum release age.
+# Exact versions newer than pnpm's 24-hour minimum release age. pnpm applies only the first
+# entry for a package, so list all of a package's versions in one entry, joined with `||`.
+# Remove the guardrails entry after 2026-10-23 16:18 UTC.
 minimumReleaseAgeExclude:
-  - "@agenttrail/guardrails@0.0.2"
+  - "@agenttrail/guardrails@0.2.6"
