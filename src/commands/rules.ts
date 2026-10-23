@@ -46,7 +46,7 @@ import {
 import { buildGuardSpanContext } from "../core/normalize.js";
 import { isOwaspId, type OwaspId, owaspTitle } from "../core/owasp.js";
 import { guardDir } from "../core/paths.js";
-import { takeProductLine, writeOrFalse } from "../core/product-line.js";
+import { productLineEnabled, takeProductLine, writeOrFalse } from "../core/product-line.js";
 import { blockFixtureCommands } from "../core/rule-fixtures.js";
 import {
   bannedConstructWarning,
@@ -61,6 +61,7 @@ import { loadUserRules } from "../core/user-rules.js";
 import { parseUserRulesData } from "../core/user-rules-data.js";
 import type { SetupIO } from "../setup-io.js";
 import {
+  addFollowUp,
   addFollowUpAllowed,
   BLANK,
   draftFor,
@@ -1186,16 +1187,19 @@ function cmdAdd(io: SetupIO, flags: Flags, files: Files, deps: RulesDeps, path: 
     `Validated. Added ${rule.id} (${displayAction(rule.defaultAction)}) to ${files.rulesPath}.`,
     `${active} guardrails active.`,
   );
-  // One line about sharing it, after the confirmation. It names `guardrails export` too,
-  // so it takes the place of the export line rather than following it. Never under
-  // `--quiet` or `--json`, and `.product-line` sits beside the `config.json` this command read.
+  // One line about sharing it, after the confirmation, and `.product-line` sits beside the
+  // `config.json` this command read. The AgentTrail OS line names `guardrails export` too.
+  // When that line is held back, because it already showed today or `.product-line` could
+  // not be written, the export line takes its place. Under `--quiet`, `--json`,
+  // `"productLine": false` or output that is not a terminal, neither prints.
+  const interactive = addFollowUpAllowed({
+    quiet: flags.quiet,
+    json: flags.json,
+    isTTY: io.isTTY?.() === true,
+  });
   const osLine = takeProductLine(
     {
-      interactive: addFollowUpAllowed({
-        quiet: flags.quiet,
-        json: flags.json,
-        isTTY: io.isTTY?.() === true,
-      }),
+      interactive,
       configText: files.configText,
       statePath: `${files.dir}/.product-line`,
       now: deps.now ?? new Date(),
@@ -1204,7 +1208,11 @@ function cmdAdd(io: SetupIO, flags: Flags, files: Files, deps: RulesDeps, path: 
     },
     { surface: "add", guardrailId: rule.id },
   );
-  if (osLine !== undefined) r.say(osLine);
+  // The `add` line always has text, so an interactive, enabled run without it was held back.
+  const shareLine =
+    osLine ??
+    (interactive && productLineEnabled(files.configText) ? addFollowUp(rule.id) : undefined);
+  if (shareLine !== undefined) r.say(shareLine);
   // `--quiet` drops the lines above, but a guardrail that was written and will never fire is
   // worth one line even then.
   if (flags.quiet && !flags.json) {
