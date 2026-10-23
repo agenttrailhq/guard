@@ -7,16 +7,19 @@
  * finding — lives in separate modules composed at the call site
  * (`scrubPaths(scrubText(text).text)`), never as a pattern here.
  *
- * It covers all 14 `standard` patterns and nothing else: no configuration object, no
+ * It covers all 19 `standard` patterns and nothing else: no configuration object, no
  * per-organization patterns, no attribute-path allowlist. The guard scrubs whole
  * strings, one at a time, and records commands, never tool output.
  *
  * ── Discipline ─────────────────────────────────────────────────────────────
  *
- * Pure. No imports, no I/O, no logging. The secret value is never returned,
+ * Pure. No I/O, no logging; the one import is the long-random test it shares with
+ * `redact-secrets.ts`. The secret value is never returned,
  * logged, or counted by value — only `{ patternId → count }`. Every regex is
  * compiled once at module load; each pattern is a single `String.replace` pass.
  */
+
+import { FALLBACK_MIN_LENGTH, looksRandom } from "./redact-secrets.js";
 
 /** Per-pattern redaction tally. Maps a pattern id → number of redactions. */
 export type RedactionCounts = Readonly<Record<string, number>>;
@@ -42,6 +45,8 @@ interface ScrubPattern {
    * capture array (`groups[0]` = whole match). MUST NOT echo the secret value.
    */
   readonly placeholder: (groups: RegExpExecArray) => string;
+  /** Optional second check on a match; a match it rejects is kept and not counted. */
+  readonly accept?: (match: string) => boolean;
 }
 
 /** Canonical placeholder shape: `[REDACTED:<kind>:<hint>]`. */
@@ -69,7 +74,24 @@ function redacted(kind: string, hint?: string): string {
  * Not covered: URL-encoded characters (`%0A`), hex or octal escapes in a string literal
  * (`\x0a`, `\012`), and other encodings that would need decoding first.
  */
-const LEAD = String.raw`(?:\b|(?<=\\[nrtfb])|(?<=\\u[0-9A-Fa-f]{4})|(?<=\x1b\[[0-9;:?]{0,32}[@-~])|(?<=\\(?:u001[bB]|x1[bB]|033)\[[0-9;:?]{0,32}[@-~])|(?<=\x1b\([0-9A-Za-z])|(?<=\\(?:u001[bB]|x1[bB]|033)\([0-9A-Za-z]))`;
+const ESCAPE_BOUNDARY = String.raw`(?<=\\[nrtfb])|(?<=\\u[0-9A-Fa-f]{4})|(?<=\x1b\[[0-9;:?]{0,32}[@-~])|(?<=\\(?:u001[bB]|x1[bB]|033)\[[0-9;:?]{0,32}[@-~])|(?<=\x1b\([0-9A-Za-z])|(?<=\\(?:u001[bB]|x1[bB]|033)\([0-9A-Za-z])`;
+const LEAD = `(?:\\b|${ESCAPE_BOUNDARY})`;
+
+/**
+ * Where a NAME may start: not glued to a word character, a `_` or a `-` before it (so
+ * `X-Vendor-Key` matches from `X`, never from `Vendor`), or after an escape or colour code.
+ */
+const NAME_LEAD = `(?:(?<![A-Za-z0-9_-])|${ESCAPE_BOUNDARY})`;
+
+/**
+ * A name rule never starts inside a placeholder, nor takes one as its value. Without these,
+ * scrubbing already-scrubbed text read `[REDACTED:secret:github]` as a key `secret`, a `:`
+ * and a value `github]`, and mangled the placeholder.
+ */
+const NOT_IN_PLACEHOLDER = String.raw`(?<!\[REDACTED:)`;
+// Only a value that IS a placeholder, followed by a quote, a separator or the end: a real
+// value glued onto a placeholder (`[REDACTED:secret:env]<secret>`) is still redacted whole.
+const NOT_A_PLACEHOLDER = String.raw`(?!["']?\[REDACTED:[a-z0-9:-]+\]["']?(?:[\s,;}\])]|$))`;
 
 /** A pattern that starts at `LEAD`. `source` is written without a leading `\b`. */
 function led(source: string, flags: string): RegExp {
@@ -167,10 +189,83 @@ const ENV_SECRET_ASSIGNMENT = (() => {
   // Quoted branches allow spaces (stop only at the matching closing quote);
   // unquoted branch keeps the whitespace/terminator bound. All exclude the
   // sentinel so an already-inserted placeholder is never re-consumed.
+  // Each opening quote is its own group so the placeholder can put the quotes back, and the
+  // output of a quoted JSON value stays valid JSON.
   const value =
-    `(?:"([^"${sentinel}]{4,})"` + `|'([^'${sentinel}]{4,})'` + `|([^\\s"',;${sentinel}]{4,}))`;
-  return new RegExp(`${LEAD}${key}(["']?\\s*[=:]\\s*)${value}`, "gi");
+    `(?:(")([^"${sentinel}]{4,})"` + `|(')([^'${sentinel}]{4,})'` + `|([^\\s"',;${sentinel}]{4,}))`;
+  return new RegExp(
+    `${LEAD}${NOT_IN_PLACEHOLDER}${key}(["']?\\s*[=:]\\s*)${NOT_A_PLACEHOLDER}${value}`,
+    "gi",
+  );
 })();
+
+/** The slot sentinel. Every value class below excludes it. */
+const SLOT = String.fromCharCode(0xe000);
+
+/**
+ * A value after a NAME ending in `_KEY` / `-key` (`VENDOR_KEY=…`, `X-Vendor-Key: …`).
+ * Same value branches and groups as `ENV_SECRET_ASSIGNMENT`.
+ */
+const KEY_NAME_ASSIGNMENT = new RegExp(
+  `${NAME_LEAD}${NOT_IN_PLACEHOLDER}([A-Za-z0-9]+(?:[_-][A-Za-z0-9]+)*[_-]key)(["']?\\s*[=:]\\s*)${NOT_A_PLACEHOLDER}` +
+    `(?:(")([^"${SLOT}]{4,})"|(')([^'${SLOT}]{4,})'|([^\\s"',;${SLOT}]{4,}))`,
+  "gi",
+);
+
+/**
+ * An `Authorization` header whose credential is not a `Bearer` token (`bearer-token` runs
+ * first). An optional scheme word is kept; the credential after it is redacted.
+ */
+const AUTHORIZATION_HEADER = new RegExp(
+  `${NAME_LEAD}(Authorization["']?\\s*[=:]\\s*["']?)((?:Basic|Token|Digest|Negotiate|ApiKey|Api-Key)\\s+)?` +
+    `(?!Bearer\\s)${NOT_A_PLACEHOLDER}([^\\s"',;${SLOT}]{8,})`,
+  "gi",
+);
+
+/**
+ * The value glued to `-p` for a `mysql*` / `mariadb*` program, which take the password
+ * attached to the flag. A bare `-p` prompts, has no value and does not match.
+ */
+const MYSQL_PASSWORD_FLAG = new RegExp(
+  `(?<=\\b(?:mysql\\w*|mariadb\\w*)\\b[^\\n;|&${SLOT}]{0,200}?)(\\s-p)${NOT_A_PLACEHOLDER}([^\\s"'${SLOT}]+)`,
+  "g",
+);
+
+/**
+ * Cloud account identifiers, redacted as PII: a variable or key that names one, an account
+ * flag with an account's shape, the account field of an AWS ARN, and `--project` for the
+ * Google Cloud tools.
+ */
+const CLOUD_ACCOUNT_ID = new RegExp(
+  [
+    `${NAME_LEAD}([A-Za-z0-9_]*(?:ACCOUNT[_-]?ID|CF_ACCOUNT|CLOUDFLARE_ACCOUNT|AWS_ACCOUNT|GOOGLE_CLOUD_PROJECT|GCLOUD_PROJECT|GCP_PROJECT|CORE_PROJECT))(["']?\\s*[=:]\\s*)(["']?)([^\\s"',;<[${SLOT}][^\\s"',;${SLOT}]*)\\3`,
+    `(--(?:account-id|account|owner-id|account-number))(=|\\s+)(["']?)(\\d{12}|[0-9a-f]{32})\\7(?![A-Za-z0-9])`,
+    `(?<=\\barn:aws[a-z-]*:[a-z0-9-]*:[a-z0-9-]*:)\\d{12}(?![A-Za-z0-9])`,
+    `(?<=\\b(?:gcloud|gsutil|bq|firebase)\\b[^\\n;|&${SLOT}]{0,200}?)(--project(?:_id|-id)?)(=|\\s+)(["']?)([a-z][a-z0-9-]{4,28}[a-z0-9])\\11(?![A-Za-z0-9-])`,
+  ].join("|"),
+  "gi",
+);
+
+/**
+ * A long-random-string candidate (32+ base62 / base64url characters, nothing glued to either
+ * end); `looksRandom` decides whether it is a credential.
+ */
+const GENERIC_SECRET_CANDIDATE = new RegExp(
+  `(?:(?<![A-Za-z0-9_+/.%-])|${ESCAPE_BOUNDARY})(?<!==)(?<!sha(?:1|224|256|384|512)[-:])(?<!base64,)` +
+    `[A-Za-z0-9_-]{${FALLBACK_MIN_LENGTH},}(?![A-Za-z0-9_+/=.%-])`,
+  "g",
+);
+
+/** Re-emit a NAME=value match's name, separator and quotes around a placeholder. */
+function aroundValue(
+  name: string,
+  separator: string,
+  quote: string | undefined,
+  label: string,
+): string {
+  const q = quote ?? "";
+  return `${name}${separator}${q}${label}${q}`;
+}
 
 // ── PII ──────────────────────────────────────────────────────────────────────
 
@@ -264,9 +359,44 @@ const PATTERNS: readonly ScrubPattern[] = [
   {
     id: "env-secret",
     regex: ENV_SECRET_ASSIGNMENT,
-    // Preserve the key name (g1) + the original separator (g2); redact only the
-    // value (g3/g4/g5 — which branch matched is irrelevant).
-    placeholder: (g) => `${g[1]}${g[2]}${redacted("secret:env")}`,
+    // Preserve the key name (g1) and the original separator (g2); redact only the value
+    // (g4/g6/g7), putting back its quotes (g3/g5), so quoted JSON stays valid.
+    placeholder: (g) => {
+      const quote = g[3] ?? g[5] ?? "";
+      return `${g[1]}${g[2]}${quote}${redacted("secret:env")}${quote}`;
+    },
+  },
+  {
+    id: "key-name-secret",
+    regex: KEY_NAME_ASSIGNMENT,
+    placeholder: (g) => aroundValue(g[1] ?? "", g[2] ?? "", g[3] ?? g[5], redacted("secret:env")),
+  },
+  {
+    id: "authorization-header",
+    regex: AUTHORIZATION_HEADER,
+    placeholder: (g) => `${g[1] ?? ""}${g[2] ?? ""}${redacted("secret:auth")}`,
+  },
+  {
+    id: "mysql-password-flag",
+    regex: MYSQL_PASSWORD_FLAG,
+    placeholder: (g) => `${g[1] ?? ""}${redacted("secret:password")}`,
+  },
+  {
+    id: "cloud-account-id",
+    regex: CLOUD_ACCOUNT_ID,
+    placeholder: (g) => {
+      const label = redacted("pii:account");
+      if (g[1] !== undefined) return aroundValue(g[1], g[2] ?? "", g[3], label);
+      if (g[5] !== undefined) return aroundValue(g[5], g[6] ?? "", g[7], label);
+      if (g[9] !== undefined) return aroundValue(g[9], g[10] ?? "", g[11], label);
+      return label;
+    },
+  },
+  {
+    id: "generic-secret",
+    regex: GENERIC_SECRET_CANDIDATE,
+    accept: looksRandom,
+    placeholder: () => redacted("secret:generic"),
   },
   {
     id: "email",
@@ -354,6 +484,7 @@ function applyPattern(
     // TRIPWIRE on PATTERNS: no pattern here declares one.
     const match = args[0] as string;
     if (needsLuhn && !passesLuhn(match)) return match; // false positive — keep.
+    if (pattern.accept && !pattern.accept(match)) return match; // its second check said no.
     const groups = args.slice(0, args.length - 2) as unknown as RegExpExecArray;
     tally[pattern.id] = (tally[pattern.id] ?? 0) + 1;
     const slot = slots.length;

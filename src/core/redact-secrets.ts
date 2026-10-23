@@ -199,7 +199,7 @@ function looksLikeSegmentedName(candidate: string): boolean {
 }
 
 /** Does this candidate look like a random credential rather than a name or a hash? */
-function looksRandom(candidate: string): boolean {
+export function looksRandom(candidate: string): boolean {
   if (UUID_SHAPE.test(candidate)) return false;
   // A package integrity value or image digest the lookbehind cannot see, because the
   // candidate run includes its own `sha256-` prefix.

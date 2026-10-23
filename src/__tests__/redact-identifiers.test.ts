@@ -559,33 +559,37 @@ describe("cloud account identifiers", () => {
     [
       "a Cloudflare account id in the environment",
       `CLOUDFLARE_ACCOUNT_ID=${CF} npx wrangler deploy`,
-      "CLOUDFLARE_ACCOUNT_ID=<name> npx wrangler deploy",
+      "CLOUDFLARE_ACCOUNT_ID=[REDACTED:pii:account] npx wrangler deploy",
     ],
     [
       "a Cloudflare account id as --account-id",
       `wrangler deploy --account-id ${CF}`,
-      "wrangler deploy --account-id <name>",
+      "wrangler deploy --account-id [REDACTED:pii:account]",
     ],
     [
       "a Cloudflare account id as --account-id=value",
       `wrangler deploy --account-id=${CF} --env prod`,
-      "wrangler deploy --account-id=<name> --env prod",
+      "wrangler deploy --account-id=[REDACTED:pii:account] --env prod",
     ],
     [
       "an account_id config line",
       `echo 'account_id = "${CF}"' >> wrangler.toml`,
-      `echo 'account_id = "<name>"' >> wrangler.toml`,
+      `echo 'account_id = "[REDACTED:pii:account]"' >> wrangler.toml`,
     ],
     [
       "a prefixed Terraform variable for the account id",
       `TF_VAR_cloudflare_account_id=${CF} terraform plan`,
-      "TF_VAR_cloudflare_account_id=<name> terraform plan",
+      "TF_VAR_cloudflare_account_id=[REDACTED:pii:account] terraform plan",
     ],
-    ["an SSO account id", `SSO_ACCOUNT_ID=${AWS} ./login.sh`, "SSO_ACCOUNT_ID=<name> <path>"],
+    [
+      "an SSO account id",
+      `SSO_ACCOUNT_ID=${AWS} ./login.sh`,
+      "SSO_ACCOUNT_ID=[REDACTED:pii:account] <path>",
+    ],
     [
       "a CF_ACCOUNT variable",
       `CF_ACCOUNT=${CF} wrangler whoami`,
-      "CF_ACCOUNT=<name> wrangler whoami",
+      "CF_ACCOUNT=[REDACTED:pii:account] wrangler whoami",
     ],
     [
       "a bare 32-hex wrangler operand",
@@ -595,47 +599,47 @@ describe("cloud account identifiers", () => {
     [
       "an AWS account number as --account",
       `aws s3 ls --account ${AWS} --region us-east-1`,
-      "aws s3 ls --account <name> --region us-east-1",
+      "aws s3 ls --account [REDACTED:pii:account] --region us-east-1",
     ],
     [
       "an AWS account number as --account-id",
       `aws sts get-caller-identity --account-id=${AWS}`,
-      "aws sts get-caller-identity --account-id=<name>",
+      "aws sts get-caller-identity --account-id=[REDACTED:pii:account]",
     ],
     [
       "an AWS account number in a slashless ARN",
       `aws sns publish --topic-arn arn:aws:sns:us-east-1:${AWS}:alerts`,
-      "aws sns publish --topic-arn arn:aws:sns:us-east-1:<name>:alerts",
+      "aws sns publish --topic-arn arn:aws:sns:us-east-1:[REDACTED:pii:account]:alerts",
     ],
     [
       "an AWS account environment variable",
       `AWS_ACCOUNT_ID=${AWS} ./deploy.sh`,
-      "AWS_ACCOUNT_ID=<name> <path>",
+      "AWS_ACCOUNT_ID=[REDACTED:pii:account] <path>",
     ],
     [
       "a GCP project as --project",
       "gcloud run deploy api --project northwind-prod-481516",
-      "gcloud run deploy api --project <name>",
+      "gcloud run deploy api --project [REDACTED:pii:account]",
     ],
     [
       "a GCP project as --project=value",
       "bq ls --project=northwind-prod-481516",
-      "bq ls --project=<name>",
+      "bq ls --project=[REDACTED:pii:account]",
     ],
     [
       "a GCP project for gsutil",
       "gsutil ls --project northwind-prod-481516 gs://",
-      "gsutil ls --project <name> <path>",
+      "gsutil ls --project [REDACTED:pii:account] <path>",
     ],
     [
       "a GCP project for firebase",
       "firebase deploy --project northwind-prod-481516",
-      "firebase deploy --project <name>",
+      "firebase deploy --project [REDACTED:pii:account]",
     ],
     [
       "a GCP project environment variable",
       "GOOGLE_CLOUD_PROJECT=northwind-prod-481516 node deploy.js",
-      "GOOGLE_CLOUD_PROJECT=<name> node deploy.js",
+      "GOOGLE_CLOUD_PROJECT=[REDACTED:pii:account] node deploy.js",
     ],
     [
       "the login of ssh -o User=",

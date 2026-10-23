@@ -3,7 +3,7 @@
  *
  * ── Why this exists ──────────────────────────────────────────────────────────
  * The secret scrubber (`core/scrub.ts`) matches secrets and PII.
- * **None of its fourteen patterns match a filesystem path.** `cat
+ * **None of its nineteen patterns match a filesystem path.** `cat
  * /Users/priya/acme-secret-client/.env`, `rm -rf /Users/priya/clients/beta`, `op read
  * op://vault/item/field` and `C:\Users\priya\acme\.env` all come back from `scrubText`
  * unchanged, with `total: 0`. So a scan finding run through the scrubber alone still
