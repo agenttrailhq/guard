@@ -10949,7 +10949,7 @@ function parseUserRulesData(text) {
 }
 
 // src/core/version.ts
-var VERSION = "0.4.8";
+var VERSION = "0.4.9";
 
 // src/commands/agent-choice.ts
 function chosenAgent(value) {
