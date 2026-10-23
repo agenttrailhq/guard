@@ -1,4 +1,4 @@
-// cspell:words nghp mghp nrtfb
+// cspell:words nghp mghp nrtfb prefilter dempotency nohup ugnskcd
 /**
  * The secret scrubber: the `standard` pattern set, applied to a single string.
  *
@@ -47,6 +47,12 @@ interface ScrubPattern {
   readonly placeholder: (groups: RegExpExecArray) => string;
   /** Optional second check on a match; a match it rejects is kept and not counted. */
   readonly accept?: (match: string) => boolean;
+  /**
+   * Optional cheap, non-global test the text must pass before `regex` runs: a word every match
+   * contains. A pattern whose lead-in is a lookbehind alternation is tried at every position, so
+   * skipping it on text that cannot match keeps scrubbing fast.
+   */
+  readonly prefilter?: RegExp;
 }
 
 /** Canonical placeholder shape: `[REDACTED:<kind>:<hint>]`. */
@@ -203,33 +209,59 @@ const ENV_SECRET_ASSIGNMENT = (() => {
 const SLOT = String.fromCharCode(0xe000);
 
 /**
- * A value after a NAME ending in `_KEY` / `-key` (`VENDOR_KEY=…`, `X-Vendor-Key: …`).
- * Same value branches and groups as `ENV_SECRET_ASSIGNMENT`.
+ * A value after a key NAME in the two forms a credential is given under:
+ *  - an UPPERCASE name ending in `_KEY`, as an env assignment with no space around `=`
+ *    (`VENDOR_KEY=…`) or a quoted JSON / YAML key (`"VENDOR_KEY": "…"`);
+ *  - a header name ending in `-Key` followed by `:` (`X-Vendor-Key: …`), except
+ *    `Idempotency-Key`.
+ * Lower-case code names (`primary_key=True`), constants that name a storage or lookup key
+ * (`STORAGE_KEY = "app-theme"`, `TEAM_KEY: string`) and a value that is a path
+ * (`SSH_KEY=~/.ssh/id_rsa`) do not match. Same value branches and groups as
+ * `ENV_SECRET_ASSIGNMENT`.
  */
 const KEY_NAME_ASSIGNMENT = new RegExp(
-  `${NAME_LEAD}${NOT_IN_PLACEHOLDER}([A-Za-z0-9]+(?:[_-][A-Za-z0-9]+)*[_-]key)(["']?\\s*[=:]\\s*)${NOT_A_PLACEHOLDER}` +
+  `${NAME_LEAD}${NOT_IN_PLACEHOLDER}([A-Z0-9]+(?:_[A-Z0-9]+)*_KEY(?==|["']\\s*:)|(?![Ii]dempotency-)[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*-[Kk][Ee][Yy](?=["']?\\s*:))` +
+    `(["']?\\s*[=:]\\s*)${NOT_A_PLACEHOLDER}(?!["']?[~.]{0,2}/)` +
     `(?:(")([^"${SLOT}]{4,})"|(')([^'${SLOT}]{4,})'|([^\\s"',;${SLOT}]{4,}))`,
-  "gi",
+  "g",
 );
 
 /**
- * An `Authorization` header whose credential is not a `Bearer` token (`bearer-token` runs
- * first). An optional scheme word is kept; the credential after it is redacted.
+ * An `Authorization` or `Proxy-Authorization` header whose credential is not a `Bearer` token
+ * (`bearer-token` runs first). An optional scheme word is kept; the credential after it is
+ * redacted.
  */
 const AUTHORIZATION_HEADER = new RegExp(
-  `${NAME_LEAD}(Authorization["']?\\s*[=:]\\s*["']?)((?:Basic|Token|Digest|Negotiate|ApiKey|Api-Key)\\s+)?` +
+  `${NAME_LEAD}((?:Proxy-)?Authorization["']?\\s*[=:]\\s*["']?)((?:Basic|Token|Digest|Negotiate|ApiKey|Api-Key)\\s+)?` +
     `(?!Bearer\\s)${NOT_A_PLACEHOLDER}([^\\s"',;${SLOT}]{8,})`,
   "gi",
 );
 
 /**
- * The value glued to `-p` for a `mysql*` / `mariadb*` program, which take the password
- * attached to the flag. A bare `-p` prompts, has no value and does not match.
+ * The value glued to `-p` when the statement's program is `mysql*` / `mariadb*`, which take the
+ * password attached to the flag. The program sits where a statement starts (the start of the
+ * text, after `;` `|` `&` `(` or a raw or escaped newline, or as a JSON string's value), after
+ * any `NAME=value` assignments, wrappers (`sudo`, `env`, `nice`, `nohup`, `time`, `timeout`,
+ * `xargs`, `exec`, `command`) with their options, and a path. A word that only starts with
+ * `mysql` elsewhere (`docker run --name mysql -p3306:3306`, `find /var/lib/mysql -print`) is
+ * not the program. A bare `-p` prompts and does not match. A quoted value (`'…'`, `"…"`, or
+ * JSON-escaped `\"…\"`) is redacted with its quotes. 1 = the text up to and including `-p`.
  */
-const MYSQL_PASSWORD_FLAG = new RegExp(
-  `(?<=\\b(?:mysql\\w*|mariadb\\w*)\\b[^\\n;|&${SLOT}]{0,200}?)(\\s-p)${NOT_A_PLACEHOLDER}([^\\s"'${SLOT}]+)`,
-  "g",
-);
+const MYSQL_PASSWORD_FLAG = (() => {
+  const blank = "[ \\t]";
+  const assignment = `[A-Za-z_]\\w*=[^\\s${SLOT}]*${blank}+`;
+  // A short option that takes a value always takes it (`-u mysql` is a user), then any other
+  // option, or a number (`timeout 5`).
+  const option = `(?:-[ugnskcdUCD]${blank}+[^\\s${SLOT}-][^\\s${SLOT}]*|-(?![ugnskcdUCD]${blank})[^\\s${SLOT}]*|\\d[^\\s${SLOT}]*)${blank}+`;
+  const wrapper = `(?:sudo|env|nice|nohup|time|timeout|xargs|exec|command)${blank}+(?:${option}|${assignment})*`;
+  const start = `(?<=^|[;|&(\\n]|[:,[{]${blank}*"|\\\\n)`;
+  const program = `(?:[^\\s${SLOT}"']*/)?(?:mysql\\w*|mariadb\\w*)(?![\\w.-])`;
+  const value = `(?:'[^'\\n${SLOT}]*'|\\\\"[^"\\\\\\n${SLOT}]*\\\\"|"[^"\\n${SLOT}]*"|[^\\s"'${SLOT}]+)`;
+  return new RegExp(
+    `${start}(${blank}*(?:${assignment})*(?:${wrapper})*${program}[^\\n;|&${SLOT}]{0,200}?\\s-p)${NOT_A_PLACEHOLDER}${value}`,
+    "g",
+  );
+})();
 
 /**
  * Cloud account identifiers, redacted as PII: a variable or key that names one, an account
@@ -255,6 +287,9 @@ const GENERIC_SECRET_CANDIDATE = new RegExp(
     `[A-Za-z0-9_-]{${FALLBACK_MIN_LENGTH},}(?![A-Za-z0-9_+/=.%-])`,
   "g",
 );
+
+/** A run long enough to be a `generic-secret` candidate: the cheap test before the full one. */
+const GENERIC_SECRET_PREFILTER = new RegExp(`[A-Za-z0-9_-]{${FALLBACK_MIN_LENGTH}}`);
 
 /** Re-emit a NAME=value match's name, separator and quotes around a placeholder. */
 function aroundValue(
@@ -369,21 +404,25 @@ const PATTERNS: readonly ScrubPattern[] = [
   {
     id: "key-name-secret",
     regex: KEY_NAME_ASSIGNMENT,
+    prefilter: /_KEY|-key/i,
     placeholder: (g) => aroundValue(g[1] ?? "", g[2] ?? "", g[3] ?? g[5], redacted("secret:env")),
   },
   {
     id: "authorization-header",
     regex: AUTHORIZATION_HEADER,
+    prefilter: /authorization/i,
     placeholder: (g) => `${g[1] ?? ""}${g[2] ?? ""}${redacted("secret:auth")}`,
   },
   {
     id: "mysql-password-flag",
     regex: MYSQL_PASSWORD_FLAG,
+    prefilter: /mysql|mariadb/i,
     placeholder: (g) => `${g[1] ?? ""}${redacted("secret:password")}`,
   },
   {
     id: "cloud-account-id",
     regex: CLOUD_ACCOUNT_ID,
+    prefilter: /account|project|owner-id|arn:aws/i,
     placeholder: (g) => {
       const label = redacted("pii:account");
       if (g[1] !== undefined) return aroundValue(g[1], g[2] ?? "", g[3], label);
@@ -395,6 +434,7 @@ const PATTERNS: readonly ScrubPattern[] = [
   {
     id: "generic-secret",
     regex: GENERIC_SECRET_CANDIDATE,
+    prefilter: GENERIC_SECRET_PREFILTER,
     accept: looksRandom,
     placeholder: () => redacted("secret:generic"),
   },
@@ -475,6 +515,8 @@ function applyPattern(
   tally: Record<string, number>,
   slots: string[],
 ): string {
+  // A text that cannot hold a match skips the full scan (see `ScrubPattern.prefilter`).
+  if (pattern.prefilter && !pattern.prefilter.test(text)) return text;
   const needsLuhn = LUHN_VALIDATED_IDS.has(pattern.id);
   // `String.replace` resets the regex's lastIndex, so the shared global regex is
   // safe to reuse across calls. Do NOT swap any of these for `.test()`/`.exec()`.

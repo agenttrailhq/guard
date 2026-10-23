@@ -399,4 +399,27 @@ export const CORPUS: readonly string[] = [
   'API_KEY="[REDACTED:secret:env]"',
   // Quoted JSON values keep their quotes.
   '{"api_key": "abcd1234efgh"}',
+  // An attached -p password only when mysql or mariadb is the statement's program, quoted or not.
+  "mysqldump -uroot -p'S3cret Pass' db",
+  'mysql -uroot -p"S3cret" db',
+  "sudo -u root /usr/bin/mysql -pletmein",
+  "timeout 5 nice -n 10 mariadb -psecretpw",
+  "echo q | mysql -psecretpw shop",
+  '{"command":"mysql -u root -p\\"S3cret\\" shop"}',
+  "docker run --name mysql -p3306:3306 mysql:8",
+  "find /var/lib/mysql -print",
+  "docker compose -f mysql.yml -pmyproj up",
+  "systemctl status mysql -pager",
+  "kubectl exec mysql-0 -- ls -pla",
+  "sudo -u mysql find /var/lib/mysql -print",
+  // Key names: env assignments, quoted keys and headers, but not code.
+  "x-api-key: abc123def456",
+  "primary_key=True",
+  'hash_key = "LockID"',
+  "data-key={item.id}",
+  'public_key = file("~/.ssh/id_rsa.pub")',
+  "SSH_KEY=~/.ssh/id_rsa",
+  'const STORAGE_KEY = "app-theme";',
+  "Idempotency-Key: abc123def456",
+  "Proxy-Authorization: Basic dXNlcjpwYXNzd29yZA==",
 ];
