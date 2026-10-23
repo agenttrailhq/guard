@@ -334,6 +334,15 @@ ids, and `guardrails add` and `guardrails validate` say so when they see one. Se
 [guardrail format](https://github.com/agenttrailhq/guardrails#a-guardrail-start-to-finish)
 for all fields.
 
+### Share it with everyone
+
+`agenttrail-guard guardrails export <id>` turns one of your guardrails into a JSON draft for the
+public library, with blanks marked `FILL IN` for its examples and its OWASP ids. Fill them in,
+check the draft with `validate`, then run `export` on the draft to get the library file and the
+steps to submit it. Both steps write to the current directory, or to `--out <dir>`. The
+[guide to submitting a guardrail](https://github.com/agenttrailhq/guardrails/blob/main/CONTRIBUTING.md#submit-a-guardrail)
+walks through it.
+
 ## Scan past sessions
 
 Your agents already keep session transcripts on disk. `scan` replays the recorded tool

@@ -49,6 +49,9 @@ then `agenttrail-guard guardrails add <file.json>`. The rule format and what a c
 rule needs are in the
 [guardrails README](https://github.com/agenttrailhq/guardrails#contributing-a-guardrail).
 
+To propose it for everyone, run `agenttrail-guard guardrails export <id>` and follow the
+[guide to submitting a guardrail](https://github.com/agenttrailhq/guardrails/blob/main/CONTRIBUTING.md#submit-a-guardrail).
+
 ## Development setup
 
 Use the pnpm version pinned in `package.json`. CI runs on Node.js 22.
