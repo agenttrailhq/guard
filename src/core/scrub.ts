@@ -1,4 +1,4 @@
-// cspell:words nghp mghp nrtfb prefilter dempotency nohup ugnskcd
+// cspell:words nghp mghp nrtfb prefilter dempotency nohup ugnskcd cret
 /**
  * The secret scrubber: the `standard` pattern set, applied to a single string.
  *
@@ -20,6 +20,7 @@
  */
 
 import { FALLBACK_MIN_LENGTH, looksRandom } from "./redact-secrets.js";
+import { isMysqlPasswordFlag } from "./scrub-mysql.js";
 
 /** Per-pattern redaction tally. Maps a pattern id → number of redactions. */
 export type RedactionCounts = Readonly<Record<string, number>>;
@@ -46,7 +47,7 @@ interface ScrubPattern {
    */
   readonly placeholder: (groups: RegExpExecArray) => string;
   /** Optional second check on a match; a match it rejects is kept and not counted. */
-  readonly accept?: (match: string) => boolean;
+  readonly accept?: (match: string, offset: number, text: string) => boolean;
   /**
    * Optional cheap, non-global test the text must pass before `regex` runs: a word every match
    * contains. A pattern whose lead-in is a lookbehind alternation is tried at every position, so
@@ -238,30 +239,20 @@ const AUTHORIZATION_HEADER = new RegExp(
 );
 
 /**
- * The value glued to `-p` when the statement's program is `mysql*` / `mariadb*`, which take the
- * password attached to the flag. The program sits where a statement starts (the start of the
- * text, after `;` `|` `&` `(` or a raw or escaped newline, or as a JSON string's value), after
- * any `NAME=value` assignments, wrappers (`sudo`, `env`, `nice`, `nohup`, `time`, `timeout`,
- * `xargs`, `exec`, `command`) with their options, and a path. A word that only starts with
- * `mysql` elsewhere (`docker run --name mysql -p3306:3306`, `find /var/lib/mysql -print`) is
- * not the program. A bare `-p` prompts and does not match. A quoted value (`'…'`, `"…"`, or
- * JSON-escaped `\"…\"`) is redacted with its quotes. 1 = the text up to and including `-p`.
+ * The value glued to `-p` when the statement's program is `mysql*` / `mariadb*` (`mysql -pS3cret`,
+ * `docker exec db mysql -pS3cret`, `bash -c 'mysql -pS3cret'`). The regex only finds a candidate,
+ * a ` -p<value>` with a `mysql` / `mariadb` word at most 200 characters before it; the `accept`
+ * check (`isMysqlPasswordFlag`) then reads the statement in bounded code to decide whether that
+ * word is the program rather than an argument (`docker run --name mysql -p3306:3306`). Every run
+ * is bounded and the lookbehind runs only after a literal ` -p`, so the scan stays linear. A bare
+ * `-p` prompts and does not match. A quoted value is redacted with its quotes; an unquoted one
+ * stops at a separator, so `mysql -pA&&mysql -pB` redacts both. 1 = the space and the flag.
  */
-const MYSQL_PASSWORD_FLAG = (() => {
-  const blank = "[ \\t]";
-  const assignment = `[A-Za-z_]\\w*=[^\\s${SLOT}]*${blank}+`;
-  // A short option that takes a value always takes it (`-u mysql` is a user), then any other
-  // option, or a number (`timeout 5`).
-  const option = `(?:-[ugnskcdUCD]${blank}+[^\\s${SLOT}-][^\\s${SLOT}]*|-(?![ugnskcdUCD]${blank})[^\\s${SLOT}]*|\\d[^\\s${SLOT}]*)${blank}+`;
-  const wrapper = `(?:sudo|env|nice|nohup|time|timeout|xargs|exec|command)${blank}+(?:${option}|${assignment})*`;
-  const start = `(?<=^|[;|&(\\n]|[:,[{]${blank}*"|\\\\n)`;
-  const program = `(?:[^\\s${SLOT}"']*/)?(?:mysql\\w*|mariadb\\w*)(?![\\w.-])`;
-  const value = `(?:'[^'\\n${SLOT}]*'|\\\\"[^"\\\\\\n${SLOT}]*\\\\"|"[^"\\n${SLOT}]*"|[^\\s"'${SLOT}]+)`;
-  return new RegExp(
-    `${start}(${blank}*(?:${assignment})*(?:${wrapper})*${program}[^\\n;|&${SLOT}]{0,200}?\\s-p)${NOT_A_PLACEHOLDER}${value}`,
-    "g",
-  );
-})();
+const MYSQL_PASSWORD_FLAG = new RegExp(
+  `(\\s-p)(?<=(?:mysql|mariadb)[^\\n]{0,200}\\s-p)${NOT_A_PLACEHOLDER}` +
+    `(?:'[^'\\n${SLOT}]{0,256}'|\\\\"[^"\\\\\\n${SLOT}]{0,256}\\\\"|"[^"\\n${SLOT}]{0,256}"|[^\\s"'\`;|&)${SLOT}]+)`,
+  "gi",
+);
 
 /**
  * Cloud account identifiers, redacted as PII: a variable or key that names one, an account
@@ -417,6 +408,7 @@ const PATTERNS: readonly ScrubPattern[] = [
     id: "mysql-password-flag",
     regex: MYSQL_PASSWORD_FLAG,
     prefilter: /mysql|mariadb/i,
+    accept: isMysqlPasswordFlag,
     placeholder: (g) => `${g[1] ?? ""}${redacted("secret:password")}`,
   },
   {
@@ -526,7 +518,13 @@ function applyPattern(
     // TRIPWIRE on PATTERNS: no pattern here declares one.
     const match = args[0] as string;
     if (needsLuhn && !passesLuhn(match)) return match; // false positive — keep.
-    if (pattern.accept && !pattern.accept(match)) return match; // its second check said no.
+    // Its second check said no. It reads the match, where it starts, and the text around it.
+    if (
+      pattern.accept &&
+      !pattern.accept(match, args[args.length - 2] as number, args[args.length - 1] as string)
+    ) {
+      return match;
+    }
     const groups = args.slice(0, args.length - 2) as unknown as RegExpExecArray;
     tally[pattern.id] = (tally[pattern.id] ?? 0) + 1;
     const slot = slots.length;

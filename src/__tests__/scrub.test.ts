@@ -266,3 +266,115 @@ describe("key names: env assignments, quoted keys and headers, not code", () => 
     expect(scrubText(input).text).toBe(input);
   });
 });
+
+describe("mysql -p: the program found in code, past exec, ssh, shells and glued statements", () => {
+  it.each([
+    [
+      "docker exec db mysql -uroot -pS3cret",
+      "docker exec db mysql -uroot -p[REDACTED:secret:password]",
+    ],
+    [
+      "docker exec -it -u root db mysql -uroot -pS3cret",
+      "docker exec -it -u root db mysql -uroot -p[REDACTED:secret:password]",
+    ],
+    [
+      "kubectl exec -it mysql-0 -- mysql -uroot -pS3cret",
+      "kubectl exec -it mysql-0 -- mysql -uroot -p[REDACTED:secret:password]",
+    ],
+    [
+      "kubectl -n prod exec mysql-0 -c db -- mysql -pS3cret",
+      "kubectl -n prod exec mysql-0 -c db -- mysql -p[REDACTED:secret:password]",
+    ],
+    ["ssh db1 mysql -pS3cret", "ssh db1 mysql -p[REDACTED:secret:password]"],
+    [
+      "ssh -p 2222 -i k db1 mysql -pS3cret",
+      "ssh -p 2222 -i k db1 mysql -p[REDACTED:secret:password]",
+    ],
+    ["bash -c 'mysql -pS3cret'", "bash -c 'mysql -p[REDACTED:secret:password]'"],
+    [
+      'sh -c "mysql -uroot -pS3cret shop"',
+      'sh -c "mysql -uroot -p[REDACTED:secret:password] shop"',
+    ],
+    ["`mysql -pS3cret`", "`mysql -p[REDACTED:secret:password]`"],
+    ["x=$(mysql -pS3cret)", "x=$(mysql -p[REDACTED:secret:password])"],
+    // Glued statements: both are redacted, and the separator after each stays.
+    [
+      "mysql -pA1&&mysql -pB2",
+      "mysql -p[REDACTED:secret:password]&&mysql -p[REDACTED:secret:password]",
+    ],
+    [
+      "mysql -pA1; mysql -pB2",
+      "mysql -p[REDACTED:secret:password]; mysql -p[REDACTED:secret:password]",
+    ],
+    ["if true; then mysql -pS3cret; fi", "if true; then mysql -p[REDACTED:secret:password]; fi"],
+    ["mariadb-dump -pS3cret db", "mariadb-dump -p[REDACTED:secret:password] db"],
+    [
+      "mariadb-admin -uroot -pS3cret status",
+      "mariadb-admin -uroot -p[REDACTED:secret:password] status",
+    ],
+    ["mariadb-import -pS3cret db t.csv", "mariadb-import -p[REDACTED:secret:password] db t.csv"],
+    ["nohup /usr/bin/mysql -pletmein", "nohup /usr/bin/mysql -p[REDACTED:secret:password]"],
+    ["mysql -h db -P 3306 -pS3cret", "mysql -h db -P 3306 -p[REDACTED:secret:password]"],
+    [
+      '{"command":"cd /x && mysql -u root -pS3cret shop"}',
+      '{"command":"cd /x && mysql -u root -p[REDACTED:secret:password] shop"}',
+    ],
+  ])("masked: %s", (input, expected) => {
+    expect(scrubText(input).text).toBe(expected);
+  });
+
+  it.each([
+    "find /var/lib/mysql -perm 600",
+    "cp -pr /var/lib/mysql /bak",
+    "mkdir -pv /var/run/mysqld",
+    "rsync -progress /backup/mysql dst",
+    "tar -pczf db.tgz /var/lib/mysql",
+    "grep -r bind /etc/mysql -print",
+    "echo mysql -pfoo",
+    'docker run --name "mysql" -p80 x',
+    "xargs -I mysql ls -pla",
+    "brew services start mysql -pfoo",
+    "mysql-workbench -pfoo",
+  ])("left alone: %s", (input) => {
+    expect(scrubText(input).text).toBe(input);
+  });
+});
+
+describe("mysql -p stays linear on long runs of statement separators around mysql", () => {
+  // A regex that found the program itself backtracked here: each `;` `&` `|` `(` began a new
+  // attempt that rescanned the run (100 KB of `;` then mysql took 4.3 s, 300 KB 38 s). The time
+  // is this worker's CPU time, best of three. Linear work grows about 10x from 100 KB
+  // to 1 MB and quadratic about 100x; a floor of 2 ms keeps a tiny small run from inflating it.
+  const cpu = (text: string) => {
+    let best = Number.POSITIVE_INFINITY;
+    for (let run = 0; run < 3; run++) {
+      const started = process.cpuUsage();
+      scrubText(text);
+      const used = process.cpuUsage(started);
+      best = Math.min(best, (used.user + used.system) / 1000);
+    }
+    return best;
+  };
+  const query = (n: number) => {
+    let s = "GET /search?db=mysql";
+    for (let i = 0; s.length < n; i++) s += `&field${i % 97}=value${i}_${(i * 7919) % 100000}`;
+    return s;
+  };
+  it.each([
+    ["';' then mysql", (n: number) => `${";".repeat(n)}mysql -pX`],
+    ["'&a=1' then mysql", (n: number) => `${"&a=1".repeat(n / 4)}mysql -pX`],
+    ["'env -u a=' then mysql", (n: number) => `${"env -u a=".repeat(Math.ceil(n / 9))}mysql -pX`],
+    ["a query with db=mysql", query],
+  ])("%s: 100 KB and 1 MB, within budget and linear", (_label, make) => {
+    // The 100 KB budget first, so a quadratic pattern fails fast rather than spending minutes.
+    const small = cpu(make(100_000));
+    expect(small).toBeLessThan(50);
+    const large = cpu(make(1_000_000));
+    expect(large).toBeLessThan(1500);
+    expect(large / Math.max(small, 2)).toBeLessThan(15);
+  });
+
+  it("300 KB of ';' then mysql, within budget", () => {
+    expect(cpu(`${";".repeat(300_000)}mysql -pX`)).toBeLessThan(500);
+  });
+});

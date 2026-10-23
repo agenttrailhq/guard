@@ -1775,7 +1775,7 @@ var require_picomatch2 = __commonJS({
 });
 
 // src/commands/scan.ts
-import { basename as basename2, dirname, join as join5, resolve } from "path";
+import { basename as basename3, dirname, join as join5, resolve } from "path";
 import { pathToFileURL } from "url";
 
 // src/core/types.ts
@@ -10149,6 +10149,211 @@ function redactSecrets(input) {
   return out;
 }
 
+// src/core/scrub-mysql.ts
+var WINDOW = 512;
+var PROGRAM = /^(?:mysql\w*|mariadb[\w-]*)$/i;
+var ASSIGNMENT2 = /^[A-Za-z_]\w*=/;
+var KEYWORDS = /* @__PURE__ */ new Set(["then", "do", "else", "elif", "!", "{"]);
+var WRAPPERS = /* @__PURE__ */ new Map([
+  [
+    "sudo",
+    /* @__PURE__ */ new Set([
+      "-u",
+      "-g",
+      "-p",
+      "-C",
+      "-D",
+      "-r",
+      "-t",
+      "-U",
+      "--user",
+      "--group",
+      "--prompt",
+      "--chdir",
+      "--role",
+      "--type"
+    ])
+  ],
+  ["doas", /* @__PURE__ */ new Set(["-u", "-C"])],
+  ["env", /* @__PURE__ */ new Set(["-u", "-C", "-S", "--unset", "--chdir", "--split-string"])],
+  ["nice", /* @__PURE__ */ new Set(["-n", "--adjustment"])],
+  ["ionice", /* @__PURE__ */ new Set(["-c", "-n", "-p", "--class", "--classdata"])],
+  ["stdbuf", /* @__PURE__ */ new Set(["-i", "-o", "-e"])],
+  ["timeout", /* @__PURE__ */ new Set(["-s", "-k", "--signal", "--kill-after"])],
+  [
+    "xargs",
+    /* @__PURE__ */ new Set([
+      "-n",
+      "-I",
+      "-L",
+      "-P",
+      "-d",
+      "-s",
+      "-E",
+      "-a",
+      "--max-args",
+      "--replace",
+      "--max-procs",
+      "--delimiter",
+      "--arg-file"
+    ])
+  ],
+  ["nohup", /* @__PURE__ */ new Set()],
+  ["time", /* @__PURE__ */ new Set(["-f", "-o", "--format", "--output"])],
+  ["exec", /* @__PURE__ */ new Set(["-a"])],
+  ["command", /* @__PURE__ */ new Set()],
+  ["watch", /* @__PURE__ */ new Set(["-n", "-d", "--interval"])],
+  ["strace", /* @__PURE__ */ new Set(["-o", "-e", "-p", "-s"])],
+  ["chroot", /* @__PURE__ */ new Set(["--userspec", "--groups"])]
+]);
+var OPERAND = /* @__PURE__ */ new Set(["timeout", "chroot"]);
+var EXEC_OPTIONS = /* @__PURE__ */ new Set([
+  "-u",
+  "-w",
+  "-e",
+  "--user",
+  "--workdir",
+  "--env",
+  "--env-file",
+  "--detach-keys"
+]);
+var SSH_OPTIONS = /* @__PURE__ */ new Set([
+  "-b",
+  "-c",
+  "-D",
+  "-E",
+  "-e",
+  "-F",
+  "-I",
+  "-i",
+  "-J",
+  "-L",
+  "-l",
+  "-m",
+  "-O",
+  "-o",
+  "-p",
+  "-Q",
+  "-R",
+  "-S",
+  "-W",
+  "-w",
+  "-B"
+]);
+var SEPARATORS = /* @__PURE__ */ new Set([";", "|", "&", "(", ")", "`", "\n", "\r", "{", "}"]);
+function basename(token) {
+  const slash = token.lastIndexOf("/");
+  return (slash === -1 ? token : token.slice(slash + 1)).toLowerCase();
+}
+function skipOptions(tokens, i, withValue) {
+  let j = i;
+  while (j < tokens.length) {
+    const token = tokens[j];
+    if (token === "--") return j + 1;
+    if (!token.startsWith("-") || token === "-") return j;
+    j += withValue.has(token) ? 2 : 1;
+  }
+  return j;
+}
+function programIndex(tokens) {
+  let i = 0;
+  for (let pass = 0; pass < 32 && i < tokens.length; pass++) {
+    const token = tokens[i];
+    if (ASSIGNMENT2.test(token) || KEYWORDS.has(token)) {
+      i++;
+      continue;
+    }
+    const word = basename(token);
+    const withValue = WRAPPERS.get(word);
+    if (withValue) {
+      i = skipOptions(tokens, i + 1, withValue);
+      if (OPERAND.has(word)) i++;
+      continue;
+    }
+    if ((word === "docker" || word === "podman" || word === "nerdctl") && tokens[i + 1] === "exec") {
+      i = skipOptions(tokens, i + 2, EXEC_OPTIONS) + 1;
+      continue;
+    }
+    if (word === "kubectl" || word === "oc") {
+      const dashes = tokens.indexOf("--", i);
+      if (dashes === -1 || !tokens.slice(i, dashes).includes("exec")) return -1;
+      i = dashes + 1;
+      continue;
+    }
+    if (word === "ssh") {
+      i = skipOptions(tokens, i + 1, SSH_OPTIONS) + 1;
+      continue;
+    }
+    return i;
+  }
+  return -1;
+}
+function closingQuote(text, quote, from, end) {
+  for (let j = from; j + quote.length <= end; j++) {
+    if (text.startsWith(quote, j) && (quote === '\\"' || text[j - 1] !== "\\")) return j;
+  }
+  return -1;
+}
+function jsonKeyLength(text, i) {
+  const key = /^(?:"[\w.-]{1,64}"|\\"[\w.-]{1,64}\\")\s*:/.exec(text.slice(i, i + 80));
+  return key ? key[0].length : 0;
+}
+function statementStart(text, start, end) {
+  let at = start;
+  let found = start === 0;
+  let blank = true;
+  let i = start;
+  while (i < end) {
+    const c = text[i];
+    if (c === "\\" && (text[i + 1] === "n" || text[i + 1] === "r")) {
+      at = i + 2;
+      found = true;
+      blank = true;
+      i += 2;
+      continue;
+    }
+    const quote = c === "\\" && text[i + 1] === '"' ? '\\"' : c === '"' || c === "'" ? c : null;
+    if (quote) {
+      const key = jsonKeyLength(text, i);
+      if (key > 0 && i + key <= end) {
+        i += key;
+        at = i;
+        blank = true;
+        continue;
+      }
+      const before = text.slice(Math.max(at, i - 8), i).trim();
+      if (blank || /(?:^|\s)-c$/.test(before) || /[:,[{]$/.test(before)) {
+        at = i + quote.length;
+        found = true;
+        blank = true;
+        i += quote.length;
+        continue;
+      }
+      const close = closingQuote(text, quote, i + quote.length, end);
+      if (close === -1) return -1;
+      i = close + quote.length;
+      blank = false;
+      continue;
+    }
+    if (SEPARATORS.has(c)) {
+      at = i + 1;
+      found = true;
+      blank = true;
+    } else if (c !== " " && c !== "	") {
+      blank = false;
+    }
+    i++;
+  }
+  return found ? at : -1;
+}
+function isMysqlPasswordFlag(_match, offset, text) {
+  const from = statementStart(text, Math.max(0, offset - WINDOW), offset);
+  if (from === -1) return false;
+  const tokens = text.slice(from, offset).trim().split(/\s+/);
+  const at = programIndex(tokens);
+  return at !== -1 && at < tokens.length && PROGRAM.test(basename(tokens[at]));
+}
+
 // src/core/scrub.ts
 function redacted(kind, hint) {
   return hint ? `[REDACTED:${kind}:${hint}]` : `[REDACTED:${kind}]`;
@@ -10201,19 +10406,10 @@ var AUTHORIZATION_HEADER = new RegExp(
   `${NAME_LEAD}((?:Proxy-)?Authorization["']?\\s*[=:]\\s*["']?)((?:Basic|Token|Digest|Negotiate|ApiKey|Api-Key)\\s+)?(?!Bearer\\s)${NOT_A_PLACEHOLDER}([^\\s"',;${SLOT}]{8,})`,
   "gi"
 );
-var MYSQL_PASSWORD_FLAG = (() => {
-  const blank = "[ \\t]";
-  const assignment = `[A-Za-z_]\\w*=[^\\s${SLOT}]*${blank}+`;
-  const option = `(?:-[ugnskcdUCD]${blank}+[^\\s${SLOT}-][^\\s${SLOT}]*|-(?![ugnskcdUCD]${blank})[^\\s${SLOT}]*|\\d[^\\s${SLOT}]*)${blank}+`;
-  const wrapper = `(?:sudo|env|nice|nohup|time|timeout|xargs|exec|command)${blank}+(?:${option}|${assignment})*`;
-  const start = `(?<=^|[;|&(\\n]|[:,[{]${blank}*"|\\\\n)`;
-  const program = `(?:[^\\s${SLOT}"']*/)?(?:mysql\\w*|mariadb\\w*)(?![\\w.-])`;
-  const value = `(?:'[^'\\n${SLOT}]*'|\\\\"[^"\\\\\\n${SLOT}]*\\\\"|"[^"\\n${SLOT}]*"|[^\\s"'${SLOT}]+)`;
-  return new RegExp(
-    `${start}(${blank}*(?:${assignment})*(?:${wrapper})*${program}[^\\n;|&${SLOT}]{0,200}?\\s-p)${NOT_A_PLACEHOLDER}${value}`,
-    "g"
-  );
-})();
+var MYSQL_PASSWORD_FLAG = new RegExp(
+  `(\\s-p)(?<=(?:mysql|mariadb)[^\\n]{0,200}\\s-p)${NOT_A_PLACEHOLDER}(?:'[^'\\n${SLOT}]{0,256}'|\\\\"[^"\\\\\\n${SLOT}]{0,256}\\\\"|"[^"\\n${SLOT}]{0,256}"|[^\\s"'\`;|&)${SLOT}]+)`,
+  "gi"
+);
 var CLOUD_ACCOUNT_ID = new RegExp(
   [
     `${NAME_LEAD}([A-Za-z0-9_]*(?:ACCOUNT[_-]?ID|CF_ACCOUNT|CLOUDFLARE_ACCOUNT|AWS_ACCOUNT|GOOGLE_CLOUD_PROJECT|GCLOUD_PROJECT|GCP_PROJECT|CORE_PROJECT))(["']?\\s*[=:]\\s*)(["']?)([^\\s"',;<[${SLOT}][^\\s"',;${SLOT}]*)\\3`,
@@ -10319,6 +10515,7 @@ var PATTERNS = [
     id: "mysql-password-flag",
     regex: MYSQL_PASSWORD_FLAG,
     prefilter: /mysql|mariadb/i,
+    accept: isMysqlPasswordFlag,
     placeholder: (g) => `${g[1] ?? ""}${redacted("secret:password")}`
   },
   {
@@ -10385,7 +10582,9 @@ function applyPattern(text, pattern, tally, slots) {
   return text.replace(pattern.regex, (...args2) => {
     const match = args2[0];
     if (needsLuhn && !passesLuhn(match)) return match;
-    if (pattern.accept && !pattern.accept(match)) return match;
+    if (pattern.accept && !pattern.accept(match, args2[args2.length - 2], args2[args2.length - 1])) {
+      return match;
+    }
     const groups = args2.slice(0, args2.length - 2);
     tally[pattern.id] = (tally[pattern.id] ?? 0) + 1;
     const slot = slots.length;
@@ -10807,7 +11006,7 @@ async function parseSession(path, fallbackSessionId, source = fileLineSource) {
 // src/core/transcript/scan.ts
 import { readdirSync, statSync } from "fs";
 import { homedir } from "os";
-import { basename, isAbsolute, join as join4, relative } from "path";
+import { basename as basename2, isAbsolute, join as join4, relative } from "path";
 function defaultProjectsRoot(home = homedir()) {
   return join4(home, ".claude", "projects");
 }
@@ -10890,7 +11089,7 @@ async function scanTranscripts(projectsRoot = defaultProjectsRoot(), projectRoot
         continue;
       }
       sessions.push({
-        sessionId: identity.sessionId ?? basename(entry, ".jsonl"),
+        sessionId: identity.sessionId ?? basename2(entry, ".jsonl"),
         file: file2,
         project,
         cwd: identity.cwd,
@@ -11109,7 +11308,7 @@ async function readClaudeSession(io, item) {
     return { opened: 1 };
   }
   let opened = 1;
-  const subDir = join5(dirname(item.file), basename2(item.file, ".jsonl"), "subagents");
+  const subDir = join5(dirname(item.file), basename3(item.file, ".jsonl"), "subagents");
   let names;
   try {
     names = io.readdir(subDir);
