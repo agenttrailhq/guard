@@ -247,11 +247,14 @@ const AUTHORIZATION_HEADER = new RegExp(
  * is bounded and the lookbehind runs only after a literal ` -p`, so the scan stays linear. A bare
  * `-p` prompts and does not match. A quoted value is redacted with its quotes; an unquoted one
  * stops at a separator, so `mysql -pA&&mysql -pB` redacts both. 1 = the space and the flag.
+ * The flag is case-sensitive, since `-P` is the port flag, and the program word is not; a line
+ * continuation (`\` and a newline) may stand between them.
  */
+const MYSQL_WORD = "(?:[Mm][Yy][Ss][Qq][Ll]|[Mm][Aa][Rr][Ii][Aa][Dd][Bb])";
 const MYSQL_PASSWORD_FLAG = new RegExp(
-  `(\\s-p)(?<=(?:mysql|mariadb)[^\\n]{0,200}\\s-p)${NOT_A_PLACEHOLDER}` +
+  `(\\s-p)(?<=${MYSQL_WORD}(?:\\\\\\n|[^\\n]){0,200}\\s-p)${NOT_A_PLACEHOLDER}` +
     `(?:'[^'\\n${SLOT}]{0,256}'|\\\\"[^"\\\\\\n${SLOT}]{0,256}\\\\"|"[^"\\n${SLOT}]{0,256}"|[^\\s"'\`;|&)${SLOT}]+)`,
-  "gi",
+  "g",
 );
 
 /**

@@ -8323,12 +8323,12 @@ function decidedBy(decided, action) {
   }
   return out;
 }
-function tuningHint(decided, carried) {
+function tuningHint(decided, carried2) {
   const asks = decided.filter((group) => group.action === "require_approval");
   const total = asks.reduce((sum, group) => sum + group.calls, 0);
   if (total < TUNING_MIN_ASKS) return void 0;
   const askers = new Set(
-    carried.filter((f) => f.action === "require_approval").map((f) => f.ruleId)
+    carried2.filter((f) => f.action === "require_approval").map((f) => f.ruleId)
   );
   const own = new Map([...decidedBy(asks, "require_approval")].filter(([id]) => askers.has(id)));
   const removed = (ids) => asks.reduce((sum, g) => g.ruleIds.every((id) => ids.has(id)) ? sum + g.calls : sum, 0);
@@ -10152,7 +10152,9 @@ function redactSecrets(input) {
 // src/core/scrub-mysql.ts
 var WINDOW = 512;
 var PROGRAM = /^(?:mysql\w*|mariadb[\w-]*)$/i;
+var PROGRAM_WORD = /(?:^|[\s'"`(;|&/])(?:mysql\w*|mariadb[\w-]*)(?=$|[\s'"`);|&\\])/i;
 var ASSIGNMENT2 = /^[A-Za-z_]\w*=/;
+var SLOT = String.fromCharCode(57344);
 var KEYWORDS = /* @__PURE__ */ new Set(["then", "do", "else", "elif", "!", "{"]);
 var WRAPPERS = /* @__PURE__ */ new Map([
   [
@@ -10204,9 +10206,11 @@ var WRAPPERS = /* @__PURE__ */ new Map([
   ["command", /* @__PURE__ */ new Set()],
   ["watch", /* @__PURE__ */ new Set(["-n", "-d", "--interval"])],
   ["strace", /* @__PURE__ */ new Set(["-o", "-e", "-p", "-s"])],
-  ["chroot", /* @__PURE__ */ new Set(["--userspec", "--groups"])]
+  ["chroot", /* @__PURE__ */ new Set(["--userspec", "--groups"])],
+  ["gosu", /* @__PURE__ */ new Set()],
+  ["su-exec", /* @__PURE__ */ new Set()]
 ]);
-var OPERAND = /* @__PURE__ */ new Set(["timeout", "chroot"]);
+var OPERAND = /* @__PURE__ */ new Set(["timeout", "chroot", "gosu", "su-exec"]);
 var EXEC_OPTIONS = /* @__PURE__ */ new Set([
   "-u",
   "-w",
@@ -10216,6 +10220,35 @@ var EXEC_OPTIONS = /* @__PURE__ */ new Set([
   "--env",
   "--env-file",
   "--detach-keys"
+]);
+var COMPOSE_OPTIONS = /* @__PURE__ */ new Set([
+  "-f",
+  "-p",
+  "--file",
+  "--project-name",
+  "--project-directory",
+  "--env-file",
+  "--profile",
+  "--ansi",
+  "--progress",
+  "--parallel"
+]);
+var COMPOSE_EXEC_OPTIONS = /* @__PURE__ */ new Set([
+  "-u",
+  "-w",
+  "-e",
+  "-l",
+  "-v",
+  "-p",
+  "--user",
+  "--workdir",
+  "--env",
+  "--index",
+  "--label",
+  "--volume",
+  "--publish",
+  "--name",
+  "--entrypoint"
 ]);
 var SSH_OPTIONS = /* @__PURE__ */ new Set([
   "-b",
@@ -10245,13 +10278,21 @@ function basename(token) {
   const slash = token.lastIndexOf("/");
   return (slash === -1 ? token : token.slice(slash + 1)).toLowerCase();
 }
+function takesValue(token, withValue) {
+  if (withValue.has(token)) return true;
+  if (token.startsWith("--")) return false;
+  for (let k = 1; k < token.length; k++) {
+    if (withValue.has(`-${token[k]}`)) return k === token.length - 1;
+  }
+  return false;
+}
 function skipOptions(tokens, i, withValue) {
   let j = i;
   while (j < tokens.length) {
     const token = tokens[j];
     if (token === "--") return j + 1;
     if (!token.startsWith("-") || token === "-") return j;
-    j += withValue.has(token) ? 2 : 1;
+    j += takesValue(token, withValue) ? 2 : 1;
   }
   return j;
 }
@@ -10259,7 +10300,7 @@ function programIndex(tokens) {
   let i = 0;
   for (let pass = 0; pass < 32 && i < tokens.length; pass++) {
     const token = tokens[i];
-    if (ASSIGNMENT2.test(token) || KEYWORDS.has(token)) {
+    if (ASSIGNMENT2.test(token) || KEYWORDS.has(token) || token.includes(SLOT)) {
       i++;
       continue;
     }
@@ -10270,7 +10311,14 @@ function programIndex(tokens) {
       if (OPERAND.has(word)) i++;
       continue;
     }
-    if ((word === "docker" || word === "podman" || word === "nerdctl") && tokens[i + 1] === "exec") {
+    const container = word === "docker" || word === "podman" || word === "nerdctl";
+    if (word === "docker-compose" || container && tokens[i + 1] === "compose") {
+      const command = skipOptions(tokens, i + (word === "docker-compose" ? 1 : 2), COMPOSE_OPTIONS);
+      if (tokens[command] !== "exec" && tokens[command] !== "run") return i;
+      i = skipOptions(tokens, command + 1, COMPOSE_EXEC_OPTIONS) + 1;
+      continue;
+    }
+    if (container && tokens[i + 1] === "exec") {
       i = skipOptions(tokens, i + 2, EXEC_OPTIONS) + 1;
       continue;
     }
@@ -10290,47 +10338,124 @@ function programIndex(tokens) {
 }
 function closingQuote(text, quote, from, end) {
   for (let j = from; j + quote.length <= end; j++) {
+    if (isNewline(text, j)) return j;
     if (text.startsWith(quote, j) && (quote === '\\"' || text[j - 1] !== "\\")) return j;
   }
   return -1;
 }
-function jsonKeyLength(text, i) {
-  const key = /^(?:"[\w.-]{1,64}"|\\"[\w.-]{1,64}\\")\s*:/.exec(text.slice(i, i + 80));
-  return key ? key[0].length : 0;
+function isNewline(text, j) {
+  const c = text[j];
+  if (c === "\n" || c === "\r") return true;
+  return c === "\\" && (text[j + 1] === "n" || text[j + 1] === "r");
 }
-function statementStart(text, start, end) {
-  let at = start;
-  let found = start === 0;
-  let blank = true;
-  let i = start;
+function isNameChar(code2) {
+  return code2 >= 48 && code2 <= 57 || // 0-9
+  code2 >= 65 && code2 <= 90 || // A-Z
+  code2 >= 97 && code2 <= 122 || // a-z
+  code2 === 95 || // _
+  code2 === 46 || // .
+  code2 === 45;
+}
+function jsonKeyLength(text, i, end) {
+  const escaped = text[i] === "\\";
+  const nameStart = i + (escaped ? 2 : 1);
+  let j = nameStart;
+  while (j < nameStart + 65 && j < end && isNameChar(text.charCodeAt(j))) j++;
+  if (j === nameStart || j - nameStart > 64) return 0;
+  if (escaped) {
+    if (text[j] !== "\\" || text[j + 1] !== '"') return 0;
+    j += 2;
+  } else {
+    if (text[j] !== '"') return 0;
+    j++;
+  }
+  while (j < end && (text[j] === " " || text[j] === "	")) j++;
+  return j < end && text[j] === ":" ? j + 1 - i : 0;
+}
+function holdsCommand(text, at, i) {
+  const from = Math.max(at, i - 8);
+  let p = i - 1;
+  while (p >= from && (text[p] === " " || text[p] === "	")) p--;
+  if (p < from) return false;
+  const c = text[p];
+  if (c === ":" || c === "," || c === "[" || c === "{") return true;
+  if (c !== "c") return false;
+  let q = p - 1;
+  while (q >= from && /[A-Za-z]/.test(text[q])) q--;
+  return q >= from && text[q] === "-" && (q === from || text[q - 1] === " " || text[q - 1] === "	");
+}
+var carried = null;
+function statementStart(text, end) {
+  const windowStart = Math.max(0, end - WINDOW);
+  let i;
+  let at;
+  let found;
+  let blank;
+  if (carried && carried.text === text && carried.i <= end && carried.i >= windowStart) {
+    ({ i, at, found, blank } = carried);
+  } else {
+    i = windowStart;
+    at = windowStart;
+    found = windowStart === 0;
+    blank = true;
+  }
+  carried = null;
   while (i < end) {
     const c = text[i];
-    if (c === "\\" && (text[i + 1] === "n" || text[i + 1] === "r")) {
-      at = i + 2;
-      found = true;
-      blank = true;
-      i += 2;
-      continue;
+    const next = text[i + 1];
+    if (c === "\\") {
+      if (next === "n" || next === "r") {
+        at = i + 2;
+        found = true;
+        blank = true;
+        i += 2;
+        continue;
+      }
+      if (next === "\\") {
+        i += text[i + 2] === "\\" && text[i + 3] === "n" ? 4 : 2;
+        blank = false;
+        continue;
+      }
+      if (next === "\n" || next === "\r") {
+        i += 2;
+        continue;
+      }
     }
-    const quote = c === "\\" && text[i + 1] === '"' ? '\\"' : c === '"' || c === "'" ? c : null;
+    const quote = c === "\\" && next === '"' ? '\\"' : c === '"' || c === "'" ? c : null;
     if (quote) {
-      const key = jsonKeyLength(text, i);
-      if (key > 0 && i + key <= end) {
+      const key = jsonKeyLength(text, i, end);
+      if (key > 0) {
         i += key;
         at = i;
+        found = true;
         blank = true;
         continue;
       }
-      const before = text.slice(Math.max(at, i - 8), i).trim();
-      if (blank || /(?:^|\s)-c$/.test(before) || /[:,[{]$/.test(before)) {
-        at = i + quote.length;
+      const after = text[i + quote.length];
+      if (!blank && (after === "," || after === "]" || after === "}")) {
+        i += quote.length;
+        at = i;
         found = true;
         blank = true;
+        continue;
+      }
+      if (blank || holdsCommand(text, at, i)) {
         i += quote.length;
+        at = i;
+        found = true;
+        blank = true;
         continue;
       }
       const close = closingQuote(text, quote, i + quote.length, end);
-      if (close === -1) return -1;
+      if (close === -1) {
+        carried = { text, i, at, found, blank };
+        return { start: i + quote.length, unsure: true };
+      }
+      if (isNewline(text, close)) {
+        i += quote.length;
+        blank = false;
+        continue;
+      }
       i = close + quote.length;
       blank = false;
       continue;
@@ -10344,12 +10469,15 @@ function statementStart(text, start, end) {
     }
     i++;
   }
-  return found ? at : -1;
+  carried = { text, i, at, found, blank };
+  return found && at >= windowStart ? { start: at, unsure: false } : null;
 }
 function isMysqlPasswordFlag(_match, offset, text) {
-  const from = statementStart(text, Math.max(0, offset - WINDOW), offset);
-  if (from === -1) return false;
-  const tokens = text.slice(from, offset).trim().split(/\s+/);
+  const reading = statementStart(text, offset);
+  if (!reading) return false;
+  const statement = text.slice(reading.start, offset);
+  if (reading.unsure) return PROGRAM_WORD.test(statement);
+  const tokens = statement.trim().split(/\s+/);
   const at = programIndex(tokens);
   return at !== -1 && at < tokens.length && PROGRAM.test(basename(tokens[at]));
 }
@@ -10397,25 +10525,26 @@ var ENV_SECRET_ASSIGNMENT = (() => {
     "gi"
   );
 })();
-var SLOT = String.fromCharCode(57344);
+var SLOT2 = String.fromCharCode(57344);
 var KEY_NAME_ASSIGNMENT2 = new RegExp(
-  `${NAME_LEAD}${NOT_IN_PLACEHOLDER}([A-Z0-9]+(?:_[A-Z0-9]+)*_KEY(?==|["']\\s*:)|(?![Ii]dempotency-)[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*-[Kk][Ee][Yy](?=["']?\\s*:))(["']?\\s*[=:]\\s*)${NOT_A_PLACEHOLDER}(?!["']?[~.]{0,2}/)(?:(")([^"${SLOT}]{4,})"|(')([^'${SLOT}]{4,})'|([^\\s"',;${SLOT}]{4,}))`,
+  `${NAME_LEAD}${NOT_IN_PLACEHOLDER}([A-Z0-9]+(?:_[A-Z0-9]+)*_KEY(?==|["']\\s*:)|(?![Ii]dempotency-)[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*-[Kk][Ee][Yy](?=["']?\\s*:))(["']?\\s*[=:]\\s*)${NOT_A_PLACEHOLDER}(?!["']?[~.]{0,2}/)(?:(")([^"${SLOT2}]{4,})"|(')([^'${SLOT2}]{4,})'|([^\\s"',;${SLOT2}]{4,}))`,
   "g"
 );
 var AUTHORIZATION_HEADER = new RegExp(
-  `${NAME_LEAD}((?:Proxy-)?Authorization["']?\\s*[=:]\\s*["']?)((?:Basic|Token|Digest|Negotiate|ApiKey|Api-Key)\\s+)?(?!Bearer\\s)${NOT_A_PLACEHOLDER}([^\\s"',;${SLOT}]{8,})`,
+  `${NAME_LEAD}((?:Proxy-)?Authorization["']?\\s*[=:]\\s*["']?)((?:Basic|Token|Digest|Negotiate|ApiKey|Api-Key)\\s+)?(?!Bearer\\s)${NOT_A_PLACEHOLDER}([^\\s"',;${SLOT2}]{8,})`,
   "gi"
 );
+var MYSQL_WORD = "(?:[Mm][Yy][Ss][Qq][Ll]|[Mm][Aa][Rr][Ii][Aa][Dd][Bb])";
 var MYSQL_PASSWORD_FLAG = new RegExp(
-  `(\\s-p)(?<=(?:mysql|mariadb)[^\\n]{0,200}\\s-p)${NOT_A_PLACEHOLDER}(?:'[^'\\n${SLOT}]{0,256}'|\\\\"[^"\\\\\\n${SLOT}]{0,256}\\\\"|"[^"\\n${SLOT}]{0,256}"|[^\\s"'\`;|&)${SLOT}]+)`,
-  "gi"
+  `(\\s-p)(?<=${MYSQL_WORD}(?:\\\\\\n|[^\\n]){0,200}\\s-p)${NOT_A_PLACEHOLDER}(?:'[^'\\n${SLOT2}]{0,256}'|\\\\"[^"\\\\\\n${SLOT2}]{0,256}\\\\"|"[^"\\n${SLOT2}]{0,256}"|[^\\s"'\`;|&)${SLOT2}]+)`,
+  "g"
 );
 var CLOUD_ACCOUNT_ID = new RegExp(
   [
-    `${NAME_LEAD}([A-Za-z0-9_]*(?:ACCOUNT[_-]?ID|CF_ACCOUNT|CLOUDFLARE_ACCOUNT|AWS_ACCOUNT|GOOGLE_CLOUD_PROJECT|GCLOUD_PROJECT|GCP_PROJECT|CORE_PROJECT))(["']?\\s*[=:]\\s*)(["']?)([^\\s"',;<[${SLOT}][^\\s"',;${SLOT}]*)\\3`,
+    `${NAME_LEAD}([A-Za-z0-9_]*(?:ACCOUNT[_-]?ID|CF_ACCOUNT|CLOUDFLARE_ACCOUNT|AWS_ACCOUNT|GOOGLE_CLOUD_PROJECT|GCLOUD_PROJECT|GCP_PROJECT|CORE_PROJECT))(["']?\\s*[=:]\\s*)(["']?)([^\\s"',;<[${SLOT2}][^\\s"',;${SLOT2}]*)\\3`,
     `(--(?:account-id|account|owner-id|account-number))(=|\\s+)(["']?)(\\d{12}|[0-9a-f]{32})\\7(?![A-Za-z0-9])`,
     `(?<=\\barn:aws[a-z-]*:[a-z0-9-]*:[a-z0-9-]*:)\\d{12}(?![A-Za-z0-9])`,
-    `(?<=\\b(?:gcloud|gsutil|bq|firebase)\\b[^\\n;|&${SLOT}]{0,200}?)(--project(?:_id|-id)?)(=|\\s+)(["']?)([a-z][a-z0-9-]{4,28}[a-z0-9])\\11(?![A-Za-z0-9-])`
+    `(?<=\\b(?:gcloud|gsutil|bq|firebase)\\b[^\\n;|&${SLOT2}]{0,200}?)(--project(?:_id|-id)?)(=|\\s+)(["']?)([a-z][a-z0-9-]{4,28}[a-z0-9])\\11(?![A-Za-z0-9-])`
   ].join("|"),
   "gi"
 );

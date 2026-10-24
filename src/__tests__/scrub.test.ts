@@ -378,3 +378,89 @@ describe("mysql -p stays linear on long runs of statement separators around mysq
     expect(cpu(`${";".repeat(300_000)}mysql -pX`)).toBeLessThan(500);
   });
 });
+
+describe("mysql -p fails toward masking when the shell reading is unsure", () => {
+  const PASSWORD = "S3cretPw";
+  const KEY = `${["q7Xk2LmP9vR4", "tZ8wN3bY6cH1", "jF5sD0gAeUoI"].join("")}AbCd`;
+  it.each([
+    // An earlier pattern redacts a secret-bearing assignment; it is still an assignment.
+    `DB_PASSWORD=hunter2abc mysql -uroot -p${PASSWORD}`,
+    `PASSWORD=hunter2abc mysql -p${PASSWORD}`,
+    `API_KEY=${KEY} mysql -p${PASSWORD}`,
+    `env DB_PASSWORD=hunter2abc mysql -p${PASSWORD}`,
+    `sudo DB_PASSWORD=hunter2abc mysql -p${PASSWORD}`,
+    `docker exec db env DB_PASSWORD=hunter2abc mysql -p${PASSWORD}`,
+    `{"command":"DB_PASSWORD=hunter2abc mysql -uroot -p${PASSWORD}"}`,
+    // A quote that does not close: an apostrophe on an earlier line, in prose, or before `&&`.
+    `# don't do this\nmysql -p${PASSWORD}`,
+    `{"text":"# don't do this\\nmysql -p${PASSWORD}"}`,
+    `{"text":"I can't log in; trying mysql -uroot -p${PASSWORD}"}`,
+    `echo it's && mysql -p${PASSWORD}`,
+    // Wrappers and command strings.
+    `docker compose exec db mysql -uroot -p${PASSWORD}`,
+    `docker-compose exec -T db mysql -uroot -p${PASSWORD}`,
+    `docker compose -f x.yml exec -u root db mysql -p${PASSWORD}`,
+    `ssh host 'mysql -p${PASSWORD}'`,
+    `ssh -i k host "mysql -uroot -p${PASSWORD} shop"`,
+    `bash -lc 'mysql -p${PASSWORD}'`,
+    `bash -xc 'mysql -p${PASSWORD}'`,
+    `sudo -iu root mysql -p${PASSWORD}`,
+    `["bash","-c","mysql -p${PASSWORD}"]`,
+    `gosu mysql mysql -p${PASSWORD}`,
+    `su-exec mysql mysql -p${PASSWORD}`,
+    // A line continuation, raw and JSON-escaped.
+    `mysql -uroot \\\n -p${PASSWORD}`,
+    `{"command":"mysql -uroot \\\\\\n -p${PASSWORD}"}`,
+  ])("masked: %j", (input) => {
+    const out = scrubText(input).text;
+    expect(out).not.toContain(PASSWORD);
+    expect(out).toContain("-p[REDACTED:secret:password]");
+  });
+
+  it.each([
+    // `-P` is the port flag.
+    "mysql -h db -P3306 -uroot -p",
+    "mysql -h db -P3306 shop",
+    // An apostrophe on an earlier line does not make another program's -p a password.
+    "I don't know\ndocker run --name mysql -p3306:3306 mysql:8",
+  ])("left alone: %j", (input) => {
+    expect(scrubText(input).text).toBe(input);
+  });
+
+  it("keeps the port and masks the password", () => {
+    expect(scrubText(`mysql -h db -P3306 -uroot -p${PASSWORD}`).text).toBe(
+      "mysql -h db -P3306 -uroot -p[REDACTED:secret:password]",
+    );
+  });
+});
+
+describe("mysql -p stays linear on text dense with candidates and quotes", () => {
+  // Each candidate used to read 512 characters back, with a slice and a regex at every quote:
+  // `mysql"" -p` repeated took 105 ms at 100 KB. The scan state now carries to the next
+  // candidate. CPU time, best of three.
+  const cpu = (text: string) => {
+    let best = Number.POSITIVE_INFINITY;
+    for (let run = 0; run < 3; run++) {
+      const started = process.cpuUsage();
+      scrubText(text);
+      const used = process.cpuUsage(started);
+      best = Math.min(best, (used.user + used.system) / 1000);
+    }
+    return best;
+  };
+  const rep = (unit: string, n: number) => unit.repeat(Math.ceil(n / unit.length)).slice(0, n);
+  it.each([
+    ["'mysql -pa ' repeated", (n: number) => rep("mysql -pa ", n)],
+    ["'mysql\"\" -p' repeated", (n: number) => rep('mysql"" -p', n)],
+    ["mysql then '\" -pa' x40, repeated", (n: number) => rep(`mysql${'" -pa'.repeat(40)}`, n)],
+    ['mysql then "\' -pa" x40, repeated', (n: number) => rep(`mysql${"' -pa".repeat(40)}`, n)],
+    ["an apostrophe, then 'mysql -pa ' repeated", (n: number) => `'${rep("mysql -pa ", n)}`],
+    ['\'"k":"mysql -pX",\' repeated', (n: number) => rep('"k":"mysql -pX",', n)],
+  ])("%s: 100 KB and 1 MB, within budget and linear", (_label, make) => {
+    const small = cpu(make(100_000));
+    expect(small).toBeLessThan(50);
+    const large = cpu(make(1_000_000));
+    expect(large).toBeLessThan(1500);
+    expect(large / Math.max(small, 2)).toBeLessThan(15);
+  });
+});
