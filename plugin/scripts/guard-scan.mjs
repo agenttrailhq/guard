@@ -11543,7 +11543,7 @@ function parseUserRulesData(text) {
 }
 
 // src/core/version.ts
-var VERSION = "0.4.11";
+var VERSION = "0.4.12";
 
 // src/commands/agent-choice.ts
 function chosenAgent(value) {

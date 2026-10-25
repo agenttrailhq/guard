@@ -11,6 +11,12 @@ For this package, breaking means a change to the installed hook entry (which sil
 the guard checking an existing install until it is re-approved) or a removed command or flag;
 adding a command, a flag, or support for a new agent is a feature.
 
+## [0.4.12](https://github.com/agenttrailhq/guard/compare/v0.4.11...v0.4.12) (2026-10-25)
+
+### Bug Fixes
+
+* mask mysql -p after docker run, kubectl run and shell quoting ([34300f6](https://github.com/agenttrailhq/guard/commit/34300f60ecd5647d6e06dcc9e2ff93b22b11eb51))
+
 ## [0.4.11](https://github.com/agenttrailhq/guard/compare/v0.4.10...v0.4.11) (2026-10-24)
 
 ### Bug Fixes
