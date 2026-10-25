@@ -21,6 +21,71 @@ import {
 
 const SENTINEL = String.fromCharCode(0xe000);
 
+/**
+ * The mysql -p timing tests compare a shape with the same text with its triggers renamed
+ * (`mysql` to `mxsql`, `-p` to `-q`): the same length, quotes and separators, but the mysql
+ * rule's prefilter skips it, so the baseline is the rest of the catalogue on this machine, now.
+ * CPU time, best of three each, interleaved, so load moves both alike. An absolute budget failed
+ * on loaded machines and CI runners for code that was not slower.
+ *
+ * Measured at 100 KB (shape / baseline, min to max over 5 interleaved rounds, load average 8-12):
+ * the separator runs and the query 0.94-1.05; `mysql -pa ` 1.37-1.56; `mysql"" -p` 1.21-1.28;
+ * mysql then `" -pa` x40 1.53-1.64 and `' -pa` x40 1.47-1.62; an apostrophe then `mysql -pa `
+ * 1.35-1.41; `"k":"mysql -pX",` 1.29-1.42. `BASELINE_MULTIPLE` leaves about 1.8x room for noise.
+ * A quadratic scan fails it many times over: a rescan from the text's start at each candidate
+ * measured 98-489x on the dense shapes, and dropping the carried scan state (an earlier,
+ * slower design) 3.1-6.3x on five of the six. The 1 MB ceiling and the 15x growth check are
+ * kept, and the 1 MB run is timed in the same interleaved loop (`measureShape`).
+ */
+const BASELINE_MULTIPLE = 3;
+const cpuOnce = (text: string) => {
+  const started = process.cpuUsage();
+  scrubText(text);
+  const used = process.cpuUsage(started);
+  return (used.user + used.system) / 1000;
+};
+const untrigger = (text: string) =>
+  text
+    .replace(/mysql/gi, "mxsql")
+    .replace(/mariadb/gi, "mxriadb")
+    .replace(/-p/g, "-q");
+/** A shape's CPU time and its no-trigger baseline's, best of three each, interleaved. */
+const versusBaseline = (text: string) => {
+  const plain = untrigger(text);
+  let shape = Number.POSITIVE_INFINITY;
+  let baseline = Number.POSITIVE_INFINITY;
+  for (let run = 0; run < 3; run++) {
+    shape = Math.min(shape, cpuOnce(text));
+    baseline = Math.min(baseline, cpuOnce(plain));
+  }
+  return { shape, baseline, ratio: shape / Math.max(baseline, 2) };
+};
+
+/**
+ * A shape at 100 KB against its no-trigger baseline, and at 1 MB, in one interleaved loop: each
+ * of three rounds times the 100 KB shape, its baseline and the 1 MB shape back to back, so a
+ * change in load hits all three alike. Best of three each. `growth` is 1 MB over 100 KB: linear
+ * is about 10x, quadratic about 100x. One 100 KB pass runs first, and a shape far over the
+ * multiple (a quadratic one) is returned before any 1 MB run, so it fails fast.
+ */
+const measureShape = (make: (n: number) => string) => {
+  const smallText = make(100_000);
+  const plain = untrigger(smallText);
+  let shape = cpuOnce(smallText);
+  let baseline = cpuOnce(plain);
+  if (shape / Math.max(baseline, 2) > 10 * BASELINE_MULTIPLE) {
+    return { ratio: shape / Math.max(baseline, 2), large: Number.NaN, growth: Number.NaN };
+  }
+  const largeText = make(1_000_000);
+  let large = Number.POSITIVE_INFINITY;
+  for (let run = 0; run < 3; run++) {
+    shape = Math.min(shape, cpuOnce(smallText));
+    baseline = Math.min(baseline, cpuOnce(plain));
+    large = Math.min(large, cpuOnce(largeText));
+  }
+  return { ratio: shape / Math.max(baseline, 2), large, growth: large / Math.max(shape, 2) };
+};
+
 describe("the corpus itself is complete", () => {
   it("covers every pattern, exactly once", () => {
     // A corpus with a hole would leave a pattern untested, so its completeness is
@@ -345,16 +410,6 @@ describe("mysql -p stays linear on long runs of statement separators around mysq
   // attempt that rescanned the run (100 KB of `;` then mysql took 4.3 s, 300 KB 38 s). The time
   // is this worker's CPU time, best of three. Linear work grows about 10x from 100 KB
   // to 1 MB and quadratic about 100x; a floor of 2 ms keeps a tiny small run from inflating it.
-  const cpu = (text: string) => {
-    let best = Number.POSITIVE_INFINITY;
-    for (let run = 0; run < 3; run++) {
-      const started = process.cpuUsage();
-      scrubText(text);
-      const used = process.cpuUsage(started);
-      best = Math.min(best, (used.user + used.system) / 1000);
-    }
-    return best;
-  };
   const query = (n: number) => {
     let s = "GET /search?db=mysql";
     for (let i = 0; s.length < n; i++) s += `&field${i % 97}=value${i}_${(i * 7919) % 100000}`;
@@ -365,17 +420,15 @@ describe("mysql -p stays linear on long runs of statement separators around mysq
     ["'&a=1' then mysql", (n: number) => `${"&a=1".repeat(n / 4)}mysql -pX`],
     ["'env -u a=' then mysql", (n: number) => `${"env -u a=".repeat(Math.ceil(n / 9))}mysql -pX`],
     ["a query with db=mysql", query],
-  ])("%s: 100 KB and 1 MB, within budget and linear", (_label, make) => {
-    // The 100 KB budget first, so a quadratic pattern fails fast rather than spending minutes.
-    const small = cpu(make(100_000));
-    expect(small).toBeLessThan(50);
-    const large = cpu(make(1_000_000));
-    expect(large).toBeLessThan(1500);
-    expect(large / Math.max(small, 2)).toBeLessThan(15);
+  ])("%s: 100 KB within the no-trigger baseline's multiple, 1 MB in budget and linear", (_label, make) => {
+    const run = measureShape(make);
+    expect(run.ratio).toBeLessThan(BASELINE_MULTIPLE);
+    expect(run.large).toBeLessThan(1500);
+    expect(run.growth).toBeLessThan(15);
   });
 
-  it("300 KB of ';' then mysql, within budget", () => {
-    expect(cpu(`${";".repeat(300_000)}mysql -pX`)).toBeLessThan(500);
+  it("300 KB of ';' then mysql, within the no-trigger baseline's multiple", () => {
+    expect(versusBaseline(`${";".repeat(300_000)}mysql -pX`).ratio).toBeLessThan(BASELINE_MULTIPLE);
   });
 });
 
@@ -438,16 +491,6 @@ describe("mysql -p stays linear on text dense with candidates and quotes", () =>
   // Each candidate used to read 512 characters back, with a slice and a regex at every quote:
   // `mysql"" -p` repeated took 105 ms at 100 KB. The scan state now carries to the next
   // candidate. CPU time, best of three.
-  const cpu = (text: string) => {
-    let best = Number.POSITIVE_INFINITY;
-    for (let run = 0; run < 3; run++) {
-      const started = process.cpuUsage();
-      scrubText(text);
-      const used = process.cpuUsage(started);
-      best = Math.min(best, (used.user + used.system) / 1000);
-    }
-    return best;
-  };
   const rep = (unit: string, n: number) => unit.repeat(Math.ceil(n / unit.length)).slice(0, n);
   it.each([
     ["'mysql -pa ' repeated", (n: number) => rep("mysql -pa ", n)],
@@ -456,11 +499,256 @@ describe("mysql -p stays linear on text dense with candidates and quotes", () =>
     ['mysql then "\' -pa" x40, repeated', (n: number) => rep(`mysql${"' -pa".repeat(40)}`, n)],
     ["an apostrophe, then 'mysql -pa ' repeated", (n: number) => `'${rep("mysql -pa ", n)}`],
     ['\'"k":"mysql -pX",\' repeated', (n: number) => rep('"k":"mysql -pX",', n)],
-  ])("%s: 100 KB and 1 MB, within budget and linear", (_label, make) => {
-    const small = cpu(make(100_000));
-    expect(small).toBeLessThan(50);
-    const large = cpu(make(1_000_000));
-    expect(large).toBeLessThan(1500);
-    expect(large / Math.max(small, 2)).toBeLessThan(15);
+  ])("%s: 100 KB within the no-trigger baseline's multiple, 1 MB in budget and linear", (_label, make) => {
+    const run = measureShape(make);
+    expect(run.ratio).toBeLessThan(BASELINE_MULTIPLE);
+    expect(run.large).toBeLessThan(1500);
+    expect(run.growth).toBeLessThan(15);
+  });
+});
+
+describe("mysql -p past docker run, kubectl run, shell quoting and argv arrays", () => {
+  const PASSWORD = "S3cretPw";
+  const R = "[REDACTED:secret:password]";
+  it.each([
+    // The program after `docker run`'s options and image, and after `kubectl run … --`.
+    [
+      `docker run --rm -it mysql:8 mysql -h db -uroot -p${PASSWORD}`,
+      `docker run --rm -it mysql:8 mysql -h db -uroot -p${R}`,
+    ],
+    [
+      `docker run --rm -e MYSQL_HOST=db mysql:8 mysqldump -uroot -p${PASSWORD} shop`,
+      `docker run --rm -e MYSQL_HOST=db mysql:8 mysqldump -uroot -p${R} shop`,
+    ],
+    [
+      `docker run -it --network host --rm mysql mysql -h127.0.0.1 -uroot -p${PASSWORD}`,
+      `docker run -it --network host --rm mysql mysql -h127.0.0.1 -uroot -p${R}`,
+    ],
+    [`podman run mysql mysql -p${PASSWORD}`, `podman run mysql mysql -p${R}`],
+    [
+      `docker container run --rm mysql:8 mysql -p${PASSWORD}`,
+      `docker container run --rm mysql:8 mysql -p${R}`,
+    ],
+    [
+      `docker run --rm -it --entrypoint mysql mysql:8 -h db -p${PASSWORD}`,
+      `docker run --rm -it --entrypoint mysql mysql:8 -h db -p${R}`,
+    ],
+    [
+      `docker run --entrypoint=/usr/bin/mysqldump mysql:8 -p${PASSWORD} shop`,
+      `docker run --entrypoint=/usr/bin/mysqldump mysql:8 -p${R} shop`,
+    ],
+    [
+      `kubectl run -it --rm mysql-client --image=mysql:8 --restart=Never -- mysql -h db -uroot -p${PASSWORD}`,
+      `kubectl run -it --rm mysql-client --image=mysql:8 --restart=Never -- mysql -h db -uroot -p${R}`,
+    ],
+    [
+      `kubectl debug -it db-0 --image=mysql:8 -- mysql -p${PASSWORD}`,
+      `kubectl debug -it db-0 --image=mysql:8 -- mysql -p${R}`,
+    ],
+    // Shell quoting: ANSI-C, and a quoted part with an unquoted tail glued on.
+    [`mysql -uroot -p$'${PASSWORD}' db`, `mysql -uroot -p${R} db`],
+    [`mysql -uroot -p$'S3c\\'ret' db`, `mysql -uroot -p${R} db`],
+    [`mysql -p"${PASSWORD}"tail db`, `mysql -p${R} db`],
+    [`mysql -p'S3c'ret db`, `mysql -p${R} db`],
+    [`mysql -p'${"x".repeat(300)}' db`, `mysql -p${R} db`],
+    // A quoted or escaped program word, or one from a command substitution.
+    [`"/usr/local/bin/mysql" -p${PASSWORD}`, `"/usr/local/bin/mysql" -p${R}`],
+    [`'mysql' -p${PASSWORD}`, `'mysql' -p${R}`],
+    [`\\mysql -p${PASSWORD}`, `\\mysql -p${R}`],
+    [`$(which mysql) -p${PASSWORD}`, `$(which mysql) -p${R}`],
+    [`\`which mysql\` -h db -p${PASSWORD}`, `\`which mysql\` -h db -p${R}`],
+    // eval, npx dotenv, a JSON-escaped `&&`.
+    [`eval mysql -p${PASSWORD}`, `eval mysql -p${R}`],
+    [`npx dotenv -- mysql -p${PASSWORD}`, `npx dotenv -- mysql -p${R}`],
+    [`npx dotenv -e .env.test -- mysql -p${PASSWORD}`, `npx dotenv -e .env.test -- mysql -p${R}`],
+    [
+      `{"command":"cd /app \\u0026\\u0026 mysql -p${PASSWORD}"}`,
+      `{"command":"cd /app \\u0026\\u0026 mysql -p${R}"}`,
+    ],
+    // Exec-form argv: a JSON array, a Dockerfile CMD, and the shell form of CMD and RUN.
+    [`["mysql", "-uroot", "-p${PASSWORD}"]`, `["mysql", "-uroot", "-p${R}"]`],
+    [`CMD ["mysql", "-h", "db", "-p${PASSWORD}"]`, `CMD ["mysql", "-h", "db", "-p${R}"]`],
+    [`["/usr/bin/mysqldump","-p${PASSWORD}","shop"]`, `["/usr/bin/mysqldump","-p${R}","shop"]`],
+    [`{"argv":[\\"mysql\\", \\"-p${PASSWORD}\\"]}`, `{"argv":[\\"mysql\\", \\"-p${R}\\"]}`],
+    [`CMD mysql -p${PASSWORD}`, `CMD mysql -p${R}`],
+    [`RUN mysql -p${PASSWORD} -e 'select 1'`, `RUN mysql -p${R} -e 'select 1'`],
+  ])("masked: %j", (input, expected) => {
+    expect(scrubText(input).text).toBe(expected);
+  });
+
+  it.each([
+    // A statement that starts more than 512 characters back is unsure, so it masks.
+    `docker exec -e PATH=${"/x".repeat(250)} db mysql -uroot -p${PASSWORD}`,
+    `sudo -u root ${"A=1 ".repeat(120)}mysql -p${PASSWORD}`,
+  ])("masked when the statement starts out of the window: %j", (input) => {
+    const out = scrubText(input).text;
+    expect(out).not.toContain(PASSWORD);
+    expect(out).toContain(`-p${R}`);
+  });
+
+  it.each([
+    // docker run's own -p, and an image named mysql, are not a password.
+    "docker run --name mysql -p3306:3306 mysql:8",
+    "docker run -d -v /var/lib/mysql:/var/lib/mysql -p3306:3306 mysql:8",
+    "docker run --rm --name db mysql -p3306:3306",
+    "podman run -e MYSQL_ROOT_HOST=% --name mysql -p 3306:3306 mysql",
+    "kubectl run mysql --image=mysql:8 --port=3306 -- ls -pla",
+    "docker run --entrypoint sh --name mysql -p3306:3306 mysql:8",
+    // A quoted argument, a substitution that is not the program, and argv for another program.
+    "echo 'mysql' -pfoo",
+    "ls $(which mysql) -pla",
+    '["docker", "run", "--name", "mysql", "-p3306:3306", "mysql:8"]',
+    '["find", "/var/lib/mysql", "-print"]',
+    // A closing quote after the value is not glued on: the JSON string and bash -c end there.
+    '{"command":"mysql -pS3cretPw","cwd":"/app"}',
+    "bash -c 'mysql -pS3cretPw' && echo 'done'",
+  ])("what stands around it is left alone: %j", (input) => {
+    const out = scrubText(input).text;
+    if (input.includes("S3cretPw")) {
+      expect(out).not.toContain("S3cretPw");
+      expect(out.replace(`-p${R}`, "-pS3cretPw")).toBe(input);
+    } else {
+      expect(out).toBe(input);
+    }
+  });
+});
+
+describe("mysql -p after a YAML key, a list item or a prompt; a bare -p keeps its outer quote", () => {
+  const PASSWORD = "S3cretPw";
+  const R = "[REDACTED:secret:password]";
+  it.each([
+    // A YAML key, a list item or a shell prompt leads the line; the program follows it.
+    [
+      `run: mysql -h 127.0.0.1 -uroot -p${PASSWORD} -e 'CREATE DATABASE t'`,
+      `run: mysql -h 127.0.0.1 -uroot -p${R} -e 'CREATE DATABASE t'`,
+    ],
+    [`steps:\n  - run: mysql -uroot -p${PASSWORD}`, `steps:\n  - run: mysql -uroot -p${R}`],
+    [
+      `script:\n  - mysql -h db -uroot -p${PASSWORD} < dump.sql`,
+      `script:\n  - mysql -h db -uroot -p${R} < dump.sql`,
+    ],
+    [`  - mysql -uroot -p${PASSWORD}`, `  - mysql -uroot -p${R}`],
+    [`command: mysqldump -uroot -p${PASSWORD} shop`, `command: mysqldump -uroot -p${R} shop`],
+    [`entrypoint: mysql -p${PASSWORD}`, `entrypoint: mysql -p${R}`],
+    [
+      `healthcheck:\n  test: mysqladmin ping -uroot -p${PASSWORD}`,
+      `healthcheck:\n  test: mysqladmin ping -uroot -p${R}`,
+    ],
+    [`$ mysql -uroot -p${PASSWORD}`, `$ mysql -uroot -p${R}`],
+    [`root@db:~# mysql -uroot -p${PASSWORD}`, `root@db:~# mysql -uroot -p${R}`],
+    [`user@host:~/app$ mysql -uroot -p${PASSWORD}`, `user@host:~/app$ mysql -uroot -p${R}`],
+    [`% mysql -uroot -p${PASSWORD}`, `% mysql -uroot -p${R}`],
+    [`> mysql -uroot -p${PASSWORD}`, `> mysql -uroot -p${R}`],
+    [`1. mysql -uroot -p${PASSWORD}`, `1. mysql -uroot -p${R}`],
+    [`2) mysql -uroot -p${PASSWORD}`, `2) mysql -uroot -p${R}`],
+    [`* mysql -uroot -p${PASSWORD}`, `* mysql -uroot -p${R}`],
+    // docker's global options before exec / run, value options the table lacked, an empty
+    // entrypoint, and --volumes-from.
+    [
+      `docker --context prod exec db mysql -p${PASSWORD}`,
+      `docker --context prod exec db mysql -p${R}`,
+    ],
+    [
+      `docker -H tcp://h:2375 run --rm mysql:8 mysql -p${PASSWORD}`,
+      `docker -H tcp://h:2375 run --rm mysql:8 mysql -p${R}`,
+    ],
+    [
+      `docker --log-level debug run --rm mysql:8 mysql -p${PASSWORD}`,
+      `docker --log-level debug run --rm mysql:8 mysql -p${R}`,
+    ],
+    [
+      `docker run --pids-limit 100 --oom-score-adj 10 mysql:8 mysql -p${PASSWORD}`,
+      `docker run --pids-limit 100 --oom-score-adj 10 mysql:8 mysql -p${R}`,
+    ],
+    [
+      `docker run --health-start-period 5s --memory-swappiness 0 mysql:8 mysql -p${PASSWORD}`,
+      `docker run --health-start-period 5s --memory-swappiness 0 mysql:8 mysql -p${R}`,
+    ],
+    [
+      `podman run --uidmap 0:1:1 --gidmap 0:1:1 mysql:8 mysql -p${PASSWORD}`,
+      `podman run --uidmap 0:1:1 --gidmap 0:1:1 mysql:8 mysql -p${R}`,
+    ],
+    [
+      `docker run --entrypoint "" mysql:8 mysql -p${PASSWORD}`,
+      `docker run --entrypoint "" mysql:8 mysql -p${R}`,
+    ],
+    [
+      `docker run --volumes-from data mysql:8 mysql -p${PASSWORD}`,
+      `docker run --volumes-from data mysql:8 mysql -p${R}`,
+    ],
+  ])("masked: %j", (input, expected) => {
+    expect(scrubText(input).text).toBe(expected);
+  });
+
+  it.each([
+    // Other programs after a YAML key or a list item keep their -p.
+    "command: docker run --name mysql -p3306:3306 mysql:8",
+    "- docker run --name mysql -p3306:3306 mysql:8",
+    "ports: docker compose -f mysql.yml -pmyproj up",
+    "description: connect with mysql -p",
+    "$ find /var/lib/mysql -print",
+    "1. ls /var/lib/mysql -pla",
+    "docker --context prod run --name mysql -p3306:3306 mysql:8",
+    // A bare -p prompts: it has no value, and the quote after it closes the outer string.
+    '{"command":"mysql -uroot -p","description":"connect"}',
+    '{"cmd":"mysql -h db -p", "n": 1}',
+    "bash -c 'mysql -uroot -p' && echo 'done'",
+    'echo "run mysql -uroot -p" && echo "ok"',
+    `{"command":"bash -c 'mysql -uroot -p' && echo 'done'"}`,
+  ])("left alone: %j", (input) => {
+    expect(scrubText(input).text).toBe(input);
+  });
+});
+
+describe("mysql -p on both sides of each quote boundary", () => {
+  const R = "[REDACTED:secret:password]";
+  const parses = (text: string) => {
+    if (text.startsWith("{")) expect(() => JSON.parse(text)).not.toThrow();
+  };
+  it.each([
+    // A quoted password may open with whitespace or `, : } ]` when the reading is sure.
+    ['mysql -uroot -p",S3cret"', `mysql -uroot -p${R}`],
+    ["mysql -uroot -p':S3cret'", `mysql -uroot -p${R}`],
+    ['mysql -uroot -p"}S3cret"', `mysql -uroot -p${R}`],
+    ['mysql -uroot -p" S3cret"', `mysql -uroot -p${R}`],
+    ["mysql -uroot -p' leading space'", `mysql -uroot -p${R}`],
+    [`{"command":"mysql -uroot -p' S3cret' db"}`, `{"command":"mysql -uroot -p${R} db"}`],
+    // A quote left open on an earlier line does not hold this line's statement.
+    ['"I tried this\nmysql -uroot -p"S3cretPw" shop', `"I tried this\nmysql -uroot -p${R} shop`],
+    ["'step one\nmysql -uroot -p'S3cretPw' db", `'step one\nmysql -uroot -p${R} db`],
+    [
+      '{"text":"\\"why does\\nmysql -uroot -p\\"S3cretPw\\" fail"}',
+      `{"text":"\\"why does\\nmysql -uroot -p${R} fail"}`,
+    ],
+    [
+      `{"text":"'Run this:\\nmysql -uroot -p'S3cretPw' db"}`,
+      `{"text":"'Run this:\\nmysql -uroot -p${R} db"}`,
+    ],
+    // An unquoted value stops at a JSON-escaped closing quote.
+    [
+      '{"command":"sh -c \\"mysql -uroot -pS3cretPw\\""}',
+      `{"command":"sh -c \\"mysql -uroot -p${R}\\""}`,
+    ],
+    // A JSON-escaped backslash (`\\\\`) is one unit: the value takes it whole, so the quote after
+    // it still closes the JSON string. Its other side, a lone `\\` before `"`, is the bare
+    // `sh -c \\"mysql -uroot -p\\""` cases below.
+    ['{"command":"mysql -uroot -pS3cretPw\\\\"}', `{"command":"mysql -uroot -p${R}"}`],
+  ])("masked: %j", (input, expected) => {
+    const out = scrubText(input).text;
+    expect(out).toBe(expected);
+    parses(out);
+  });
+
+  it.each([
+    // The same boundaries with a bare -p: the quote after it is not a password.
+    'echo "run mysql -uroot -p" && echo "ok"',
+    '{"cmd":"mysql -h db -p", "n": 1}',
+    '"I tried this\nmysql -uroot -p"',
+    '{"text":"\\"why does\\nmysql -uroot -p\\" fail"}',
+    '{"command":"sh -c \\"mysql -uroot -p\\""}',
+    '{"command":"bash -lc \\"mysql -h db -uroot -p\\"","cwd":"/app"}',
+    '{"command":"mysql -uroot -p\\"\\" db"}',
+  ])("left alone: %j", (input) => {
+    expect(scrubText(input).text).toBe(input);
   });
 });

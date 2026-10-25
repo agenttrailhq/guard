@@ -1,4 +1,4 @@
-// cspell:words nghp mghp nrtfb prefilter dempotency nohup ugnskcd cret
+// cspell:words nghp mghp nrtfb prefilter dempotency nohup ugnskcd cret uroot
 /**
  * The secret scrubber: the `standard` pattern set, applied to a single string.
  *
@@ -245,15 +245,36 @@ const AUTHORIZATION_HEADER = new RegExp(
  * check (`isMysqlPasswordFlag`) then reads the statement in bounded code to decide whether that
  * word is the program rather than an argument (`docker run --name mysql -p3306:3306`). Every run
  * is bounded and the lookbehind runs only after a literal ` -p`, so the scan stays linear. A bare
- * `-p` prompts and does not match. A quoted value is redacted with its quotes; an unquoted one
- * stops at a separator, so `mysql -pA&&mysql -pB` redacts both. 1 = the space and the flag.
+ * `-p` prompts and does not match. A quoted value (`'…'`, `$'…'`, `"…"`, `\"…\"`) is redacted
+ * with its quotes and any unquoted tail glued to it (`-p"S3cret"tail`); a quoted part runs to its
+ * closing quote on the same line. After a bare `-p`, the quote that closes the outer string is
+ * not a value (`isMysqlPasswordFlag` decides). An unquoted value stops at a separator, so
+ * `mysql -pA&&mysql -pB` redacts both, and at a quote, which may close an outer string, raw or
+ * JSON-escaped (`\"`). The second
+ * alternative is an exec-form argv element (`["mysql", "-uroot", "-pS3cret"]`). 1 (or 2, for
+ * argv) = the flag and what stands before it.
  * The flag is case-sensitive, since `-P` is the port flag, and the program word is not; a line
  * continuation (`\` and a newline) may stand between them.
  */
 const MYSQL_WORD = "(?:[Mm][Yy][Ss][Qq][Ll]|[Mm][Aa][Rr][Ii][Aa][Dd][Bb])";
+/**
+ * An unquoted run: no whitespace, quote or separator. A JSON-escaped backslash (`\\`) is one
+ * unit; a lone backslash counts only when a quote does not follow it (`\"` closes a
+ * JSON-escaped string). Unrolled, so each character is read once:
+ * `MYSQL_UNQUOTED_RUN` may be empty, `MYSQL_UNQUOTED_RUN1` holds at least one character.
+ */
+const MYSQL_UNQUOTED_CHAR = `[^\\s"'\`;|&)\\\\${SLOT}]`;
+const MYSQL_BACKSLASH = `(?:\\\\\\\\|\\\\(?!["\\\\]))`;
+const MYSQL_UNQUOTED_RUN = `${MYSQL_UNQUOTED_CHAR}*(?:${MYSQL_BACKSLASH}${MYSQL_UNQUOTED_CHAR}*)*`;
+const MYSQL_UNQUOTED_RUN1 = `(?=${MYSQL_UNQUOTED_CHAR}|${MYSQL_BACKSLASH})${MYSQL_UNQUOTED_RUN}`;
+const MYSQL_QUOTED =
+  `(?:'[^'\\n${SLOT}]*'|\\$'(?:[^'\\\\\\n${SLOT}]|\\\\[^\\n${SLOT}]){0,1024}'` +
+  `|\\\\"[^"\\\\\\n${SLOT}]*\\\\"|"[^"\\n${SLOT}]*")`;
 const MYSQL_PASSWORD_FLAG = new RegExp(
   `(\\s-p)(?<=${MYSQL_WORD}(?:\\\\\\n|[^\\n]){0,200}\\s-p)${NOT_A_PLACEHOLDER}` +
-    `(?:'[^'\\n${SLOT}]{0,256}'|\\\\"[^"\\\\\\n${SLOT}]{0,256}\\\\"|"[^"\\n${SLOT}]{0,256}"|[^\\s"'\`;|&)${SLOT}]+)`,
+    `(?:${MYSQL_QUOTED}${MYSQL_UNQUOTED_RUN}|${MYSQL_UNQUOTED_RUN1})` +
+    `|([[,]\\s{0,8}\\\\?"-p)(?<=${MYSQL_WORD}[^\\n]{0,200}"-p)${NOT_A_PLACEHOLDER}` +
+    `[^"\\\\\\n${SLOT}]+(?=\\\\?")`,
   "g",
 );
 
@@ -412,7 +433,7 @@ const PATTERNS: readonly ScrubPattern[] = [
     regex: MYSQL_PASSWORD_FLAG,
     prefilter: /mysql|mariadb/i,
     accept: isMysqlPasswordFlag,
-    placeholder: (g) => `${g[1] ?? ""}${redacted("secret:password")}`,
+    placeholder: (g) => `${g[1] ?? g[2] ?? ""}${redacted("secret:password")}`,
   },
   {
     id: "cloud-account-id",

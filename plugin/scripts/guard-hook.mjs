@@ -6256,11 +6256,24 @@ function looksRandom(candidate) {
 
 // src/core/scrub-mysql.ts
 var WINDOW = 512;
+var UNSURE_TAIL = 210;
 var PROGRAM = /^(?:mysql\w*|mariadb[\w-]*)$/i;
 var PROGRAM_WORD = /(?:^|[\s'"`(;|&/])(?:mysql\w*|mariadb[\w-]*)(?=$|[\s'"`);|&\\])/i;
+var CLOSES = /[\s,:}\]]/;
+function quoteThenClose(match) {
+  const c = match[3];
+  const after = c === "\\" && match[4] === '"' ? match[5] : c === '"' || c === "'" ? match[4] : void 0;
+  return after !== void 0 && CLOSES.test(after);
+}
+function isEmptyQuoted(match) {
+  if (match.length === 5) return match.endsWith("''") || match.endsWith('""');
+  return match.length === 7 && match.endsWith('\\"\\"');
+}
+var PROGRAM_WORDS = new RegExp(PROGRAM_WORD.source, "gi");
 var ASSIGNMENT = /^[A-Za-z_]\w*=/;
 var SLOT = String.fromCharCode(57344);
-var KEYWORDS = /* @__PURE__ */ new Set(["then", "do", "else", "elif", "!", "{"]);
+var KEYWORDS = /* @__PURE__ */ new Set(["then", "do", "else", "elif", "!", "{", "RUN", "CMD", "ENTRYPOINT"]);
+var LEADER = /^(?:[\w.-]+:|-|\*|\d+[.)]|[$%>#]|[\w.-]+@[\w.-]+:\S*[#$%>])$/;
 var WRAPPERS = /* @__PURE__ */ new Map([
   [
     "sudo",
@@ -6313,7 +6326,10 @@ var WRAPPERS = /* @__PURE__ */ new Map([
   ["strace", /* @__PURE__ */ new Set(["-o", "-e", "-p", "-s"])],
   ["chroot", /* @__PURE__ */ new Set(["--userspec", "--groups"])],
   ["gosu", /* @__PURE__ */ new Set()],
-  ["su-exec", /* @__PURE__ */ new Set()]
+  ["su-exec", /* @__PURE__ */ new Set()],
+  ["eval", /* @__PURE__ */ new Set()],
+  ["npx", /* @__PURE__ */ new Set(["-p", "--package"])],
+  ["dotenv", /* @__PURE__ */ new Set(["-e", "-v", "-p"])]
 ]);
 var OPERAND = /* @__PURE__ */ new Set(["timeout", "chroot", "gosu", "su-exec"]);
 var EXEC_OPTIONS = /* @__PURE__ */ new Set([
@@ -6325,6 +6341,126 @@ var EXEC_OPTIONS = /* @__PURE__ */ new Set([
   "--env",
   "--env-file",
   "--detach-keys"
+]);
+var RUN_OPTIONS = /* @__PURE__ */ new Set([
+  ...EXEC_OPTIONS,
+  "-a",
+  "-c",
+  "-h",
+  "-l",
+  "-m",
+  "-p",
+  "-v",
+  "--add-host",
+  "--annotation",
+  "--arch",
+  "--attach",
+  "--blkio-weight",
+  "--blkio-weight-device",
+  "--cap-add",
+  "--cap-drop",
+  "--cgroup-parent",
+  "--cgroupns",
+  "--cidfile",
+  "--cpu-period",
+  "--cpu-quota",
+  "--cpu-rt-period",
+  "--cpu-rt-runtime",
+  "--cpu-shares",
+  "--cpus",
+  "--cpuset-cpus",
+  "--cpuset-mems",
+  "--device",
+  "--device-cgroup-rule",
+  "--device-read-bps",
+  "--device-read-iops",
+  "--device-write-bps",
+  "--device-write-iops",
+  "--dns",
+  "--dns-option",
+  "--dns-search",
+  "--domainname",
+  "--entrypoint",
+  "--expose",
+  "--gpus",
+  "--gidmap",
+  "--group-add",
+  "--health-cmd",
+  "--health-interval",
+  "--health-retries",
+  "--health-start-interval",
+  "--health-start-period",
+  "--health-timeout",
+  "--hostname",
+  "--ip",
+  "--ip6",
+  "--ipc",
+  "--isolation",
+  "--kernel-memory",
+  "--label",
+  "--label-file",
+  "--link",
+  "--link-local-ip",
+  "--log-driver",
+  "--log-opt",
+  "--mac-address",
+  "--memory",
+  "--memory-reservation",
+  "--memory-swap",
+  "--memory-swappiness",
+  "--mount",
+  "--name",
+  "--net",
+  "--network",
+  "--network-alias",
+  "--oom-score-adj",
+  "--os",
+  "--pid",
+  "--pids-limit",
+  "--platform",
+  "--pod",
+  "--publish",
+  "--pull",
+  "--restart",
+  "--runtime",
+  "--secret",
+  "--security-opt",
+  "--shm-size",
+  "--stop-signal",
+  "--stop-timeout",
+  "--storage-opt",
+  "--sysctl",
+  "--tmpfs",
+  "--uidmap",
+  "--ulimit",
+  "--userns",
+  "--uts",
+  "--volume",
+  "--volume-driver",
+  "--volumes-from"
+]);
+var CONTAINER_OPTIONS = /* @__PURE__ */ new Set([
+  "-H",
+  "-c",
+  "-l",
+  "-n",
+  "-a",
+  "--host",
+  "--context",
+  "--config",
+  "--log-level",
+  "--tlscacert",
+  "--tlscert",
+  "--tlskey",
+  "--connection",
+  "--url",
+  "--identity",
+  "--root",
+  "--runroot",
+  "--storage-driver",
+  "--namespace",
+  "--address",
+  "--snapshotter"
 ]);
 var COMPOSE_OPTIONS = /* @__PURE__ */ new Set([
   "-f",
@@ -6380,8 +6516,9 @@ var SSH_OPTIONS = /* @__PURE__ */ new Set([
 ]);
 var SEPARATORS = /* @__PURE__ */ new Set([";", "|", "&", "(", ")", "`", "\n", "\r", "{", "}"]);
 function basename(token) {
-  const slash = token.lastIndexOf("/");
-  return (slash === -1 ? token : token.slice(slash + 1)).toLowerCase();
+  const bare = token.replace(/['"\\]/g, "");
+  const slash = bare.lastIndexOf("/");
+  return (slash === -1 ? bare : bare.slice(slash + 1)).toLowerCase();
 }
 function takesValue(token, withValue) {
   if (withValue.has(token)) return true;
@@ -6401,10 +6538,24 @@ function skipOptions(tokens, i, withValue) {
   }
   return j;
 }
-function programIndex(tokens) {
+function entrypoint(tokens, i, end) {
+  for (let j = i; j < end; j++) {
+    const token = tokens[j];
+    const value = token === "--entrypoint" ? tokens[j + 1] : token.startsWith("--entrypoint=") ? token.slice("--entrypoint=".length) : void 0;
+    if (value !== void 0) return value.replace(/['"]/g, "") === "" ? null : value;
+  }
+  return null;
+}
+function programWord(tokens) {
   let i = 0;
-  for (let pass = 0; pass < 32 && i < tokens.length; pass++) {
+  let leading = true;
+  for (let pass = 0; pass <= tokens.length && i < tokens.length; pass++) {
     const token = tokens[i];
+    if (leading && LEADER.test(token)) {
+      i++;
+      continue;
+    }
+    leading = false;
     if (ASSIGNMENT.test(token) || KEYWORDS.has(token) || token.includes(SLOT)) {
       i++;
       continue;
@@ -6417,19 +6568,32 @@ function programIndex(tokens) {
       continue;
     }
     const container = word === "docker" || word === "podman" || word === "nerdctl";
-    if (word === "docker-compose" || container && tokens[i + 1] === "compose") {
-      const command = skipOptions(tokens, i + (word === "docker-compose" ? 1 : 2), COMPOSE_OPTIONS);
-      if (tokens[command] !== "exec" && tokens[command] !== "run") return i;
+    let sub = container ? skipOptions(tokens, i + 1, CONTAINER_OPTIONS) : i + 1;
+    if (container && tokens[sub] === "container") sub++;
+    if (word === "docker-compose" || container && tokens[sub] === "compose") {
+      const command = skipOptions(
+        tokens,
+        word === "docker-compose" ? i + 1 : sub + 1,
+        COMPOSE_OPTIONS
+      );
+      if (tokens[command] !== "exec" && tokens[command] !== "run") return token;
       i = skipOptions(tokens, command + 1, COMPOSE_EXEC_OPTIONS) + 1;
       continue;
     }
-    if (container && tokens[i + 1] === "exec") {
-      i = skipOptions(tokens, i + 2, EXEC_OPTIONS) + 1;
+    if (container && (tokens[sub] === "exec" || tokens[sub] === "run")) {
+      const run = tokens[sub] === "run";
+      const end = skipOptions(tokens, sub + 1, run ? RUN_OPTIONS : EXEC_OPTIONS);
+      const entry = run ? entrypoint(tokens, sub + 1, end) : null;
+      if (entry !== null) return entry;
+      i = end + 1;
       continue;
     }
     if (word === "kubectl" || word === "oc") {
       const dashes = tokens.indexOf("--", i);
-      if (dashes === -1 || !tokens.slice(i, dashes).includes("exec")) return -1;
+      const before = dashes === -1 ? [] : tokens.slice(i, dashes);
+      if (!before.includes("exec") && !before.includes("run") && !before.includes("debug")) {
+        return null;
+      }
       i = dashes + 1;
       continue;
     }
@@ -6437,9 +6601,13 @@ function programIndex(tokens) {
       i = skipOptions(tokens, i + 1, SSH_OPTIONS) + 1;
       continue;
     }
-    return i;
+    return token;
   }
-  return -1;
+  return null;
+}
+function runsMysql(tokens) {
+  const program = programWord(tokens);
+  return program !== null && PROGRAM.test(basename(program));
 }
 function closingQuote(text, quote, from, end) {
   for (let j = from; j + quote.length <= end; j++) {
@@ -6489,6 +6657,12 @@ function holdsCommand(text, at, i) {
   while (q >= from && /[A-Za-z]/.test(text[q])) q--;
   return q >= from && text[q] === "-" && (q === from || text[q - 1] === " " || text[q - 1] === "	");
 }
+function gluedWordStart(text, i, at) {
+  const from = Math.max(at, i - 64);
+  let j = i;
+  while (j > from && text[j - 1] !== " " && text[j - 1] !== "	") j--;
+  return j;
+}
 var carried = null;
 function statementStart(text, end) {
   const windowStart = Math.max(0, end - WINDOW);
@@ -6496,13 +6670,17 @@ function statementStart(text, end) {
   let at;
   let found;
   let blank;
+  let inside;
+  let word;
   if (carried && carried.text === text && carried.i <= end && carried.i >= windowStart) {
-    ({ i, at, found, blank } = carried);
+    ({ i, at, found, blank, inside, word } = carried);
   } else {
     i = windowStart;
     at = windowStart;
     found = windowStart === 0;
     blank = true;
+    inside = null;
+    word = false;
   }
   carried = null;
   while (i < end) {
@@ -6513,6 +6691,7 @@ function statementStart(text, end) {
         at = i + 2;
         found = true;
         blank = true;
+        inside = null;
         i += 2;
         continue;
       }
@@ -6525,6 +6704,13 @@ function statementStart(text, end) {
         i += 2;
         continue;
       }
+      if (next === "u" && text.startsWith("0026", i + 2)) {
+        at = i + 6;
+        found = true;
+        blank = true;
+        i += 6;
+        continue;
+      }
     }
     const quote = c === "\\" && next === '"' ? '\\"' : c === '"' || c === "'" ? c : null;
     if (quote) {
@@ -6534,14 +6720,22 @@ function statementStart(text, end) {
         at = i;
         found = true;
         blank = true;
+        inside = null;
         continue;
       }
       const after = text[i + quote.length];
-      if (!blank && (after === "," || after === "]" || after === "}")) {
+      if (quote === inside && word && (after === " " || after === "	")) {
+        i += quote.length;
+        blank = false;
+        inside = null;
+        continue;
+      }
+      if (quote === inside || !blank && (after === "," || after === "]" || after === "}")) {
         i += quote.length;
         at = i;
         found = true;
         blank = true;
+        inside = null;
         continue;
       }
       if (blank || holdsCommand(text, at, i)) {
@@ -6549,12 +6743,14 @@ function statementStart(text, end) {
         at = i;
         found = true;
         blank = true;
+        inside = quote;
+        word = true;
         continue;
       }
       const close = closingQuote(text, quote, i + quote.length, end);
       if (close === -1) {
-        carried = { text, i, at, found, blank };
-        return { start: i + quote.length, unsure: true };
+        carried = { text, i, at, found, blank, inside, word };
+        return { start: gluedWordStart(text, i, at), unsure: true, inside };
       }
       if (isNewline(text, close)) {
         i += quote.length;
@@ -6569,22 +6765,87 @@ function statementStart(text, end) {
       at = i + 1;
       found = true;
       blank = true;
+      word = false;
+      if (c === "\n" || c === "\r") inside = null;
     } else if (c !== " " && c !== "	") {
       blank = false;
+    } else {
+      word = false;
     }
     i++;
   }
-  carried = { text, i, at, found, blank };
-  return found && at >= windowStart ? { start: at, unsure: false } : null;
+  carried = { text, i, at, found, blank, inside, word };
+  if (found && at >= windowStart) return { start: at, unsure: false, inside };
+  return {
+    start: Math.max(windowStart, end - UNSURE_TAIL),
+    unsure: true,
+    outside: true,
+    inside: null
+  };
 }
-function isMysqlPasswordFlag(_match, offset, text) {
+var words = null;
+function wordWithin(text, from, end) {
+  if (!words || words.text !== text || words.end > end) {
+    words = { text, last: -1, next: -1, end };
+  }
+  words.end = end;
+  while (words.next < end) {
+    if (words.next !== -1) words.last = words.next;
+    PROGRAM_WORDS.lastIndex = words.next === -1 ? 0 : words.next + 1;
+    const m = PROGRAM_WORDS.exec(text);
+    words.next = m ? m.index : Number.POSITIVE_INFINITY;
+  }
+  return words.last >= from;
+}
+function substitutedProgram(text, start) {
+  const close = start - 1;
+  const c = text[close];
+  if (c !== ")" && c !== "`") return false;
+  let open = -1;
+  for (let j = close - 1; j >= Math.max(0, close - 64); j--) {
+    if (c === ")" ? text[j] === "(" && text[j - 1] === "$" : text[j] === "`") {
+      open = j;
+      break;
+    }
+  }
+  if (open === -1) return false;
+  let p = c === ")" ? open - 2 : open - 1;
+  const from = p - 8;
+  while (p >= 0 && p > from && (text[p] === " " || text[p] === "	")) p--;
+  const before = text[p];
+  if (p >= 0 && !SEPARATORS.has(before) && before !== '"' && before !== "'") {
+    return false;
+  }
+  return PROGRAM_WORD.test(text.slice(open + 1, close));
+}
+function argvProgram(text, offset, match) {
+  let open = -1;
+  if (match[0] === "[") open = offset;
+  else {
+    for (let j = offset - 1; j >= Math.max(0, offset - WINDOW); j--) {
+      const c = text[j];
+      if (c === "[") {
+        open = j;
+        break;
+      }
+      if (c === "]" || c === "\n") break;
+    }
+  }
+  if (open === -1) return false;
+  const tokens = text.slice(open + 1, offset).split(",").map((element) => element.trim().replace(/["\\]/g, ""));
+  return runsMysql(tokens);
+}
+function isMysqlPasswordFlag(match, offset, text) {
+  if (match[0] === "[" || match[0] === ",") return argvProgram(text, offset, match);
+  if (isEmptyQuoted(match)) return false;
   const reading = statementStart(text, offset);
-  if (!reading) return false;
+  if (reading.inside !== null && match.startsWith(reading.inside, 3)) return false;
+  if (reading.unsure && quoteThenClose(match)) return false;
+  if (reading.outside) return wordWithin(text, reading.start, offset);
   const statement = text.slice(reading.start, offset);
   if (reading.unsure) return PROGRAM_WORD.test(statement);
   const tokens = statement.trim().split(/\s+/);
-  const at = programIndex(tokens);
-  return at !== -1 && at < tokens.length && PROGRAM.test(basename(tokens[at]));
+  return runsMysql(tokens) || substitutedProgram(text, reading.start);
 }
 
 // src/core/scrub.ts
@@ -6640,8 +6901,13 @@ var AUTHORIZATION_HEADER = new RegExp(
   "gi"
 );
 var MYSQL_WORD = "(?:[Mm][Yy][Ss][Qq][Ll]|[Mm][Aa][Rr][Ii][Aa][Dd][Bb])";
+var MYSQL_UNQUOTED_CHAR = `[^\\s"'\`;|&)\\\\${SLOT2}]`;
+var MYSQL_BACKSLASH = `(?:\\\\\\\\|\\\\(?!["\\\\]))`;
+var MYSQL_UNQUOTED_RUN = `${MYSQL_UNQUOTED_CHAR}*(?:${MYSQL_BACKSLASH}${MYSQL_UNQUOTED_CHAR}*)*`;
+var MYSQL_UNQUOTED_RUN1 = `(?=${MYSQL_UNQUOTED_CHAR}|${MYSQL_BACKSLASH})${MYSQL_UNQUOTED_RUN}`;
+var MYSQL_QUOTED = `(?:'[^'\\n${SLOT2}]*'|\\$'(?:[^'\\\\\\n${SLOT2}]|\\\\[^\\n${SLOT2}]){0,1024}'|\\\\"[^"\\\\\\n${SLOT2}]*\\\\"|"[^"\\n${SLOT2}]*")`;
 var MYSQL_PASSWORD_FLAG = new RegExp(
-  `(\\s-p)(?<=${MYSQL_WORD}(?:\\\\\\n|[^\\n]){0,200}\\s-p)${NOT_A_PLACEHOLDER}(?:'[^'\\n${SLOT2}]{0,256}'|\\\\"[^"\\\\\\n${SLOT2}]{0,256}\\\\"|"[^"\\n${SLOT2}]{0,256}"|[^\\s"'\`;|&)${SLOT2}]+)`,
+  `(\\s-p)(?<=${MYSQL_WORD}(?:\\\\\\n|[^\\n]){0,200}\\s-p)${NOT_A_PLACEHOLDER}(?:${MYSQL_QUOTED}${MYSQL_UNQUOTED_RUN}|${MYSQL_UNQUOTED_RUN1})|([[,]\\s{0,8}\\\\?"-p)(?<=${MYSQL_WORD}[^\\n]{0,200}"-p)${NOT_A_PLACEHOLDER}[^"\\\\\\n${SLOT2}]+(?=\\\\?")`,
   "g"
 );
 var CLOUD_ACCOUNT_ID = new RegExp(
@@ -6750,7 +7016,7 @@ var PATTERNS = [
     regex: MYSQL_PASSWORD_FLAG,
     prefilter: /mysql|mariadb/i,
     accept: isMysqlPasswordFlag,
-    placeholder: (g) => `${g[1] ?? ""}${redacted("secret:password")}`
+    placeholder: (g) => `${g[1] ?? g[2] ?? ""}${redacted("secret:password")}`
   },
   {
     id: "cloud-account-id",
