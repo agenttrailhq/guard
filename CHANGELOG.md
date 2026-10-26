@@ -11,6 +11,15 @@ For this package, breaking means a change to the installed hook entry (which sil
 the guard checking an existing install until it is re-approved) or a removed command or flag;
 adding a command, a flag, or support for a new agent is a feature.
 
+## [0.4.13](https://github.com/agenttrailhq/guard/compare/v0.4.12...v0.4.13) (2026-10-26)
+
+### Features
+
+* add the AgentTrail OS line constant and its daily limit ([c77e50b](https://github.com/agenttrailhq/guard/commit/c77e50bbfaebc947ad7a51e8d39eac815e875867))
+* export a guardrail in the library's format ([70863ce](https://github.com/agenttrailhq/guard/commit/70863ce48ae0c5a6fe2b06579b795bf1585e9648))
+* print the AgentTrail OS line after init, status, scan and guardrails add ([3748c35](https://github.com/agenttrailhq/guard/commit/3748c3525590f65cbe10704daff85017a72a6812))
+* print the export line when the AgentTrail OS line is held back ([d394927](https://github.com/agenttrailhq/guard/commit/d394927b6e2a4b55b43dec1c0a13b057d9f8b35c))
+
 ## [0.4.12](https://github.com/agenttrailhq/guard/compare/v0.4.11...v0.4.12) (2026-10-25)
 
 ### Bug Fixes
