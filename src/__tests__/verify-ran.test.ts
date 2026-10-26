@@ -464,3 +464,56 @@ describe("result edge cases", () => {
     );
   });
 });
+
+describe("text the shell expands, or a later program may run, is never hidden", () => {
+  it.each([
+    // An unquoted delimiter: the shell runs substitutions in the body before `cat` reads it.
+    ["a substitution in an unquoted heredoc", `cat > notes.md <<EOF\n$(${RUN})\nEOF`],
+    ["backticks in an unquoted heredoc", `cat > notes.md <<EOF\n\`${RUN}\`\nEOF`],
+    [
+      "a substitution in a tab-stripped unquoted heredoc",
+      `cat <<-EOF > notes.md\n\t$(${RUN})\n\tEOF`,
+    ],
+    [
+      "an unquoted heredoc message with a substitution",
+      `git commit -m "$(cat <<EOF\n$(${RUN})\nEOF\n)"`,
+    ],
+    ["a here-string with a substitution", `cat <<< "$(${RUN})"`],
+    // A file written, then something not known to be inert runs.
+    ["a heredoc run with npx tsx", `cat > run.ts <<'EOF'\n${RUN}\nEOF\nnpx tsx run.ts`],
+    ["a heredoc run with uv", `cat > run.py <<'EOF'\n${RUN}\nEOF\nuv run run.py`],
+    ["a heredoc run with go run", `cat > main.go <<'EOF'\n${RUN}\nEOF\ngo run main.go`],
+    ["a heredoc fed over ssh", `cat > run.sh <<'EOF'\n${RUN}\nEOF\nssh host bash < run.sh`],
+    ["a crontab line", `echo "* * * * * ${RUN}" > cron.txt && crontab cron.txt`],
+    ["a teed file then a package script", `echo "${RUN}" | tee run.sh && pnpm run task`],
+    [
+      "a search piped into a file a shell then runs",
+      `grep -h "${RUN}" notes | head > run.sh && sh run.sh`,
+    ],
+    // Groups and substitutions that are not a printed heredoc.
+    ["a two-command group piped into sh", `(echo "${RUN}"; echo a) | sh`],
+    ["a heredoc given to bash as a message", `git commit -m "$(bash <<'EOF'\n${RUN}\nEOF\n)"`],
+    ["printed text piped through a consumer into sh", `echo "${RUN}" | head -1 | sh`],
+  ])("%s is ran", (_label, command) => {
+    expect(leftToRun(command), JSON.stringify(command)).toBeGreaterThanOrEqual(1);
+    expect(runVerdict("claude", bash(command), ok, stillMatches).state).toBe("ran");
+  });
+
+  it.each([
+    ["a quoted heredoc written to a file", `cat > notes.md <<'EOF'\n$(${RUN})\nEOF`],
+    ["a backslash-quoted delimiter", `cat > notes.md <<\\EOF\n$(${RUN})\nEOF`],
+    ["an unquoted heredoc with no substitution", `cat > notes.md <<EOF\n${RUN}\nEOF`],
+    [
+      "a file written, then only inert commands",
+      `cat > notes.md <<'EOF'\n${RUN}\nEOF\ngit add notes.md && git status`,
+    ],
+    ["a search piped into head", `grep -rn "${RUN}" src | head -20`],
+    ["a history search piped into head", `git log --grep "${RUN}" | head`],
+    ["printed text counted", `echo "${RUN}" | wc -l`],
+    ["a search piped through two consumers", `rg "${RUN}" | sort | uniq -c`],
+    ["a group of printers piped into head", `(echo "${RUN}"; echo a) | head`],
+    ["a quoted heredoc message", `git commit -m "$(cat <<'EOF'\n$(${RUN})\nEOF\n)"`],
+  ])("%s stays mentioned", (_label, command) => {
+    expect(runVerdict("claude", bash(command), ok, stillMatches).state).toBe("mentioned");
+  });
+});

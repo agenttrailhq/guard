@@ -11777,6 +11777,9 @@ function createFingerprinter(key = randomBytes(KEY_BYTES)) {
 function emptySegment() {
   return { words: [], inputs: [], pipedOut: false, writesFile: false };
 }
+function holdsSubstitution(text) {
+  return text.includes("$(") || text.includes("`");
+}
 function skipQuoted(text, at, quote) {
   let i = at + 1;
   while (i < text.length) {
@@ -11862,17 +11865,26 @@ function parseShell(text) {
   let wordStart = -1;
   let value = "";
   let runs = false;
+  let quotedWord = false;
   const endWord = (end) => {
     if (wordStart < 0) return;
     const word = { start: wordStart, end, value, runs };
     if (next === "word") segment.words.push(word);
     else if (next === "heredoc" || next === "heredoc-tabs") {
-      pending.push({ delimiter: value, stripTabs: next === "heredoc-tabs", segment });
-    } else if (next === "herestring") segment.inputs.push({ start: word.start, end: word.end });
+      pending.push({
+        delimiter: value,
+        stripTabs: next === "heredoc-tabs",
+        quoted: quotedWord,
+        segment
+      });
+    } else if (next === "herestring") {
+      segment.inputs.push({ start: word.start, end: word.end, expands: runs });
+    }
     next = "word";
     wordStart = -1;
     value = "";
     runs = false;
+    quotedWord = false;
   };
   const endSegment = (end) => {
     endWord(end);
@@ -11920,7 +11932,11 @@ function parseShell(text) {
           }
           i = lineEnd < 0 ? text.length : lineEnd + 1;
         }
-        doc.segment.inputs.push({ start, end });
+        doc.segment.inputs.push({
+          start,
+          end,
+          expands: !doc.quoted && holdsSubstitution(text.slice(start, end))
+        });
         i = after;
       }
       continue;
@@ -11939,6 +11955,7 @@ function parseShell(text) {
     }
     if (ch === "'" || ch === '"') {
       startWord(i);
+      quotedWord = true;
       const end = skipQuoted(text, i, ch);
       const inner = text.slice(i + 1, Math.max(i + 1, end - 1));
       if (ch === '"' && (inner.includes("$(") || inner.includes("`"))) runs = true;
@@ -11948,6 +11965,7 @@ function parseShell(text) {
     }
     if (ch === "\\") {
       startWord(i);
+      quotedWord = true;
       if (text[i + 1] !== "\n") value += text[i + 1] ?? "";
       i += 2;
       continue;
@@ -12124,46 +12142,92 @@ var SEARCH_VALUE_OPTIONS = /* @__PURE__ */ new Set([
   "--encoding"
 ]);
 var INPUT_SINKS = /* @__PURE__ */ new Set(["cat", "tee", "echo", "printf"]);
-var INTERPRETERS = /* @__PURE__ */ new Set([
-  "sh",
-  "bash",
-  "zsh",
-  "dash",
-  "ksh",
-  "fish",
-  "source",
-  ".",
-  "eval",
-  "xargs",
-  "node",
-  "deno",
-  "bun",
-  "ruby",
-  "perl",
-  "php",
-  "psql",
-  "mysql",
-  "mariadb",
-  "sqlite3",
-  "osascript",
-  "pwsh",
-  "powershell",
-  "cmd",
-  "make",
-  "awk"
+var INERT_PROGRAMS = /* @__PURE__ */ new Set([
+  "ls",
+  "cat",
+  "wc",
+  "head",
+  "tail",
+  "diff",
+  "chmod",
+  "echo",
+  "printf",
+  "grep",
+  "egrep",
+  "fgrep",
+  "rg",
+  "sort",
+  "uniq",
+  "cut",
+  "tr",
+  "nl",
+  "column",
+  "stat",
+  "file",
+  "du",
+  "mkdir",
+  "touch",
+  "pwd",
+  "cd",
+  "true",
+  "false"
 ]);
-function startsInterpreter(segment) {
-  const program = segment.words[programIndex(segment.words)];
-  if (program === void 0) return false;
+var INERT_GIT = /* @__PURE__ */ new Set(["add", "commit", "status", "diff", "log", "show"]);
+var PURE_CONSUMERS = /* @__PURE__ */ new Set([
+  "head",
+  "tail",
+  "wc",
+  "sort",
+  "uniq",
+  "less",
+  "more",
+  "cut",
+  "tr",
+  "nl",
+  "column",
+  "jq",
+  "grep",
+  "egrep",
+  "fgrep",
+  "rg",
+  "cat",
+  "tee",
+  // A group such as `(echo a; echo b) | head` reaches the pipe through each of its members.
+  "echo",
+  "printf"
+]);
+function commandOf(segment) {
+  const at = programIndex(segment.words);
+  const program = segment.words[at];
+  if (program === void 0) return void 0;
   const name = programName(program);
-  return INTERPRETERS.has(name) || /^python[\d.]*$/.test(name) || program.value.includes("/");
+  if (name !== "git") return { name, sub: "" };
+  const rest = segment.words.slice(at + 1);
+  let k = 0;
+  while (k < rest.length && rest[k].value.startsWith("-")) {
+    k += GIT_GLOBAL_VALUE_OPTIONS.has(rest[k].value) ? 2 : 1;
+  }
+  return { name, sub: rest[k]?.value ?? "" };
+}
+function isInert(segment) {
+  const command = commandOf(segment);
+  if (command === void 0) return true;
+  if (segment.words[programIndex(segment.words)]?.value.includes("/")) return false;
+  if (command.name === "git") return INERT_GIT.has(command.sub);
+  return INERT_PROGRAMS.has(command.name);
+}
+function writesAFile(segment) {
+  if (segment.writesFile) return true;
+  if (commandOf(segment)?.name !== "tee") return false;
+  const at = programIndex(segment.words);
+  return segment.words.slice(at + 1).some((w) => !w.value.startsWith("-"));
 }
 function isHeredocValue(raw) {
   if (!raw.startsWith("$(") || skipSubstitution(raw, 1) !== raw.length) return false;
   const inner = parseShell(raw.slice(2, -1));
   if (inner.segments.length !== 1 || inner.comments.length > 0) return false;
   const only = inner.segments[0];
-  return only.words.length === 1 && programName(only.words[0]) === "cat" && only.inputs.length === 1 && !only.pipedOut && !only.writesFile;
+  return only.words.length === 1 && programName(only.words[0]) === "cat" && only.inputs.length === 1 && only.inputs[0]?.expands === false && !only.pipedOut && !only.writesFile;
 }
 function isDataValue(word, value = word.value) {
   return !word.runs || isHeredocValue(value);
@@ -12248,9 +12312,8 @@ function searchPatterns(words2) {
   }
   return [];
 }
-function segmentRegions(segment, interpreterFollows) {
-  if (segment.pipedOut) return [];
-  if (segment.writesFile && interpreterFollows) return [];
+function segmentRegions(segment, keep) {
+  if (keep) return [];
   const words2 = segment.words;
   const at = programIndex(words2);
   const program = words2[at];
@@ -12292,17 +12355,33 @@ function segmentRegions(segment, interpreterFollows) {
   if (startsTests && name !== "test") {
     blank(optionValues(rest, TEST_FILTER_OPTIONS), "test-string");
   }
-  if (INPUT_SINKS.has(name) && !interpreterFollows) {
-    for (const input of segment.inputs) regions.push({ ...input, kind: "heredoc" });
+  if (INPUT_SINKS.has(name)) {
+    for (const input of segment.inputs) {
+      if (!input.expands) regions.push({ start: input.start, end: input.end, kind: "heredoc" });
+    }
   }
   return regions;
 }
 function executedView(command) {
   const parsed = parseShell(command);
   const regions = parsed.comments.map((c) => ({ ...c, kind: "doc" }));
-  parsed.segments.forEach((segment, index) => {
-    const interpreterFollows = parsed.segments.slice(index + 1).some(startsInterpreter);
-    regions.push(...segmentRegions(segment, interpreterFollows));
+  const segments = parsed.segments;
+  const laterMayRun = (index) => segments.slice(index + 1).some((s) => !isInert(s));
+  const pipesOnlyToConsumers = (index) => {
+    for (let j = index + 1; j < segments.length; j++) {
+      const seg = segments[j];
+      const command2 = commandOf(seg);
+      if (command2 !== void 0) {
+        if (!PURE_CONSUMERS.has(command2.name)) return false;
+        if (writesAFile(seg) && laterMayRun(j)) return false;
+      }
+      if (!seg.pipedOut) return true;
+    }
+    return true;
+  };
+  segments.forEach((segment, index) => {
+    const keep = segment.pipedOut && !pipesOnlyToConsumers(index) || writesAFile(segment) && laterMayRun(index);
+    regions.push(...segmentRegions(segment, keep));
   });
   if (regions.length === 0) return { text: command, kinds: [] };
   regions.sort((a, b) => a.start - b.start);

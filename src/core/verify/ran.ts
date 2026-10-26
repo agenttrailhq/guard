@@ -27,12 +27,18 @@
  * direction counts a mention as a command, which overstates; the other direction would hide a
  * command that ran.
  *
- * Printed text is data only while it stays printed. A command whose output goes into a pipe
- * blanks nothing (`echo "…" | sh`, `cat <<EOF | bash`, `(echo …) | sh`), and when a later
- * command in the same call starts an interpreter or a program by path, nothing that writes a
- * file and no heredoc is blanked, since the file just written may be what runs. The one
- * substitution read as data is a value that only prints a heredoc, `-m "$(cat <<'EOF' … EOF)"`,
- * which is how agents pass a commit message or a PR body.
+ * Printed text is data only while it stays printed:
+ *  - a command whose output goes into a pipe blanks nothing (`echo "…" | sh`,
+ *    `cat <<EOF | bash`, `(echo …) | sh`), unless every program down the pipe only prints a
+ *    part of what it gets (`grep … | head`);
+ *  - a command that writes a file blanks nothing unless every later command in the call is on
+ *    a short list of programs that cannot run it (`git add`, `ls`, `wc`, …), since any other
+ *    program might (`npx tsx x.ts`, `uv run x.py`, `ssh host bash < x.sh`, `crontab x`, `./x`);
+ *  - the body of a heredoc whose delimiter is not quoted (`<<EOF`) is expanded by the shell,
+ *    so one holding `$(…)` or backticks is never blanked.
+ * The one substitution read as data is a value that only prints a heredoc with a quoted
+ * delimiter or no substitution in its body, `-m "$(cat <<'EOF' … EOF)"`, which is how agents
+ * pass a commit message or a PR body.
  *
  * ── Whether it ran ───────────────────────────────────────────────────────────
  * A call whose matched text sits where the shell runs it is `ran` only when the transcript
@@ -78,10 +84,20 @@ interface Word {
   readonly runs: boolean;
 }
 
-/** A heredoc's body, as a range of the original text. */
+/** A heredoc's body, a here-string or a comment, as a range of the original text. */
 interface Body {
   readonly start: number;
   readonly end: number;
+}
+
+/** Data fed to a command's standard input: a heredoc body or a here-string. */
+interface Input extends Body {
+  /**
+   * The shell expands it before the command reads it, and it holds a `$(…)` or backticks, so
+   * part of it runs: a heredoc with an unquoted delimiter (`<<EOF`, not `<<'EOF'`), or a
+   * here-string word with a substitution.
+   */
+  readonly expands: boolean;
 }
 
 /** One simple command: its words, the data fed to its standard input, and where its output goes. */
@@ -89,7 +105,7 @@ interface Segment {
   /** Words other than redirection targets, in order. */
   readonly words: Word[];
   /** Heredoc bodies and here-strings fed to this command. */
-  readonly inputs: Body[];
+  readonly inputs: Input[];
   /** Its output goes into a pipe (`|`, `|&`), alone or as part of a `( … )` or `{ … }` group. */
   pipedOut: boolean;
   /** It redirects its output into a file (`>`, `>>`, `&>`). */
@@ -105,7 +121,14 @@ function emptySegment(): Segment {
 interface PendingHeredoc {
   readonly delimiter: string;
   readonly stripTabs: boolean;
+  /** Any part of the delimiter word was quoted or escaped, so the body is not expanded. */
+  readonly quoted: boolean;
   readonly segment: Segment;
+}
+
+/** Does this text hold a command substitution, which runs when the shell expands it? */
+function holdsSubstitution(text: string): boolean {
+  return text.includes("$(") || text.includes("`");
 }
 
 /** One blanked range, and why. */
@@ -228,18 +251,28 @@ function parseShell(text: string): Parsed {
   let wordStart = -1;
   let value = "";
   let runs = false;
+  // Any part of the current word was quoted or escaped.
+  let quotedWord = false;
 
   const endWord = (end: number): void => {
     if (wordStart < 0) return;
     const word: Word = { start: wordStart, end, value, runs };
     if (next === "word") segment.words.push(word);
     else if (next === "heredoc" || next === "heredoc-tabs") {
-      pending.push({ delimiter: value, stripTabs: next === "heredoc-tabs", segment });
-    } else if (next === "herestring") segment.inputs.push({ start: word.start, end: word.end });
+      pending.push({
+        delimiter: value,
+        stripTabs: next === "heredoc-tabs",
+        quoted: quotedWord,
+        segment,
+      });
+    } else if (next === "herestring") {
+      segment.inputs.push({ start: word.start, end: word.end, expands: runs });
+    }
     next = "word";
     wordStart = -1;
     value = "";
     runs = false;
+    quotedWord = false;
   };
   const endSegment = (end: number): void => {
     endWord(end);
@@ -295,7 +328,12 @@ function parseShell(text: string): Parsed {
           }
           i = lineEnd < 0 ? text.length : lineEnd + 1;
         }
-        doc.segment.inputs.push({ start, end });
+        // An unquoted delimiter means the shell expands the body, running any substitution.
+        doc.segment.inputs.push({
+          start,
+          end,
+          expands: !doc.quoted && holdsSubstitution(text.slice(start, end)),
+        });
         i = after;
       }
       continue;
@@ -317,6 +355,7 @@ function parseShell(text: string): Parsed {
 
     if (ch === "'" || ch === '"') {
       startWord(i);
+      quotedWord = true;
       const end = skipQuoted(text, i, ch);
       const inner = text.slice(i + 1, Math.max(i + 1, end - 1));
       if (ch === '"' && (inner.includes("$(") || inner.includes("`"))) runs = true;
@@ -327,6 +366,7 @@ function parseShell(text: string): Parsed {
 
     if (ch === "\\") {
       startWord(i);
+      quotedWord = true;
       // A backslash before a line break joins the two lines.
       if (text[i + 1] !== "\n") value += text[i + 1] ?? "";
       i += 2;
@@ -540,52 +580,112 @@ const SEARCH_VALUE_OPTIONS: ReadonlySet<string> = new Set([
 const INPUT_SINKS: ReadonlySet<string> = new Set(["cat", "tee", "echo", "printf"]);
 
 /**
- * Programs that run text they are given or a file they are pointed at. A file written earlier
- * in the same command can be run by one of these, so nothing that writes a file is blanked when
- * one follows.
+ * Programs that cannot run a file written earlier in the same command, nor the text they are
+ * given. After a command writes a file, its data is blanked only when every later command is
+ * one of these: any other program might run what was written (`bash x.sh`, `npx tsx x.ts`,
+ * `uv run x.py`, `go run main.go`, `ssh host bash < x.sh`, `crontab cron.txt`, `./x.sh`). The
+ * list is short on purpose; a program missing from it errs towards `ran`.
  */
-const INTERPRETERS: ReadonlySet<string> = new Set([
-  "sh",
-  "bash",
-  "zsh",
-  "dash",
-  "ksh",
-  "fish",
-  "source",
-  ".",
-  "eval",
-  "xargs",
-  "node",
-  "deno",
-  "bun",
-  "ruby",
-  "perl",
-  "php",
-  "psql",
-  "mysql",
-  "mariadb",
-  "sqlite3",
-  "osascript",
-  "pwsh",
-  "powershell",
-  "cmd",
-  "make",
-  "awk",
+const INERT_PROGRAMS: ReadonlySet<string> = new Set([
+  "ls",
+  "cat",
+  "wc",
+  "head",
+  "tail",
+  "diff",
+  "chmod",
+  "echo",
+  "printf",
+  "grep",
+  "egrep",
+  "fgrep",
+  "rg",
+  "sort",
+  "uniq",
+  "cut",
+  "tr",
+  "nl",
+  "column",
+  "stat",
+  "file",
+  "du",
+  "mkdir",
+  "touch",
+  "pwd",
+  "cd",
+  "true",
+  "false",
 ]);
 
-/** Does this segment start a program that runs text or a file it is given? */
-function startsInterpreter(segment: Segment): boolean {
-  const program = segment.words[programIndex(segment.words)];
-  if (program === undefined) return false;
+/** `git` subcommands that do not run a file from the working tree. */
+const INERT_GIT: ReadonlySet<string> = new Set(["add", "commit", "status", "diff", "log", "show"]);
+
+/**
+ * Programs that only consume what is piped into them and print a part of it. A search piped
+ * into one (`grep … | head`) still only mentions what it searched for.
+ */
+const PURE_CONSUMERS: ReadonlySet<string> = new Set([
+  "head",
+  "tail",
+  "wc",
+  "sort",
+  "uniq",
+  "less",
+  "more",
+  "cut",
+  "tr",
+  "nl",
+  "column",
+  "jq",
+  "grep",
+  "egrep",
+  "fgrep",
+  "rg",
+  "cat",
+  "tee",
+  // A group such as `(echo a; echo b) | head` reaches the pipe through each of its members.
+  "echo",
+  "printf",
+]);
+
+/** The program a segment starts, with any `git` subcommand: `["git", "add"]`, `["ls"]`. */
+function commandOf(segment: Segment): { name: string; sub: string } | undefined {
+  const at = programIndex(segment.words);
+  const program = segment.words[at];
+  if (program === undefined) return undefined;
   const name = programName(program);
-  // A program named by a path (`./run.sh`, `/tmp/x.sh`, `bin/task`) may be a file just written.
-  return INTERPRETERS.has(name) || /^python[\d.]*$/.test(name) || program.value.includes("/");
+  if (name !== "git") return { name, sub: "" };
+  const rest = segment.words.slice(at + 1);
+  let k = 0;
+  while (k < rest.length && (rest[k] as Word).value.startsWith("-")) {
+    k += GIT_GLOBAL_VALUE_OPTIONS.has((rest[k] as Word).value) ? 2 : 1;
+  }
+  return { name, sub: rest[k]?.value ?? "" };
+}
+
+/** Can this segment not run a file written before it? A segment with no program can't. */
+function isInert(segment: Segment): boolean {
+  const command = commandOf(segment);
+  if (command === undefined) return true;
+  // A program named by a path (`./run.sh`, `bin/task`) may be a file just written.
+  if (segment.words[programIndex(segment.words)]?.value.includes("/")) return false;
+  if (command.name === "git") return INERT_GIT.has(command.sub);
+  return INERT_PROGRAMS.has(command.name);
+}
+
+/** Does this segment write a file: an output redirect, or `tee` with a file operand? */
+function writesAFile(segment: Segment): boolean {
+  if (segment.writesFile) return true;
+  if (commandOf(segment)?.name !== "tee") return false;
+  const at = programIndex(segment.words);
+  return segment.words.slice(at + 1).some((w) => !w.value.startsWith("-"));
 }
 
 /**
  * Is `raw` exactly one `$(cat <<DELIM … DELIM)`: a heredoc printed as a value, which is how
  * agents pass a multi-line commit message or PR body? Its text is data. Anything more inside
- * the substitution — a pipe, a second command, a different program — and part of it runs.
+ * the substitution — a pipe, a second command, a different program, or an unquoted delimiter
+ * whose body holds a substitution the shell would run — and part of it runs.
  */
 function isHeredocValue(raw: string): boolean {
   if (!raw.startsWith("$(") || skipSubstitution(raw, 1) !== raw.length) return false;
@@ -596,6 +696,7 @@ function isHeredocValue(raw: string): boolean {
     only.words.length === 1 &&
     programName(only.words[0] as Word) === "cat" &&
     only.inputs.length === 1 &&
+    only.inputs[0]?.expands === false &&
     !only.pipedOut &&
     !only.writesFile
   );
@@ -713,17 +814,11 @@ function searchPatterns(words: readonly Word[]): Word[] {
 }
 
 /**
- * The regions of one simple command that are only data.
- *
- * Nothing is blanked in a command whose output goes into a pipe: whatever it prints may be
- * run by the next program (`echo "…" | sh`, `cat <<EOF | bash`). Nothing is blanked in a
- * command that writes a file, and no heredoc is blanked at all, when a later command in the
- * same call starts an interpreter or a program by path: the file just written may be what
- * it runs.
+ * The regions of one simple command that are only data. `keep` is set when what the command
+ * outputs may be run (see `executedView`), and then nothing in it is blanked.
  */
-function segmentRegions(segment: Segment, interpreterFollows: boolean): Region[] {
-  if (segment.pipedOut) return [];
-  if (segment.writesFile && interpreterFollows) return [];
+function segmentRegions(segment: Segment, keep: boolean): Region[] {
+  if (keep) return [];
   const words = segment.words;
   const at = programIndex(words);
   const program = words[at];
@@ -769,8 +864,11 @@ function segmentRegions(segment: Segment, interpreterFollows: boolean): Region[]
     blank(optionValues(rest, TEST_FILTER_OPTIONS), "test-string");
   }
 
-  if (INPUT_SINKS.has(name) && !interpreterFollows) {
-    for (const input of segment.inputs) regions.push({ ...input, kind: "heredoc" });
+  if (INPUT_SINKS.has(name)) {
+    // A heredoc whose body the shell expands runs its substitutions before `cat` sees it.
+    for (const input of segment.inputs) {
+      if (!input.expands) regions.push({ start: input.start, end: input.end, kind: "heredoc" });
+    }
   }
   return regions;
 }
@@ -783,9 +881,33 @@ function segmentRegions(segment: Segment, interpreterFollows: boolean): Region[]
 export function executedView(command: string): ExecutedView {
   const parsed = parseShell(command);
   const regions: Region[] = parsed.comments.map((c) => ({ ...c, kind: "doc" as const }));
-  parsed.segments.forEach((segment, index) => {
-    const interpreterFollows = parsed.segments.slice(index + 1).some(startsInterpreter);
-    regions.push(...segmentRegions(segment, interpreterFollows));
+  const segments = parsed.segments;
+  /** Could a command after `index` run a file written before it? */
+  const laterMayRun = (index: number): boolean =>
+    segments.slice(index + 1).some((s) => !isInert(s));
+  /**
+   * Does what `index` pipes go only to programs that print a part of it? Followed along the
+   * pipeline; a consumer that writes a file a later command may run is not one.
+   */
+  const pipesOnlyToConsumers = (index: number): boolean => {
+    for (let j = index + 1; j < segments.length; j++) {
+      const seg = segments[j] as Segment;
+      const command = commandOf(seg);
+      if (command !== undefined) {
+        if (!PURE_CONSUMERS.has(command.name)) return false;
+        if (writesAFile(seg) && laterMayRun(j)) return false;
+      }
+      if (!seg.pipedOut) return true;
+    }
+    return true;
+  };
+  segments.forEach((segment, index) => {
+    // What a command prints into a pipe may be run by the next program; what it writes to a
+    // file may be run by a later command. Either way, nothing in it is blanked.
+    const keep =
+      (segment.pipedOut && !pipesOnlyToConsumers(index)) ||
+      (writesAFile(segment) && laterMayRun(index));
+    regions.push(...segmentRegions(segment, keep));
   });
   if (regions.length === 0) return { text: command, kinds: [] };
 
