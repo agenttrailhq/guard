@@ -22,6 +22,13 @@ function likelyReal(n: number): string {
   return countOf(n, "likely-real credential");
 }
 
+/** The transcript files the check read, as a whole: not where any one value was found. */
+function filesItRead(n: number): string {
+  return n === 1
+    ? "the one transcript file it read"
+    : `the ${formatCount(n)} transcript files it read`;
+}
+
 /** `is` or `are` for a count. */
 function be(n: number): string {
   return n === 1 ? "is" : "are";
@@ -42,7 +49,7 @@ const FOUND_LIKELY_REAL: SentenceTemplate<SecretsFacts> = {
   id: "secrets.found.likely-real",
   render: (f) =>
     f.classes["likely-real"] > 0
-      ? `Found ${likelyReal(f.classes["likely-real"])} in ${countOf(f.filesRead, "transcript file")}.`
+      ? `Found ${likelyReal(f.classes["likely-real"])} in ${filesItRead(f.filesRead)}.`
       : undefined,
 };
 
@@ -51,8 +58,8 @@ const FOUND_NO_LIKELY_REAL: SentenceTemplate<SecretsFacts> = {
   render: (f) =>
     f.classes["likely-real"] === 0 && f.filesRead > 0
       ? anyFound(f)
-        ? `Found no likely-real credential in ${countOf(f.filesRead, "transcript file")}.`
-        : `Found no credential-shaped value in ${countOf(f.filesRead, "transcript file")}.`
+        ? `Found no likely-real credential in ${filesItRead(f.filesRead)}.`
+        : `Found no credential-shaped value in ${filesItRead(f.filesRead)}.`
       : undefined,
 };
 

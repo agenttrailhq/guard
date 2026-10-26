@@ -46,19 +46,19 @@ const fix = (f: SecretsFacts): string[] => sentences(SECRETS_FIX, f).map((s) => 
 describe("what checking found", () => {
   it("one likely-real credential, in one file", () => {
     expect(found(facts({ filesRead: 1 }, { "likely-real": 1 }))[0]).toBe(
-      "Found 1 likely-real credential in 1 transcript file.",
+      "Found 1 likely-real credential in the one transcript file it read.",
     );
   });
 
   it("several, in several files", () => {
     expect(found(facts({}, { "likely-real": 2 }))[0]).toBe(
-      "Found 2 likely-real credentials in 3 transcript files.",
+      "Found 2 likely-real credentials in the 3 transcript files it read.",
     );
   });
 
   it("nothing credential-shaped at all", () => {
     expect(found(facts())).toEqual([
-      "Found no credential-shaped value in 3 transcript files.",
+      "Found no credential-shaped value in the 3 transcript files it read.",
       "Each value was classed by its format and by where else it appears. None was checked with the service that issued it.",
     ]);
   });
@@ -80,7 +80,7 @@ describe("what checking found", () => {
       "Not counted as likely real: 2 placeholders or false positives.",
     );
     expect(found(facts({}, { placeholder: 2 }))[0]).toBe(
-      "Found no likely-real credential in 3 transcript files.",
+      "Found no likely-real credential in the 3 transcript files it read.",
     );
   });
 
@@ -93,7 +93,7 @@ describe("what checking found", () => {
     );
     expect(lines).toEqual(
       expect.arrayContaining([
-        "Found no likely-real credential in 3 transcript files.",
+        "Found no likely-real credential in the 3 transcript files it read.",
         "Not counted as likely real: 5 placeholders or false positives.",
         "Of the placeholders or false positives, 3 were set aside by a rule that can miss a real credential: 2 unnamed and seen only in output or replies, and 1 named but not shaped like a credential.",
       ]),

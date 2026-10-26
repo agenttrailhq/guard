@@ -8357,6 +8357,9 @@ var CARD_COUNT = {
 function likelyReal(n) {
   return countOf(n, "likely-real credential");
 }
+function filesItRead(n) {
+  return n === 1 ? "the one transcript file it read" : `the ${formatCount(n)} transcript files it read`;
+}
 function be(n) {
   return n === 1 ? "is" : "are";
 }
@@ -8365,11 +8368,11 @@ function anyFound(f) {
 }
 var FOUND_LIKELY_REAL = {
   id: "secrets.found.likely-real",
-  render: (f) => f.classes["likely-real"] > 0 ? `Found ${likelyReal(f.classes["likely-real"])} in ${countOf(f.filesRead, "transcript file")}.` : void 0
+  render: (f) => f.classes["likely-real"] > 0 ? `Found ${likelyReal(f.classes["likely-real"])} in ${filesItRead(f.filesRead)}.` : void 0
 };
 var FOUND_NO_LIKELY_REAL = {
   id: "secrets.found.no-likely-real",
-  render: (f) => f.classes["likely-real"] === 0 && f.filesRead > 0 ? anyFound(f) ? `Found no likely-real credential in ${countOf(f.filesRead, "transcript file")}.` : `Found no credential-shaped value in ${countOf(f.filesRead, "transcript file")}.` : void 0
+  render: (f) => f.classes["likely-real"] === 0 && f.filesRead > 0 ? anyFound(f) ? `Found no likely-real credential in ${filesItRead(f.filesRead)}.` : `Found no credential-shaped value in ${filesItRead(f.filesRead)}.` : void 0
 };
 var FOUND_FIXTURES = {
   id: "secrets.found.committed-fixtures",
