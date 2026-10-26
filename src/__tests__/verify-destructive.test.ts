@@ -1,4 +1,4 @@
-// cspell:words dropdb flushdb flushall mysqladmin PGHOST shutil rmtree libpq pathspecs
+// cspell:words dropdb flushdb flushall mysqladmin PGHOST shutil rmtree libpq pathspecs tmpdata
 /**
  * Destructive commands (`core/verify/destructive.ts`): each `rm -rf` target classed against a
  * real temporary repository and home folder, and each database wipe classed by where the
@@ -23,16 +23,20 @@ import {
   RM_TARGET_CLASSES,
   recursiveRmTargets,
 } from "../core/verify/destructive.js";
-import type { CardExtras } from "../core/verify/git-copy.js";
+import { checkGitBacked } from "../core/verify/git-checks.js";
+import { type CardExtras, isUnder, TEMP_ROOTS } from "../core/verify/git-copy.js";
 import { shellCommands } from "../core/verify/shell-words.js";
+import type { VerifyIO } from "../core/verify/types.js";
 import { UNAVAILABLE_VERIFY_IO } from "../core/verify/verify.js";
 import {
   checkedOf,
+  corpusOf,
   type GitSession,
   makeRepo,
   quoted,
   runChecks,
   tempFolder,
+  verifyIO,
 } from "./git-check-fixtures.js";
 
 /** The context of a scan whose results are recorded. */
@@ -310,6 +314,54 @@ describe("rm -rf targets, one per class", () => {
     const { facts, result } = await destructive(ran(root, `rm -rf "\${TMP_DIR:?}/z"`));
     expect(facts.rm.classes).toEqual(classes({ "guarded-variable": 1 }));
     expect(result.status).toBe("could-not-check");
+  });
+
+  it("a heredoc commit message with a stray quote stays a message", async () => {
+    const root = makeRepo("rm-odd-quote");
+    const message = [
+      `git commit -m "$(cat <<'EOF'`,
+      `Fit 12" screens`,
+      "",
+      "rm -rf $BUILD_DIR",
+      "EOF",
+      `)"`,
+    ].join("\n");
+    const { facts, result } = await destructive(ran(root, message));
+    expect(facts.rm.targets).toBe(0);
+    expect(facts.rm.calls.ran).toBe(0);
+    expect(result.status).not.toBe("act");
+  });
+
+  it("a git failure in a folder that exists is could-not-check, not home or other", async () => {
+    const home = tempFolder("home");
+    const elsewhere = tempFolder("git-fails");
+    const real = verifyIO(home);
+    const io: VerifyIO = { ...real, git: () => Promise.resolve({ ok: false, reason: "failed" }) };
+    const outcome = await runChecks("claude", ran(elsewhere, "rm -rf old"), home, {
+      scratchRoots: [],
+      io,
+    });
+    const result = checkedOf(outcome.destructive);
+    expect(result.facts.rm.couldNotCheck).toBe(1);
+    expect(result.facts.rm.classes).toEqual(classes({}));
+    expect(result.status).toBe("could-not-check");
+  });
+
+  it("the default temp folders are scratch, /tmp and /private/tmp both, and /tmpdata is not", async () => {
+    expect(TEMP_ROOTS).toContain("/tmp");
+    expect(TEMP_ROOTS).toContain("/private/tmp");
+    expect(isUnder("/tmp/agenttrail-x/build", TEMP_ROOTS)).toBe(true);
+    expect(isUnder("/private/tmp/agenttrail-x", TEMP_ROOTS)).toBe(true);
+    expect(isUnder("/tmpdata/x", ["/tmp"])).toBe(false);
+    expect(isUnder("/tmp", ["/tmp/"])).toBe(true);
+    // Through the check, with no scratch folders given: the defaults apply.
+    const home = tempFolder("home");
+    const outcome = await checkGitBacked({
+      corpus: corpusOf("claude", ran(home, "rm -rf /tmp/agenttrail-scratch-x /private/tmp/y")),
+      io: verifyIO(home),
+      home,
+    });
+    expect(checkedOf(outcome.destructive).facts.rm.classes).toEqual(classes({ scratch: 2 }));
   });
 
   it("outside the home folder and outside any repo: other", async () => {

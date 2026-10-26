@@ -242,6 +242,19 @@ describe("force-deleted branches, against a real repository", () => {
     expect(card.found.map((s) => s.template)).toContain("lost-work.failed");
   });
 
+  it("a branch named like the short id, pointing elsewhere, is could-not-check, never the wrong commit", async () => {
+    const { root, commit, output } = deletedBranch("lw-shadow");
+    const short = commit.slice(0, 7);
+    expect(output).toContain(`(was ${short})`);
+    // A branch whose name is the short id, on another commit: git reads the name first.
+    git(root, "branch", short, "main");
+    const { facts, fixes } = await lost([
+      { cwd: root, events: [{ kind: "bash", command: BRANCH_D, output }] },
+    ]);
+    expect(facts.branches).toMatchObject({ deleted: 1, recoverable: 0, couldNotCheck: 1 });
+    expect(fixes).toEqual([]);
+  });
+
   it("one call deleting branches in two repos cannot say which id is whose", async () => {
     const a = deletedBranch("lw-two-a");
     const b = deletedBranch("lw-two-b");

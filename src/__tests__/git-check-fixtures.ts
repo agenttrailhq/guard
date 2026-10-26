@@ -37,12 +37,19 @@ export type GitEvent =
       /** Codex only: the folder the call names. Absent: the session's. */
       readonly workdir?: string;
     }
-  | { readonly kind: "write"; readonly path: string; readonly content: string }
+  | {
+      readonly kind: "write";
+      readonly path: string;
+      readonly content: string;
+      /** The edit tool reported an error: the write did not happen. */
+      readonly error?: boolean;
+    }
   | {
       readonly kind: "edit";
       readonly path: string;
       readonly newString: string;
       readonly oldString?: string;
+      readonly error?: boolean;
     };
 
 /** One session: its working directory and what happened in it. */
@@ -94,7 +101,7 @@ export function corpusOf(agent: AgentSource, sessions: readonly GitSession[]): S
       if (recorded) {
         results.set(id, {
           toolUseId: id,
-          isError: event.kind === "bash" && event.error === true,
+          isError: event.error === true,
           content: agent === "codex" ? "" : event.kind === "bash" ? (event.output ?? "") : "ok",
           timestamp: "2026-10-01T00:00:00.000Z",
         });

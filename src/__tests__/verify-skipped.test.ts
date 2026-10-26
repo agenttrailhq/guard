@@ -12,6 +12,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { pickHeadline } from "../core/verify/cards.js";
+import { checkGitBacked } from "../core/verify/git-checks.js";
 import type { CardExtras } from "../core/verify/git-copy.js";
 import { shellCommands } from "../core/verify/shell-words.js";
 import {
@@ -27,6 +28,7 @@ import { UNAVAILABLE_VERIFY_IO } from "../core/verify/verify.js";
 import {
   checkedOf,
   commitLine,
+  corpusOf,
   type GitSession,
   git,
   makeRepo,
@@ -304,6 +306,44 @@ describe("ran, mentioned, unknown", () => {
     expect(result.status).toBe("clean");
     const card = skippedChecksCard(result, { ranEvidence: "tool-result" });
     expect(card.found.map((s) => s.template)).toContain("skipped-checks.mentioned");
+  });
+
+  it("a heredoc commit message with a stray quote stays a message", async () => {
+    const root = makeRepo("odd-quote");
+    const message = [
+      `git commit -m "$(cat <<'EOF'`,
+      `Fit 12" screens`,
+      "",
+      "git commit --no-verify -m wip",
+      "EOF",
+      `)"`,
+    ].join("\n");
+    const { facts } = await skipped([
+      { cwd: root, events: [{ kind: "bash", command: message, output: "" }] },
+    ]);
+    expect(facts.noVerify.calls.ran).toBe(0);
+    expect(facts.noVerify.notIdentified).toBe(0);
+  });
+
+  it("one tool call recorded twice is counted once", async () => {
+    const { root, output } = noVerifyRepo("nv-duplicate");
+    const corpus = corpusOf("claude", [
+      { cwd: root, events: [{ kind: "bash", command: COMMIT, output }] },
+    ]);
+    const session = corpus.sessions[0];
+    if (session === undefined) throw new Error("no session");
+    const twice = {
+      ...corpus,
+      sessions: [{ ...session, turns: [...session.turns, ...session.turns] }],
+    };
+    const home = tempFolder("home");
+    const outcome = await checkGitBacked({
+      corpus: twice,
+      io: verifyIO(home),
+      home,
+      scratchRoots: [],
+    });
+    expect(checkedOf(outcome["skipped-checks"]).facts.noVerify.calls.ran).toBe(1);
   });
 
   it("a call with no recorded result is unknown, and keeps the check from clean", async () => {
@@ -685,6 +725,55 @@ describe("instruction files", () => {
     const local = outcome.localFixes.map((f) => f.command).join("\n");
     expect(local).toContain(memory);
     expect(local).not.toContain("CANARYmemoryLINE");
+  });
+
+  it("a session in a subfolder reads the instruction files at the repo's top", async () => {
+    const home = tempFolder("home");
+    const root = makeRepo("subfolder", {
+      files: { "AGENTS.md": "Use --no-verify when the hooks are slow.\n", "pkg/a.ts": "a\n" },
+    });
+    const { facts } = await skipped([{ cwd: join(root, "pkg"), events: [] }], home);
+    expect(facts.instructions).toMatchObject({ read: 1, sayToSkip: 1, couldNotRead: 0 });
+  });
+
+  it("a file the agent wrote in a second repo is read too", async () => {
+    const home = tempFolder("home");
+    const first = makeRepo("first-repo");
+    const second = makeRepo("second-repo");
+    const file = join(second, "CLAUDE.md");
+    writeFileSync(file, "Use --no-verify.\n");
+    const { facts } = await skipped(
+      [{ cwd: first, events: [{ kind: "write", path: file, content: "Use --no-verify." }] }],
+      home,
+    );
+    expect(facts.instructions).toMatchObject({
+      agentWrote: 1,
+      agentWroteStill: 1,
+      couldNotRead: 0,
+    });
+  });
+
+  it("an edit that failed, or a Cursor edit, is not counted as written", async () => {
+    const home = tempFolder("home");
+    const root = makeRepo("edits-not-run");
+    const file = join(root, "CLAUDE.md");
+    writeFileSync(file, "Run the checks.\n");
+    const failed = await skipped(
+      [
+        {
+          cwd: root,
+          events: [{ kind: "edit", path: file, newString: "Use --no-verify.", error: true }],
+        },
+      ],
+      home,
+    );
+    expect(failed.facts.instructions.agentWrote).toBe(0);
+    const cursor = await skipped(
+      [{ cwd: root, events: [{ kind: "edit", path: file, newString: "Use --no-verify." }] }],
+      home,
+      "cursor",
+    );
+    expect(cursor.facts.instructions.agentWrote).toBe(0);
   });
 
   it("a Codex scan reads Codex's home AGENTS.md", async () => {
