@@ -5897,6 +5897,7 @@ var CODEX_SHIM_TOOL = "exec";
 var EXEC_COMMAND = "exec_command";
 var APPLY_PATCH = "apply_patch";
 var CMD_KEY = "cmd";
+var WORKDIR_KEY = "workdir";
 var TOOLS_PREFIX = "tools.";
 var MAX_SHIM_SOURCE = 128 * 1024;
 var MAX_WALK_DEPTH = 8;
@@ -6068,7 +6069,7 @@ function readObjectLiteral(source, open, key) {
     return void 0;
   }
 }
-function readShimCall(source, at) {
+function readShimCall(source, at, withWorkdir = false) {
   const nameStart = at + TOOLS_PREFIX.length;
   if (!isIdentStart(source.charCodeAt(nameStart))) return { end: nameStart };
   let i = nameStart + 1;
@@ -6081,7 +6082,12 @@ function readShimCall(source, at) {
   if (ch === "{") {
     const object = readObjectLiteral(source, argument, CMD_KEY);
     if (object === void 0) return void 0;
-    const call = object.value === void 0 ? { fn } : { fn, cmd: object.value };
+    const workdir = withWorkdir ? readObjectLiteral(source, argument, WORKDIR_KEY)?.value : void 0;
+    const call = {
+      fn,
+      ...object.value === void 0 ? {} : { cmd: object.value },
+      ...workdir === void 0 ? {} : { workdir }
+    };
     return { call, end: object.end };
   }
   if (ch === '"' || ch === "'") {
@@ -6093,6 +6099,12 @@ function readShimCall(source, at) {
   return void 0;
 }
 function readShimCalls(source) {
+  return scanShim(source, false);
+}
+function readShimWorkdirs(source) {
+  return scanShim(source, true)?.map((call) => call.workdir);
+}
+function scanShim(source, withWorkdir) {
   if (source.length > MAX_SHIM_SOURCE) return void 0;
   const calls = [];
   let i = 0;
@@ -6117,7 +6129,7 @@ function readShimCalls(source) {
       continue;
     }
     if (ch === "t" && source.startsWith(TOOLS_PREFIX, i) && (i === 0 || !isIdentPart(source.charCodeAt(i - 1)) && source[i - 1] !== ".")) {
-      const read = readShimCall(source, i);
+      const read = readShimCall(source, i, withWorkdir);
       if (read === void 0) return void 0;
       if (read.call !== void 0) calls.push(read.call);
       i = read.end;
@@ -11913,6 +11925,38 @@ function gitFolder(folder, options, home) {
 function sessionFolder(cwd) {
   return cwd !== null && cwd !== "" && isAbsolute2(cwd) ? resolve2(cwd) : void 0;
 }
+function folderAfter(text, from, home) {
+  let folder = from;
+  let depth = 0;
+  let changed = false;
+  for (const item of shellItems(text)) {
+    if (item.kind === "open") depth += 1;
+    else if (item.kind === "close") depth = Math.max(0, depth - 1);
+    else if (depth === 0) {
+      const change = directoryChange(item.words);
+      if (change.kind === "none") continue;
+      changed = true;
+      if (change.kind === "to") folder = resolvePath(folder, change.path, home);
+      else if (change.kind === "home") folder = home;
+      else folder = void 0;
+    }
+  }
+  return changed ? { kind: "to", folder } : { kind: "same" };
+}
+var CWD_RESET = /Shell cwd was reset to (\S[^\n]*?)\s*$/m;
+function claudeFolderAfter(agent, mapped, command, result, from, home) {
+  const reset = result === void 0 ? void 0 : CWD_RESET.exec(result.content)?.[1];
+  if (reset !== void 0) return isAbsolute2(reset) ? resolve2(reset) : void 0;
+  const after = folderAfter(command, from, home);
+  if (after.kind === "same") return from;
+  const verdict2 = runVerdict(agent, mapped, result, () => true);
+  return verdict2.state === "ran" && verdict2.why === "result" ? after.folder : void 0;
+}
+function codexFolders(input) {
+  const source = input.input;
+  if (typeof source !== "string") return [];
+  return [...readShimWorkdirs(source) ?? []];
+}
 function readCalls(corpus, home) {
   const agent = corpus.agent ?? "claude";
   const shell = [];
@@ -11920,8 +11964,9 @@ function readCalls(corpus, home) {
   const folders = /* @__PURE__ */ new Set();
   let id = 0;
   corpus.sessions.forEach((session, index) => {
-    const cwd = sessionFolder(session.cwd);
-    if (cwd !== void 0) folders.add(cwd);
+    const start = sessionFolder(session.cwd);
+    if (start !== void 0) folders.add(start);
+    let current = start;
     const seen = /* @__PURE__ */ new Set();
     for (const turn of session.turns) {
       for (const use of turn.toolUses) {
@@ -11930,8 +11975,11 @@ function readCalls(corpus, home) {
           seen.add(use.toolUseId);
         }
         const result = session.toolResults.get(use.toolUseId);
-        for (const call of toolUseCalls(agent, use)) {
-          if (call.kind !== "action") continue;
+        const workdirs = agent === "codex" ? codexFolders(use.input) : [];
+        toolUseCalls(agent, use).forEach((call, callIndex) => {
+          if (call.kind !== "action") return;
+          const workdir = workdirs[callIndex];
+          const cwd = agent === "codex" ? workdir === void 0 ? start : resolvePath(start, workdir, home) : current;
           for (const mapped of call.candidates) {
             id += 1;
             const command = mapped.args.full_command;
@@ -11950,17 +11998,20 @@ function readCalls(corpus, home) {
               for (const path2 of redirectWrites(agent, entry, home)) {
                 writes.push({ id, session: index, path: path2, texts: [] });
               }
+              if (agent === "claude") {
+                current = claudeFolderAfter(agent, mapped, command, result, current, home);
+              }
               continue;
             }
             const file2 = mapped.args.file_path;
             if (!EDIT_TOOLS.has(mapped.tool) || file2 === void 0) continue;
             const path = resolvePath(cwd, file2, home);
             if (path === void 0) continue;
-            if (runVerdict(agent, mapped, result, () => true).state !== "ran") continue;
+            if (!isResultBackedRun(runVerdict(agent, mapped, result, () => true))) continue;
             const texts = agent === "codex" ? [] : writtenTexts(use.input);
             writes.push({ id, session: index, path, texts });
           }
-        }
+        });
       }
     }
   });

@@ -23,7 +23,6 @@ import type { AgentSource } from "../core/types.js";
 import { checkGitBacked, type GitChecksOutcome } from "../core/verify/git-checks.js";
 import type { CheckedCategory, CouldNotCheckResult, VerifyIO } from "../core/verify/types.js";
 import { createRealVerifyIO } from "../verify-io.js";
-import { codexExec } from "./verify-fixtures.js";
 
 /** One thing the agent did. */
 export type GitEvent =
@@ -35,6 +34,8 @@ export type GitEvent =
       readonly error?: boolean;
       /** The transcript records no result for the call. */
       readonly noResult?: boolean;
+      /** Codex only: the folder the call names. Absent: the session's. */
+      readonly workdir?: string;
     }
   | { readonly kind: "write"; readonly path: string; readonly content: string }
   | {
@@ -50,11 +51,21 @@ export interface GitSession {
   readonly events: readonly GitEvent[];
 }
 
+/** The shim fragment Codex writes for one shell command, with the folder it names if any. */
+export function codexShim(command: string, workdir?: string): string {
+  const dir = workdir === undefined ? "" : `,workdir:${JSON.stringify(workdir)}`;
+  return `const r = await tools.exec_command({cmd:${JSON.stringify(command)}${dir}}); text(r.output);\n`;
+}
+
 /** One tool use for an app, in the shape its reader produces. */
 function toolUse(agent: AgentSource, id: string, event: GitEvent): ToolUse {
   if (event.kind === "bash") {
     if (agent === "codex")
-      return { toolUseId: id, name: "exec", input: { input: codexExec(event.command) } };
+      return {
+        toolUseId: id,
+        name: "exec",
+        input: { input: codexShim(event.command, event.workdir) },
+      };
     if (agent === "cursor")
       return { toolUseId: "", name: "Shell", input: { command: event.command } };
     return { toolUseId: id, name: "Bash", input: { command: event.command } };

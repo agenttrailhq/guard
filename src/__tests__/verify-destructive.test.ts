@@ -233,6 +233,117 @@ describe("rm -rf targets, one per class", () => {
   });
 });
 
+describe("the folder a target is read from, across calls", () => {
+  /** A repo whose tracked `src/` is gone, and a scratch folder a session starts in. */
+  function setUp(label: string) {
+    const root = makeRepo(label, { files: { "src/a.ts": "a\n" } });
+    rmSync(join(root, "src"), { recursive: true });
+    const scratch = tempFolder(`${label}-scratch`);
+    return { root, scratch };
+  }
+
+  it("Claude Code: a cd in an earlier call that ran moves the folder for the next", async () => {
+    const { root, scratch } = setUp("cd-across");
+    const { facts } = await destructive(
+      [
+        {
+          cwd: scratch,
+          events: [
+            { kind: "bash", command: `cd ${root}`, output: "" },
+            { kind: "bash", command: "rm -rf src", output: "" },
+          ],
+        },
+      ],
+      { scratchRoots: [scratch] },
+    );
+    expect(facts.rm.classes).toEqual(classes({ tracked: 1 }));
+    expect(facts.rm.trackedGone).toBe(1);
+  });
+
+  it("a cd in a call that may not have run leaves the folder unknown, never scratch", async () => {
+    const { root, scratch } = setUp("cd-unknown");
+    for (const first of [
+      { kind: "bash" as const, command: `cd ${root}`, noResult: true },
+      { kind: "bash" as const, command: `cd ${root} && make`, output: "Exit code 2", error: true },
+      { kind: "bash" as const, command: "cd $SOMEWHERE", output: "" },
+    ]) {
+      const { facts, result } = await destructive(
+        [{ cwd: scratch, events: [first, { kind: "bash", command: "rm -rf src", output: "" }] }],
+        { scratchRoots: [scratch] },
+      );
+      expect(facts.rm.classes.scratch).toBe(0);
+      expect(facts.rm.couldNotCheck).toBe(1);
+      expect(result.status).toBe("could-not-check");
+    }
+  });
+
+  it("a subshell's cd in an earlier call does not move the folder", async () => {
+    const { root, scratch } = setUp("cd-subshell");
+    const { facts } = await destructive(
+      [
+        {
+          cwd: root,
+          events: [
+            { kind: "bash", command: `(cd ${scratch} && ls)`, output: "" },
+            { kind: "bash", command: "rm -rf src", output: "" },
+          ],
+        },
+      ],
+      { scratchRoots: [scratch] },
+    );
+    expect(facts.rm.trackedGone).toBe(1);
+  });
+
+  it("Claude Code's reset notice puts the folder back", async () => {
+    const { root, scratch } = setUp("cd-reset");
+    const { facts } = await destructive(
+      [
+        {
+          cwd: root,
+          events: [
+            {
+              kind: "bash",
+              command: `cd ${scratch}`,
+              output: `Shell cwd was reset to ${root}`,
+            },
+            { kind: "bash", command: "rm -rf src", output: "" },
+          ],
+        },
+      ],
+      { scratchRoots: [scratch] },
+    );
+    expect(facts.rm.trackedGone).toBe(1);
+  });
+
+  it("Codex: each call runs in the workdir it names, absolute or relative to the session", async () => {
+    const { root, scratch } = setUp("codex-workdir");
+    const named = await destructive(
+      [
+        {
+          cwd: scratch,
+          events: [{ kind: "bash", command: "rm -rf src", workdir: root, output: "" }],
+        },
+      ],
+      { scratchRoots: [scratch], agent: "codex" },
+    );
+    expect(named.facts.rm.trackedGone).toBe(1);
+    // A cd in one Codex call does not carry to the next: each starts in its own folder.
+    const carried = await destructive(
+      [
+        {
+          cwd: scratch,
+          events: [
+            { kind: "bash", command: `cd ${root}`, output: "" },
+            { kind: "bash", command: "rm -rf src", output: "" },
+          ],
+        },
+      ],
+      { scratchRoots: [scratch], agent: "codex" },
+    );
+    expect(carried.facts.rm.classes.scratch).toBe(1);
+  });
+});
+
 describe("ran, mentioned, unknown", () => {
   it("mentions are counted apart", async () => {
     const root = makeRepo("rm-mention");

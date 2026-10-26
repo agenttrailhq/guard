@@ -1,4 +1,4 @@
-// cspell:words pushd
+// cspell:words pushd popd workdirs Workdirs
 /**
  * The tool calls the git-backed checks read: every shell command in a corpus, with its result
  * and the folder it ran in, and every file the agent wrote.
@@ -15,19 +15,24 @@
  * happened.
  *
  * ── The folder a command ran in ──────────────────────────────────────────────
- * The session's working directory, then each `cd` or `pushd` in the same command, with a
- * subshell's `cd` undone at its `)`. A `cd` in an earlier call is not followed. A relative
- * path with no known folder is left unresolved, and the check that needs it says it could
- * not check.
+ * Claude Code keeps its shell's folder from one call to the next, so a call starts where the
+ * last left it: the session's working directory, moved by each `cd`, `pushd` or `popd` outside
+ * a subshell of an earlier call that ran, or put back by Claude Code's reset notice. A call
+ * that may not have run, or ran and failed, after moving the folder leaves it unknown. Codex
+ * runs each command in the `workdir` its call names, else in the session's folder. Within a
+ * command, each `cd` moves the folder for what follows it, and a subshell's `cd` is undone at
+ * its `)`. A relative path with no known folder is left unresolved, and the check that needs
+ * it says it could not check; it is never read as scratch.
  *
  * Pure. No I/O.
  */
 
 import { isAbsolute, join, resolve } from "node:path";
+import { readShimWorkdirs } from "../codex-transcript/scan.js";
 import { type ScanCorpus, toolUseCalls } from "../scan-report.js";
 import type { ToolResult } from "../transcript/transcript-types.js";
 import type { AgentSource, MappedCall } from "../types.js";
-import { executedView, runVerdict } from "./ran.js";
+import { executedView, isResultBackedRun, runVerdict } from "./ran.js";
 import { directoryChange, type ShellCommand, type ShellWord, shellItems } from "./shell-words.js";
 import type { RunTally, RunVerdict } from "./types.js";
 
@@ -43,7 +48,7 @@ export interface ShellCall {
   /** The command with every region that is only data blanked out. */
   readonly view: string;
   readonly result: ToolResult | undefined;
-  /** The session's working directory, when it names an absolute one. */
+  /** The folder the call started in, when it can be told. See "The folder a command ran in". */
   readonly cwd: string | undefined;
 }
 
@@ -171,6 +176,68 @@ function sessionFolder(cwd: string | null): string | undefined {
   return cwd !== null && cwd !== "" && isAbsolute(cwd) ? resolve(cwd) : undefined;
 }
 
+/** What one command does to the shell's folder for the calls after it. */
+type FolderAfter =
+  | { readonly kind: "same" }
+  | { readonly kind: "to"; readonly folder: string | undefined };
+
+/**
+ * Where a command leaves the shell's folder: after its last `cd`, `pushd` or `popd` outside a
+ * subshell. `same` when it has none.
+ */
+export function folderAfter(text: string, from: string | undefined, home: string): FolderAfter {
+  let folder = from;
+  let depth = 0;
+  let changed = false;
+  for (const item of shellItems(text)) {
+    if (item.kind === "open") depth += 1;
+    else if (item.kind === "close") depth = Math.max(0, depth - 1);
+    else if (depth === 0) {
+      const change = directoryChange(item.words);
+      if (change.kind === "none") continue;
+      changed = true;
+      if (change.kind === "to") folder = resolvePath(folder, change.path, home);
+      else if (change.kind === "home") folder = home;
+      else folder = undefined;
+    }
+  }
+  return changed ? { kind: "to", folder } : { kind: "same" };
+}
+
+/** The notice Claude Code adds to a result when it puts the shell back in its folder. */
+const CWD_RESET = /Shell cwd was reset to (\S[^\n]*?)\s*$/m;
+
+/**
+ * The folder a Claude Code shell is in after one call, given the folder it started in.
+ *
+ * Claude Code keeps the shell's folder from one call to the next. A `cd` outside a subshell
+ * moves it for the calls that follow, when the call ran. A call that may or may not have run,
+ * or that ran and failed partway, leaves the folder unknown. A reset notice in the result says
+ * where it is.
+ */
+function claudeFolderAfter(
+  agent: AgentSource,
+  mapped: MappedCall,
+  command: string,
+  result: ToolResult | undefined,
+  from: string | undefined,
+  home: string,
+): string | undefined {
+  const reset = result === undefined ? undefined : CWD_RESET.exec(result.content)?.[1];
+  if (reset !== undefined) return isAbsolute(reset) ? resolve(reset) : undefined;
+  const after = folderAfter(command, from, home);
+  if (after.kind === "same") return from;
+  const verdict = runVerdict(agent, mapped, result, () => true);
+  return verdict.state === "ran" && verdict.why === "result" ? after.folder : undefined;
+}
+
+/** The folder each Codex shim call in one tool use names, in the order the calls are mapped. */
+function codexFolders(input: Readonly<Record<string, unknown>>): (string | undefined)[] {
+  const source = input.input;
+  if (typeof source !== "string") return [];
+  return [...(readShimWorkdirs(source) ?? [])];
+}
+
 /** Every shell command and every file write in a corpus. */
 export function readCalls(corpus: ScanCorpus, home: string): CallLog {
   const agent: AgentSource = corpus.agent ?? "claude";
@@ -180,8 +247,10 @@ export function readCalls(corpus: ScanCorpus, home: string): CallLog {
   let id = 0;
 
   corpus.sessions.forEach((session, index) => {
-    const cwd = sessionFolder(session.cwd);
-    if (cwd !== undefined) folders.add(cwd);
+    const start = sessionFolder(session.cwd);
+    if (start !== undefined) folders.add(start);
+    // Where Claude Code's shell is now. Codex runs each call in its own folder.
+    let current = start;
     const seen = new Set<string>();
     for (const turn of session.turns) {
       for (const use of turn.toolUses) {
@@ -190,8 +259,17 @@ export function readCalls(corpus: ScanCorpus, home: string): CallLog {
           seen.add(use.toolUseId);
         }
         const result = session.toolResults.get(use.toolUseId);
-        for (const call of toolUseCalls(agent, use)) {
-          if (call.kind !== "action") continue;
+        const workdirs = agent === "codex" ? codexFolders(use.input) : [];
+        toolUseCalls(agent, use).forEach((call, callIndex) => {
+          if (call.kind !== "action") return;
+          // A Codex call's own folder, else the session's; a relative one from the session's.
+          const workdir = workdirs[callIndex];
+          const cwd =
+            agent === "codex"
+              ? workdir === undefined
+                ? start
+                : resolvePath(start, workdir, home)
+              : current;
           for (const mapped of call.candidates) {
             id += 1;
             const command = mapped.args.full_command;
@@ -210,19 +288,22 @@ export function readCalls(corpus: ScanCorpus, home: string): CallLog {
               for (const path of redirectWrites(agent, entry, home)) {
                 writes.push({ id, session: index, path, texts: [] });
               }
+              if (agent === "claude") {
+                current = claudeFolderAfter(agent, mapped, command, result, current, home);
+              }
               continue;
             }
             const file = mapped.args.file_path;
             if (!EDIT_TOOLS.has(mapped.tool) || file === undefined) continue;
             const path = resolvePath(cwd, file, home);
             if (path === undefined) continue;
-            if (runVerdict(agent, mapped, result, () => true).state !== "ran") continue;
+            if (!isResultBackedRun(runVerdict(agent, mapped, result, () => true))) continue;
             // Codex's patch text is one shim string for every file it touches, so what it wrote
             // to one file is not told apart; its writes carry no text.
             const texts = agent === "codex" ? [] : writtenTexts(use.input);
             writes.push({ id, session: index, path, texts });
           }
-        }
+        });
       }
     }
   });
