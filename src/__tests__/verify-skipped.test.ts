@@ -636,6 +636,8 @@ describe("the card", () => {
     const none = { ran: 0, mentioned: 0, unknown: 0 };
     return {
       unsafeFixes: 0,
+      hidingCalls: 0,
+      hidingForms: [],
       noVerify: {
         calls: none,
         commits: 0,
@@ -699,7 +701,9 @@ describe("the card", () => {
       { ranEvidence: "tool-result" },
     ) as ReturnType<typeof skippedChecksCard> & CardExtras;
     expect(quiet.chip?.label.text).toBe("0 commits reached main without their checks");
-    expect(quiet.found.map((s) => s.text)).toEqual(["No command that ran skipped a hook."]);
+    expect(quiet.found.map((s) => s.text)).toEqual([
+      "No command this check could read skipped a hook.",
+    ]);
     expect(quiet.fixSteps).toBeUndefined();
   });
 

@@ -41,6 +41,7 @@ import {
   callsIn,
   cardExtras,
   codexCaveat,
+  couldNotConfirmLine,
   counted,
   FixList,
   type GitCheckContext,
@@ -61,7 +62,7 @@ import {
   walkCommands,
 } from "./shell-calls.js";
 import { commandStart, gitCommand, operands, programName, type ShellWord } from "./shell-words.js";
-import type { CheckedCategory, RunTally } from "./types.js";
+import type { CheckedCategory, HidingForm, RunTally } from "./types.js";
 
 /** The `--no-verify` commits, and where they are now. */
 export interface NoVerifyFacts {
@@ -134,6 +135,12 @@ export interface SkippedChecksFacts {
   readonly instructions: InstructionFacts;
   /** Exact fix commands that could not be made safe, so were left out of the local fixes file. */
   readonly unsafeFixes: number;
+  /**
+   * The calls that ran holding a form this reading does not take apart, and those forms. While
+   * any is present the check cannot say nothing ran, so it is never `clean`.
+   */
+  readonly hidingCalls: number;
+  readonly hidingForms: readonly HidingForm[];
 }
 
 declare module "./types.js" {
@@ -674,6 +681,8 @@ export async function checkSkippedChecks(context: GitCheckContext): Promise<Skip
     hooksPath,
     instructions,
     unsafeFixes: fixes.unsafe.length,
+    hidingCalls: log.hiding.calls,
+    hidingForms: [...log.hiding.forms],
   };
 
   const calls = new Set(
@@ -692,7 +701,8 @@ export async function checkSkippedChecks(context: GitCheckContext): Promise<Skip
         noVerify.couldNotCheck +
         hooksPath.couldNotCheck +
         instructions.couldNotRead +
-        all.unknown >
+        all.unknown +
+        log.hiding.calls >
       0,
   });
   return {
@@ -801,11 +811,16 @@ const FOUND: readonly T[] = [
   {
     id: "skipped-checks.none",
     render: (f) => {
-      if (allCalls(f).ran > 0 || f.instructions.sayToSkip > 0) return undefined;
+      if (allCalls(f).ran > 0 || f.instructions.sayToSkip > 0 || f.hidingCalls > 0)
+        return undefined;
       return f.instructions.read > 0
-        ? `No command that ran skipped a hook, and none of the ${counted(f.instructions.read, "instruction file")} read says to.`
-        : "No command that ran skipped a hook.";
+        ? `No command this check could read skipped a hook, and none of the ${counted(f.instructions.read, "instruction file")} read says to.`
+        : "No command this check could read skipped a hook.";
     },
+  },
+  {
+    id: "skipped-checks.could-not-confirm",
+    render: (f) => couldNotConfirmLine(f.hidingCalls, f.hidingForms, "command skipping a check"),
   },
 ];
 

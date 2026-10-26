@@ -34,6 +34,7 @@ import {
   addTallies,
   cardExtras,
   codexCaveat,
+  couldNotConfirmLine,
   counted,
   FixList,
   type GitCheckContext,
@@ -57,7 +58,7 @@ import {
   walkCommands,
 } from "./shell-calls.js";
 import { commandStart, gitCommand, operands, programName, type ShellWord } from "./shell-words.js";
-import type { CheckedCategory, RunTally } from "./types.js";
+import type { CheckedCategory, HidingForm, RunTally } from "./types.js";
 
 /** Force-deleted branches. */
 export interface BranchFacts {
@@ -115,6 +116,12 @@ export interface LostWorkFacts {
   readonly discards: DiscardFacts;
   /** Exact fix commands that could not be made safe, so were left out of the local fixes file. */
   readonly unsafeFixes: number;
+  /**
+   * The calls that ran holding a form this reading does not take apart, and those forms. While
+   * any is present the check cannot say nothing ran, so it is never `clean`.
+   */
+  readonly hidingCalls: number;
+  readonly hidingForms: readonly HidingForm[];
 }
 
 declare module "./types.js" {
@@ -567,6 +574,8 @@ export async function checkLostWork(context: GitCheckContext): Promise<LostWorkO
     stashes,
     discards: discarded,
     unsafeFixes: fixes.unsafe.length,
+    hidingCalls: log.hiding.calls,
+    hidingForms: [...log.hiding.forms],
   };
 
   const calls = new Set([...branchCalls, ...stashCalls, ...discardCalls].map((j) => j.call.id));
@@ -582,7 +591,8 @@ export async function checkLostWork(context: GitCheckContext): Promise<LostWorkO
         stashes.cleared +
         stashes.couldNotCheck +
         discarded.couldNotCheck +
-        all.unknown >
+        all.unknown +
+        log.hiding.calls >
       0,
   });
   return {
@@ -671,9 +681,18 @@ const FOUND: readonly T[] = [
   {
     id: "lost-work.none",
     render: (f) =>
-      allCalls(f).ran === 0
-        ? "No command that ran deleted a branch or a stash, or discarded changes."
+      allCalls(f).ran === 0 && f.hidingCalls === 0
+        ? "No command this check could read deleted a branch or a stash, or discarded changes."
         : undefined,
+  },
+  {
+    id: "lost-work.could-not-confirm",
+    render: (f) =>
+      couldNotConfirmLine(
+        f.hidingCalls,
+        f.hidingForms,
+        "branch, stash or change was deleted or discarded",
+      ),
   },
 ];
 

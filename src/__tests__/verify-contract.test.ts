@@ -41,6 +41,7 @@ import {
   FACT_VALUE_ENUMS,
   HIDING_FORMS,
   type HidingForm,
+  type HidingFormsRequired,
   type SecretsFacts,
   VERIFY_CATEGORIES,
   VERIFY_STATUSES,
@@ -674,7 +675,9 @@ describe("a checked category's facts reach the file as plain data", () => {
     const bad: Bad = "lost-work";
     // @ts-expect-error: a category that has hidingForms is not listed as missing it.
     const notListed: Bad = "destructive";
-    expect([good, bad, notListed]).toEqual([true, "lost-work", "destructive"]);
+    // The contract's own map passes today; `HidingFormsRequired` holds only `true`.
+    const required: HidingFormsRequired = true;
+    expect([good, bad, notListed, required]).toEqual([true, "lost-work", "destructive", true]);
   });
 
   it("the secrets block in the file checks its strings against the enums, as --json does", () => {

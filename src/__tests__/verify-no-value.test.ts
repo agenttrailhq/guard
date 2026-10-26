@@ -27,6 +27,7 @@ import { isLocalFix, type LocalFix, localFixCommand } from "../core/verify/cards
 import { GIT_FACT_ENUMS, GIT_FACT_KEYS } from "../core/verify/git-facts.js";
 import {
   FIXTURE_CHECKS,
+  HIDING_FORMS,
   RAN_EVIDENCE,
   RUN_STATES,
   SECRET_CLASSES,
@@ -162,6 +163,8 @@ const ALLOWED = new Set<string>([
   // The git-backed checks: skipped checks, lost work, destructive commands.
   ...GIT_FACT_ENUMS.flat(),
   ...GIT_FACT_KEYS,
+  ...HIDING_FORMS,
+  "hidingForms",
 ]);
 
 describe.each([

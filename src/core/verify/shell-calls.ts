@@ -32,9 +32,16 @@ import { readShimWorkdirs } from "../codex-transcript/scan.js";
 import { type ScanCorpus, toolUseCalls } from "../scan-report.js";
 import type { ToolResult } from "../transcript/transcript-types.js";
 import type { AgentSource, MappedCall } from "../types.js";
-import { executedView, isResultBackedRun, runVerdict } from "./ran.js";
-import { directoryChange, type ShellCommand, type ShellWord, shellItems } from "./shell-words.js";
-import type { RunTally, RunVerdict } from "./types.js";
+import { executedView, hidingFormsOf, isResultBackedRun, runVerdict } from "./ran.js";
+import {
+  commandStart,
+  directoryChange,
+  programName,
+  type ShellCommand,
+  type ShellWord,
+  shellItems,
+} from "./shell-words.js";
+import { HIDING_FORMS, type HidingForm, type RunTally, type RunVerdict } from "./types.js";
 
 /** One shell command from a corpus. */
 export interface ShellCall {
@@ -77,6 +84,12 @@ export interface CallLog {
   readonly sessions: number;
   /** The sessions' working directories, each once, in the order first seen. */
   readonly folders: readonly string[];
+  /**
+   * The calls that ran, by a recorded result, holding a form that runs something this reading
+   * does not take apart (`hidingFormsOf`), and those forms in `HIDING_FORMS` order. While any
+   * is present, no git-backed category may read clean or say a command did not run.
+   */
+  readonly hiding: { readonly calls: number; readonly forms: readonly HidingForm[] };
 }
 
 /** Tools that write a file. */
@@ -137,6 +150,7 @@ export function walkCommands(
   cwd: string | undefined,
   home: string,
   visit: (command: ShellCommand, folder: string | undefined) => void,
+  depth = 0,
 ): void {
   let folder = cwd;
   const saved: (string | undefined)[] = [];
@@ -150,11 +164,74 @@ export function walkCommands(
       continue;
     }
     visit(item, folder);
+    // What runs inside: a shell's `-c` string, and each `$(…)` or backtick substitution.
+    if (depth < MAX_NESTING) {
+      for (const inner of innerCommands(item)) {
+        walkCommands(inner, folder, home, visit, depth + 1);
+      }
+    }
     const change = directoryChange(item.words);
     if (change.kind === "to") folder = resolvePath(folder, change.path, home);
     else if (change.kind === "home") folder = home;
     else if (change.kind === "unknown") folder = undefined;
   }
+}
+
+/** Deepest a command is read inside another. */
+const MAX_NESTING = 4;
+
+/** Shells whose `-c` string is run as commands. */
+const SHELL_PROGRAMS: ReadonlySet<string> = new Set(["sh", "bash", "zsh", "dash", "ksh"]);
+
+/** The text of each `$(…)` and backtick substitution in a word as written. */
+export function substitutions(raw: string): string[] {
+  const out: string[] = [];
+  let inSingle = false;
+  for (let i = 0; i < raw.length; i++) {
+    const ch = raw[i];
+    if (ch === "\\" && !inSingle) {
+      i += 1;
+      continue;
+    }
+    if (ch === "'") inSingle = !inSingle;
+    if (inSingle) continue;
+    if (ch === "$" && raw[i + 1] === "(" && raw[i + 2] !== "(") {
+      let depth = 0;
+      let j = i + 1;
+      for (; j < raw.length; j++) {
+        if (raw[j] === "(") depth += 1;
+        else if (raw[j] === ")") {
+          depth -= 1;
+          if (depth === 0) break;
+        }
+      }
+      out.push(raw.slice(i + 2, j));
+      i = j;
+    } else if (ch === "`") {
+      const end = raw.indexOf("`", i + 1);
+      if (end < 0) break;
+      out.push(raw.slice(i + 1, end));
+      i = end;
+    }
+  }
+  return out;
+}
+
+/** What a simple command runs inside itself: a shell's `-c` string, and its substitutions. */
+function innerCommands(command: ShellCommand): string[] {
+  const out: string[] = [];
+  for (const word of command.words) {
+    if (word.expands) out.push(...substitutions(word.raw));
+  }
+  const start = commandStart(command.words).index;
+  const program = command.words[start];
+  if (program !== undefined && SHELL_PROGRAMS.has(programName(program))) {
+    const args = command.words.slice(start + 1);
+    const flag = args.findIndex((a) => /^-[A-Za-z]*c[A-Za-z]*$/.test(a.value));
+    const script = flag >= 0 ? args[flag + 1] : undefined;
+    if (script !== undefined) out.push(script.value);
+  }
+  return out;
 }
 
 /** The folder a `git` command runs on, after its `-C` options. */
@@ -244,6 +321,8 @@ export function readCalls(corpus: ScanCorpus, home: string): CallLog {
   const shell: ShellCall[] = [];
   const writes: FileWrite[] = [];
   const folders = new Set<string>();
+  const hidingForms = new Set<HidingForm>();
+  let hidingCalls = 0;
   let id = 0;
 
   corpus.sessions.forEach((session, index) => {
@@ -272,6 +351,14 @@ export function readCalls(corpus: ScanCorpus, home: string): CallLog {
               : current;
           for (const mapped of call.candidates) {
             id += 1;
+            const forms = hidingFormsOf(mapped);
+            if (
+              forms.length > 0 &&
+              isResultBackedRun(runVerdict(agent, mapped, result, () => true))
+            ) {
+              hidingCalls += 1;
+              for (const form of forms) hidingForms.add(form);
+            }
             const command = mapped.args.full_command;
             if (mapped.tool === "Bash" && command !== undefined) {
               const view = executedView(command).text;
@@ -314,6 +401,7 @@ export function readCalls(corpus: ScanCorpus, home: string): CallLog {
     writes,
     sessions: corpus.sessions.length,
     folders: [...folders],
+    hiding: { calls: hidingCalls, forms: HIDING_FORMS.filter((f) => hidingForms.has(f)) },
   };
 }
 
@@ -337,7 +425,7 @@ function redirectWrites(agent: AgentSource, call: ShellCall, home: string): stri
     call.result,
     (m) => find(m.args.full_command ?? "").length > 0,
   );
-  return verdict.state === "ran" ? find(call.view) : [];
+  return isResultBackedRun(verdict) ? find(call.view) : [];
 }
 
 /** A call one check found something in, and whether it ran. */
@@ -427,7 +515,7 @@ export function judge<F>(
     call.result,
     (m) => detect(m.args.full_command ?? "", call.cwd, log.home).length > 0,
   );
-  return { call, verdict, found: verdict.state === "ran" ? found : [] };
+  return { call, verdict, found: isResultBackedRun(verdict) ? found : [] };
 }
 
 /** Every call one check finds something in, judged. */
@@ -443,7 +531,11 @@ export function judgeAll<F>(log: CallLog, hint: RegExp, detect: Detector<F>): Ju
 /** Judged calls counted by whether they ran. */
 export function tallyOf(judged: readonly Judged<unknown>[]): RunTally {
   const tally = { ran: 0, mentioned: 0, unknown: 0 };
-  for (const j of judged) tally[j.verdict.state] += 1;
+  for (const j of judged) {
+    // A `ran` that a recorded result does not back counts as unknown, never as ran.
+    if (j.verdict.state === "ran" && !isResultBackedRun(j.verdict)) tally.unknown += 1;
+    else tally[j.verdict.state] += 1;
+  }
   return tally;
 }
 

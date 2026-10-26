@@ -76,4 +76,6 @@ export const GIT_FACT_KEYS: readonly string[] = [
   "databases",
   // Every category: exact fix commands that could not be made safe.
   "unsafeFixes",
+  // Every category: calls that ran holding a form this reading does not take apart.
+  "hidingCalls",
 ];

@@ -447,6 +447,8 @@ describe("the card", () => {
   function facts(over: Partial<LostWorkFacts> = {}): LostWorkFacts {
     return {
       unsafeFixes: 0,
+      hidingCalls: 0,
+      hidingForms: [],
       branches: {
         calls: none,
         deleted: 0,

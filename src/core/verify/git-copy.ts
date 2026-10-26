@@ -17,7 +17,7 @@ import {
 } from "./cards.js";
 import type { RepoProbe } from "./repo-probe.js";
 import type { CallLog } from "./shell-calls.js";
-import type { RunTally, VerifyCategory, VerifyStatus } from "./types.js";
+import type { HidingForm, RunTally, VerifyCategory, VerifyStatus } from "./types.js";
 
 /** `n` and a noun, with the noun's plural when `n` is not 1. */
 export function counted(n: number, singular: string, plural = `${singular}s`): string {
@@ -113,6 +113,36 @@ export class FixList {
     if (isLocalFix(fix)) this.made.push(fix);
     else this.unsafe.push(fix);
   }
+}
+
+/** Each hiding form, in words for a card. */
+const FORM_WORDS: Readonly<Record<HidingForm, string>> = {
+  "shell-string": "a shell given a string to run",
+  "inline-code": "inline code given to an interpreter",
+  "piped-script": "a script piped into a shell or an interpreter",
+  "find-exec": "find -exec",
+  xargs: "xargs",
+  "process-substitution": "process substitution",
+  "command-substitution": "a command substitution",
+  eval: "eval",
+  "git-config": "git with its own -c settings",
+  "git-exec": "git running a command it was given",
+  "git-hook": "git after a hook or its config was written",
+  "unread-shell": "a shell this scan does not read",
+};
+
+/**
+ * The card line that says a check could not confirm a "none": `n` calls that ran hold forms
+ * this reading does not take apart. `what` names what was not seen, such as "rm -rf".
+ */
+export function couldNotConfirmLine(
+  n: number,
+  forms: readonly HidingForm[],
+  what: string,
+): string | undefined {
+  if (n === 0) return undefined;
+  const words = forms.map((form) => FORM_WORDS[form]).join(", ");
+  return `Could not confirm that no ${what} ran: ${counted(n, "command")} that ran ${n === 1 ? "uses" : "use"} a form this check does not read inside (${words}).`;
 }
 
 /** The note on a card that left fixes out: the commands could not be made safe. */

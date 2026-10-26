@@ -350,6 +350,17 @@ export type CategoriesMissingHidingForms<M> = {
   [C in Exclude<keyof M, "secrets">]: M[C] extends CommandCheckFacts ? never : C;
 }[Exclude<keyof M, "secrets">];
 
+/** Holds only `true`. */
+type MustBeTrue<T extends true> = T;
+
+/**
+ * Compiles only while every category in `CategoryFactsMap` but secrets has `hidingForms`. A check
+ * that adds its category without it fails here, wherever its augmentation lives.
+ */
+export type HidingFormsRequired = MustBeTrue<
+  [CategoriesMissingHidingForms<CategoryFactsMap>] extends [never] ? true : false
+>;
+
 /** The categories whose check exists. */
 export type CheckedCategoryName = Extract<keyof CategoryFactsMap, VerifyCategory>;
 

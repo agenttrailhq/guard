@@ -1,4 +1,4 @@
-// cspell:words dropdb flushdb flushall mysqladmin PGHOST
+// cspell:words dropdb flushdb flushall mysqladmin PGHOST shutil rmtree
 /**
  * Destructive commands (`core/verify/destructive.ts`): each `rm -rf` target classed against a
  * real temporary repository and home folder, and each database wipe classed by where the
@@ -230,6 +230,57 @@ describe("rm -rf targets, one per class", () => {
     const io = await destructive(ran(root, "rm -rf src"), { unavailable: true });
     expect(io.facts.rm.couldNotCheck).toBe(1);
     expect(io.result.status).toBe("could-not-check");
+  });
+});
+
+describe("commands this reading cannot open: could not confirm, never clean", () => {
+  it.each([
+    [`bash -c "rm -rf build"`, "shell-string"],
+    [`sh -c 'make clean'`, "shell-string"],
+    ["find . -name build -type d -exec rm -rf {} +", "find-exec"],
+    ["ls -d build | xargs rm -rf", "xargs"],
+    [`echo "$(make clean)"`, "command-substitution"],
+    [`python3 -c "import shutil; shutil.rmtree('build')"`, "inline-code"],
+  ])("%s ran: could-not-check, with the form named", async (command, form) => {
+    const root = makeRepo("hiding");
+    const { facts, result } = await destructive(ran(root, command));
+    expect(facts.hidingCalls).toBe(1);
+    expect(facts.hidingForms).toContain(form);
+    expect(result.status).toBe("could-not-check");
+    const card = destructiveCard(result, TOOL_RESULT);
+    const found = card.found.map((s) => s.template);
+    expect(found).toContain("destructive.could-not-confirm");
+    expect(found).not.toContain("destructive.none");
+  });
+
+  it("a command inside a shell string or a substitution is read too", async () => {
+    const root = makeRepo("hiding-read", { files: { "src/a.ts": "a\n" } });
+    rmSync(join(root, "src"), { recursive: true });
+    const { facts, result } = await destructive(ran(root, `bash -c "rm -rf src"`));
+    expect(facts.rm.trackedGone).toBe(1);
+    // What it found leads; the form still keeps it from clean on its own.
+    expect(result.status).toBe("act");
+    const sub = await destructive(ran(root, `echo "$(rm -rf "$BUILD_DIR")"`));
+    expect(sub.facts.rm.classes["unguarded-variable"]).toBe(1);
+  });
+
+  it("a hiding form only in a call that did not run, or was only mentioned, does not count", async () => {
+    const root = makeRepo("hiding-not-ran");
+    const { facts, result } = await destructive([
+      {
+        cwd: root,
+        events: [
+          { kind: "bash", command: `bash -c "rm -rf build"`, noResult: true },
+          { kind: "bash", command: `bash -c "ls"`, output: "blocked", error: true },
+        ],
+      },
+    ]);
+    expect(facts.hidingCalls).toBe(0);
+    // The call with no result is still unknown, so the card is not clean either.
+    expect(result.status).toBe("could-not-check");
+    const quiet = await destructive(ran(root, "ls"));
+    expect(quiet.facts.hidingCalls).toBe(0);
+    expect(quiet.result.status).toBe("clean");
   });
 });
 
@@ -487,6 +538,8 @@ describe("the card", () => {
   ): DestructiveFacts {
     return {
       unsafeFixes: 0,
+      hidingCalls: 0,
+      hidingForms: [],
       rm: {
         calls: none,
         targets: 0,
@@ -558,7 +611,9 @@ describe("the card", () => {
       { ranEvidence: "tool-result" },
     ) as ReturnType<typeof destructiveCard> & CardExtras;
     expect(card.chip?.label.text).toBe("0 rm -rf targets built from an unguarded variable");
-    expect(card.found.map((s) => s.text)).toEqual(["No rm -rf and no database wipe ran."]);
+    expect(card.found.map((s) => s.text)).toEqual([
+      "No rm -rf and no database wipe that this check could read ran.",
+    ]);
     expect(card.headline).toBeUndefined();
     expect(pickHeadline([card], TOOL_RESULT)).toBeUndefined();
     expect(card.fixes).toEqual([]);

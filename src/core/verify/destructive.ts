@@ -47,6 +47,7 @@ import {
   addTallies,
   cardExtras,
   codexCaveat,
+  couldNotConfirmLine,
   counted,
   FixList,
   type GitCheckContext,
@@ -74,7 +75,13 @@ import {
   type ShellWord,
   shellCommands,
 } from "./shell-words.js";
-import type { CheckedCategory, CouldNotCheckResult, PendingCheck, RunTally } from "./types.js";
+import type {
+  CheckedCategory,
+  CouldNotCheckResult,
+  HidingForm,
+  PendingCheck,
+  RunTally,
+} from "./types.js";
 
 export { DATABASE_CLASSES, RM_TARGET_CLASSES };
 
@@ -113,6 +120,12 @@ export interface DestructiveFacts {
   readonly databases: DatabaseFacts;
   /** Exact fix commands that could not be made safe, so were left out of the local fixes file. */
   readonly unsafeFixes: number;
+  /**
+   * The calls that ran holding a form this reading does not take apart, and those forms. While
+   * any is present the check cannot say nothing ran, so it is never `clean`.
+   */
+  readonly hidingCalls: number;
+  readonly hidingForms: readonly HidingForm[];
 }
 
 declare module "./types.js" {
@@ -687,7 +700,13 @@ export async function checkDestructive(context: GitCheckContext): Promise<Destru
     for (const target of j.found) dbClasses[databaseClass(target)] += 1;
   }
   const databases: DatabaseFacts = { calls: tallyOf(dbCalls), classes: dbClasses };
-  const facts: DestructiveFacts = { rm, databases, unsafeFixes: fixes.unsafe.length };
+  const facts: DestructiveFacts = {
+    rm,
+    databases,
+    unsafeFixes: fixes.unsafe.length,
+    hidingCalls: log.hiding.calls,
+    hidingForms: [...log.hiding.forms],
+  };
 
   const calls = new Set([...rmCalls, ...dbCalls].map((j) => j.call.id));
   const all = addTallies(rm.calls, databases.calls);
@@ -697,7 +716,7 @@ export async function checkDestructive(context: GitCheckContext): Promise<Destru
     review:
       rm.classes.untracked + rm.classes.home + rm.classes.other > 0 ||
       databases.classes.other + databases.classes.unresolved > 0,
-    incomplete: rm.couldNotCheck + all.unknown > 0,
+    incomplete: rm.couldNotCheck + all.unknown + log.hiding.calls > 0,
   });
   return {
     result: { status, matches: calls.size, facts },
@@ -801,7 +820,14 @@ const FOUND: readonly T[] = [
   },
   {
     id: "destructive.none",
-    render: (f) => (allCalls(f).ran === 0 ? "No rm -rf and no database wipe ran." : undefined),
+    render: (f) =>
+      allCalls(f).ran === 0 && f.hidingCalls === 0
+        ? "No rm -rf and no database wipe that this check could read ran."
+        : undefined,
+  },
+  {
+    id: "destructive.could-not-confirm",
+    render: (f) => couldNotConfirmLine(f.hidingCalls, f.hidingForms, "rm -rf or database wipe"),
   },
 ];
 

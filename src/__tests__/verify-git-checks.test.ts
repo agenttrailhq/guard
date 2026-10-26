@@ -431,6 +431,26 @@ describe("never throws, never clean on a failure", () => {
   });
 });
 
+describe("a hiding form in a call that ran keeps every git-backed category from clean", () => {
+  it("each category says it could not confirm, and none says nothing ran", async () => {
+    const root = makeRepo("hiding-all");
+    const outcome = await runChecks(
+      "claude",
+      [{ cwd: root, events: [{ kind: "bash", command: 'eval "$TASK"', output: "" }] }],
+      tempFolder("home"),
+    );
+    for (const name of ["skipped-checks", "lost-work", "destructive"] as const) {
+      const result = checkedOf<{ readonly hidingForms: readonly string[] }>(outcome[name] as never);
+      expect(result.status, name).toBe("could-not-check");
+      expect(result.facts.hidingForms, name).toEqual(["eval"]);
+      const card = GIT_CARD_BUILDERS[name](result as never, { ranEvidence: "tool-result" });
+      const found = card.found.map((s) => s.template);
+      expect(found, name).toContain(`${name}.could-not-confirm`);
+      expect(found, name).not.toContain(`${name}.none`);
+    }
+  });
+});
+
 describe("the builders for the page's registry", () => {
   it("are exported for each git-backed category", () => {
     expect(Object.keys(GIT_CARD_BUILDERS).sort()).toEqual([

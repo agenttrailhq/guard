@@ -8066,7 +8066,9 @@ var GIT_FACT_KEYS = [
   "trackedPartlyBack",
   "databases",
   // Every category: exact fix commands that could not be made safe.
-  "unsafeFixes"
+  "unsafeFixes",
+  // Every category: calls that ran holding a form this reading does not take apart.
+  "hidingCalls"
 ];
 
 // src/core/verify/types.ts
@@ -8442,6 +8444,25 @@ var FixList = class {
     else this.unsafe.push(fix);
   }
 };
+var FORM_WORDS = {
+  "shell-string": "a shell given a string to run",
+  "inline-code": "inline code given to an interpreter",
+  "piped-script": "a script piped into a shell or an interpreter",
+  "find-exec": "find -exec",
+  xargs: "xargs",
+  "process-substitution": "process substitution",
+  "command-substitution": "a command substitution",
+  eval: "eval",
+  "git-config": "git with its own -c settings",
+  "git-exec": "git running a command it was given",
+  "git-hook": "git after a hook or its config was written",
+  "unread-shell": "a shell this scan does not read"
+};
+function couldNotConfirmLine(n2, forms, what) {
+  if (n2 === 0) return void 0;
+  const words2 = forms.map((form) => FORM_WORDS[form]).join(", ");
+  return `Could not confirm that no ${what} ran: ${counted(n2, "command")} that ran ${n2 === 1 ? "uses" : "use"} a form this check does not read inside (${words2}).`;
+}
 function unsafeFixLine(n2) {
   return n2 > 0 ? `Could not make a safe command for ${counted(n2, "fix", "fixes")}: a name or path in ${n2 === 1 ? "it" : "them"} holds characters a command cannot carry safely, so ${n2 === 1 ? "it is" : "they are"} left out of the local fixes file.` : void 0;
 }
@@ -11490,6 +11511,16 @@ function readCommand(command, trustWrites) {
 function executedView(command) {
   return readCommand(command, false).view;
 }
+function commandHidingForms(command) {
+  return readCommand(command, false).hidingForms;
+}
+function hidingFormsOf(mapped) {
+  const command = mapped.args.full_command;
+  if (command === void 0) return [];
+  if (SHELL_TOOLS2.has(mapped.tool)) return commandHidingForms(command);
+  if (UNREAD_SHELL_TOOLS.has(mapped.tool)) return ["unread-shell"];
+  return [];
+}
 function ranEvidenceOf(agent) {
   switch (agent) {
     case "claude":
@@ -11507,6 +11538,7 @@ function recordsToolResults(agent) {
 }
 var EXIT_CODE = /^\s*Exit code -?\d+/;
 var SHELL_TOOLS2 = /* @__PURE__ */ new Set(["Bash"]);
+var UNREAD_SHELL_TOOLS = /* @__PURE__ */ new Set(["PowerShell"]);
 function verdict(state, why) {
   return { state, why };
 }
@@ -11895,7 +11927,7 @@ function resolvePath(folder, path, home) {
   if (folder === void 0) return void 0;
   return resolve2(folder, path);
 }
-function walkCommands(text, cwd, home, visit) {
+function walkCommands(text, cwd, home, visit, depth = 0) {
   let folder = cwd;
   const saved = [];
   for (const item of shellItems(text)) {
@@ -11908,11 +11940,65 @@ function walkCommands(text, cwd, home, visit) {
       continue;
     }
     visit(item, folder);
+    if (depth < MAX_NESTING) {
+      for (const inner of innerCommands(item)) {
+        walkCommands(inner, folder, home, visit, depth + 1);
+      }
+    }
     const change = directoryChange(item.words);
     if (change.kind === "to") folder = resolvePath(folder, change.path, home);
     else if (change.kind === "home") folder = home;
     else if (change.kind === "unknown") folder = void 0;
   }
+}
+var MAX_NESTING = 4;
+var SHELL_PROGRAMS = /* @__PURE__ */ new Set(["sh", "bash", "zsh", "dash", "ksh"]);
+function substitutions(raw) {
+  const out = [];
+  let inSingle = false;
+  for (let i = 0; i < raw.length; i++) {
+    const ch = raw[i];
+    if (ch === "\\" && !inSingle) {
+      i += 1;
+      continue;
+    }
+    if (ch === "'") inSingle = !inSingle;
+    if (inSingle) continue;
+    if (ch === "$" && raw[i + 1] === "(" && raw[i + 2] !== "(") {
+      let depth = 0;
+      let j = i + 1;
+      for (; j < raw.length; j++) {
+        if (raw[j] === "(") depth += 1;
+        else if (raw[j] === ")") {
+          depth -= 1;
+          if (depth === 0) break;
+        }
+      }
+      out.push(raw.slice(i + 2, j));
+      i = j;
+    } else if (ch === "`") {
+      const end = raw.indexOf("`", i + 1);
+      if (end < 0) break;
+      out.push(raw.slice(i + 1, end));
+      i = end;
+    }
+  }
+  return out;
+}
+function innerCommands(command) {
+  const out = [];
+  for (const word of command.words) {
+    if (word.expands) out.push(...substitutions(word.raw));
+  }
+  const start = commandStart(command.words).index;
+  const program = command.words[start];
+  if (program !== void 0 && SHELL_PROGRAMS.has(programName2(program))) {
+    const args2 = command.words.slice(start + 1);
+    const flag = args2.findIndex((a) => /^-[A-Za-z]*c[A-Za-z]*$/.test(a.value));
+    const script = flag >= 0 ? args2[flag + 1] : void 0;
+    if (script !== void 0) out.push(script.value);
+  }
+  return out;
 }
 function gitFolder(folder, options, home) {
   let at = folder;
@@ -11962,6 +12048,8 @@ function readCalls(corpus, home) {
   const shell = [];
   const writes = [];
   const folders = /* @__PURE__ */ new Set();
+  const hidingForms = /* @__PURE__ */ new Set();
+  let hidingCalls = 0;
   let id = 0;
   corpus.sessions.forEach((session, index) => {
     const start = sessionFolder(session.cwd);
@@ -11982,6 +12070,11 @@ function readCalls(corpus, home) {
           const cwd = agent === "codex" ? workdir === void 0 ? start : resolvePath(start, workdir, home) : current;
           for (const mapped of call.candidates) {
             id += 1;
+            const forms = hidingFormsOf(mapped);
+            if (forms.length > 0 && isResultBackedRun(runVerdict(agent, mapped, result, () => true))) {
+              hidingCalls += 1;
+              for (const form of forms) hidingForms.add(form);
+            }
             const command = mapped.args.full_command;
             if (mapped.tool === "Bash" && command !== void 0) {
               const view = executedView(command).text;
@@ -12021,7 +12114,8 @@ function readCalls(corpus, home) {
     shell,
     writes,
     sessions: corpus.sessions.length,
-    folders: [...folders]
+    folders: [...folders],
+    hiding: { calls: hidingCalls, forms: HIDING_FORMS.filter((f) => hidingForms.has(f)) }
   };
 }
 function redirectWrites(agent, call, home) {
@@ -12043,7 +12137,7 @@ function redirectWrites(agent, call, home) {
     call.result,
     (m) => find(m.args.full_command ?? "").length > 0
   );
-  return verdict2.state === "ran" ? find(call.view) : [];
+  return isResultBackedRun(verdict2) ? find(call.view) : [];
 }
 var MAX_MENTION_WORDS = 64;
 function blankedRegions(command, view) {
@@ -12089,7 +12183,7 @@ function judge(log, call, hint, detect) {
     call.result,
     (m) => detect(m.args.full_command ?? "", call.cwd, log.home).length > 0
   );
-  return { call, verdict: verdict2, found: verdict2.state === "ran" ? found : [] };
+  return { call, verdict: verdict2, found: isResultBackedRun(verdict2) ? found : [] };
 }
 function judgeAll(log, hint, detect) {
   const out = [];
@@ -12101,7 +12195,10 @@ function judgeAll(log, hint, detect) {
 }
 function tallyOf(judged) {
   const tally = { ran: 0, mentioned: 0, unknown: 0 };
-  for (const j of judged) tally[j.verdict.state] += 1;
+  for (const j of judged) {
+    if (j.verdict.state === "ran" && !isResultBackedRun(j.verdict)) tally.unknown += 1;
+    else tally[j.verdict.state] += 1;
+  }
   return tally;
 }
 function outputOf(call) {
@@ -12462,14 +12559,20 @@ async function checkDestructive(context) {
     for (const target of j.found) dbClasses[databaseClass(target)] += 1;
   }
   const databases = { calls: tallyOf(dbCalls), classes: dbClasses };
-  const facts = { rm, databases, unsafeFixes: fixes.unsafe.length };
+  const facts = {
+    rm,
+    databases,
+    unsafeFixes: fixes.unsafe.length,
+    hidingCalls: log.hiding.calls,
+    hidingForms: [...log.hiding.forms]
+  };
   const calls = new Set([...rmCalls, ...dbCalls].map((j) => j.call.id));
   const all = addTallies(rm.calls, databases.calls);
   const status = statusOf({
     sessions: log.sessions,
     act: rm.classes["unguarded-variable"] > 0 || trackedMissing(facts) > 0,
     review: rm.classes.untracked + rm.classes.home + rm.classes.other > 0 || databases.classes.other + databases.classes.unresolved > 0,
-    incomplete: rm.couldNotCheck + all.unknown > 0
+    incomplete: rm.couldNotCheck + all.unknown + log.hiding.calls > 0
   });
   return {
     result: { status, matches: calls.size, facts },
@@ -12548,7 +12651,11 @@ var FOUND = [
   },
   {
     id: "destructive.none",
-    render: (f) => allCalls(f).ran === 0 ? "No rm -rf and no database wipe ran." : void 0
+    render: (f) => allCalls(f).ran === 0 && f.hidingCalls === 0 ? "No rm -rf and no database wipe that this check could read ran." : void 0
+  },
+  {
+    id: "destructive.could-not-confirm",
+    render: (f) => couldNotConfirmLine(f.hidingCalls, f.hidingForms, "rm -rf or database wipe")
   }
 ];
 var NOW = [
@@ -12950,7 +13057,9 @@ async function checkLostWork(context) {
     branches,
     stashes,
     discards: discarded,
-    unsafeFixes: fixes.unsafe.length
+    unsafeFixes: fixes.unsafe.length,
+    hidingCalls: log.hiding.calls,
+    hidingForms: [...log.hiding.forms]
   };
   const calls = new Set([...branchCalls, ...stashCalls, ...discardCalls].map((j) => j.call.id));
   const all = addTallies(branches.calls, stashes.calls, discarded.calls);
@@ -12958,7 +13067,7 @@ async function checkLostWork(context) {
     sessions: log.sessions,
     act: branches.recoverable + stashes.recoverable > 0,
     review: discarded.mainCheckout > 0,
-    incomplete: branches.notIdentified + branches.couldNotCheck + stashes.notIdentified + stashes.cleared + stashes.couldNotCheck + discarded.couldNotCheck + all.unknown > 0
+    incomplete: branches.notIdentified + branches.couldNotCheck + stashes.notIdentified + stashes.cleared + stashes.couldNotCheck + discarded.couldNotCheck + all.unknown + log.hiding.calls > 0
   });
   return {
     result: { status, matches: calls.size, facts },
@@ -13016,7 +13125,15 @@ var FOUND2 = [
   },
   {
     id: "lost-work.none",
-    render: (f) => allCalls2(f).ran === 0 ? "No command that ran deleted a branch or a stash, or discarded changes." : void 0
+    render: (f) => allCalls2(f).ran === 0 && f.hidingCalls === 0 ? "No command this check could read deleted a branch or a stash, or discarded changes." : void 0
+  },
+  {
+    id: "lost-work.could-not-confirm",
+    render: (f) => couldNotConfirmLine(
+      f.hidingCalls,
+      f.hidingForms,
+      "branch, stash or change was deleted or discarded"
+    )
   }
 ];
 var NOW2 = [
@@ -13849,7 +13966,9 @@ async function checkSkippedChecks(context) {
     husky: tallyOf(huskyCalls),
     hooksPath,
     instructions,
-    unsafeFixes: fixes.unsafe.length
+    unsafeFixes: fixes.unsafe.length,
+    hidingCalls: log.hiding.calls,
+    hidingForms: [...log.hiding.forms]
   };
   const calls = new Set(
     [...commitCalls, ...otherCalls, ...huskyCalls, ...configCalls].map((j) => j.call.id)
@@ -13859,7 +13978,7 @@ async function checkSkippedChecks(context) {
     sessions: log.sessions,
     act: noVerify.onMain > 0 || hooksPath.off > 0 || instructions.sayToSkip > 0,
     review: noVerify.offMain + noVerify.noMainToCheck > 0 || facts.otherNoVerify.ran > 0 || facts.husky.ran > 0,
-    incomplete: noVerify.notIdentified + noVerify.couldNotCheck + hooksPath.couldNotCheck + instructions.couldNotRead + all.unknown > 0
+    incomplete: noVerify.notIdentified + noVerify.couldNotCheck + hooksPath.couldNotCheck + instructions.couldNotRead + all.unknown + log.hiding.calls > 0
   });
   return {
     result: { status, matches: calls.size, facts },
@@ -13928,9 +14047,14 @@ var FOUND3 = [
   {
     id: "skipped-checks.none",
     render: (f) => {
-      if (allCalls3(f).ran > 0 || f.instructions.sayToSkip > 0) return void 0;
-      return f.instructions.read > 0 ? `No command that ran skipped a hook, and none of the ${counted(f.instructions.read, "instruction file")} read says to.` : "No command that ran skipped a hook.";
+      if (allCalls3(f).ran > 0 || f.instructions.sayToSkip > 0 || f.hidingCalls > 0)
+        return void 0;
+      return f.instructions.read > 0 ? `No command this check could read skipped a hook, and none of the ${counted(f.instructions.read, "instruction file")} read says to.` : "No command this check could read skipped a hook.";
     }
+  },
+  {
+    id: "skipped-checks.could-not-confirm",
+    render: (f) => couldNotConfirmLine(f.hidingCalls, f.hidingForms, "command skipping a check")
   }
 ];
 var NOW3 = [
