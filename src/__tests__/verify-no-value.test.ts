@@ -21,7 +21,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { runScan } from "../commands/scan.js";
+import { FIXES_FILENAME } from "../core/report.js";
 import type { AgentSource } from "../core/types.js";
+import { isLocalFix, type LocalFix, localFixCommand } from "../core/verify/cards.js";
 import {
   FIXTURE_CHECKS,
   RAN_EVIDENCE,
@@ -32,6 +34,7 @@ import {
   VERIFY_CATEGORIES,
   VERIFY_STATUSES,
 } from "../core/verify/types.js";
+import { verifyScan } from "../core/verify/verify.js";
 import { createRealScanIO, type ScanIO } from "../scan-io.js";
 import { createRealVerifyIO } from "../verify-io.js";
 import { decodedSurfaces, stringLeaves } from "./html-text.js";
@@ -84,6 +87,8 @@ async function scan(
   argv: readonly string[],
   work: string,
   answer?: string,
+  /** Exact fix commands added to whatever the checks make, for the local fixes file. */
+  extraFixes: readonly LocalFix[] = [],
 ): Promise<{ code: number; stdout: string; written: Map<string, string> }> {
   const real = createRealScanIO();
   const out: string[] = [];
@@ -108,6 +113,11 @@ async function scan(
     catalog: [RULE_RM_RF],
     now: new Date("2026-10-01T00:00:00.000Z"),
     createVerifyIO: () => createRealVerifyIO(),
+    // The real checks, with any commands they make kept, and the extra ones added.
+    verify: async (input) => {
+      const outcome = await verifyScan(input);
+      return { ...outcome, localFixes: [...outcome.localFixes, ...extraFixes] };
+    },
   });
   return { code, stdout: out.join(""), written };
 }
@@ -220,10 +230,55 @@ describe.each([
     expect(decodedSurfaces(run.written.get(out) ?? "").data).toContain("likely-real");
   });
 
+  it("the page carries the verified lead, its chips and cards, so the check above searched them", async () => {
+    const { root } = await written;
+    const out = join(work, "with-lead.html");
+    const run = await scan(["--agent", agent, "--dir", root, "--verify", "--out", out], work);
+    const html = run.written.get(out) ?? "";
+    for (const part of [
+      'data-template="secrets.headline"',
+      'id="found"',
+      'class="evidence-kind"',
+      'id="also-checked"',
+      'class="check-chip',
+      'id="what-happened"',
+      'id="check-secrets"',
+    ]) {
+      expect(html, part).toContain(part);
+    }
+    expect(decodedSurfaces(html).data.split("\n")).toContain("cards");
+  });
+
+  it("no canary and no name reaches the local fixes file, which holds the paths it is for", async () => {
+    const { root } = await written;
+    const out = join(work, "with-fixes.html");
+    // A folder whose name carries no marker, so the search below is only for leaks.
+    const path = join(work, "build");
+    const run = await scan(
+      ["--agent", agent, "--dir", root, "--verify", "--out", out],
+      work,
+      undefined,
+      [localFixCommand("secrets", ["ls", "-l", { ref: path }])].filter(isLocalFix),
+    );
+    const fixes = run.written.get(join(work, FIXES_FILENAME)) ?? "";
+    // Health: the file was written, with the path it is for.
+    expect(fixes).toContain(path);
+    for (const marker of MARKERS) {
+      expect(fixes.toLowerCase()).not.toContain(marker.toLowerCase());
+    }
+    // And the page names the file but holds neither the command nor the path.
+    const html = run.written.get(out) ?? "";
+    expect(html).toContain(FIXES_FILENAME);
+    expect(html).not.toContain(path);
+  });
+
   it("no canary and no name reaches --review or the summary", async () => {
     const { root } = await written;
     const run = await scan(["--agent", agent, "--dir", root, "--verify", "--review"], work, "y");
     expect(run.stdout).toContain("Checked on this machine (read-only, offline)");
+    // The review lists the verified lines, so they were searched too.
+    expect(run.stdout).toContain("What the checks found on this machine");
+    expect(run.stdout).toContain("likely-real credentials are still in the agent's transcripts");
     for (const marker of MARKERS) {
       expect(run.stdout.toLowerCase()).not.toContain(marker.toLowerCase());
     }
