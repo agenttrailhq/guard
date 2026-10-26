@@ -114,6 +114,7 @@ function facts(over: Partial<SecretsFacts> = {}): SecretsFacts {
     filesRead: 1,
     filesNotRead: 0,
     unplaced: 0,
+    setAside: { unnamedOutputOnly: 0, namedNotCredentialShaped: 0 },
     fixtureCheck: "not-needed",
     reposChecked: 0,
     reposNotChecked: 0,
@@ -183,6 +184,27 @@ describe("the terminal line", () => {
     expect(line).toContain("2 transcript files could not be read");
     expect(line).toContain("1 redacted text could not be classed");
     expect(line).toContain("1 repo could not be searched for committed fixtures");
+  });
+
+  it("says how many values were set aside, and why, only when there were some", () => {
+    const line = verificationSummary(
+      verification(
+        {
+          classes: { "likely-real": 0, "committed-fixture": 0, placeholder: 5, "local-dev": 0 },
+          setAside: { unnamedOutputOnly: 3, namedNotCredentialShaped: 1 },
+        },
+        "clean",
+      ),
+    );
+    expect(line).toContain(
+      "4 values not counted as likely real: 3 unnamed and seen only in output or replies, 1 named but not shaped like a credential",
+    );
+    const one = verificationSummary(
+      verification({ setAside: { unnamedOutputOnly: 0, namedNotCredentialShaped: 1 } }, "clean"),
+    );
+    expect(one).toContain("1 value not counted as likely real: 1 named but not shaped");
+    expect(one).not.toContain("unnamed");
+    expect(verificationSummary(verification())).not.toContain("not counted");
   });
 
   it("says when no repo was found to search", () => {

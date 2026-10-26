@@ -211,6 +211,18 @@ export interface SecretsFacts {
    * A non-zero count keeps the check from `clean`.
    */
   readonly unplaced: number;
+  /**
+   * Of the `placeholder` count, the values set aside by a rule that can under-count:
+   * - `unnamedOutputOnly`: an unnamed random string seen only in command output or an agent
+   *   reply, where ids and hashes are common;
+   * - `namedNotCredentialShaped`: a value found only by the name it was given whose own text
+   *   does not look like a credential (`tokens: count`, a letters-only password).
+   * A real credential can be among them, so the report states how many there were.
+   */
+  readonly setAside: {
+    readonly unnamedOutputOnly: number;
+    readonly namedNotCredentialShaped: number;
+  };
   readonly fixtureCheck: FixtureCheck;
   /** Repos whose tracked files were searched to the end. */
   readonly reposChecked: number;

@@ -47,6 +47,7 @@ const NO_FACTS: SecretsFacts = {
   filesRead: 1,
   filesNotRead: 0,
   unplaced: 0,
+  setAside: { unnamedOutputOnly: 0, namedNotCredentialShaped: 0 },
   fixtureCheck: "not-needed",
   reposChecked: 0,
   reposNotChecked: 0,

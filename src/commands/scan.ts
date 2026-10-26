@@ -688,6 +688,20 @@ export function verificationSummary(verification: Verification): string {
     if (local > 0) also.push(counted(local, "local dev value"));
     if (also.length > 0) line += ` (and ${also.join(", ")})`;
     parts.push(line);
+    // Set aside by a rule that can under-count, so said in numbers rather than left out.
+    const { unnamedOutputOnly, namedNotCredentialShaped } = facts.setAside;
+    if (unnamedOutputOnly + namedNotCredentialShaped > 0) {
+      const why: string[] = [];
+      if (unnamedOutputOnly > 0) {
+        why.push(`${formatCount(unnamedOutputOnly)} unnamed and seen only in output or replies`);
+      }
+      if (namedNotCredentialShaped > 0) {
+        why.push(`${formatCount(namedNotCredentialShaped)} named but not shaped like a credential`);
+      }
+      parts.push(
+        `${counted(unnamedOutputOnly + namedNotCredentialShaped, "value")} not counted as likely real: ${why.join(", ")}`,
+      );
+    }
     if (facts.filesNotRead > 0) {
       parts.push(`${counted(facts.filesNotRead, "transcript file")} could not be read`);
     }

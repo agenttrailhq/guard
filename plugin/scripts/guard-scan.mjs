@@ -8125,6 +8125,10 @@ function payloadSecrets(check) {
       filesRead: facts.filesRead,
       filesNotRead: facts.filesNotRead,
       unplaced: facts.unplaced,
+      setAside: {
+        unnamedOutputOnly: facts.setAside.unnamedOutputOnly,
+        namedNotCredentialShaped: facts.setAside.namedNotCredentialShaped
+      },
       fixtureCheck: facts.fixtureCheck,
       reposChecked: facts.reposChecked,
       reposNotChecked: facts.reposNotChecked
@@ -12691,22 +12695,28 @@ var MEMBER_PATH = /^[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)+$/;
 function credentialShaped(secret) {
   return secret.length >= MIN_CREDENTIAL_LENGTH && !CODE_CHARACTERS.test(secret) && !/^[~.]{0,2}\//.test(secret) && !MEMBER_PATH.test(secret) && /[^A-Za-z_-]/.test(secret);
 }
-function looksLikePlaceholder(found) {
-  const secret = secretPart(found);
-  const bare = secret.replace(/^["']|["']$/g, "");
-  if (PLACEHOLDER_SHAPE.test(found.value) || COMMON_WORDS.has(bare.toLowerCase())) return true;
-  if (NAMED_KINDS.has(found.kind) && !credentialShaped(bare)) return true;
-  return bare.length >= 6 && new Set(bare).size <= 3;
-}
-var LOCAL_HOST = /^(?:localhost|127(?:\.\d{1,3}){3}|0\.0\.0\.0|\[?::1\]?|host\.docker\.internal|[a-z0-9-]+\.localhost)$/i;
-function hostOf(found) {
-  if (found.kind === "database-url") {
-    return found.value.slice(found.value.lastIndexOf("@") + 1).match(/^[^\s/:?#]+/)?.[0];
-  }
-  if (found.kind === "url-credentials" && found.after.startsWith("@")) {
-    return found.after.slice(1).match(/^[^\s/:?#@]+/)?.[0];
-  }
+var EXAMPLE_HOST = /(?:^|\.)(?:example\.(?:com|net|org)|example|invalid|test)$/i;
+function placeholderReason(found) {
+  const bare = secretPart(found).replace(/^["']|["']$/g, "");
+  if (PLACEHOLDER_SHAPE.test(bare) || COMMON_WORDS.has(bare.toLowerCase())) return "stand-in";
+  const host = hostOf(found);
+  if (host !== void 0 && EXAMPLE_HOST.test(host)) return "stand-in";
+  if (bare.length >= 6 && new Set(bare).size <= 3) return "stand-in";
+  if (NAMED_KINDS.has(found.kind) && !credentialShaped(bare)) return "named-not-credential-shaped";
   return void 0;
+}
+var LOCAL_HOST = /^(?:localhost|127(?:\.\d{1,3}){3}|0\.0\.0\.0|::1|host\.docker\.internal|[a-z0-9-]+\.localhost)$/i;
+function hostOf(found) {
+  let rest;
+  if (found.kind === "database-url") {
+    rest = found.value.slice(found.value.lastIndexOf("@") + 1) + found.after;
+  } else if (found.kind === "url-credentials" && found.after.startsWith("@")) {
+    rest = found.after.slice(1);
+  }
+  if (rest === void 0) return void 0;
+  const bracketed = /^\[([0-9A-Fa-f:.]+)\]/.exec(rest);
+  if (bracketed !== null) return bracketed[1];
+  return rest.match(/^[^\s/:?#@[\]]+/)?.[0];
 }
 function isLocalDev(found) {
   const host = hostOf(found);
@@ -12877,7 +12887,8 @@ async function checkSecrets(input) {
             const key = input.fingerprint(found.value);
             let candidate = candidates.get(key);
             if (candidate === void 0) {
-              const decided = looksLikePlaceholder(found) ? "placeholder" : isLocalDev(found) ? "local-dev" : void 0;
+              const reason = placeholderReason(found);
+              const decided = reason !== void 0 ? "placeholder" : isLocalDev(found) ? "local-dev" : void 0;
               const keep = decided === void 0 && held < (input.maxHeldValues ?? MAX_HELD_VALUES);
               if (keep) held += 1;
               candidate = {
@@ -12886,7 +12897,8 @@ async function checkSecrets(input) {
                 files: /* @__PURE__ */ new Set(),
                 decided,
                 // Past the cap a value is not held, so it cannot be searched for in the repos.
-                value: keep ? found.value : void 0
+                value: keep ? found.value : void 0,
+                setAside: reason === "named-not-credential-shaped" ? reason : void 0
               };
               candidates.set(key, candidate);
             }
@@ -12904,6 +12916,7 @@ async function checkSecrets(input) {
     if (candidate.kind === "random-string" && candidate.decided === void 0 && !randomStringIsCredential(candidate.via)) {
       candidate.decided = "placeholder";
       candidate.value = void 0;
+      candidate.setAside = "unnamed-output-only";
     }
   }
   const pending = /* @__PURE__ */ new Map();
@@ -12933,8 +12946,12 @@ async function checkSecrets(input) {
     placeholder: 0,
     "local-dev": 0
   };
+  let unnamedOutputOnly = 0;
+  let namedNotCredentialShaped = 0;
   for (const candidate of candidates.values()) {
     classes[candidate.decided] += 1;
+    if (candidate.setAside === "unnamed-output-only") unnamedOutputOnly += 1;
+    else if (candidate.setAside === "named-not-credential-shaped") namedNotCredentialShaped += 1;
   }
   const items = itemsOf(candidates.values());
   let status;
@@ -12952,6 +12969,7 @@ async function checkSecrets(input) {
       filesRead,
       filesNotRead,
       unplaced,
+      setAside: { unnamedOutputOnly, namedNotCredentialShaped },
       fixtureCheck: fixtures.check,
       reposChecked: fixtures.reposChecked,
       reposNotChecked: fixtures.reposNotChecked
@@ -13407,6 +13425,19 @@ function verificationSummary(verification) {
     if (local > 0) also.push(counted2(local, "local dev value"));
     if (also.length > 0) line += ` (and ${also.join(", ")})`;
     parts.push(line);
+    const { unnamedOutputOnly, namedNotCredentialShaped } = facts.setAside;
+    if (unnamedOutputOnly + namedNotCredentialShaped > 0) {
+      const why = [];
+      if (unnamedOutputOnly > 0) {
+        why.push(`${formatCount(unnamedOutputOnly)} unnamed and seen only in output or replies`);
+      }
+      if (namedNotCredentialShaped > 0) {
+        why.push(`${formatCount(namedNotCredentialShaped)} named but not shaped like a credential`);
+      }
+      parts.push(
+        `${counted2(unnamedOutputOnly + namedNotCredentialShaped, "value")} not counted as likely real: ${why.join(", ")}`
+      );
+    }
     if (facts.filesNotRead > 0) {
       parts.push(`${counted2(facts.filesNotRead, "transcript file")} could not be read`);
     }

@@ -1,4 +1,4 @@
-// cspell:words devpass Fingerprinter fingerprinters changeme IOSFODNN cret statted lnbm
+// cspell:words devpass Fingerprinter fingerprinters changeme IOSFODNN cret statted lnbm correcthorsebatterystaple
 /**
  * The secrets check (`core/verify/secrets.ts`), on synthetic transcripts and a temporary git
  * repo built in the test.
@@ -102,6 +102,8 @@ describe("the four classes, from a synthetic corpus and a temporary repo", () =>
       placeholder: 3,
       "local-dev": 1,
     });
+    // Of the three placeholders, one was set aside by the random-string rule.
+    expect(result.facts.setAside).toEqual({ unnamedOutputOnly: 1, namedNotCredentialShaped: 0 });
     expect(result.matches).toBe(10);
     expect(result.status).toBe("act");
     expect(result.facts.fixtureCheck).toBe("complete");
@@ -533,8 +535,46 @@ describe("placeholder and local dev classing", () => {
   it("a database URL on localhost is local dev data; one on another host is not", () => {
     expect(isLocalDev(as(LOCAL_URL, "database-url"))).toBe(true);
     expect(isLocalDev(as(`postgres://a:${DEPLOY}@127.0.0.1`, "database-url"))).toBe(true);
+    expect(isLocalDev(as(`postgres://a:${DEPLOY}@host.docker.internal`, "database-url"))).toBe(
+      true,
+    );
     expect(isLocalDev(as(`postgres://a:${DEPLOY}@db.internal`, "database-url"))).toBe(false);
     expect(isLocalDev(as(`postgres://a:${DEPLOY}@db`, "database-url"))).toBe(false);
+  });
+
+  it("an IPv6 loopback in brackets is local dev data", () => {
+    // The redaction stops the host at the first ":", so the bracket is read from what follows.
+    expect(isLocalDev(as(`postgres://a:${DEPLOY}@[`, "database-url", "::1]:5432/app"))).toBe(true);
+    expect(isLocalDev(as(`u:${DEPLOY}`, "url-credentials", "@[::1]:8080/x"))).toBe(true);
+    expect(isLocalDev(as(`postgres://a:${DEPLOY}@[`, "database-url", "2001:db8::7]:5432"))).toBe(
+      false,
+    );
+  });
+
+  it("finds an IPv6 loopback database URL in text as local dev data", async () => {
+    const result = await check("claude", [
+      [
+        {
+          kind: "call",
+          command: `psql postgres://app:${DEPLOY}@[::1]:5432/app`,
+          result: { text: "" },
+        },
+      ],
+    ]);
+    expect(result.facts.classes["local-dev"]).toBe(1);
+    expect(result.facts.classes["likely-real"]).toBe(0);
+  });
+
+  it("the placeholder test reads the secret, not the host — except a host reserved for examples", () => {
+    expect(
+      looksLikePlaceholder(as(`postgres://a:${DEPLOY}@prod.sample-corp.io`, "database-url")),
+    ).toBe(false);
+    expect(looksLikePlaceholder(as(`postgres://a:${DEPLOY}@db.example.com`, "database-url"))).toBe(
+      true,
+    );
+    expect(looksLikePlaceholder(as(`u:${DEPLOY}`, "url-credentials", "@api.example/x"))).toBe(true);
+    expect(looksLikePlaceholder(as(`postgres://a:${DEPLOY}@ci.test`, "database-url"))).toBe(true);
+    expect(looksLikePlaceholder(as(`postgres://a:changeme@db.prod.io`, "database-url"))).toBe(true);
   });
 
   it("a URL credential reads its host from what follows it", () => {
@@ -664,5 +704,48 @@ describe("limits", () => {
     expect(result.facts.items).toEqual([
       { kind: "aws-access-key", via: ["printed-by-command"], files: 2 },
     ]);
+  });
+});
+
+describe("what was set aside is counted, not dropped", () => {
+  it("counts unnamed output-only strings and named values that are not credential-shaped", async () => {
+    const result = await check("claude", [
+      [
+        { kind: "call", command: "env", result: { text: `id ${RANDOM_IN_OUTPUT}` } },
+        { kind: "reply", text: `request ${RANDOM_IN_PROMPT}` },
+        {
+          kind: "call",
+          command: "export DB_PASSWORD=correcthorsebatterystaple",
+          result: { text: "" },
+        },
+        { kind: "call", command: "export API_TOKEN=your-api-token-here", result: { text: "" } },
+      ],
+    ]);
+    expect(result.facts.classes.placeholder).toBe(4);
+    // `your-api-token-here` is a plain stand-in and is not among the set-aside values.
+    expect(result.facts.setAside).toEqual({ unnamedOutputOnly: 2, namedNotCredentialShaped: 1 });
+    expect(result.status).toBe("clean");
+  });
+
+  it("a value set aside in output is likely real once it is also typed into a command", async () => {
+    const result = await check("claude", [
+      [
+        { kind: "call", command: "env", result: { text: `id ${RANDOM_IN_OUTPUT}` } },
+        { kind: "call", command: `curl -H "x: ${RANDOM_IN_OUTPUT}" api`, result: { text: "" } },
+      ],
+    ]);
+    expect(result.facts.setAside.unnamedOutputOnly).toBe(0);
+    expect(result.facts.classes["likely-real"]).toBe(1);
+  });
+});
+
+describe("a text whose values cannot be recovered is never clean", () => {
+  it("unplaced > 0 with nothing else found is could-not-check", async () => {
+    // More placeholders in one text than the alignment search will step through.
+    const keys = Array.from({ length: 6_000 }, (_, i) => `AKIA${String(i).padStart(16, "0")}`);
+    const result = await check("claude", [[{ kind: "prompt", text: keys.join(" ") }]]);
+    expect(result.facts.unplaced).toBe(1);
+    expect(result.facts.classes["likely-real"]).toBe(0);
+    expect(result.status).toBe("could-not-check");
   });
 });

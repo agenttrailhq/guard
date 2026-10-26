@@ -273,29 +273,59 @@ export function credentialShaped(secret: string): boolean {
   );
 }
 
+/**
+ * Why a value is a placeholder or a false positive:
+ * - `stand-in`: it is shaped like one (`your-key-here`, `${KEY}`, `xxxx`, a common word,
+ *   filler), or it is a URL credential for a host reserved for examples;
+ * - `named-not-credential-shaped`: it was found only by the name it was given, and its own text
+ *   does not look like a credential. A real secret made only of letters can be among these, so
+ *   they are also counted on their own (`SecretsFacts.setAside`).
+ */
+export type PlaceholderReason = "stand-in" | "named-not-credential-shaped";
+
+/** Hosts reserved for examples and documentation (RFC 2606). */
+const EXAMPLE_HOST = /(?:^|\.)(?:example\.(?:com|net|org)|example|invalid|test)$/i;
+
+/**
+ * Why this value is a placeholder or a false positive, or `undefined` when it is neither. The
+ * shape test reads the secret part only, so a real password on a host whose name happens to
+ * contain `sample` or `example` is not set aside for its host's name.
+ */
+export function placeholderReason(found: FoundValue): PlaceholderReason | undefined {
+  const bare = secretPart(found).replace(/^["']|["']$/g, "");
+  if (PLACEHOLDER_SHAPE.test(bare) || COMMON_WORDS.has(bare.toLowerCase())) return "stand-in";
+  const host = hostOf(found);
+  if (host !== undefined && EXAMPLE_HOST.test(host)) return "stand-in";
+  // A value made of very few distinct characters (`aaaaaaaa`, `abababab`) is filler.
+  if (bare.length >= 6 && new Set(bare).size <= 3) return "stand-in";
+  if (NAMED_KINDS.has(found.kind) && !credentialShaped(bare)) return "named-not-credential-shaped";
+  return undefined;
+}
+
 /** Is this value a stand-in, or a false positive, rather than a credential? */
 export function looksLikePlaceholder(found: FoundValue): boolean {
-  const secret = secretPart(found);
-  const bare = secret.replace(/^["']|["']$/g, "");
-  if (PLACEHOLDER_SHAPE.test(found.value) || COMMON_WORDS.has(bare.toLowerCase())) return true;
-  if (NAMED_KINDS.has(found.kind) && !credentialShaped(bare)) return true;
-  // A value made of very few distinct characters (`aaaaaaaa`, `abababab`) is filler.
-  return bare.length >= 6 && new Set(bare).size <= 3;
+  return placeholderReason(found) !== undefined;
 }
 
 /** A host on this machine. */
 const LOCAL_HOST =
-  /^(?:localhost|127(?:\.\d{1,3}){3}|0\.0\.0\.0|\[?::1\]?|host\.docker\.internal|[a-z0-9-]+\.localhost)$/i;
+  /^(?:localhost|127(?:\.\d{1,3}){3}|0\.0\.0\.0|::1|host\.docker\.internal|[a-z0-9-]+\.localhost)$/i;
 
-/** The host a URL credential points at, or `undefined`. */
+/**
+ * The host a URL credential points at, or `undefined`. A bracketed IPv6 host (`[::1]`) is read
+ * whole, from the value and the text after it.
+ */
 function hostOf(found: FoundValue): string | undefined {
+  let rest: string | undefined;
   if (found.kind === "database-url") {
-    return found.value.slice(found.value.lastIndexOf("@") + 1).match(/^[^\s/:?#]+/)?.[0];
+    rest = found.value.slice(found.value.lastIndexOf("@") + 1) + found.after;
+  } else if (found.kind === "url-credentials" && found.after.startsWith("@")) {
+    rest = found.after.slice(1);
   }
-  if (found.kind === "url-credentials" && found.after.startsWith("@")) {
-    return found.after.slice(1).match(/^[^\s/:?#@]+/)?.[0];
-  }
-  return undefined;
+  if (rest === undefined) return undefined;
+  const bracketed = /^\[([0-9A-Fa-f:.]+)\]/.exec(rest);
+  if (bracketed !== null) return bracketed[1];
+  return rest.match(/^[^\s/:?#@[\]]+/)?.[0];
 }
 
 /** Is this a credential for a database or service on this machine? */
@@ -313,6 +343,8 @@ interface Candidate {
   decided: SecretClass | undefined;
   /** The value itself, held only while the fixture test may need it. */
   value: string | undefined;
+  /** Set aside as a placeholder by a rule that can under-count; see `SecretsFacts.setAside`. */
+  setAside: "unnamed-output-only" | "named-not-credential-shaped" | undefined;
 }
 
 /**
@@ -578,11 +610,9 @@ export async function checkSecrets(input: SecretsInput): Promise<SecretsCheck> {
             const key = input.fingerprint(found.value);
             let candidate = candidates.get(key);
             if (candidate === undefined) {
-              const decided: SecretClass | undefined = looksLikePlaceholder(found)
-                ? "placeholder"
-                : isLocalDev(found)
-                  ? "local-dev"
-                  : undefined;
+              const reason = placeholderReason(found);
+              const decided: SecretClass | undefined =
+                reason !== undefined ? "placeholder" : isLocalDev(found) ? "local-dev" : undefined;
               const keep = decided === undefined && held < (input.maxHeldValues ?? MAX_HELD_VALUES);
               if (keep) held += 1;
               candidate = {
@@ -592,6 +622,7 @@ export async function checkSecrets(input: SecretsInput): Promise<SecretsCheck> {
                 decided,
                 // Past the cap a value is not held, so it cannot be searched for in the repos.
                 value: keep ? found.value : undefined,
+                setAside: reason === "named-not-credential-shaped" ? reason : undefined,
               };
               candidates.set(key, candidate);
             }
@@ -615,6 +646,7 @@ export async function checkSecrets(input: SecretsInput): Promise<SecretsCheck> {
     ) {
       candidate.decided = "placeholder";
       candidate.value = undefined;
+      candidate.setAside = "unnamed-output-only";
     }
   }
 
@@ -655,8 +687,12 @@ export async function checkSecrets(input: SecretsInput): Promise<SecretsCheck> {
     placeholder: 0,
     "local-dev": 0,
   };
+  let unnamedOutputOnly = 0;
+  let namedNotCredentialShaped = 0;
   for (const candidate of candidates.values()) {
     classes[candidate.decided as SecretClass] += 1;
+    if (candidate.setAside === "unnamed-output-only") unnamedOutputOnly += 1;
+    else if (candidate.setAside === "named-not-credential-shaped") namedNotCredentialShaped += 1;
   }
   const items = itemsOf(candidates.values());
 
@@ -676,6 +712,7 @@ export async function checkSecrets(input: SecretsInput): Promise<SecretsCheck> {
       filesRead,
       filesNotRead,
       unplaced,
+      setAside: { unnamedOutputOnly, namedNotCredentialShaped },
       fixtureCheck: fixtures.check,
       reposChecked: fixtures.reposChecked,
       reposNotChecked: fixtures.reposNotChecked,

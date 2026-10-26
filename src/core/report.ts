@@ -412,6 +412,10 @@ function payloadSecrets(check: SecretsCheck): SecretsCheck {
       filesRead: facts.filesRead,
       filesNotRead: facts.filesNotRead,
       unplaced: facts.unplaced,
+      setAside: {
+        unnamedOutputOnly: facts.setAside.unnamedOutputOnly,
+        namedNotCredentialShaped: facts.setAside.namedNotCredentialShaped,
+      },
       fixtureCheck: facts.fixtureCheck,
       reposChecked: facts.reposChecked,
       reposNotChecked: facts.reposNotChecked,
