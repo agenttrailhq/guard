@@ -414,8 +414,9 @@ export type WatchedProcess = (typeof WATCHED_PROCESSES)[number];
 
 /**
  * Which watched processes are running, by id, each at most once, in `WATCHED_PROCESSES` order.
- * `ok` only when the whole list was read; a process not in a complete list is not running, and
- * any failure, a list over its cap included, leaves every process unknown.
+ * `ok` only when the whole list was read. A process not in a complete list was not seen, which
+ * is not proof it is not running (a program can run under another name); any failure, a list
+ * over its cap included, leaves every process unknown.
  */
 export type ProcessOutcome =
   | { readonly ok: true; readonly running: readonly WatchedProcess[] }
