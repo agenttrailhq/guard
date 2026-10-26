@@ -38,7 +38,7 @@
  *
  * ── Limits, and what a failure means ─────────────────────────────────────────
  * Each call has `CALL_TIMEOUT_MS` and an output cap of `MAX_OUTPUT_BYTES`, and all calls share
- * `TOTAL_BUDGET_MS`. A call that times out, overflows, is refused or fails comes back as a
+ * `TOTAL_BUDGET_MS`, together with the reads and the in-process search a caller charges to it. A call that times out, overflows, is refused or fails comes back as a
  * `CheckFailure`, which every check turns into could-not-check. Nothing here throws.
  *
  * Kept out of `ScanIO` so the browser opener stays the only process that seam starts, and out
@@ -423,6 +423,11 @@ export function createRealVerifyIO(options: VerifyIOOptions = {}): VerifyIO {
         if (fd !== undefined) closeSync(fd);
         spent += Math.max(0, now() - started);
       }
+    },
+
+    charge(ms: number): boolean {
+      spent += Math.max(0, ms);
+      return spent < budget;
     },
 
     async processNames(): Promise<ProcessOutcome> {

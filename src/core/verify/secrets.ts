@@ -26,7 +26,9 @@
  *     is not taken as local: it can as easily be a production host on a search domain.
  *  3. **committed fixture**: the same value is in a git-tracked file in a repo the sessions
  *     ran in. Searched in-process over the files `git ls-files` lists; the value is never put
- *     on a command line.
+ *     on a command line. A value made only of letters, digits, `-` and `_` must stand as a
+ *     whole token of the file; any other value is matched as a substring. The search's own
+ *     time is charged to the run's budget, and a search the budget cut short is partial.
  *  4. **likely real**: none of the above.
  *
  * Nothing is ever checked against the service a credential belongs to.
@@ -337,6 +339,12 @@ const MAX_TRACKED_FILES = 20_000;
 /** Most bytes the fixture test reads across every repo. */
 const MAX_FIXTURE_BYTES = 256 * 1024 * 1024;
 
+/** A value that is one token: looked up as a whole token of a file rather than as a substring. */
+const TOKEN_VALUE = /^[A-Za-z0-9_-]+$/;
+
+/** What splits a file's text into tokens: anything a token value cannot contain. */
+const TOKEN_SEPARATORS = /[^A-Za-z0-9_-]+/;
+
 /** Most parent folders walked up from a working directory that is gone. */
 const MAX_PARENT_STEPS = 8;
 
@@ -350,6 +358,8 @@ export interface SecretsInput {
   readonly fingerprint: Fingerprinter;
   /** For tests: the cap on values held for the fixture test. */
   readonly maxHeldValues?: number;
+  /** A clock in milliseconds, for charging the fixture search to the run's budget. */
+  readonly now?: () => number;
 }
 
 /** The parent folder of a path, or `undefined` at the root. */
@@ -411,14 +421,39 @@ async function searchFixtures(
   io: VerifyIO,
   workingDirs: ReadonlySet<string>,
   held: Map<string, Candidate>,
+  now: () => number,
 ): Promise<FixtureSearch> {
   if (held.size === 0) return { check: "not-needed", reposChecked: 0, reposNotChecked: 0 };
   const repos = await findRepos(io, workingDirs);
   let checked = 0;
   let notChecked = repos.notChecked;
   let bytes = 0;
+  // Once the run's budget is used up, nothing more is read, and every repo left is not checked.
+  let exhausted = false;
+
+  // Values made only of token characters are looked up as whole tokens of each file, in one
+  // pass over its text; any other value is searched for as a substring.
+  const byToken = new Map<string, string[]>();
+  const bySubstring: string[] = [];
+  for (const [key, candidate] of held) {
+    const value = candidate.value;
+    if (value === undefined) continue;
+    if (TOKEN_VALUE.test(value)) byToken.set(value, [...(byToken.get(value) ?? []), key]);
+    else bySubstring.push(key);
+  }
+  const mark = (key: string): void => {
+    const candidate = held.get(key);
+    if (candidate === undefined) return;
+    candidate.decided = "committed-fixture";
+    candidate.value = undefined;
+    held.delete(key);
+  };
 
   for (const root of repos.roots) {
+    if (exhausted) {
+      notChecked += 1;
+      continue;
+    }
     if (held.size === 0) {
       // Nothing left to find, so this repo has nothing to say.
       checked += 1;
@@ -426,6 +461,7 @@ async function searchFixtures(
     }
     const listing = await io.git(root, ["ls-files", "-z"]);
     if (!listing.ok) {
+      if (listing.reason === "budget") exhausted = true;
       notChecked += 1;
       continue;
     }
@@ -440,8 +476,9 @@ async function searchFixtures(
       const read = await io.readFile(`${root}/${relative}`);
       if (!read.ok) {
         // A file over the size cap, a link out of the repo or a file deleted since: skipped.
-        // The run's time budget is the one failure that leaves the rest of the repo unread.
+        // The run's time budget is the one failure that leaves the rest unread.
         if (read.reason === "budget") {
+          exhausted = true;
           complete = false;
           break;
         }
@@ -449,12 +486,22 @@ async function searchFixtures(
       }
       bytes += read.text.length;
       if (read.text.includes("\0")) continue;
-      for (const [key, candidate] of held) {
-        if (candidate.value !== undefined && read.text.includes(candidate.value)) {
-          candidate.decided = "committed-fixture";
-          candidate.value = undefined;
-          held.delete(key);
-        }
+      // The search itself is charged to the run's budget, not only the reading.
+      const started = now();
+      for (const token of read.text.split(TOKEN_SEPARATORS)) {
+        const keys = byToken.get(token);
+        if (keys === undefined) continue;
+        for (const key of keys) mark(key);
+        byToken.delete(token);
+      }
+      for (const key of bySubstring) {
+        const value = held.get(key)?.value;
+        if (value !== undefined && read.text.includes(value)) mark(key);
+      }
+      if (io.charge !== undefined && !io.charge(Math.max(0, now() - started))) {
+        exhausted = true;
+        complete = false;
+        break;
       }
     }
     if (complete) checked += 1;
@@ -578,7 +625,12 @@ export async function checkSecrets(input: SecretsInput): Promise<SecretsCheck> {
     if (candidate.value === undefined) notSearched += 1;
     else pending.set(key, candidate);
   }
-  const searched = await searchFixtures(input.io, workingDirs, pending);
+  const searched = await searchFixtures(
+    input.io,
+    workingDirs,
+    pending,
+    input.now ?? (() => Date.now()),
+  );
   // A value that could not be searched for leaves the fixture test incomplete.
   const fixtures: FixtureSearch =
     notSearched === 0

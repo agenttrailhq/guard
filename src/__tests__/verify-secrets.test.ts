@@ -1,4 +1,4 @@
-// cspell:words devpass Fingerprinter fingerprinters changeme IOSFODNN cret statted
+// cspell:words devpass Fingerprinter fingerprinters changeme IOSFODNN cret statted lnbm
 /**
  * The secrets check (`core/verify/secrets.ts`), on synthetic transcripts and a temporary git
  * repo built in the test.
@@ -337,6 +337,110 @@ describe("the fixture search through the seam", () => {
     };
     const result = await check("claude", [events], { io: seam, cwd: "/repo" });
     expect(result.facts.classes["committed-fixture"]).toBe(1);
+  });
+
+  it("a binary file that holds the value does not make it a fixture", async () => {
+    const seam: VerifyIO = {
+      ...scripted({}).io,
+      readFile: () => Promise.resolve({ ok: true, text: `\0${FIXTURE}` }),
+    };
+    const result = await check("claude", [events], { io: seam, cwd: "/repo" });
+    expect(result.facts.classes["committed-fixture"]).toBe(0);
+    expect(result.facts.classes["likely-real"]).toBe(1);
+    expect(result.facts.fixtureCheck).toBe("complete");
+  });
+
+  it("a token value must stand as a whole token; one glued inside a longer token is not it", async () => {
+    const reads = [`prefix${FIXTURE}suffix`, `{"SERVICE_TOKEN":"${FIXTURE}"}`];
+    let read = 0;
+    const seam: VerifyIO = {
+      ...scripted({ files: { ok: true, stdout: "a\0b\0" } }).io,
+      readFile: () => Promise.resolve({ ok: true, text: reads[read++] ?? "" }),
+    };
+    const result = await check("claude", [events], { io: seam, cwd: "/repo" });
+    expect(read).toBe(2);
+    expect(result.facts.classes["committed-fixture"]).toBe(1);
+
+    const gluedOnly: VerifyIO = {
+      ...scripted({}).io,
+      readFile: () => Promise.resolve({ ok: true, text: `prefix${FIXTURE}suffix` }),
+    };
+    const glued = await check("claude", [events], { io: gluedOnly, cwd: "/repo" });
+    expect(glued.facts.classes["committed-fixture"]).toBe(0);
+  });
+
+  it("a value with separators in it is searched as a substring", async () => {
+    const jwt = `eyJ${"hbGciOiJIUzI1"}.${"eyJzdWIiOiIx"}.${"c2lnbmF0dXJlMDk"}`;
+    const seam: VerifyIO = {
+      ...scripted({}).io,
+      readFile: () => Promise.resolve({ ok: true, text: `const token = "${jwt}";` }),
+    };
+    const result = await check(
+      "claude",
+      [[{ kind: "call", command: `curl -H "x-session: ${jwt}" api`, result: { text: "" } }]],
+      { io: seam, cwd: "/repo" },
+    );
+    expect(result.facts.classes["committed-fixture"]).toBe(1);
+  });
+
+  it("the search's own time is charged, and when the budget runs out the rest is not checked", async () => {
+    // Two repos, two files each. The value is only in the second file of the first repo.
+    const { corpus: first } = await writeCorpus("claude", [events], { cwd: "/r1" });
+    const { corpus: second } = await writeCorpus("claude", [events], { cwd: "/r2" });
+    const gitCalls: string[][] = [];
+    const charges: number[] = [];
+    const reads: string[] = [];
+    let clock = 0;
+    const seam: VerifyIO = {
+      git: (cwd, args) => {
+        gitCalls.push([cwd, ...args]);
+        if (args[0] === "rev-parse") return Promise.resolve({ ok: true, stdout: `${cwd}\n` });
+        return Promise.resolve({ ok: true, stdout: "one\0two\0" });
+      },
+      isDirectory: () => true,
+      readFile: (path) => {
+        reads.push(path);
+        return Promise.resolve({ ok: true, text: path.endsWith("two") ? FIXTURE : "nothing" });
+      },
+      processNames: () => Promise.resolve({ ok: false, reason: "missing" }),
+      charge: (ms) => {
+        charges.push(ms);
+        return false;
+      },
+    };
+    const result = await checkSecrets({
+      agent: "claude",
+      files: [...(first.files ?? []), ...(second.files ?? [])],
+      readLines,
+      io: seam,
+      fingerprint: createFingerprinter(),
+      now: () => {
+        clock += 7;
+        return clock;
+      },
+    });
+    expect(charges).toEqual([7]);
+    expect(reads).toEqual(["/r1/one"]);
+    expect(gitCalls.filter((c) => c[1] === "ls-files")).toEqual([["/r1", "ls-files", "-z"]]);
+    expect(result.facts.classes["committed-fixture"]).toBe(0);
+    expect(result.facts.classes["likely-real"]).toBe(1);
+    expect(result.facts.reposNotChecked).toBe(2);
+    expect(result.facts.fixtureCheck).toBe("unavailable");
+  });
+
+  it("a budget that is spent on the listing stops the search too", async () => {
+    const seam: VerifyIO = {
+      ...scripted({ files: { ok: false, reason: "budget" } }).io,
+    };
+    const result = await check("claude", [events], { io: seam, cwd: "/repo" });
+    expect(result.facts.reposNotChecked).toBe(1);
+    expect(result.facts.fixtureCheck).toBe("unavailable");
+  });
+
+  it("the real seam charges the search and says when the budget is gone", () => {
+    const seam = createRealVerifyIO({ totalBudgetMs: 10 });
+    expect(seam.charge?.(4)).toBe(true);
+    expect(seam.charge?.(6)).toBe(false);
   });
 });
 

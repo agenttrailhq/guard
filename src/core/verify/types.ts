@@ -358,4 +358,10 @@ export interface VerifyIO {
   readFile(path: string): Promise<FileOutcome>;
   /** Which watched processes are running. Ids only; see `WATCHED_PROCESSES`. */
   processNames(): Promise<ProcessOutcome>;
+  /**
+   * Charge `ms` of in-process work (searching what was read) to the run's one time budget.
+   * `false` once the budget is used up: the caller stops and reports what it did not finish.
+   * Optional so a seam that does nothing need not keep a budget.
+   */
+  charge?(ms: number): boolean;
 }

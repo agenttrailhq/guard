@@ -12718,6 +12718,8 @@ var MAX_EMPTY_TEXTS = 1e5;
 var MAX_WORKING_DIRS = 200;
 var MAX_TRACKED_FILES = 2e4;
 var MAX_FIXTURE_BYTES = 256 * 1024 * 1024;
+var TOKEN_VALUE = /^[A-Za-z0-9_-]+$/;
+var TOKEN_SEPARATORS = /[^A-Za-z0-9_-]+/;
 var MAX_PARENT_STEPS = 8;
 function parentOf(path) {
   const trimmed = path.replace(/[\\/]+$/, "");
@@ -12753,19 +12755,40 @@ async function findRepos(io, workingDirs) {
   }
   return { roots: [...roots].sort(), notChecked: gone.size };
 }
-async function searchFixtures(io, workingDirs, held) {
+async function searchFixtures(io, workingDirs, held, now) {
   if (held.size === 0) return { check: "not-needed", reposChecked: 0, reposNotChecked: 0 };
   const repos = await findRepos(io, workingDirs);
   let checked = 0;
   let notChecked = repos.notChecked;
   let bytes = 0;
+  let exhausted = false;
+  const byToken = /* @__PURE__ */ new Map();
+  const bySubstring = [];
+  for (const [key, candidate] of held) {
+    const value = candidate.value;
+    if (value === void 0) continue;
+    if (TOKEN_VALUE.test(value)) byToken.set(value, [...byToken.get(value) ?? [], key]);
+    else bySubstring.push(key);
+  }
+  const mark = (key) => {
+    const candidate = held.get(key);
+    if (candidate === void 0) return;
+    candidate.decided = "committed-fixture";
+    candidate.value = void 0;
+    held.delete(key);
+  };
   for (const root of repos.roots) {
+    if (exhausted) {
+      notChecked += 1;
+      continue;
+    }
     if (held.size === 0) {
       checked += 1;
       continue;
     }
     const listing = await io.git(root, ["ls-files", "-z"]);
     if (!listing.ok) {
+      if (listing.reason === "budget") exhausted = true;
       notChecked += 1;
       continue;
     }
@@ -12780,6 +12803,7 @@ async function searchFixtures(io, workingDirs, held) {
       const read = await io.readFile(`${root}/${relative3}`);
       if (!read.ok) {
         if (read.reason === "budget") {
+          exhausted = true;
           complete = false;
           break;
         }
@@ -12787,12 +12811,21 @@ async function searchFixtures(io, workingDirs, held) {
       }
       bytes += read.text.length;
       if (read.text.includes("\0")) continue;
-      for (const [key, candidate] of held) {
-        if (candidate.value !== void 0 && read.text.includes(candidate.value)) {
-          candidate.decided = "committed-fixture";
-          candidate.value = void 0;
-          held.delete(key);
-        }
+      const started = now();
+      for (const token of read.text.split(TOKEN_SEPARATORS)) {
+        const keys = byToken.get(token);
+        if (keys === void 0) continue;
+        for (const key of keys) mark(key);
+        byToken.delete(token);
+      }
+      for (const key of bySubstring) {
+        const value = held.get(key)?.value;
+        if (value !== void 0 && read.text.includes(value)) mark(key);
+      }
+      if (io.charge !== void 0 && !io.charge(Math.max(0, now() - started))) {
+        exhausted = true;
+        complete = false;
+        break;
       }
     }
     if (complete) checked += 1;
@@ -12880,7 +12913,12 @@ async function checkSecrets(input) {
     if (candidate.value === void 0) notSearched += 1;
     else pending.set(key, candidate);
   }
-  const searched = await searchFixtures(input.io, workingDirs, pending);
+  const searched = await searchFixtures(
+    input.io,
+    workingDirs,
+    pending,
+    input.now ?? (() => Date.now())
+  );
   const fixtures = notSearched === 0 ? searched : {
     ...searched,
     check: searched.check === "complete" ? "partial" : searched.check === "not-needed" ? "unavailable" : searched.check
@@ -13878,6 +13916,10 @@ function createRealVerifyIO(options = {}) {
         if (fd !== void 0) closeSync(fd);
         spent += Math.max(0, now() - started);
       }
+    },
+    charge(ms) {
+      spent += Math.max(0, ms);
+      return spent < budget;
     },
     async processNames() {
       const windows = platform === "win32";
