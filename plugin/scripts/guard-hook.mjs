@@ -7404,8 +7404,9 @@ function enabledIn(text) {
   const plugins = parsed.enabledPlugins;
   if (plugins === void 0) return void 0;
   if (!isRecord3(plugins)) return "unreadable";
+  if (!(OS_PLUGIN_ID in plugins)) return void 0;
   const value = plugins[OS_PLUGIN_ID];
-  return typeof value === "boolean" ? value : void 0;
+  return typeof value === "boolean" ? value : "unreadable";
 }
 function enabledFor(folder, input, managed, user) {
   const layers = [

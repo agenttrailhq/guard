@@ -232,7 +232,8 @@ function projectSettingsFolders(starts: readonly string[], home: string): string
 
 /**
  * `enabledPlugins[id]` in one settings file: `true`, `false`, `undefined` when the file sets
- * nothing for it, or `"unreadable"` when the file exists and does not parse.
+ * nothing for it, or `"unreadable"` when the file exists and does not parse or sets the id to
+ * anything but a boolean (`"false"`, `null`, `0`), which fails the check.
  */
 function enabledIn(text: string | undefined): boolean | undefined | "unreadable" {
   if (text === undefined) return undefined;
@@ -241,8 +242,9 @@ function enabledIn(text: string | undefined): boolean | undefined | "unreadable"
   const plugins = parsed.enabledPlugins;
   if (plugins === undefined) return undefined;
   if (!isRecord(plugins)) return "unreadable";
+  if (!(OS_PLUGIN_ID in plugins)) return undefined;
   const value = plugins[OS_PLUGIN_ID];
-  return typeof value === "boolean" ? value : undefined;
+  return typeof value === "boolean" ? value : "unreadable";
 }
 
 /** Check 4 for one project folder: Claude Code's merge, managed > local > project > user. */
