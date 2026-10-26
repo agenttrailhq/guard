@@ -1,6 +1,7 @@
 /**
- * `init --agent cursor|codex` declines where AgentTrail OS already enforces that app, as
- * `init --agent claude` does for AgentTrail OS's Claude Code plugin.
+ * `init --agent codex` declines where AgentTrail OS enforces Codex, as `init --agent claude` does
+ * for its Claude Code plugin. `init --agent cursor` proceeds and says so: AgentTrail OS is set up
+ * per project in Cursor.
  */
 import { describe, expect, it } from "vitest";
 import { runInit } from "../commands/init.js";
@@ -34,10 +35,25 @@ function harness(files: Record<string, string>) {
 const ON = JSON.stringify({ v: 1, enabled: true });
 const deps = { scaffoldDir: "/pkg/plugin", bundledVersion: "0.1.0" };
 
-describe.each([
-  ["cursor", "Cursor"],
-  ["codex", "Codex"],
-] as const)("init --agent %s", (agent, name) => {
+describe("init --agent cursor with AgentTrail OS set up for Cursor", () => {
+  it("proceeds, and says AgentTrail OS covers only the projects it was set up in", async () => {
+    const h = harness({ [osEnforcementRecordPath(HOME, "cursor")]: ON });
+    await runInit(h.io, { agent: "cursor" }, deps);
+    expect(h.out()).toContain(
+      "AgentTrail OS is set up for Cursor on this machine, in the projects it was set up in.",
+    );
+    expect(h.out()).toContain("in those projects both check each tool call");
+    expect(h.out()).not.toContain("Nothing was written and nothing was changed.");
+  });
+
+  it("without the record, prints no note", async () => {
+    const h = harness({});
+    await runInit(h.io, { agent: "cursor" }, deps);
+    expect(h.out()).not.toContain("AgentTrail OS is set up for Cursor");
+  });
+});
+
+describe.each([["codex", "Codex"]] as const)("init --agent %s", (agent, name) => {
   it("declines while AgentTrail OS enforces it — exit 0, nothing written or run", async () => {
     const h = harness({ [osEnforcementRecordPath(HOME, agent)]: ON });
     expect(await runInit(h.io, { agent }, deps)).toBe(0);

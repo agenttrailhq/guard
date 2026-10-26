@@ -1,13 +1,15 @@
 /**
- * Whether AgentTrail OS enforces Cursor or Codex on this machine, for `init`'s coexistence
- * check. Mirrors the Claude Code check (`plugin/install.ts`): two hooks deciding every call
- * means two decisions and two prompts, so `init` declines.
+ * Whether AgentTrail OS enforces Cursor or Codex on this machine, for `init`'s coexistence check.
  *
- * The signal is the per-machine record AgentTrail OS keeps for each app while its enforcement
- * is on, `~/.agenttrail/<app>/enforcement.json` with `{"v": 1, "enabled": true}`. Its hook
- * entries can live in each project's own hooks file, which `init` cannot enumerate; the record
- * covers all of them. AgentTrail OS does not enforce Codex yet, so that check finds nothing
- * today and starts to decline once it does.
+ * The signal is the per-machine record AgentTrail OS keeps for each app while its enforcement is
+ * on, `~/.agenttrail/<app>/enforcement.json` with `{"v": 1, "enabled": true}`.
+ *
+ * Cursor: AgentTrail OS is set up per project there, so its record does not mean every workspace
+ * is covered. `init --agent cursor` therefore proceeds, and says that in the projects AgentTrail OS
+ * covers both check each call. Declining would leave every other Cursor project with neither.
+ *
+ * Codex: AgentTrail OS does not enforce Codex yet, so that check finds nothing today; `init
+ * --agent codex` declines once it does.
  *
  * Reads only; a record that is missing or does not parse counts as not enforcing.
  */
@@ -45,6 +47,15 @@ export function osCursorPresent(
 /** AgentTrail OS enforces Codex on this machine. */
 export function osCodexPresent(readFile: (p: string) => string | undefined, home: string): boolean {
   return enforcing(readFile(osEnforcementRecordPath(home, "codex")));
+}
+
+/** What `init --agent cursor` prints, and then proceeds, when AgentTrail OS enforces Cursor. */
+export function osCursorNote(): string {
+  return (
+    "AgentTrail OS is set up for Cursor on this machine, in the projects it was set up in.\n" +
+    "Guard covers every Cursor workspace, so in those projects both check each tool call.\n" +
+    "Installing Guard for the rest.\n\n"
+  );
 }
 
 /** What `init` prints when it declines, for the app named. */
