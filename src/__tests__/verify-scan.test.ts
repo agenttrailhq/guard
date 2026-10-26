@@ -41,15 +41,16 @@ async function scan(argv: readonly string[]): Promise<{ code: number; stdout: st
 }
 
 describe("the --verify flag", () => {
-  it("is off unless given", () => {
-    expect(parseScanFlags(["--agent", "claude"]).verify).toBe(false);
+  it("--verify and --no-checks are read, and neither is set unless given", () => {
+    expect(parseScanFlags(["--agent", "claude"])).toMatchObject({ verify: false, noChecks: false });
     expect(parseScanFlags(["--agent", "claude", "--verify"]).verify).toBe(true);
+    expect(parseScanFlags(["--agent", "claude", "--no-checks"]).noChecks).toBe(true);
   });
 
-  it("is in the usage, as a preview that works offline", () => {
+  it("is in the usage, read-only and offline, with --no-checks beside it", () => {
     expect(SCAN_USAGE).toContain("--verify");
-    expect(SCAN_USAGE).toContain("Preview");
-    expect(SCAN_USAGE).toContain("works offline");
+    expect(SCAN_USAGE).toContain("--no-checks");
+    expect(SCAN_USAGE).toContain("Read-only and offline");
   });
 
   it("the usage says exactly which files on this machine it reads", () => {
@@ -85,11 +86,11 @@ describe("the --verify flag", () => {
     );
   });
 
-  it("without it, --json carries no verification and the summary has no verify line", async () => {
+  it("with --no-checks, --json carries no verification and the summary has no verify line", async () => {
     const { root } = await writeCorpus("claude", [[{ kind: "prompt", text: TOKEN }]]);
-    const json = await scan(["--agent", "claude", "--dir", root, "--json"]);
+    const json = await scan(["--agent", "claude", "--dir", root, "--json", "--no-checks"]);
     expect(JSON.parse(json.stdout).result.verification).toBeUndefined();
-    const plain = await scan(["--agent", "claude", "--dir", root]);
+    const plain = await scan(["--agent", "claude", "--dir", root, "--no-checks"]);
     expect(plain.stdout).not.toContain("Checked on this machine");
   });
 

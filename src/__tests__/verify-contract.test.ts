@@ -861,7 +861,7 @@ describe("a checked category's facts reach the file as plain data", () => {
 });
 
 describe("verifying by default", () => {
-  it("is off until the one switch is flipped", () => {
-    expect(VERIFY_BY_DEFAULT).toBe(false);
+  it("is on, by the one switch", () => {
+    expect(VERIFY_BY_DEFAULT).toBe(true);
   });
 });

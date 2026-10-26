@@ -50,10 +50,11 @@ export interface VerifyInput {
 }
 
 /**
- * Whether `scan` verifies without being asked. The one switch for turning verification on by
- * default; until it is `true`, `scan --verify` is how to ask for it.
+ * Whether `scan` verifies without being asked. The one switch for verification by default:
+ * while it is `true`, a plain `scan` runs the checks and `--no-checks` skips them; set to
+ * `false`, `scan --verify` is how to ask for them. Both values are tested.
  */
-export const VERIFY_BY_DEFAULT = false;
+export const VERIFY_BY_DEFAULT = true;
 
 /**
  * What verification produced: the value-free `Verification` that `ScanResult` carries, and,

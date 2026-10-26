@@ -19821,7 +19821,7 @@ async function classifySecrets(input, keep) {
 }
 
 // src/core/verify/verify.ts
-var VERIFY_BY_DEFAULT = false;
+var VERIFY_BY_DEFAULT = true;
 var UNAVAILABLE_VERIFY_IO = {
   git: () => Promise.resolve({ ok: false, reason: "missing" }),
   isDirectory: () => void 0,
@@ -20590,12 +20590,62 @@ async function runScrub(input) {
 // src/commands/scan.ts
 var TOP_REPEATS = 5;
 var TOP_FINDINGS = 5;
-var SCAN_USAGE = `agenttrail-guard scan \u2014 what your agent has been doing
+function checksUsage(byDefault) {
+  const flags = byDefault ? `  --no-checks    Skip the checks on this machine (on by default). The report then
+                 shows what the guardrails matched, and nothing about what each match did
+  --verify       Run the checks on this machine. They are on by default, so this
+                 changes nothing; it is kept for scripts that pass it. It cannot be
+                 used with --no-checks` : `  --verify       Also run the checks on this machine (off by default)
+  --no-checks    Skip the checks on this machine. They are off by default, so this
+                 changes nothing`;
+  const reads = `Checks on this machine (${byDefault ? "on by default; --no-checks turns them off" : "only with --verify"}).
+Read-only and offline: nothing is written but the report and its local fixes file,
+nothing is sent, nothing is looked up online, no credential is tested, and no
+command from a session is run again.
+They read only:
+  - the transcripts again, for credentials, which are sorted into likely real,
+    committed fixtures, placeholders and local dev data by kind, never by value;
+  - in each git repo a session ran in or pushed from: read-only git (rev-parse,
+    ls-files, for-each-ref, log, stash list), never through a shell, and its
+    git-tracked files, each at most 1 MB, to tell a committed fixture from a real
+    credential;
+  - instruction and memory files, each at most 1 MB: CLAUDE.md, CLAUDE.local.md,
+    AGENTS.md, GEMINI.md, .cursorrules, .windsurfrules and
+    .github/copilot-instructions.md at the top of each repo, the agent's own
+    (~/.claude/CLAUDE.md or ~/.codex/AGENTS.md), and the ones the sessions wrote.
+    In ~/.claude, ~/.codex and ~/.cursor only .md and .mdc files are read.
+    Only whether a file tells the agent to skip checks is kept, never its text;
+  - whether the paths the commands named still exist;
+  - test and coverage configs the sessions edited, each at most 1 MB, for their
+    coverage autoUpdate setting;
+  - the names of the running programs, never their arguments, cut down to the
+    agents and the tunnel and relay programs the checks look for.
+The report and --json carry counts only, never these paths.
+Each git or process call has 5 seconds, and all the checks share 60 seconds. A
+check that cannot finish says so, and never reads as clean.
+They say which matched commands ran and which were only mentioned, and check
+what the commands that ran did: credentials, test thresholds and deleted tests,
+cloud and production changes, pushes straight to main, uploads and tunnels, and
+package installs. Where a command that ran, or may have run, could run others the
+checks do not read (bash -c, a script piped into a shell, find -exec, xargs, eval,
+a substitution, git config or hooks), they say they could not confirm, never that
+nothing ran. A script run by name (bash ./x.sh, source x.sh) is not read.
+Exact fix commands for this machine go to agenttrail-guard-fixes.txt next to the
+report, readable only by you (mode 0600), never into the report or --json.
+Codex is limited and unverified: tested only on synthetic sessions built from
+Codex's documented rollout format. A Codex "ran" may include calls a hook
+blocked, ids a Codex command printed are not identified, and a Codex scan never
+leads with a verified finding.`;
+  return { flags, reads };
+}
+function scanUsage(byDefault) {
+  const checks = checksUsage(byDefault);
+  return `agenttrail-guard scan \u2014 what your agent has been doing
 
 Usage:
   agenttrail-guard scan --agent <claude|cursor|codex> [--dir <root>] [--out <file>]
                         [--artifact] [--no-open] [--review] [--json] [--quiet]
-                        [--verify]
+                        [--no-checks | --verify]
   agenttrail-guard scan --agent <claude|cursor|codex> --scrub [--apply] [--dir <root>]
 
   --agent <app>  Whose sessions to read, and it is required: claude reads Claude Code's
@@ -20614,26 +20664,7 @@ Usage:
   --review       Print every command and guardrail the report will contain, and ask
                  before writing it. Redaction is thorough but not a guarantee; this
                  is how you check it yourself before the file exists.
-  --verify       Preview: also check the matches against this machine, read-only.
-                 Says which matched commands ran and which were only mentioned, and
-                 sorts credentials found in the transcripts into likely real,
-                 committed fixtures, placeholders and local dev data, by kind, never
-                 by value. Nothing is written or sent, no command from a session is
-                 run again, and it works offline. It reads only:
-                   - the transcripts again;
-                   - in each git repo a session ran in: read-only git (rev-parse,
-                     ls-files, for-each-ref, log, stash list), never through a
-                     shell, and its git-tracked files, each at most 1 MB;
-                   - instruction and memory files, each at most 1 MB: CLAUDE.md,
-                     CLAUDE.local.md, AGENTS.md, GEMINI.md, .cursorrules,
-                     .windsurfrules and .github/copilot-instructions.md at the top
-                     of each repo, the agent's own (~/.claude/CLAUDE.md or
-                     ~/.codex/AGENTS.md), and the ones the sessions wrote. In
-                     ~/.claude, ~/.codex and ~/.cursor only .md and .mdc files are
-                     read. Only whether a file tells the agent to skip checks is
-                     kept, never its text;
-                   - whether the paths the commands named still exist.
-                 The report and --json carry counts only, never these paths.
+${checks.flags}
   --scrub        Replace the likely-real credentials in the app's transcripts with
                  [REDACTED-BY-AGENTTRAIL:<kind>]. Fixtures, placeholders and local
                  dev values are left alone. A dry run: it says what it would replace,
@@ -20650,7 +20681,15 @@ Reads transcripts already on your disk. No account, nothing uploaded, and no net
 call: the one exception anywhere in this tool is crash reporting, which is off unless
 you turn it on and which a scan never uses.
 Commands and paths are redacted before anything is displayed or written.
+
+${checks.reads}
 `;
+}
+var SCAN_USAGE = scanUsage(VERIFY_BY_DEFAULT);
+function shouldVerify(flags, byDefault) {
+  if (flags.noChecks) return false;
+  return flags.verify || byDefault;
+}
 function parseScanFlags(argv) {
   let agent;
   let agentRefused = false;
@@ -20665,6 +20704,7 @@ function parseScanFlags(argv) {
   let verify = false;
   let scrub = false;
   let apply = false;
+  let noChecks = false;
   let unknown;
   const takeAgent = (value) => {
     const app = chosenAgent(value);
@@ -20689,6 +20729,7 @@ function parseScanFlags(argv) {
     else if (arg === "--verify") verify = true;
     else if (arg === "--scrub") scrub = true;
     else if (arg === "--apply") apply = true;
+    else if (arg === "--no-checks") noChecks = true;
     else if (arg === "--out") {
       const next = argv[i + 1];
       if (next === void 0 || next === "" || next.startsWith("-")) {
@@ -20725,6 +20766,7 @@ function parseScanFlags(argv) {
     verify,
     scrub,
     apply,
+    noChecks,
     unknown
   };
 }
@@ -21124,14 +21166,20 @@ function isYes(answer) {
 }
 async function runScan(argv, io, deps = {}) {
   const flags = parseScanFlags(argv);
+  const byDefault = deps.verifyByDefault ?? VERIFY_BY_DEFAULT;
+  const usage = scanUsage(byDefault);
   if (flags.help) {
-    io.writeStdout(SCAN_USAGE);
+    io.writeStdout(usage);
     return 0;
   }
   if (flags.unknown !== void 0) {
     io.writeStdout(`agenttrail-guard scan: unknown argument "${flags.unknown}".
 
-${SCAN_USAGE}`);
+${usage}`);
+    return 1;
+  }
+  if (flags.verify && flags.noChecks) {
+    io.writeStdout("agenttrail-guard scan: --verify and --no-checks cannot be combined.\n");
     return 1;
   }
   const agent = flags.agent;
@@ -21192,7 +21240,7 @@ ${SCAN_USAGE}`);
   }
   let outcome;
   let checksFailed = false;
-  if (flags.verify || VERIFY_BY_DEFAULT) {
+  if (shouldVerify(flags, byDefault)) {
     try {
       outcome = await (deps.verify ?? verifyScan)({
         corpus,

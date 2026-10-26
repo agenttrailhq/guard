@@ -47,6 +47,7 @@ import { NOT_CHECKED_MESSAGE } from "../commands/hook.js";
 import { silenceCommand } from "../commands/status.js";
 import { RELAY_INSTRUCTION } from "../core/cursor-emit.js";
 import { PRODUCT_NOTE } from "../core/report.js";
+import { decodedSurfaces } from "./html-text.js";
 import { writeCorpus } from "./verify-fixtures.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -1297,6 +1298,106 @@ describe("scan, against the built binary", () => {
         "BUILTverify",
       );
       expect(readdirSync(home)).toEqual([]);
+    }
+  });
+
+  it("a plain scan verifies by default, from both bundles: no network call, nothing in HOME; --no-checks skips it", () => {
+    // The checks run with no flag at all. The repo, the transcript and its token are made up.
+    const base = mkdtempSync(join(tmpdir(), "agenttrail-guard-default-"));
+    const repo = join(base, "repo");
+    mkdirSync(repo, { recursive: true });
+    execFileSync("git", ["init", "-q"], { cwd: repo });
+    const token = `ghp${"_"}BUILTdefault0aB1cD2eF3gH4iJ5kL6mN7oP8`;
+    const projects = join(base, "projects", "-repo");
+    mkdirSync(projects, { recursive: true });
+    writeFileSync(
+      join(projects, "default-1.jsonl"),
+      `${[
+        JSON.stringify({
+          type: "user",
+          uuid: "u1",
+          sessionId: "default-1",
+          cwd: repo,
+          message: { role: "user", content: `deploy with ${token}` },
+        }),
+        JSON.stringify({
+          type: "assistant",
+          uuid: "a1",
+          sessionId: "default-1",
+          cwd: repo,
+          message: {
+            role: "assistant",
+            content: [
+              {
+                type: "tool_use",
+                id: "t1",
+                name: "Bash",
+                input: { command: `aws iam create-access-key --user-name ${"default-bot"}` },
+              },
+            ],
+          },
+        }),
+        JSON.stringify({
+          type: "user",
+          uuid: "r1",
+          sessionId: "default-1",
+          cwd: repo,
+          message: {
+            role: "user",
+            content: [{ type: "tool_result", tool_use_id: "t1", content: "{}" }],
+          },
+        }),
+      ].join("\n")}\n`,
+    );
+
+    for (const [bundle, prefix] of [
+      [CLI_BUNDLE, ["scan"]],
+      [SCAN_BUNDLE, []],
+    ] as const) {
+      for (const skip of [false, true]) {
+        const work = mkdtempSync(join(base, "work-"));
+        const home = scratchHome();
+        const log = join(work, "net.log");
+        writeFileSync(log, "");
+        const r = spawnSync(
+          "node",
+          [
+            "--import",
+            join(HERE, "preload", "net-recorder.mjs"),
+            bundle,
+            ...prefix,
+            "--agent",
+            "claude",
+            "--dir",
+            join(base, "projects"),
+            "--no-open",
+            ...(skip ? ["--no-checks"] : []),
+          ],
+          {
+            cwd: work,
+            encoding: "utf8",
+            env: { ...envWithHome(home), AGENTTRAIL_TEST_NET_LOG: log },
+          },
+        );
+        expect(r.status, r.stderr).toBe(0);
+        expect(readFileSync(log, "utf8")).toBe("");
+        expect(readdirSync(home)).toEqual([]);
+        const report = readFileSync(join(work, "agenttrail-guard-report.html"), "utf8");
+        expect(`${r.stdout}${r.stderr}${report}`).not.toContain("BUILTdefault");
+        if (skip) {
+          expect(r.stdout).not.toContain("Checked on this machine");
+          expect(decodedSurfaces(report).data).not.toContain("iamChanges");
+        } else {
+          expect(r.stdout).toContain(
+            "Checked on this machine (read-only, offline): 1 likely-real credential in 1 transcript file",
+          );
+          expect(decodedSurfaces(report).data).toContain("iamChanges");
+          // The exact review command, quoted part by part with the real user name, is for the
+          // local fixes file only. The page shows its redacted shape, with <user> in its place.
+          expect(report).not.toContain("'list-access-keys'");
+          expect(report).toContain("list-access-keys --user-name &lt;user&gt;");
+        }
+      }
     }
   });
 
