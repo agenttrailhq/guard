@@ -129,6 +129,8 @@ async function scan(
     readonly plant?: (work: string) => void;
     /** Fixes added to whatever the checks make, of either kind. */
     readonly extra?: readonly (LocalFix | UnsafeFix)[];
+    /** Make the write of the fixes file fail. */
+    readonly failFixes?: boolean;
   } = {},
 ): Promise<{ code: number; stdout: string; work: string }> {
   const { root } = await writeCorpus("claude", [
@@ -149,6 +151,11 @@ async function scan(
       out.push(text);
     },
     readLine: () => Promise.resolve(options.answer),
+    // A write of the fixes file can be made to fail, as on a full or read-only disk.
+    writeFile: (path, text) =>
+      options.failFixes === true && path.endsWith(FIXES_FILENAME)
+        ? false
+        : real.writeFile(path, text),
     openInBrowser: () => true,
     env: { CI: "1" },
     isTTY: () => false,
@@ -322,5 +329,26 @@ describe("a fix that could not be made safe", () => {
     );
     // No card names a file that holds no command for it.
     expect(readFileSync(join(run.work, REPORT_FILENAME), "utf8")).not.toContain(FIXES_FILENAME);
+  });
+});
+
+describe("when the fixes file cannot be written", () => {
+  it("the report does not name it, and the summary says it could not be written", async () => {
+    const run = await scan(["--verify"], { failFixes: true });
+    expect(run.code).toBe(0);
+    const path = join(run.work, FIXES_FILENAME);
+    expect(() => statSync(path)).toThrow();
+    expect(readFileSync(join(run.work, REPORT_FILENAME), "utf8")).not.toContain(FIXES_FILENAME);
+    expect(run.stdout).toContain(`Could not write the fix commands to ${path}`);
+    expect(run.stdout).not.toContain("Fix commands for this machine");
+  });
+
+  it("--out naming the fixes file writes the report there, and no fixes file over it", async () => {
+    const run = await scan(["--verify", "--out", FIXES_FILENAME]);
+    expect(run.code).toBe(0);
+    const html = readFileSync(join(run.work, FIXES_FILENAME), "utf8");
+    expect(html.startsWith("<!doctype html>")).toBe(true);
+    expect(html).not.toContain(`in <code>${FIXES_FILENAME}</code>`);
+    expect(run.stdout).not.toContain("Fix commands for this machine");
   });
 });
