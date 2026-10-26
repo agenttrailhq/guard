@@ -8197,7 +8197,7 @@ function wrapLines(text, width) {
 function payloadSecrets(check) {
   const facts = check.facts;
   return {
-    status: check.status,
+    status: copyStatus(check.status),
     matches: check.matches,
     facts: {
       classes: {
@@ -8244,9 +8244,13 @@ function copyFacts(value, capLists, depth = 0) {
   }
   return void 0;
 }
+var STATUS_SET = new Set(VERIFY_STATUSES);
+function copyStatus(status) {
+  return typeof status === "string" && STATUS_SET.has(status) ? status : "could-not-check";
+}
 function copyCategory(result, capLists) {
   const out = {
-    status: result.status
+    status: copyStatus(result.status)
   };
   const matches = result.matches;
   if (typeof matches === "number") out.matches = matches;

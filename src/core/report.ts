@@ -94,6 +94,7 @@ import {
   FACT_KEYS,
   FACT_VALUE_ENUMS,
   type SecretsCheck,
+  VERIFY_STATUSES,
   type Verification,
   type VerifyStatus as VerificationStatus,
 } from "./verify/types.js";
@@ -398,7 +399,7 @@ export interface ReportPayload {
 function payloadSecrets(check: SecretsCheck): SecretsCheck {
   const facts = check.facts;
   return {
-    status: check.status,
+    status: copyStatus(check.status),
     matches: check.matches,
     facts: {
       classes: {
@@ -469,16 +470,30 @@ function copyFacts(value: unknown, capLists: boolean, depth = 0): unknown {
   return undefined;
 }
 
+const STATUS_SET: ReadonlySet<string> = new Set(VERIFY_STATUSES);
+
 /**
- * One category's result, copied: its status, its raw count whenever it has one — a
- * could-not-check result can carry a count and no facts — and its facts through `copyFacts`.
+ * A category's status, as the boundary passes it: one of `VERIFY_STATUSES`, or
+ * `could-not-check` for anything else, so a check that sets a stray value never shows a
+ * status the page does not know, and never a `clean` it did not earn.
+ */
+function copyStatus(status: unknown): VerificationStatus {
+  return typeof status === "string" && STATUS_SET.has(status)
+    ? (status as VerificationStatus)
+    : "could-not-check";
+}
+
+/**
+ * One category's result, copied: its status (checked against `VERIFY_STATUSES`), its raw count
+ * whenever it has one — a could-not-check result can carry a count and no facts — and its
+ * facts through `copyFacts`.
  */
 function copyCategory<T extends { readonly status: VerificationStatus }>(
   result: T,
   capLists: boolean,
 ): T {
   const out: { status: VerificationStatus; matches?: number; facts?: unknown } = {
-    status: result.status,
+    status: copyStatus(result.status),
   };
   const matches = (result as { readonly matches?: unknown }).matches;
   if (typeof matches === "number") out.matches = matches;

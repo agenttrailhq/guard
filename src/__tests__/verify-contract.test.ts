@@ -40,6 +40,7 @@ import {
   HIDING_FORMS,
   type SecretsFacts,
   VERIFY_CATEGORIES,
+  VERIFY_STATUSES,
   type Verification,
   type VerifyCategory,
   type VerifyStatus,
@@ -633,6 +634,57 @@ describe("a checked category's facts reach the file as plain data", () => {
       matches: 0,
       facts: { filesRead: 0 },
     });
+  });
+
+  it.each([
+    ["an unknown word", "FACTSCANARY-status"],
+    ["a status-like word", "passed"],
+    ["a number", 3],
+    ["nothing", undefined],
+  ])("a status that is not one of the contract's becomes could-not-check: %s", (_l, status) => {
+    const v = {
+      ...verification(),
+      categories: {
+        ...verification().categories,
+        secrets: { ...verification().categories.secrets, status },
+        tests: { status, matches: 2, facts: { filesRead: 1 } },
+      },
+    } as unknown as Verification;
+    const result = aggregateScan(
+      { sessions: [], quarantined: 0, notRead: 0, projects: 0 },
+      compileCatalog([RULE_RM_RF]),
+      compileAllowlist([]),
+      new Set(),
+      v,
+    );
+    const file = reportPayload(result, meta).verification;
+    const json = JSON.parse(renderJson(result, meta)).result.verification;
+    for (const copied of [file, json]) {
+      expect(copied?.categories.tests).toEqual({
+        status: "could-not-check",
+        matches: 2,
+        facts: { filesRead: 1 },
+      });
+      expect(copied?.categories.secrets.status).toBe("could-not-check");
+    }
+    expect(renderReport(result, meta)).not.toContain("FACTSCANARY");
+  });
+
+  it("every status of the contract passes as it is", () => {
+    for (const status of VERIFY_STATUSES) {
+      const v = {
+        ...verification(),
+        categories: { ...verification().categories, tests: { status, matches: 0, facts: {} } },
+      } as unknown as Verification;
+      const result = aggregateScan(
+        { sessions: [], quarantined: 0, notRead: 0, projects: 0 },
+        compileCatalog([RULE_RM_RF]),
+        compileAllowlist([]),
+        new Set(),
+        v,
+      );
+      expect(reportPayload(result, meta).verification?.categories.tests.status).toBe(status);
+    }
   });
 
   it("a category with no check stays status only", () => {
