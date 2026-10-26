@@ -271,9 +271,22 @@ export interface CategoryFactsMap {
 /** The categories whose check exists. */
 export type CheckedCategoryName = Extract<keyof CategoryFactsMap, VerifyCategory>;
 
-/** One category's result: its facts when it has a check, or not-checked. */
+/**
+ * A category whose check exists but could not finish and has no facts to report, such as a
+ * check whose one source could not be read. It still carries its raw match count, which the
+ * card shows.
+ */
+export interface CouldNotCheckResult {
+  readonly status: "could-not-check";
+  readonly matches: number;
+}
+
+/**
+ * One category's result: its facts when its check ran, could-not-check with only a count when
+ * the check could not finish, or not-checked.
+ */
 export type CategoryResult<C extends VerifyCategory> = C extends CheckedCategoryName
-  ? CheckedCategory<CategoryFactsMap[C]> | PendingCheck
+  ? CheckedCategory<CategoryFactsMap[C]> | CouldNotCheckResult | PendingCheck
   : PendingCheck;
 
 /** Every category but secrets, which always runs. */

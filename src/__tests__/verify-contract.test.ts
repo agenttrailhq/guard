@@ -359,6 +359,52 @@ describe("a checked category's facts reach the file as plain data", () => {
     expect(JSON.stringify(tests.facts.deep)).toBe('{"a":{"b":{"c":{"d":{}}}}}');
   });
 
+  it("a could-not-check result with a count and no facts keeps its count, in the file and on the card", () => {
+    const v = {
+      ...verification(),
+      categories: {
+        ...verification().categories,
+        "lost-work": { status: "could-not-check", matches: 4 },
+      },
+    } as unknown as Verification;
+    const result = aggregateScan(
+      { sessions: [], quarantined: 0, notRead: 0, projects: 0 },
+      compileCatalog([RULE_RM_RF]),
+      compileAllowlist([]),
+      new Set(),
+      v,
+    );
+    expect(reportPayload(result, meta).verification?.categories["lost-work"]).toEqual({
+      status: "could-not-check",
+      matches: 4,
+    });
+    const card = cardsFor(v, BUILDERS).find((c) => c.category === "lost-work");
+    expect(card?.tone).toBe("could-not-check");
+    expect(card?.count).toBe(4);
+  });
+
+  it("a checked result keeps its count and facts together", () => {
+    const v = {
+      ...verification(),
+      categories: {
+        ...verification().categories,
+        tests: { status: "clean", matches: 0, facts: { lowered: 0 } },
+      },
+    } as unknown as Verification;
+    const result = aggregateScan(
+      { sessions: [], quarantined: 0, notRead: 0, projects: 0 },
+      compileCatalog([RULE_RM_RF]),
+      compileAllowlist([]),
+      new Set(),
+      v,
+    );
+    expect(reportPayload(result, meta).verification?.categories.tests).toEqual({
+      status: "clean",
+      matches: 0,
+      facts: { lowered: 0 },
+    });
+  });
+
   it("a category with no check stays status only", () => {
     const payload = reportPayload(
       aggregateScan(

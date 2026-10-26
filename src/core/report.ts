@@ -457,15 +457,18 @@ function copyPlain(value: unknown, depth = 0): unknown {
   return undefined;
 }
 
-/** One category's result other than secrets, copied: its status, and its count and facts. */
+/**
+ * One category's result other than secrets, copied: its status, its raw count whenever it has
+ * one — a could-not-check result can carry a count and no facts — and its facts when it has them.
+ */
 function payloadCategory<T extends { readonly status: VerificationStatus }>(result: T): T {
-  if (!("facts" in result)) return { status: result.status } as T;
-  const checked = result as T & { readonly matches: number; readonly facts: unknown };
-  return {
-    status: checked.status,
-    matches: checked.matches,
-    facts: copyPlain(checked.facts),
-  } as unknown as T;
+  const out: { status: VerificationStatus; matches?: number; facts?: unknown } = {
+    status: result.status,
+  };
+  const matches = (result as { readonly matches?: unknown }).matches;
+  if (typeof matches === "number") out.matches = matches;
+  if ("facts" in result) out.facts = copyPlain((result as { readonly facts: unknown }).facts);
+  return out as unknown as T;
 }
 
 /** The verification, copied field by field. */

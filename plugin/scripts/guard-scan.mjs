@@ -8156,13 +8156,13 @@ function copyPlain(value, depth = 0) {
   return void 0;
 }
 function payloadCategory(result) {
-  if (!("facts" in result)) return { status: result.status };
-  const checked = result;
-  return {
-    status: checked.status,
-    matches: checked.matches,
-    facts: copyPlain(checked.facts)
+  const out = {
+    status: result.status
   };
+  const matches = result.matches;
+  if (typeof matches === "number") out.matches = matches;
+  if ("facts" in result) out.facts = copyPlain(result.facts);
+  return out;
 }
 function payloadVerification(verification) {
   const categories = verification.categories;
