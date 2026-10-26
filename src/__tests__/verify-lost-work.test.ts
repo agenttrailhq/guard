@@ -135,6 +135,7 @@ describe("force-deleted branches, against a real repository", () => {
       calls: { ran: 1, mentioned: 0, unknown: 0 },
       deleted: 1,
       notIdentified: 0,
+      failed: 0,
       recoverable: 1,
       onAnotherRef: 0,
       gone: 0,
@@ -212,6 +213,53 @@ describe("force-deleted branches, against a real repository", () => {
     expect(facts.branches.notIdentified).toBe(1);
     expect(result.status).toBe("could-not-check");
   });
+
+  it("a deletion that ended in an error and deleted nothing is failed, not unidentified", async () => {
+    const root = makeRepo("lw-failed");
+    const { facts, result } = await lost([
+      {
+        cwd: root,
+        events: [
+          {
+            kind: "bash",
+            command: BRANCH_D,
+            output: "Exit code 1\nerror: branch 'feature/x' not found",
+            error: true,
+          },
+          {
+            kind: "bash",
+            command: "git stash drop",
+            output: "Exit code 1\nNo stash entries found.",
+            error: true,
+          },
+        ],
+      },
+    ]);
+    expect(facts.branches).toMatchObject({ failed: 1, notIdentified: 0, deleted: 0 });
+    expect(facts.stashes).toMatchObject({ failed: 1, notIdentified: 0, dropped: 0 });
+    expect(result.status).toBe("clean");
+    const card = lostWorkCard(result, TOOL_RESULT);
+    expect(card.found.map((s) => s.template)).toContain("lost-work.failed");
+  });
+
+  it("one call deleting branches in two repos cannot say which id is whose", async () => {
+    const a = deletedBranch("lw-two-a");
+    const b = deletedBranch("lw-two-b");
+    const { facts, result } = await lost([
+      {
+        cwd: a.root,
+        events: [
+          {
+            kind: "bash",
+            command: `${BRANCH_D} && git -C ${b.root} branch -D feature/x`,
+            output: `${a.output}${b.output}`,
+          },
+        ],
+      },
+    ]);
+    expect(facts.branches).toMatchObject({ notIdentified: 1, deleted: 0, recoverable: 0 });
+    expect(result.status).toBe("could-not-check");
+  });
 });
 
 describe("dropped stashes, against a real repository", () => {
@@ -226,6 +274,7 @@ describe("dropped stashes, against a real repository", () => {
       dropped: 1,
       cleared: 0,
       notIdentified: 0,
+      failed: 0,
       recoverable: 1,
       listed: 0,
       gone: 0,
@@ -485,6 +534,7 @@ describe("the card", () => {
         calls: none,
         deleted: 0,
         notIdentified: 0,
+        failed: 0,
         recoverable: 0,
         onAnotherRef: 0,
         gone: 0,
@@ -495,6 +545,7 @@ describe("the card", () => {
         dropped: 0,
         cleared: 0,
         notIdentified: 0,
+        failed: 0,
         recoverable: 0,
         listed: 0,
         gone: 0,

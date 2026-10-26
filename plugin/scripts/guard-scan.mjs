@@ -8005,6 +8005,7 @@ import { dirname, relative as relative2, sep as sep2 } from "path";
 
 // src/core/verify/git-facts.ts
 var RM_TARGET_CLASSES = [
+  "home-or-above",
   "unguarded-variable",
   "guarded-variable",
   "scratch",
@@ -8026,6 +8027,7 @@ var GIT_FACT_KEYS = [
   "noVerify",
   "commits",
   "notIdentified",
+  "failed",
   "withoutHooks",
   "onMain",
   "offMain",
@@ -8033,6 +8035,7 @@ var GIT_FACT_KEYS = [
   "gone",
   "otherNoVerify",
   "husky",
+  "oneCommand",
   "hooksPath",
   "off",
   "on",
@@ -8571,11 +8574,27 @@ var RepoProbe = class {
     }
     return answer;
   }
-  /** Does the repository have any of `names` as a hook file now? */
+  /**
+   * Does the repository have any of `names` as a hook file now? A folder by a hook's name is no
+   * hook. A name that cannot be told about, with no hook found, is a failure, never "none".
+   */
   async hasHooks(root, names) {
     const folder = await this.hooksFolder(root);
     if (isFailure(folder)) return folder;
-    return names.some((name) => this.exists(join3(folder, name)) === true);
+    return this.#anyHook(folder, names);
+  }
+  /** Is any of `names` a hook file in `folder`: yes, no, or a failure when it cannot be told. */
+  #anyHook(folder, names) {
+    let unsure = false;
+    for (const name of names) {
+      const path = join3(folder, name);
+      const there = this.exists(path);
+      if (there === false) continue;
+      const isFolder3 = there === void 0 ? void 0 : this.#io.isDirectory(path);
+      if (isFolder3 === false) return true;
+      if (isFolder3 === void 0) unsure = true;
+    }
+    return unsure ? { failed: "failed" } : false;
   }
   /**
    * The repository's hooks now: `on` when the folder in effect holds one of `names`; `off` when
@@ -8585,7 +8604,9 @@ var RepoProbe = class {
   async hooksState(root, names) {
     const folder = await this.hooksFolder(root);
     if (isFailure(folder)) return folder;
-    if (names.some((name) => this.exists(join3(folder, name)) === true)) return "on";
+    const hook = this.#anyHook(folder, names);
+    if (isFailure(hook)) return hook;
+    if (hook) return "on";
     const common = await this.#io.git(root, ["rev-parse", "--git-common-dir"]);
     if (!common.ok) return { failed: common.reason };
     const dir = common.stdout.trim();
@@ -12302,8 +12323,12 @@ async function classify2(context, target) {
   const { word } = target;
   if (word.expands) return { kind: guarded(word.raw) ? "guarded-variable" : "unguarded-variable" };
   const home = context.log.home;
+  if (word.globAt >= 0 && /(^|\/)\.\.(\/|$)/.test(word.value.slice(word.globAt))) {
+    return { kind: "could-not-check" };
+  }
   const path = resolvePath(target.folder, literalPart(word.value, word.globAt), home);
   if (path === void 0) return { kind: "could-not-check" };
+  if (path === home || path === sep2 || isUnder(home, [path])) return { kind: "home-or-above" };
   if (isUnder(path, context.scratchRoots)) return { kind: "scratch" };
   const byName = namesScratch(path, target.folder);
   let folder = path;
@@ -12631,9 +12656,10 @@ async function checkDestructive(context) {
   const all = addTallies(rm.calls, databases.calls);
   const status = statusOf({
     sessions: log.sessions,
-    act: rm.classes["unguarded-variable"] > 0 || trackedMissing(facts) > 0,
+    act: rm.classes["home-or-above"] + rm.classes["unguarded-variable"] > 0 || trackedMissing(facts) > 0,
     review: rm.classes.untracked + rm.classes.home + rm.classes.other > 0 || databases.classes.other + databases.classes.unresolved > 0,
-    incomplete: rm.couldNotCheck + all.unknown + log.hiding.calls > 0
+    // A target built from guarded variables names a folder this check cannot know.
+    incomplete: rm.couldNotCheck + rm.classes["guarded-variable"] + all.unknown + log.hiding.calls > 0
   });
   return {
     result: { status, matches: calls.size, facts },
@@ -12667,6 +12693,10 @@ var FOUND = [
     id: "destructive.rm",
     render: (f) => f.rm.calls.ran > 0 ? `${counted(f.rm.calls.ran, "rm -rf command")} ran, with ${counted(f.rm.targets, "target")}.` : void 0
   },
+  classLine(
+    "home-or-above",
+    (c) => `${was(c)} the home folder itself, a folder that holds it, or the root, so everything in ${c === 1 ? "it" : "them"} was deleted.`
+  ),
   classLine(
     "unguarded-variable",
     (c) => `${was(c)} built from a variable with no \${VAR:?} guard, so an empty value deletes from the wrong folder.`
@@ -12964,6 +12994,10 @@ var copies = (text, cwd, home) => {
 };
 var DELETED_BRANCH = /^Deleted branch (\S+) \(was ([0-9a-f]{7,64})\)\.?\s*$/gm;
 var DROPPED_STASH = /^Dropped (?:refs\/)?stash@\{\d+\} \(([0-9a-f]{7,64})\)\s*$/gm;
+function failedWithNone(context, call, pattern) {
+  if (context.log.agent === "codex" || call.result?.isError !== true) return false;
+  return [...outputOf(call).matchAll(pattern)].length === 0;
+}
 function reported(judged, pattern, read) {
   const folders = new Set(judged.found.map((f) => f.folder));
   const items = [...outputOf(judged.call).matchAll(pattern)].map(read);
@@ -12974,14 +13008,16 @@ function reported(judged, pattern, read) {
 async function checkBranches(context, judged, fixes) {
   const items = [];
   let notIdentified = 0;
+  let failed = 0;
   for (const j of judged) {
     if (j.found.length === 0) continue;
     const found = reported(j, DELETED_BRANCH, (m) => ({
       name: m[1],
       id: m[2]
     }));
-    if (found === void 0) notIdentified += 1;
-    else items.push(...found);
+    if (found !== void 0) items.push(...found);
+    else if (failedWithNone(context, j.call, DELETED_BRANCH)) failed += 1;
+    else notIdentified += 1;
   }
   let recoverable2 = 0;
   let onAnotherRef = 0;
@@ -13018,6 +13054,7 @@ async function checkBranches(context, judged, fixes) {
     calls: tallyOf(judged),
     deleted: items.length,
     notIdentified,
+    failed,
     recoverable: recoverable2,
     onAnotherRef,
     gone,
@@ -13040,13 +13077,16 @@ async function checkStashes(context, judged, fixes) {
   const items = [];
   let cleared = 0;
   let notIdentified = 0;
+  let failed = 0;
   for (const j of judged) {
     const drops = j.found.filter((f) => !f.clear);
     cleared += j.found.length - drops.length;
     if (drops.length === 0) continue;
     const found = reported({ ...j, found: drops }, DROPPED_STASH, (m) => ({ id: m[1] }));
-    if (found === void 0) notIdentified += 1;
-    else items.push(...found);
+    if (found !== void 0) items.push(...found);
+    else if (drops.length === j.found.length && failedWithNone(context, j.call, DROPPED_STASH)) {
+      failed += 1;
+    } else notIdentified += 1;
   }
   let recoverable2 = 0;
   let listed = 0;
@@ -13086,6 +13126,7 @@ async function checkStashes(context, judged, fixes) {
     dropped: items.length,
     cleared,
     notIdentified,
+    failed,
     recoverable: recoverable2,
     listed,
     gone,
@@ -13205,6 +13246,13 @@ var FOUND2 = [
     render: (f) => {
       const n2 = f.branches.notIdentified + f.stashes.notIdentified;
       return n2 > 0 ? `${counted(n2, "branch or stash deletion", "branch or stash deletions")} ran, but the commit id is not in the recorded output, so it could not be looked up.` : void 0;
+    }
+  },
+  {
+    id: "lost-work.failed",
+    render: (f) => {
+      const n2 = f.branches.failed + f.stashes.failed;
+      return n2 > 0 ? `${counted(n2, "branch or stash deletion", "branch or stash deletions")} ended in an error and reported nothing deleted, so ${n2 === 1 ? "it is" : "they are"} not counted as lost work.` : void 0;
     }
   },
   {
@@ -13786,6 +13834,22 @@ var huskyCommands = (text, cwd, home) => {
   });
   return out;
 };
+var oneCommandSkips = (text, cwd, home) => {
+  const out = [];
+  walkCommands(text, cwd, home, (command, folder) => {
+    const git = gitCommand(command.words);
+    if (git === void 0) return;
+    const start = commandStart(command.words);
+    const skipEnv = start.assignments.some((word) => /^SKIP=\S/.test(word.value));
+    const before = command.words.slice(start.index + 1, command.words.length - git.args.length);
+    const configSkip = before.some(
+      (word, k) => word.value === "-c" && /^core\.hookspath=/i.test(before[k + 1]?.value ?? "")
+    );
+    if (!skipEnv && !configSkip) return;
+    out.push({ folder: git.elsewhere ? void 0 : gitFolder(folder, git.folders, home) });
+  });
+  return out;
+};
 var CONFIG_VALUE_OPTIONS = /* @__PURE__ */ new Set([
   "-f",
   "--file",
@@ -13869,6 +13933,7 @@ var COMMIT_LINE = /^\[[^\]\n]*? ([0-9a-f]{7,64})\] /gm;
 function noVerifyIds(context, judged) {
   const toCheck = [];
   let notIdentified = 0;
+  let failed = 0;
   let noFolder = 0;
   for (const j of judged) {
     if (j.found.length === 0) continue;
@@ -13876,6 +13941,10 @@ function noVerifyIds(context, judged) {
     const folders = new Set(j.found.map((f) => f.folder));
     const [folder] = [...folders];
     const ids = [...outputOf(j.call).matchAll(COMMIT_LINE)].map((m) => m[1]);
+    if (ids.length === 0 && context.log.agent !== "codex" && j.call.result?.isError === true) {
+      failed += 1;
+      continue;
+    }
     if (all.length !== j.found.length || folders.size !== 1 || ids.length === 0) {
       notIdentified += 1;
       continue;
@@ -13886,10 +13955,10 @@ function noVerifyIds(context, judged) {
     }
     for (const id of ids) toCheck.push({ folder, id });
   }
-  return { toCheck, notIdentified, noFolder };
+  return { toCheck, notIdentified, failed, noFolder };
 }
 async function checkCommits(context, judged, fixes) {
-  const { toCheck, notIdentified, noFolder } = noVerifyIds(context, judged);
+  const { toCheck, notIdentified, failed, noFolder } = noVerifyIds(context, judged);
   const probe = context.probe;
   let withoutHooks = 0;
   let onMain = 0;
@@ -13951,6 +14020,7 @@ async function checkCommits(context, judged, fixes) {
     calls: tallyOf(judged),
     commits: toCheck.length,
     notIdentified,
+    failed,
     withoutHooks,
     onMain,
     offMain,
@@ -14071,12 +14141,13 @@ async function checkSkippedChecks(context) {
   const commitCalls = judgeAll(log, /no-verify|commit[^\n]*\s-[A-Za-z]*n/, noVerifyCommits);
   const otherCalls = judgeAll(log, /--no-verify/, otherNoVerify);
   const huskyCalls = judgeAll(log, /HUSKY/, huskyCommands);
+  const oneCommandCalls = judgeAll(log, /SKIP=|hooksPath=/i, oneCommandSkips);
   const configCalls = judgeAll(log, /hooksPath/i, hooksPathChanges);
   const noVerify = await checkCommits(context, commitCalls, fixes);
   const hooksPath = await checkHooksNow(
     context,
     configCalls,
-    [commitCalls, otherCalls, huskyCalls],
+    [commitCalls, otherCalls, huskyCalls, oneCommandCalls],
     fixes
   );
   const instructions = await checkInstructions(context, fixes);
@@ -14084,6 +14155,7 @@ async function checkSkippedChecks(context) {
     noVerify,
     otherNoVerify: tallyOf(otherCalls),
     husky: tallyOf(huskyCalls),
+    oneCommand: tallyOf(oneCommandCalls),
     hooksPath,
     instructions,
     unsafeFixes: fixes.unsafe.length,
@@ -14091,13 +14163,15 @@ async function checkSkippedChecks(context) {
     hidingForms: [...log.hiding.forms]
   };
   const calls = new Set(
-    [...commitCalls, ...otherCalls, ...huskyCalls, ...configCalls].map((j) => j.call.id)
+    [...commitCalls, ...otherCalls, ...huskyCalls, ...oneCommandCalls, ...configCalls].map(
+      (j) => j.call.id
+    )
   );
-  const all = addTallies(noVerify.calls, facts.otherNoVerify, facts.husky, hooksPath.calls);
+  const all = allCalls3(facts);
   const status = statusOf({
     sessions: log.sessions,
     act: noVerify.onMain > 0 || hooksPath.off > 0 || instructions.sayToSkip > 0,
-    review: noVerify.offMain + noVerify.noMainToCheck > 0 || facts.otherNoVerify.ran > 0 || facts.husky.ran > 0,
+    review: noVerify.offMain + noVerify.noMainToCheck > 0 || facts.otherNoVerify.ran > 0 || facts.husky.ran > 0 || facts.oneCommand.ran > 0,
     incomplete: noVerify.notIdentified + noVerify.couldNotCheck + hooksPath.couldNotCheck + instructions.couldNotRead + all.unknown + log.hiding.calls > 0
   });
   return {
@@ -14111,7 +14185,7 @@ function withHooks(f) {
   return n2.onMain + n2.offMain + n2.noMainToCheck + n2.gone;
 }
 function allCalls3(f) {
-  return addTallies(f.noVerify.calls, f.otherNoVerify, f.husky, f.hooksPath.calls);
+  return addTallies(f.noVerify.calls, f.otherNoVerify, f.husky, f.oneCommand, f.hooksPath.calls);
 }
 var HEADLINE3 = {
   id: "skipped-checks.headline",
@@ -14131,12 +14205,20 @@ var FOUND3 = [
     render: (f) => f.noVerify.notIdentified > 0 ? `${counted(f.noVerify.notIdentified, "commit command")} with --no-verify ran, but the commit id is not in the recorded output, so it could not be looked up.` : void 0
   },
   {
+    id: "skipped-checks.no-verify-failed",
+    render: (f) => f.noVerify.failed > 0 ? `${counted(f.noVerify.failed, "commit command")} with --no-verify ended in an error and printed no commit, so no commit is counted.` : void 0
+  },
+  {
     id: "skipped-checks.other-no-verify",
     render: (f) => f.otherNoVerify.ran > 0 ? `${counted(f.otherNoVerify.ran, "push, merge or rebase", "pushes, merges or rebases")} ran with --no-verify.` : void 0
   },
   {
     id: "skipped-checks.husky",
     render: (f) => f.husky.ran > 0 ? `${counted(f.husky.ran, "command")} ran with Husky's hooks turned off for that one command (HUSKY=0).` : void 0
+  },
+  {
+    id: "skipped-checks.one-command",
+    render: (f) => f.oneCommand.ran > 0 ? `${counted(f.oneCommand.ran, "git command")} ran with hooks turned off for that one command (pre-commit's SKIP= or git -c core.hooksPath).` : void 0
   },
   {
     id: "skipped-checks.hooks-path",

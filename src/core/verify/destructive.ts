@@ -5,16 +5,20 @@
  *
  * ── `rm -rf` targets ─────────────────────────────────────────────────────────
  * Each target of a recursive `rm` that ran is put in one class, in this order:
+ *  0. **the home folder or above**: the home folder itself, a folder that holds it, or `/`.
  *  1. **a variable with no guard**: the path is built from a variable or a substitution with no
  *     `${VAR:?}` guard, so an empty value deletes from the wrong folder. One whose every
- *     variable is guarded is not classed further: its value is not known.
+ *     variable is guarded is not classed further: its value is not known, so it keeps the
+ *     check from clean.
  *  2. **scratch**: a temp folder; or build output such as `node_modules`, `dist` or `.cache`
  *     with nothing under it that git tracks (a committed `dist/` that is gone is class 3).
  *  3. **tracked files**: git tracks files under it. Whether they are back is asked of git now.
  *  4. **untracked files in a repo**: inside a repository, with nothing tracked under it.
  *  5. **under the home folder**, outside any repository.
  *  6. **other**: outside the home folder and outside any repository.
- * A glob is classed by the folder before its first wildcard.
+ * A glob is classed by the folder before its first wildcard, and a quoted `*`, `?` or `[` is
+ * part of a name. A `..` after a wildcard cannot be read from the text: could-not-check. The
+ * classes read the path as written: a link is not followed.
  *
  * ── Databases ────────────────────────────────────────────────────────────────
  * A command that drops a database, a schema or a table, truncates one, flushes Redis or resets
@@ -284,8 +288,15 @@ async function classify(context: GitCheckContext, target: RmTarget): Promise<Cla
   const { word } = target;
   if (word.expands) return { kind: guarded(word.raw) ? "guarded-variable" : "unguarded-variable" };
   const home = context.log.home;
+  // A `..` after a wildcard climbs out of a folder the wildcard picks: the target cannot be
+  // read from the text.
+  if (word.globAt >= 0 && /(^|\/)\.\.(\/|$)/.test(word.value.slice(word.globAt))) {
+    return { kind: "could-not-check" };
+  }
   const path = resolvePath(target.folder, literalPart(word.value, word.globAt), home);
   if (path === undefined) return { kind: "could-not-check" };
+  // The home folder itself, a folder that holds it, or the root: everything in it goes.
+  if (path === home || path === sep || isUnder(home, [path])) return { kind: "home-or-above" };
   if (isUnder(path, context.scratchRoots)) return { kind: "scratch" };
   // A build-output name (`dist`, `build`, `node_modules`) counts as scratch only once git has
   // said nothing under it is tracked: a committed `dist/` that is gone is lost work.
@@ -804,11 +815,15 @@ export async function checkDestructive(context: GitCheckContext): Promise<Destru
   const all = addTallies(rm.calls, databases.calls);
   const status = statusOf({
     sessions: log.sessions,
-    act: rm.classes["unguarded-variable"] > 0 || trackedMissing(facts) > 0,
+    act:
+      rm.classes["home-or-above"] + rm.classes["unguarded-variable"] > 0 ||
+      trackedMissing(facts) > 0,
     review:
       rm.classes.untracked + rm.classes.home + rm.classes.other > 0 ||
       databases.classes.other + databases.classes.unresolved > 0,
-    incomplete: rm.couldNotCheck + all.unknown + log.hiding.calls > 0,
+    // A target built from guarded variables names a folder this check cannot know.
+    incomplete:
+      rm.couldNotCheck + rm.classes["guarded-variable"] + all.unknown + log.hiding.calls > 0,
   });
   return {
     result: { status, matches: calls.size, facts },
@@ -863,6 +878,11 @@ const FOUND: readonly T[] = [
         ? `${counted(f.rm.calls.ran, "rm -rf command")} ran, with ${counted(f.rm.targets, "target")}.`
         : undefined,
   },
+  classLine(
+    "home-or-above",
+    (c) =>
+      `${was(c)} the home folder itself, a folder that holds it, or the root, so everything in ${c === 1 ? "it" : "them"} was deleted.`,
+  ),
   classLine(
     "unguarded-variable",
     (c) =>

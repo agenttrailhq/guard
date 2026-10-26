@@ -286,6 +286,32 @@ describe("rm -rf targets, one per class", () => {
     expect(result.status).toBe("review");
   });
 
+  it("the home folder itself, a folder that holds it, or the root: act", async () => {
+    const home = tempFolder("home");
+    const { facts, result } = await destructive(
+      ran(home, "rm -rf ~", "rm -rf ~/*", `rm -rf ${join(home, "..")}`, "rm -rf /"),
+      { home },
+    );
+    expect(facts.rm.classes).toEqual(classes({ "home-or-above": 4 }));
+    expect(result.status).toBe("act");
+    const found = destructiveCard(result, TOOL_RESULT).found.map((s) => s.template);
+    expect(found).toContain("destructive.rm.home-or-above");
+  });
+
+  it("a .. after a wildcard cannot be read from the text: could-not-check", async () => {
+    const root = makeRepo("rm-glob-up");
+    const { facts, result } = await destructive(ran(root, "rm -rf build/*/../../x"));
+    expect(facts.rm.couldNotCheck).toBe(1);
+    expect(result.status).toBe("could-not-check");
+  });
+
+  it("a target built only from guarded variables keeps the card from clean", async () => {
+    const root = makeRepo("rm-guarded-only");
+    const { facts, result } = await destructive(ran(root, `rm -rf "\${TMP_DIR:?}/z"`));
+    expect(facts.rm.classes).toEqual(classes({ "guarded-variable": 1 }));
+    expect(result.status).toBe("could-not-check");
+  });
+
   it("outside the home folder and outside any repo: other", async () => {
     const elsewhere = tempFolder("elsewhere");
     const { facts } = await destructive(

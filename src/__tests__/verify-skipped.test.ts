@@ -1,4 +1,4 @@
-// cspell:words cursorrules
+// cspell:words cursorrules hookspath
 /**
  * Skipped safety checks (`core/verify/skipped.ts`): `--no-verify` commits checked against a real
  * temporary repository, `HUSKY=0`, `core.hooksPath` changes, and instruction files that tell the
@@ -99,6 +99,7 @@ describe("--no-verify commits, against a real repository", () => {
       calls: { ran: 1, mentioned: 0, unknown: 0 },
       commits: 1,
       notIdentified: 0,
+      failed: 0,
       withoutHooks: 0,
       onMain: 1,
       offMain: 0,
@@ -241,6 +242,38 @@ describe("--no-verify commits, against a real repository", () => {
     expect(facts.noVerify.notIdentified).toBe(1);
     expect(result.status).toBe("could-not-check");
   });
+
+  it("a commit that ended in an error and printed no commit made none: failed, not unidentified", async () => {
+    const { root } = noVerifyRepo("nv-failed");
+    const { facts, result } = await skipped([
+      {
+        cwd: root,
+        events: [
+          {
+            kind: "bash",
+            command: COMMIT,
+            output: "Exit code 1\nnothing to commit, working tree clean",
+            error: true,
+          },
+        ],
+      },
+    ]);
+    expect(facts.noVerify.calls.ran).toBe(1);
+    expect(facts.noVerify).toMatchObject({ failed: 1, notIdentified: 0, commits: 0 });
+    expect(result.status).not.toBe("could-not-check");
+    const card = skippedChecksCard(result, TOOL_RESULT);
+    expect(card.found.map((s) => s.template)).toContain("skipped-checks.no-verify-failed");
+  });
+
+  it("a folder by a hook's name is no hook", async () => {
+    const root = makeRepo("nv-hook-folder");
+    const output = commitLine(root, "a.txt", "change a", ["--no-verify"]);
+    mkdirSync(join(root, ".git", "hooks", "pre-commit"), { recursive: true });
+    const { facts } = await skipped([
+      { cwd: root, events: [{ kind: "bash", command: COMMIT, output }] },
+    ]);
+    expect(facts.noVerify.withoutHooks).toBe(1);
+  });
 });
 
 describe("ran, mentioned, unknown", () => {
@@ -347,6 +380,35 @@ describe("other --no-verify, HUSKY=0 and core.hooksPath", () => {
       { cwd: root, events: [{ kind: "bash", command, output: "" }] },
     ]);
     expect(facts.husky.ran).toBe(ran);
+  });
+
+  it.each([
+    ["SKIP=eslint git commit -m x", 1],
+    ["SKIP=eslint,prettier git push", 1],
+    ["git -c core.hooksPath=/dev/null commit -m x", 1],
+    ["git -c core.hookspath=/dev/null push", 1],
+    ["SKIP= git commit -m x", 0],
+    ["SKIP=eslint make build", 0],
+    ["git -c user.name=x commit -m x", 0],
+  ])("%s ran: one-command skip %d", async (command, ran) => {
+    const root = makeRepo("one-command");
+    const { facts, result } = await skipped([
+      { cwd: root, events: [{ kind: "bash", command, output: "" }] },
+    ]);
+    expect(facts.oneCommand.ran).toBe(ran);
+    if (ran > 0) {
+      expect(result.status).not.toBe("clean");
+      const card = skippedChecksCard(result, TOOL_RESULT);
+      expect(card.found.map((s) => s.template)).toContain("skipped-checks.one-command");
+    }
+  });
+
+  it("HUSKY=false turns Husky off too", async () => {
+    const root = makeRepo("husky-false");
+    const { facts } = await skipped([
+      { cwd: root, events: [{ kind: "bash", command: "HUSKY=false git commit -m x", output: "" }] },
+    ]);
+    expect(facts.husky.ran).toBe(1);
   });
 
   it("HUSKY=0 only printed is mentioned", async () => {
@@ -761,6 +823,7 @@ describe("the card", () => {
         calls: none,
         commits: 0,
         notIdentified: 0,
+        failed: 0,
         withoutHooks: 0,
         onMain: 0,
         offMain: 0,
@@ -770,6 +833,7 @@ describe("the card", () => {
       },
       otherNoVerify: none,
       husky: none,
+      oneCommand: none,
       hooksPath: { calls: none, off: 0, on: 0, none: 0, couldNotCheck: 0 },
       instructions: {
         read: 0,

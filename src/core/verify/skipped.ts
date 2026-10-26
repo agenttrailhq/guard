@@ -8,7 +8,8 @@
  *    was skipped; then the commit is looked up, and checked against origin/main and
  *    origin/master. A commit on one of them reached main without its checks.
  *  - Other commands that ran with `--no-verify`: a push, a merge, a rebase.
- *  - `HUSKY=0` on one command: Husky's hooks skipped for that command only.
+ *  - `HUSKY=0` on one command: Husky's hooks skipped for that command only. Pre-commit's
+ *    `SKIP=<hook>` or `git -c core.hooksPath=…` on one `git` command does the same.
  *  - `git config core.hooksPath …` or `--unset core.hooksPath` that ran.
  *  - Hooks now, as opposed to skipped for one command: in every repository where a check was
  *    skipped or `core.hooksPath` changed, are hooks switched off now — `core.hooksPath` points
@@ -74,6 +75,8 @@ export interface NoVerifyFacts {
   readonly commits: number;
   /** Calls that ran with no commit id in their recorded output. */
   readonly notIdentified: number;
+  /** Calls that ended in an error and printed no commit line: no commit was made. */
+  readonly failed: number;
   /** Commits in a repository with no commit hook now: nothing was skipped. */
   readonly withoutHooks: number;
   /** Commits in a repository with a commit hook, on origin/main or origin/master now. */
@@ -132,6 +135,11 @@ export interface SkippedChecksFacts {
   readonly otherNoVerify: RunTally;
   /** Commands run with Husky turned off for that command only. */
   readonly husky: RunTally;
+  /**
+   * `git` commands run with hooks off for that command only by other means: pre-commit's
+   * `SKIP=<hook>`, or `git -c core.hooksPath=…`.
+   */
+  readonly oneCommand: RunTally;
   /** `core.hooksPath` changes, and hooks now where checks were skipped. */
   readonly hooksPath: HooksPathFacts;
   readonly instructions: InstructionFacts;
@@ -287,6 +295,28 @@ const huskyCommands: Detector<GitFound> = (text, cwd, home) => {
   return out;
 };
 
+/**
+ * A `git` command run with its hooks off for that command only, other than with Husky:
+ * pre-commit's `SKIP=<hook>` before it, or `git -c core.hooksPath=…`.
+ */
+const oneCommandSkips: Detector<GitFound> = (text, cwd, home) => {
+  const out: GitFound[] = [];
+  walkCommands(text, cwd, home, (command, folder) => {
+    const git = gitCommand(command.words);
+    if (git === undefined) return;
+    const start = commandStart(command.words);
+    const skipEnv = start.assignments.some((word) => /^SKIP=\S/.test(word.value));
+    // `-c` options come between `git` and its subcommand.
+    const before = command.words.slice(start.index + 1, command.words.length - git.args.length);
+    const configSkip = before.some(
+      (word, k) => word.value === "-c" && /^core\.hookspath=/i.test(before[k + 1]?.value ?? ""),
+    );
+    if (!skipEnv && !configSkip) return;
+    out.push({ folder: git.elsewhere ? undefined : gitFolder(folder, git.folders, home) });
+  });
+  return out;
+};
+
 /** `git config` options that take the next word as their value. */
 const CONFIG_VALUE_OPTIONS: ReadonlySet<string> = new Set([
   "-f",
@@ -429,9 +459,10 @@ const COMMIT_LINE = /^\[[^\]\n]*? ([0-9a-f]{7,64})\] /gm;
 function noVerifyIds(
   context: GitCheckContext,
   judged: readonly Judged<GitFound>[],
-): { toCheck: CommitToCheck[]; notIdentified: number; noFolder: number } {
+): { toCheck: CommitToCheck[]; notIdentified: number; failed: number; noFolder: number } {
   const toCheck: CommitToCheck[] = [];
   let notIdentified = 0;
+  let failed = 0;
   let noFolder = 0;
   for (const j of judged) {
     if (j.found.length === 0) continue;
@@ -439,6 +470,12 @@ function noVerifyIds(
     const folders = new Set(j.found.map((f) => f.folder));
     const [folder] = [...folders];
     const ids = [...outputOf(j.call).matchAll(COMMIT_LINE)].map((m) => m[1] as string);
+    // A call that ended in an error and printed no commit line made no commit. Codex keeps no
+    // output text, so its calls are never read this way.
+    if (ids.length === 0 && context.log.agent !== "codex" && j.call.result?.isError === true) {
+      failed += 1;
+      continue;
+    }
     // The ids can be put to the right commit only when every commit in the call skipped its
     // hooks, in one folder.
     if (all.length !== j.found.length || folders.size !== 1 || ids.length === 0) {
@@ -451,7 +488,7 @@ function noVerifyIds(
     }
     for (const id of ids) toCheck.push({ folder, id });
   }
-  return { toCheck, notIdentified, noFolder };
+  return { toCheck, notIdentified, failed, noFolder };
 }
 
 /** Look up each `--no-verify` commit. */
@@ -460,7 +497,7 @@ async function checkCommits(
   judged: readonly Judged<GitFound>[],
   fixes: FixList,
 ): Promise<NoVerifyFacts> {
-  const { toCheck, notIdentified, noFolder } = noVerifyIds(context, judged);
+  const { toCheck, notIdentified, failed, noFolder } = noVerifyIds(context, judged);
   const probe = context.probe;
   let withoutHooks = 0;
   let onMain = 0;
@@ -524,6 +561,7 @@ async function checkCommits(
     calls: tallyOf(judged),
     commits: toCheck.length,
     notIdentified,
+    failed,
     withoutHooks,
     onMain,
     offMain,
@@ -681,13 +719,14 @@ export async function checkSkippedChecks(context: GitCheckContext): Promise<Skip
   const commitCalls = judgeAll(log, /no-verify|commit[^\n]*\s-[A-Za-z]*n/, noVerifyCommits);
   const otherCalls = judgeAll(log, /--no-verify/, otherNoVerify);
   const huskyCalls = judgeAll(log, /HUSKY/, huskyCommands);
+  const oneCommandCalls = judgeAll(log, /SKIP=|hooksPath=/i, oneCommandSkips);
   const configCalls = judgeAll(log, /hooksPath/i, hooksPathChanges);
 
   const noVerify = await checkCommits(context, commitCalls, fixes);
   const hooksPath = await checkHooksNow(
     context,
     configCalls,
-    [commitCalls, otherCalls, huskyCalls],
+    [commitCalls, otherCalls, huskyCalls, oneCommandCalls],
     fixes,
   );
   const instructions = await checkInstructions(context, fixes);
@@ -695,6 +734,7 @@ export async function checkSkippedChecks(context: GitCheckContext): Promise<Skip
     noVerify,
     otherNoVerify: tallyOf(otherCalls),
     husky: tallyOf(huskyCalls),
+    oneCommand: tallyOf(oneCommandCalls),
     hooksPath,
     instructions,
     unsafeFixes: fixes.unsafe.length,
@@ -703,16 +743,19 @@ export async function checkSkippedChecks(context: GitCheckContext): Promise<Skip
   };
 
   const calls = new Set(
-    [...commitCalls, ...otherCalls, ...huskyCalls, ...configCalls].map((j) => j.call.id),
+    [...commitCalls, ...otherCalls, ...huskyCalls, ...oneCommandCalls, ...configCalls].map(
+      (j) => j.call.id,
+    ),
   );
-  const all = addTallies(noVerify.calls, facts.otherNoVerify, facts.husky, hooksPath.calls);
+  const all = allCalls(facts);
   const status = statusOf({
     sessions: log.sessions,
     act: noVerify.onMain > 0 || hooksPath.off > 0 || instructions.sayToSkip > 0,
     review:
       noVerify.offMain + noVerify.noMainToCheck > 0 ||
       facts.otherNoVerify.ran > 0 ||
-      facts.husky.ran > 0,
+      facts.husky.ran > 0 ||
+      facts.oneCommand.ran > 0,
     incomplete:
       noVerify.notIdentified +
         noVerify.couldNotCheck +
@@ -741,7 +784,7 @@ function withHooks(f: SkippedChecksFacts): number {
 
 /** Every call the card counts, by state. */
 function allCalls(f: SkippedChecksFacts): RunTally {
-  return addTallies(f.noVerify.calls, f.otherNoVerify, f.husky, f.hooksPath.calls);
+  return addTallies(f.noVerify.calls, f.otherNoVerify, f.husky, f.oneCommand, f.hooksPath.calls);
 }
 
 const HEADLINE: T = {
@@ -775,6 +818,13 @@ const FOUND: readonly T[] = [
         : undefined,
   },
   {
+    id: "skipped-checks.no-verify-failed",
+    render: (f) =>
+      f.noVerify.failed > 0
+        ? `${counted(f.noVerify.failed, "commit command")} with --no-verify ended in an error and printed no commit, so no commit is counted.`
+        : undefined,
+  },
+  {
     id: "skipped-checks.other-no-verify",
     render: (f) =>
       f.otherNoVerify.ran > 0
@@ -786,6 +836,13 @@ const FOUND: readonly T[] = [
     render: (f) =>
       f.husky.ran > 0
         ? `${counted(f.husky.ran, "command")} ran with Husky's hooks turned off for that one command (HUSKY=0).`
+        : undefined,
+  },
+  {
+    id: "skipped-checks.one-command",
+    render: (f) =>
+      f.oneCommand.ran > 0
+        ? `${counted(f.oneCommand.ran, "git command")} ran with hooks turned off for that one command (pre-commit's SKIP= or git -c core.hooksPath).`
         : undefined,
   },
   {

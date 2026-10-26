@@ -58,6 +58,7 @@ import {
   judgeAll,
   outputOf,
   resolvePath,
+  type ShellCall,
   tallyOf,
   walkCommands,
 } from "./shell-calls.js";
@@ -71,6 +72,8 @@ export interface BranchFacts {
   readonly deleted: number;
   /** Calls that ran with no deleted branch in their recorded output. */
   readonly notIdentified: number;
+  /** Calls that ended in an error and reported no deleted branch: nothing was deleted. */
+  readonly failed: number;
   /** Still in the object store and on no branch or tag: recoverable by its id. */
   readonly recoverable: number;
   /** Still on another branch, remote-tracking branch or tag: nothing is lost. */
@@ -89,6 +92,8 @@ export interface StashFacts {
   readonly cleared: number;
   /** `git stash drop` calls that ran with no dropped stash in their recorded output. */
   readonly notIdentified: number;
+  /** `git stash drop` calls that ended in an error and reported no drop: nothing was dropped. */
+  readonly failed: number;
   /** Still in the object store and not in the stash list: recoverable by its id. */
   readonly recoverable: number;
   /** Back in the stash list. */
@@ -370,6 +375,15 @@ interface Deleted {
   readonly name?: string;
 }
 
+/**
+ * Did a call that ran end in an error, with its output recorded and reporting no item? Then
+ * nothing was deleted or dropped. Codex keeps no output text, so a Codex call never qualifies.
+ */
+function failedWithNone(context: GitCheckContext, call: ShellCall, pattern: RegExp): boolean {
+  if (context.log.agent === "codex" || call.result?.isError !== true) return false;
+  return [...outputOf(call).matchAll(pattern)].length === 0;
+}
+
 /** The deleted items a call's output reports, when they can be put to one folder. */
 function reported(
   judged: Judged<GitFound>,
@@ -391,14 +405,16 @@ async function checkBranches(
 ): Promise<BranchFacts> {
   const items: Deleted[] = [];
   let notIdentified = 0;
+  let failed = 0;
   for (const j of judged) {
     if (j.found.length === 0) continue;
     const found = reported(j, DELETED_BRANCH, (m) => ({
       name: m[1] as string,
       id: m[2] as string,
     }));
-    if (found === undefined) notIdentified += 1;
-    else items.push(...found);
+    if (found !== undefined) items.push(...found);
+    else if (failedWithNone(context, j.call, DELETED_BRANCH)) failed += 1;
+    else notIdentified += 1;
   }
   let recoverable = 0;
   let onAnotherRef = 0;
@@ -435,6 +451,7 @@ async function checkBranches(
     calls: tallyOf(judged),
     deleted: items.length,
     notIdentified,
+    failed,
     recoverable,
     onAnotherRef,
     gone,
@@ -473,13 +490,16 @@ async function checkStashes(
   const items: Deleted[] = [];
   let cleared = 0;
   let notIdentified = 0;
+  let failed = 0;
   for (const j of judged) {
     const drops = j.found.filter((f) => !f.clear);
     cleared += j.found.length - drops.length;
     if (drops.length === 0) continue;
     const found = reported({ ...j, found: drops }, DROPPED_STASH, (m) => ({ id: m[1] as string }));
-    if (found === undefined) notIdentified += 1;
-    else items.push(...found);
+    if (found !== undefined) items.push(...found);
+    else if (drops.length === j.found.length && failedWithNone(context, j.call, DROPPED_STASH)) {
+      failed += 1;
+    } else notIdentified += 1;
   }
   let recoverable = 0;
   let listed = 0;
@@ -519,6 +539,7 @@ async function checkStashes(
     dropped: items.length,
     cleared,
     notIdentified,
+    failed,
     recoverable,
     listed,
     gone,
@@ -690,6 +711,15 @@ const FOUND: readonly T[] = [
       const n = f.branches.notIdentified + f.stashes.notIdentified;
       return n > 0
         ? `${counted(n, "branch or stash deletion", "branch or stash deletions")} ran, but the commit id is not in the recorded output, so it could not be looked up.`
+        : undefined;
+    },
+  },
+  {
+    id: "lost-work.failed",
+    render: (f) => {
+      const n = f.branches.failed + f.stashes.failed;
+      return n > 0
+        ? `${counted(n, "branch or stash deletion", "branch or stash deletions")} ended in an error and reported nothing deleted, so ${n === 1 ? "it is" : "they are"} not counted as lost work.`
         : undefined;
     },
   },

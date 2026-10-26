@@ -8,6 +8,7 @@
 
 /** The classes of an `rm -rf` target. See `destructive.ts`. */
 export const RM_TARGET_CLASSES = [
+  "home-or-above",
   "unguarded-variable",
   "guarded-variable",
   "scratch",
@@ -35,6 +36,7 @@ export const GIT_FACT_KEYS: readonly string[] = [
   "noVerify",
   "commits",
   "notIdentified",
+  "failed",
   "withoutHooks",
   "onMain",
   "offMain",
@@ -42,6 +44,7 @@ export const GIT_FACT_KEYS: readonly string[] = [
   "gone",
   "otherNoVerify",
   "husky",
+  "oneCommand",
   "hooksPath",
   "off",
   "on",

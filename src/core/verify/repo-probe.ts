@@ -129,11 +129,28 @@ export class RepoProbe {
     return answer;
   }
 
-  /** Does the repository have any of `names` as a hook file now? */
+  /**
+   * Does the repository have any of `names` as a hook file now? A folder by a hook's name is no
+   * hook. A name that cannot be told about, with no hook found, is a failure, never "none".
+   */
   async hasHooks(root: string, names: readonly string[]): Promise<boolean | Failure> {
     const folder = await this.hooksFolder(root);
     if (isFailure(folder)) return folder;
-    return names.some((name) => this.exists(join(folder, name)) === true);
+    return this.#anyHook(folder, names);
+  }
+
+  /** Is any of `names` a hook file in `folder`: yes, no, or a failure when it cannot be told. */
+  #anyHook(folder: string, names: readonly string[]): boolean | Failure {
+    let unsure = false;
+    for (const name of names) {
+      const path = join(folder, name);
+      const there = this.exists(path);
+      if (there === false) continue;
+      const isFolder = there === undefined ? undefined : this.#io.isDirectory(path);
+      if (isFolder === false) return true;
+      if (isFolder === undefined) unsure = true;
+    }
+    return unsure ? { failed: "failed" } : false;
   }
 
   /**
@@ -144,7 +161,9 @@ export class RepoProbe {
   async hooksState(root: string, names: readonly string[]): Promise<HooksState | Failure> {
     const folder = await this.hooksFolder(root);
     if (isFailure(folder)) return folder;
-    if (names.some((name) => this.exists(join(folder, name)) === true)) return "on";
+    const hook = this.#anyHook(folder, names);
+    if (isFailure(hook)) return hook;
+    if (hook) return "on";
     const common = await this.#io.git(root, ["rev-parse", "--git-common-dir"]);
     if (!common.ok) return { failed: common.reason };
     const dir = common.stdout.trim();
