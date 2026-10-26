@@ -191,8 +191,11 @@ export const COULD_NOT_CHECK_SENTENCE: SentenceTemplate<unknown> = {
   render: () => "Could not be checked on this machine, so this is not a clean result.",
 };
 
-/** How the page names each hiding form. */
-export const HIDING_FORM_LABELS: Readonly<Record<HidingForm, string>> = {
+/**
+ * How the page names a hiding form. Any form without a label here is named from its id, so a
+ * form added to `HIDING_FORMS` is still said, never dropped.
+ */
+export const HIDING_FORM_LABELS: Readonly<Partial<Record<string, string>>> = {
   "shell-string": "a shell given a string to run",
   "find-exec": "find -exec",
   xargs: "xargs",
@@ -207,13 +210,18 @@ export const HIDING_FORM_LABELS: Readonly<Record<HidingForm, string>> = {
   "piped-script": "a script piped into a shell",
 };
 
+/** A hiding form's name on the page: its label, or its id in words. */
+export function hidingFormLabel(form: string): string {
+  return HIDING_FORM_LABELS[form] ?? form.replace(/-/g, " ");
+}
+
 /** The first line of a card that could not confirm what it reports. */
 export const UNCONFIRMED_SENTENCE: SentenceTemplate<Unconfirmed> = {
   id: "could-not-confirm",
   render: (u) =>
     u.reason === "no-output"
       ? "Could not confirm: these sessions record no command output, so a count of commands that ran is zero because nothing could be confirmed, not because nothing ran."
-      : `Could not confirm: commands that ran here used ${u.forms.map((form) => HIDING_FORM_LABELS[form]).join(", ")}, which can run commands this reading does not take apart, so this is not a clean result.`,
+      : `Could not confirm: commands that ran here used ${u.forms.map(hidingFormLabel).join(", ")}, which can run commands this reading does not take apart, so this is not a clean result.`,
 };
 
 /** The card for a category with no check yet. */

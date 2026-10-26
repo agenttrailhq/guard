@@ -8119,9 +8119,12 @@ var HIDING_FORM_LABELS = {
   "inline-code": "code run inline by an interpreter",
   "piped-script": "a script piped into a shell"
 };
+function hidingFormLabel(form) {
+  return HIDING_FORM_LABELS[form] ?? form.replace(/-/g, " ");
+}
 var UNCONFIRMED_SENTENCE = {
   id: "could-not-confirm",
-  render: (u) => u.reason === "no-output" ? "Could not confirm: these sessions record no command output, so a count of commands that ran is zero because nothing could be confirmed, not because nothing ran." : `Could not confirm: commands that ran here used ${u.forms.map((form) => HIDING_FORM_LABELS[form]).join(", ")}, which can run commands this reading does not take apart, so this is not a clean result.`
+  render: (u) => u.reason === "no-output" ? "Could not confirm: these sessions record no command output, so a count of commands that ran is zero because nothing could be confirmed, not because nothing ran." : `Could not confirm: commands that ran here used ${u.forms.map(hidingFormLabel).join(", ")}, which can run commands this reading does not take apart, so this is not a clean result.`
 };
 function notCheckedCard(category) {
   return {

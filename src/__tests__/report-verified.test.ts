@@ -19,7 +19,7 @@ import {
 import { REPORT_STYLES } from "../core/report-brand.js";
 import { REPORT_SCRIPT } from "../core/report-script.js";
 import { CARD_BUILDERS } from "../core/verify/builders.js";
-import { TONE_ORDER } from "../core/verify/cards.js";
+import { hidingFormLabel, TONE_ORDER, UNCONFIRMED_SENTENCE } from "../core/verify/cards.js";
 import {
   CATEGORY_TITLES,
   CHIP_CANDIDATES,
@@ -29,6 +29,7 @@ import {
   TONE_LABELS,
 } from "../core/verify/copy.js";
 import {
+  HIDING_FORMS,
   SECRET_KINDS,
   VERIFY_CATEGORIES,
   type Verification,
@@ -643,5 +644,16 @@ describe("a card never reads clean, or shows a zero, where nothing could be conf
     const lines = [...secrets.matchAll(/data-template="([^"]+)"/g)].map((m) => m[1]);
     expect(lines[1]).toBe("could-not-check");
     expect(secrets).toContain("2 transcript files could not be read.");
+  });
+});
+
+describe("every hiding form is named, whatever forms there are", () => {
+  it("each registered form has words, and a form with no label is named from its id", () => {
+    for (const form of HIDING_FORMS) {
+      const text = UNCONFIRMED_SENTENCE.render({ reason: "hiding-forms", forms: [form] }) ?? "";
+      expect(text, form).toContain(hidingFormLabel(form));
+      expect(hidingFormLabel(form).length).toBeGreaterThan(2);
+    }
+    expect(hidingFormLabel("some-new-form")).toBe("some new form");
   });
 });
