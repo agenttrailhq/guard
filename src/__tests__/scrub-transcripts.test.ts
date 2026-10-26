@@ -121,6 +121,34 @@ describe("replacing values", () => {
     expect(plan.text).not.toContain("Cd9Ef8Gh7");
   });
 
+  it("leaves a valid line as it was when the edit would stop it parsing", () => {
+    // The raw text `41zQ9…` starts inside `A`: replacing it would cut the escape in two.
+    const value = `41${"zQ9mK2pL7wX3"}`;
+    const line = `{"a":"\\u0041${value.slice(2)}","b":"ok"}`;
+    expect(() => JSON.parse(line)).not.toThrow();
+    const text = `${line}\n`;
+    const plan = planFileScrub(text, [{ value, kind: "named-secret" }]);
+    expect(plan.changed).toBe(false);
+    expect(plan.text).toBe(text);
+    expect(plan.linesChanged).toBe(0);
+    expect(plan.linesLeft).toBe(1);
+  });
+
+  it("matches a value right after an escaped backslash, and not after an escaping one", () => {
+    const value = `n${"8Hq2Lx7Vz3Kp"}`;
+    // `\\` is one escaped backslash: the value after it starts a token, so it is replaced.
+    const afterEscaped = `{"a":"x\\\\${value}"}\n`;
+    const replaced = planFileScrub(afterEscaped, [{ value, kind: "api-key" }]);
+    expect(replaced.total).toBe(1);
+    expect(JSON.parse(replaced.text.trim()).a).toBe(`x\\${scrubPlaceholder("api-key")}`);
+    // `\\\n…` is an escaped backslash then `\n`: the `n` belongs to an escape, so no match.
+    const afterEscaping = `{"a":"x\\\\\\${value}"}\n`;
+    expect(JSON.parse(afterEscaping.trim()).a).toBe(`x\\\n${value.slice(1)}`);
+    const left = planFileScrub(afterEscaping, [{ value, kind: "api-key" }]);
+    expect(left.changed).toBe(false);
+    expect(left.linesLeft).toBe(0);
+  });
+
   it("does not start a match inside an escape sequence", () => {
     // `\n` followed by the rest of the value: the `n` belongs to the escape.
     const value = `n${"8Hq2Lx7Vz3Kp"}`;

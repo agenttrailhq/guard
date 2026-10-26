@@ -135,6 +135,33 @@ describe("replaceFile", () => {
     expect(temps(path)).toEqual([]);
   });
 
+  it.each([0o666, 0o664, 0o600, 0o444])("keeps a mode of %o, whatever the umask", (mode) => {
+    if (!POSIX) return;
+    const { path, stat, sha } = fileWith('{"a":"old"}\n', mode);
+    expect(stat.mode).toBe(mode);
+    const result = createRealScrubIO().replaceFile(path, Buffer.from("new\n"), {
+      stat,
+      sha256: sha,
+    });
+    expect(result).toEqual({ ok: true });
+    expect(statSync(path).mode & 0o777).toBe(mode);
+  });
+
+  it("creates the temporary file exclusively, so an existing file is never written into", () => {
+    const { path, stat, sha } = fileWith('{"a":"old"}\n');
+    const flags: (string | number)[] = [];
+    const io = createRealScrubIO({
+      fs: {
+        openSync: (p, f, m) => {
+          if (p.endsWith(".scrub-tmp")) flags.push(f);
+          return openSync(p, f, m);
+        },
+      },
+    });
+    expect(io.replaceFile(path, Buffer.from("new\n"), { stat, sha256: sha })).toEqual({ ok: true });
+    expect(flags).toEqual(["wx"]);
+  });
+
   it("refuses a file that grew since it was read", () => {
     const { path, stat, sha } = fileWith('{"a":"old"}\n');
     writeFileSync(path, '{"b":"appended"}\n', { flag: "a" });

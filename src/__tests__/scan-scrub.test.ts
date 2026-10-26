@@ -1503,6 +1503,8 @@ const UNSAFE_CHARS = [
   "\u202e",
   "\u2066",
   "\u200f",
+  "\u200e",
+  "\u061c",
 ];
 
 describe("restore commands with hostile names", () => {
