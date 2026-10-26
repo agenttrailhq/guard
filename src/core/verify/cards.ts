@@ -321,7 +321,11 @@ export interface LocalFix {
 export const LOCAL_FIX_SERIALIZED =
   "a local fix command belongs in the local fixes file only, and is never serialized";
 
-/** An exact fix command for the local fixes file. */
+/**
+ * An exact fix command for the local fixes file, as written. Only for a command with no data in
+ * it; a command that holds a branch, a sha or a path is built with `localFixCommand`, which
+ * quotes it and refuses an unsafe ref.
+ */
 export function localFix(category: VerifyCategory, command: string): LocalFix {
   return Object.freeze({
     [LOCAL_ONLY]: true as const,
@@ -331,6 +335,51 @@ export function localFix(category: VerifyCategory, command: string): LocalFix {
       throw new Error(LOCAL_FIX_SERIALIZED);
     },
   });
+}
+
+/**
+ * One part of an exact command: a literal from code (`"git"`, `"branch"`), or a `ref` taken
+ * from what a check read — a branch name, a sha, a path.
+ */
+export type CommandPart = string | { readonly ref: string };
+
+/** The characters a ref may hold: no shell syntax, no space, no quote. */
+const SAFE_REF = /^[A-Za-z0-9_@%+=:,./-]+$/;
+
+/** What a fix becomes when a ref in it could not be made safe. It carries no command text. */
+export interface UnsafeFix {
+  readonly category: VerifyCategory;
+  readonly unsafe: true;
+  readonly note: "could not make a safe command";
+}
+
+/** Quote one argument for a POSIX shell. */
+function quoteArgument(argument: string): string {
+  return `'${argument.replace(/'/g, "'\\''")}'`;
+}
+
+/**
+ * An exact command for the local fixes file, built from parts, every one of them quoted. A ref
+ * outside the safe set, empty, or starting with `-` (it would read as an option) makes the whole
+ * fix an `UnsafeFix` instead: the command is not written at all, and the file says it could
+ * not make a safe command. Every fix command built from data goes through here.
+ */
+export function localFixCommand(
+  category: VerifyCategory,
+  parts: readonly CommandPart[],
+): LocalFix | UnsafeFix {
+  const argv: string[] = [];
+  for (const part of parts) {
+    if (typeof part === "string") {
+      argv.push(quoteArgument(part));
+      continue;
+    }
+    if (!SAFE_REF.test(part.ref) || part.ref.startsWith("-")) {
+      return { category, unsafe: true, note: "could not make a safe command" };
+    }
+    argv.push(quoteArgument(part.ref));
+  }
+  return localFix(category, argv.join(" "));
 }
 
 /** Is `value` a `LocalFix`? */
