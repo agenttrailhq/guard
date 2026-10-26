@@ -959,7 +959,9 @@ export async function runScan(
   const catalog = compileCatalog([...shipped, ...userRules], config);
   const allowlist = compileAllowlist(config.allowlist);
 
-  const corpus: ScanCorpus = await readCorpusFor(agent, root, io);
+  // `--scrub` writes paths into its manifest and restore commands, so they must be absolute.
+  const readRoot = flags.scrub ? resolve(io.cwd(), root) : root;
+  const corpus: ScanCorpus = await readCorpusFor(agent, readRoot, io);
   if (flags.scrub) {
     const scrubIO = deps.createScrubIO?.();
     if (scrubIO === undefined) {
@@ -968,7 +970,7 @@ export async function runScan(
     }
     return await runScrub({
       agent,
-      root,
+      root: readRoot,
       corpus,
       apply: flags.apply,
       io,

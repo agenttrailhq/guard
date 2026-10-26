@@ -14534,7 +14534,7 @@ function restoreCommand(platform, backup, original) {
   if (platform === "win32") {
     return `Copy-Item -LiteralPath ${powershellQuote(backup)} -Destination ${powershellQuote(original)} -Force`;
   }
-  return `cp -p ${shellQuote(backup)} ${shellQuote(original)}`;
+  return `cp -p -- ${shellQuote(backup)} ${shellQuote(original)}`;
 }
 function skipText(reason, code2) {
   switch (reason) {
@@ -15519,7 +15519,8 @@ ${SCAN_USAGE}`);
   const shipped = deps.catalog ?? SHIPPED_CATALOG;
   const catalog = compileCatalog([...shipped, ...userRules], config);
   const allowlist = compileAllowlist(config.allowlist);
-  const corpus = await readCorpusFor(agent, root, io);
+  const readRoot = flags.scrub ? resolve(io.cwd(), root) : root;
+  const corpus = await readCorpusFor(agent, readRoot, io);
   if (flags.scrub) {
     const scrubIO = deps.createScrubIO?.();
     if (scrubIO === void 0) {
@@ -15528,7 +15529,7 @@ ${SCAN_USAGE}`);
     }
     return await runScrub({
       agent,
-      root,
+      root: readRoot,
       corpus,
       apply: flags.apply,
       io,

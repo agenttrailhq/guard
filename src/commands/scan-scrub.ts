@@ -195,7 +195,8 @@ export function restoreCommand(
   if (platform === "win32") {
     return `Copy-Item -LiteralPath ${powershellQuote(backup)} -Destination ${powershellQuote(original)} -Force`;
   }
-  return `cp -p ${shellQuote(backup)} ${shellQuote(original)}`;
+  // `--` ends the options, so a path starting with `-` is never read as one.
+  return `cp -p -- ${shellQuote(backup)} ${shellQuote(original)}`;
 }
 
 /** Why a file was not scrubbed. */

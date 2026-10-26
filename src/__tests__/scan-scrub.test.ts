@@ -230,7 +230,7 @@ async function scan(
   s: Setup,
   agent: AgentSource,
   argv: readonly string[],
-  deps: { verify?: VerifyIO; scrub?: ScrubIO | null } = {},
+  deps: { verify?: VerifyIO; scrub?: ScrubIO | null; cwd?: string } = {},
 ): Promise<Run> {
   const real = createRealScanIO();
   const out: string[] = [];
@@ -242,7 +242,7 @@ async function scan(
   const io: ScanIO = {
     ...real,
     homedir: () => s.home,
-    cwd: () => s.home,
+    cwd: () => deps.cwd ?? s.home,
     writeStdout: (text) => {
       out.push(text);
     },
@@ -410,7 +410,7 @@ describe("--apply", () => {
     const command = run.stdout
       .split("\n")
       .map((l) => l.trim())
-      .find((l) => l.startsWith("cp -p ") && l.endsWith(`'${s.files[0]}'`));
+      .find((l) => l.startsWith("cp -p -- ") && l.endsWith(`'${s.files[0]}'`));
     expect(command).toBeDefined();
     expect(readFileSync(s.files[0] as string).equals(original)).toBe(false);
     execFileSync("/bin/sh", ["-c", command as string]);
@@ -952,6 +952,42 @@ describe("a file holding a likely-real value that is not scrubbed fails the run"
   });
 });
 
+describe("a relative --dir", () => {
+  it("gives absolute paths in the manifest and restore commands, which work from anywhere", async () => {
+    if (process.platform === "win32") return;
+    const s = await setup("claude");
+    const original = readFileSync(s.files[0] as string);
+    // Run from inside the sessions folder with `--dir .`: every project folder starts with `-`.
+    const run = await scan(s, "claude", ["--dir", ".", "--scrub", "--apply"], { cwd: s.root });
+    expect(run.code).toBe(0);
+    expect(run.stdout).toContain(`Scrub: Claude Code transcripts in ${s.root}`);
+    const dir = backupFolders(s.home)[0] as string;
+    const manifest = JSON.parse(readFileSync(join(dir, "manifest.json"), "utf8"));
+    for (const entry of manifest.files) {
+      expect(entry.original.startsWith("/")).toBe(true);
+      expect(entry.backup.startsWith("/")).toBe(true);
+    }
+    const restore = readFileSync(join(dir, "restore.txt"), "utf8").trim().split("\n");
+    for (const line of restore) expect(line).toMatch(/^cp -p -- '\/[^']+' '\/[^']+'$/);
+    const elsewhere = mkdtempSync(join(tmpdir(), "agenttrail-restore-elsewhere-"));
+    execFileSync("/bin/sh", [join(dir, "restore.txt")], { cwd: elsewhere });
+    expect(readFileSync(s.files[0] as string).equals(original)).toBe(true);
+    expect(readdirSync(elsewhere)).toEqual([]);
+  });
+
+  it("a destination starting with - is not read as an option", () => {
+    if (process.platform === "win32") return;
+    const dir = mkdtempSync(join(tmpdir(), "agenttrail-restore-dash-"));
+    const backup = join(dir, "1-x.jsonl");
+    writeFileSync(backup, "original\n");
+    writeFileSync(join(dir, "-x.jsonl"), "scrubbed\n");
+    const command = restoreCommand("linux", backup, "-x.jsonl") as string;
+    expect(command).toBe(`cp -p -- '${backup}' '-x.jsonl'`);
+    execFileSync("/bin/sh", ["-c", command], { cwd: dir });
+    expect(readFileSync(join(dir, "-x.jsonl"), "utf8")).toBe("original\n");
+  });
+});
+
 describe("linked transcripts are never replaced", () => {
   it("a symbolic link: left as a link, its target untouched, named, exit 1", async () => {
     if (process.platform === "win32") return;
@@ -1125,7 +1161,7 @@ describe("what the run reports", () => {
     const s = await setup("claude", sessions);
     const run = await direct(s);
     expect(run.code).toBe(0);
-    expect(run.stdout.split("\n").filter((l) => l.startsWith("  cp -p "))).toHaveLength(10);
+    expect(run.stdout.split("\n").filter((l) => l.startsWith("  cp -p -- "))).toHaveLength(10);
     expect(run.stdout).toContain("  and 1 more");
     const dir = backupFolders(s.home)[0] as string;
     expect(readFileSync(join(dir, "restore.txt"), "utf8").trim().split("\n")).toHaveLength(11);
@@ -1403,7 +1439,7 @@ describe("paths and commands", () => {
 
   it("quotes restore commands for a POSIX shell and for PowerShell", () => {
     expect(restoreCommand("linux", "/b/it's.jsonl", "/t/a b.jsonl")).toBe(
-      `cp -p '/b/it'\\''s.jsonl' '/t/a b.jsonl'`,
+      `cp -p -- '/b/it'\\''s.jsonl' '/t/a b.jsonl'`,
     );
     expect(restoreCommand("win32", "C:\\b\\it's.jsonl", "C:\\t\\a.jsonl")).toBe(
       "Copy-Item -LiteralPath 'C:\\b\\it''s.jsonl' -Destination 'C:\\t\\a.jsonl' -Force",
@@ -1513,7 +1549,7 @@ describe("restore commands with hostile names", () => {
     for (const name of names) expect(name).toMatch(/^[0-9]+-[A-Za-z0-9._-]+$/);
     const restore = readFileSync(join(dir, "restore.txt"), "utf8");
     expect(isSafePath(restore.replaceAll("\n", ""))).toBe(true);
-    expect(restore.split("\n").filter((l) => l.startsWith("cp -p "))).toHaveLength(1);
+    expect(restore.split("\n").filter((l) => l.startsWith("cp -p -- "))).toHaveLength(1);
 
     const work = mkdtempSync(join(tmpdir(), "agenttrail-restore-work-"));
     execFileSync("/bin/sh", [join(dir, "restore.txt")], { cwd: work });
