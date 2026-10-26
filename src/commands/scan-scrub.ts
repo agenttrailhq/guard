@@ -236,6 +236,9 @@ function skipText(reason: SkipReason, code?: string): string {
   }
 }
 
+/** Added to a skipped file's line when the secrets check found a likely-real value in it. */
+const HOLDS_VALUE = "; it holds a likely-real value, which stays in it";
+
 /** One transcript file, once read and planned. */
 interface PlannedFile {
   readonly path: string;
@@ -250,6 +253,24 @@ interface Planning {
   readonly skipped: { readonly path: string; readonly reason: SkipReason }[];
   /** Files that hold a value but where no line could be edited. */
   readonly stuck: PlannedFile[];
+  /**
+   * Files the secrets check found a likely-real value in, where planning found nothing to
+   * replace and nothing left. Never expected; counted so the run cannot report them clean.
+   */
+  readonly notFound: string[];
+}
+
+/** For each transcript file, the likely-real values the secrets check found in it. */
+function heldByFile(found: LikelyRealValues): Map<string, string[]> {
+  const held = new Map<string, string[]>();
+  for (const { value, files } of found.values) {
+    for (const file of files) {
+      const list = held.get(file);
+      if (list === undefined) held.set(file, [value]);
+      else list.push(value);
+    }
+  }
+  return held;
 }
 
 /** `bytes` as UTF-8 text, or `undefined` when they are not valid UTF-8. Keeps a BOM. */
@@ -262,8 +283,13 @@ function utf8(bytes: Uint8Array): string | undefined {
 }
 
 /** Read and plan every file. Nothing is written. */
-function planFiles(files: readonly string[], found: LikelyRealValues, scrubIO: ScrubIO): Planning {
-  const planning: Planning = { changes: [], skipped: [], stuck: [] };
+function planFiles(
+  files: readonly string[],
+  found: LikelyRealValues,
+  held: ReadonlyMap<string, readonly string[]>,
+  scrubIO: ScrubIO,
+): Planning {
+  const planning: Planning = { changes: [], skipped: [], stuck: [], notFound: [] };
   for (const path of files) {
     if (!path.endsWith(".jsonl")) {
       planning.skipped.push({ path, reason: "unsupported" });
@@ -287,10 +313,11 @@ function planFiles(files: readonly string[], found: LikelyRealValues, scrubIO: S
       planning.skipped.push({ path, reason: "not-utf8" });
       continue;
     }
-    const { text: _text, ...plan } = planFileScrub(text, found.values);
+    const { text: _text, ...plan } = planFileScrub(text, found.values, held.get(path));
     const entry: PlannedFile = { path, stat: read.stat, sha256: sha256(read.bytes), plan };
     if (plan.changed) planning.changes.push(entry);
     else if (plan.linesLeft > 0) planning.stuck.push(entry);
+    else if (held.has(path)) planning.notFound.push(path);
   }
   return planning;
 }
@@ -372,7 +399,12 @@ export async function runScrub(input: ScrubRunInput): Promise<number> {
     maxHeldValues: input.maxValues ?? MAX_SCRUB_VALUES,
   });
   const facts = found.check.facts;
-  const planning = planFiles(files, found, scrubIO);
+  const held = heldByFile(found);
+  const planning = planFiles(files, found, held, scrubIO);
+  // A skipped file the check found a value in still holds it: never a clean run.
+  const heldSkips = planning.skipped.filter((skip) => held.has(skip.path));
+  const skipLine = (skip: { readonly path: string; readonly reason: SkipReason }): string =>
+    `  ${shown(skip.path)}: ${skipText(skip.reason)}${held.has(skip.path) ? HOLDS_VALUE : ""}`;
 
   lines.push("");
   const likely = facts.classes["likely-real"];
@@ -424,8 +456,11 @@ export async function runScrub(input: ScrubRunInput): Promise<number> {
   }
   for (const entry of planning.stuck) {
     gaps.push(
-      `${shown(entry.path)}: ${counted(entry.plan.linesLeft, "line")} holding a value could not be edited and still parse`,
+      `${shown(entry.path)}: ${counted(entry.plan.linesLeft, "line")} holding a value could not be edited (not JSON, or in a form this command does not edit)`,
     );
+  }
+  for (const path of planning.notFound) {
+    gaps.push(`${shown(path)}: holds a likely-real value this command could not find to replace`);
   }
 
   if (planning.changes.length === 0) {
@@ -435,11 +470,10 @@ export async function runScrub(input: ScrubRunInput): Promise<number> {
         ? "Nothing to scrub."
         : "Nothing could be replaced: no file holds these values in a form this command can edit.",
     );
-    for (const skip of planning.skipped)
-      lines.push(`  ${shown(skip.path)}: ${skipText(skip.reason)}`);
+    for (const skip of planning.skipped) lines.push(skipLine(skip));
     for (const gap of gaps) lines.push(c.yellow(`  ${gap}.`));
     flush();
-    return likely === 0 && gaps.length === 0 ? 0 : input.apply ? 1 : 0;
+    return likely === 0 && gaps.length === 0 && heldSkips.length === 0 ? 0 : input.apply ? 1 : 0;
   }
 
   lines.push("");
@@ -447,8 +481,7 @@ export async function runScrub(input: ScrubRunInput): Promise<number> {
   for (const entry of planning.changes) {
     lines.push(`  ${shown(entry.path)}  ${replacementText(entry.plan)}`);
   }
-  for (const skip of planning.skipped)
-    lines.push(`  ${shown(skip.path)}: ${skipText(skip.reason)}`);
+  for (const skip of planning.skipped) lines.push(skipLine(skip));
   for (const gap of gaps) lines.push(c.yellow(`  ${gap}.`));
   lines.push(c.dim(`Each value becomes [${SCRUB_MARKER}:<kind>].`));
 
@@ -678,16 +711,17 @@ export async function runScrub(input: ScrubRunInput): Promise<number> {
       if (b.file.plan.linesLeft > 0) {
         lines.push(
           c.yellow(
-            `    ${counted(b.file.plan.linesLeft, "line")} holding a value could not be edited and still parse, and ${b.file.plan.linesLeft === 1 ? "was" : "were"} left as ${b.file.plan.linesLeft === 1 ? "it was" : "they were"}`,
+            `    ${counted(b.file.plan.linesLeft, "line")} holding a value could not be edited (not JSON, or in a form this command does not edit), and ${b.file.plan.linesLeft === 1 ? "was" : "were"} left as ${b.file.plan.linesLeft === 1 ? "it was" : "they were"}`,
           ),
         );
       }
     }
   }
-  if (outcomes.length > 0) {
+  if (outcomes.length > 0 || heldSkips.length > 0) {
     lines.push("Not scrubbed:");
     for (const o of outcomes)
       lines.push(c.yellow(`  ${shown(o.path)}: ${skipText(o.reason, o.code)}.`));
+    for (const skip of heldSkips) lines.push(c.yellow(`${skipLine(skip)}.`));
   }
 
   lines.push("");
@@ -709,6 +743,7 @@ export async function runScrub(input: ScrubRunInput): Promise<number> {
   const complete =
     outcomes.length === 0 &&
     gaps.length === 0 &&
+    heldSkips.length === 0 &&
     scrubbed.every((b) => b.file.plan.linesLeft === 0 && b.file.plan.linesIncomplete === 0);
   return complete ? 0 : 1;
 }

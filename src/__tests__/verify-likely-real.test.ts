@@ -65,13 +65,33 @@ async function input(agent: AgentSource, maxHeldValues?: number): Promise<Secret
 
 describe("findLikelyReal", () => {
   it("returns exactly the likely-real values, longest first, with their kinds", async () => {
-    const found = await findLikelyReal(await input("claude"));
+    const given = await input("claude");
+    const found = await findLikelyReal(given);
+    const file = given.files[0] as string;
     expect(found.values).toEqual([
-      { value: GITHUB, kind: "github-token" },
-      { value: AWS_ID, kind: "aws-access-key" },
-      { value: DEPLOY, kind: "named-secret" },
+      { value: GITHUB, kind: "github-token", files: [file] },
+      { value: AWS_ID, kind: "aws-access-key", files: [file] },
+      { value: DEPLOY, kind: "named-secret", files: [file] },
     ]);
     expect(found.notHeld).toBe(0);
+  });
+
+  it("says which transcript files hold each value", async () => {
+    const { corpus } = await writeCorpus("claude", [SESSION, [{ kind: "reply", text: GITHUB }]], {
+      cwd: REPO,
+    });
+    const files = corpus.files ?? [];
+    const io = createRealScanIO();
+    const found = await findLikelyReal({
+      agent: "claude",
+      files,
+      readLines: (path) => io.readLines(path),
+      io: createRealVerifyIO(),
+      fingerprint: createFingerprinter(),
+    });
+    const byValue = new Map(found.values.map((v) => [v.value, v.files]));
+    expect(byValue.get(GITHUB)).toEqual([files[0], files[1]]);
+    expect(byValue.get(AWS_ID)).toEqual([files[0]]);
   });
 
   it("returns the same check as checkSecrets", async () => {

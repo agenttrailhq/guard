@@ -187,6 +187,26 @@ describe("lines that cannot be edited safely", () => {
     expect(left.linesLeft).toBe(1);
   });
 
+  it("counts a line holding a held value in a form no tried form matches", () => {
+    // The value written with its first letter as `g`: no tried form is anywhere in the file.
+    const line = `{"a":"x \\u0067${GITHUB.slice(1)} y"}`;
+    const text = `${line}\n${JSON.stringify({ b: "fine" })}\n`;
+    expect(JSON.parse(line).a).toBe(`x ${GITHUB} y`);
+    // Without being told the file holds it, nothing is decoded and nothing counted.
+    expect(planFileScrub(text, targets).linesLeft).toBe(0);
+    const plan = planFileScrub(text, targets, [GITHUB]);
+    expect(plan.changed).toBe(false);
+    expect(plan.text).toBe(text);
+    expect(plan.linesLeft).toBe(1);
+  });
+
+  it("decodes only lines with an escape, and only for the held values", () => {
+    const text = `${JSON.stringify({ a: "no escape here" })}\n{"b":"line\\nbreak"}\n`;
+    expect(planFileScrub(text, targets, [GITHUB]).linesLeft).toBe(0);
+    expect(planFileScrub(text, targets, ["break"]).linesLeft).toBe(1);
+    expect(planFileScrub(text, targets, [""]).linesLeft).toBe(0);
+  });
+
   it("counts a changed line that still holds a value in a form it does not edit", () => {
     const value = `Qm7${"Xn2Lp9Vz4"}`;
     // Upper-case hex escapes are not one of the forms tried.

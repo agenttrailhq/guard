@@ -853,12 +853,101 @@ function promptLine(text: string): string {
 }
 
 /** Write `text` to `name` under `s.root`, an hour old, and return its path. */
-function extraFile(s: Setup, name: string, text: string): string {
+function extraFile(s: Setup, name: string, text: string | Uint8Array): string {
   const path = join(s.root, name);
   writeFileSync(path, text);
   utimesSync(path, OLD, OLD);
   return path;
 }
+
+describe("a file holding a likely-real value that is not scrubbed fails the run", () => {
+  /** Beside a normal file, a second file `b.jsonl` that holds the same value. */
+  async function withHolder(content: Uint8Array | string): Promise<Setup & { b: string }> {
+    const s = await setup("claude", [SECOND]);
+    return { ...s, b: extraFile(s, "b.jsonl", content) };
+  }
+
+  const said = (reason: string): string =>
+    `b.jsonl: ${reason}; it holds a likely-real value, which stays in it.`;
+
+  it("not UTF-8 (a line cut part-way through a character): exit 1, under Not scrubbed", async () => {
+    const s = await withHolder(
+      Buffer.concat([Buffer.from(`${promptLine(`x ${GITHUB}`)}\n`), Buffer.from([0xe2, 0x82])]),
+    );
+    const run = await direct(s, { files: [...s.files, s.b] });
+    expect(run.code).toBe(1);
+    expect(run.stdout).toContain("Not scrubbed:");
+    expect(run.stdout).toContain(
+      said("not UTF-8 text, so it cannot be edited without changing other bytes; left alone"),
+    );
+    expect(readFileSync(s.b, "utf8")).toContain(GITHUB);
+    expect(readFileSync(s.files[0] as string, "utf8")).not.toContain(GITHUB);
+  });
+
+  it("too large: exit 1, under Not scrubbed", async () => {
+    const s = await withHolder(`${promptLine(`x ${GITHUB} ${"y".repeat(4096)}`)}\n`);
+    const scrub = createRealScrubIO({ maxFileBytes: statSync(s.files[0] as string).size });
+    const run = await direct(s, { files: [...s.files, s.b], scrubIO: scrub });
+    expect(run.code).toBe(1);
+    expect(run.stdout).toContain(said("too large to scrub safely; left alone"));
+  });
+
+  it.each([
+    ["missing", "could not be read; left alone"],
+    ["changed", "changed since it was read; left as it is"],
+  ] as const)("planning reads it as %s: exit 1, under Not scrubbed", async (reason, text) => {
+    const s = await withHolder(`${promptLine(`x ${GITHUB}`)}\n`);
+    const real = createRealScrubIO();
+    const scrub: ScrubIO = {
+      ...real,
+      read: (path) => (path === s.b ? { ok: false, reason } : real.read(path)),
+    };
+    const run = await direct(s, { files: [...s.files, s.b], scrubIO: scrub });
+    expect(run.code).toBe(1);
+    expect(run.stdout).toContain(said(text));
+  });
+
+  it("a skipped file holding no value is listed but does not fail the run", async () => {
+    const s = await setup("claude", [SECOND]);
+    const b = extraFile(s, "b.jsonl", Buffer.from([0xff, 0xfe, 0x0a]));
+    const run = await direct(s, { files: [...s.files, b] });
+    expect(run.code).toBe(0);
+    expect(run.stdout).toContain("b.jsonl: not UTF-8 text");
+    expect(run.stdout).not.toContain("it holds a likely-real value");
+  });
+
+  it("a value written only in a form no tried form matches: named, exit 1", async () => {
+    const s = await withHolder(
+      `{"type":"user","message":{"content":"x \\u0067${GITHUB.slice(1)}"}}\n`,
+    );
+    const run = await direct(s, { files: [...s.files, s.b] });
+    expect(run.code).toBe(1);
+    expect(run.stdout).toContain(
+      "b.jsonl: 1 line holding a value could not be edited (not JSON, or in a form this command does not edit).",
+    );
+    expect(readFileSync(s.b, "utf8")).toContain(`\\u0067${GITHUB.slice(1)}`);
+  });
+
+  it("a held value that planning cannot find at all is named, and fails the run", async () => {
+    const s = await withHolder(`${promptLine(`x ${GITHUB}`)}\n`);
+    const real = createRealScrubIO();
+    // Planning sees different bytes from what the check read: the value is not there to find.
+    const scrub: ScrubIO = {
+      ...real,
+      read: (path) => {
+        const read = real.read(path);
+        return path === s.b && read.ok
+          ? { ...read, bytes: Buffer.from(`${promptLine("clean")}\n`) }
+          : read;
+      },
+    };
+    const run = await direct(s, { files: [...s.files, s.b], scrubIO: scrub });
+    expect(run.code).toBe(1);
+    expect(run.stdout).toContain(
+      "b.jsonl: holds a likely-real value this command could not find to replace.",
+    );
+  });
+});
 
 describe("what the run reports", () => {
   it("says nothing is left alone when every value is likely real", async () => {
@@ -958,8 +1047,14 @@ describe("what the run reports", () => {
   });
 
   it.each([
-    [1, "1 line holding a value could not be edited and still parse, and was left as it was"],
-    [2, "2 lines holding a value could not be edited and still parse, and were left as they were"],
+    [
+      1,
+      "1 line holding a value could not be edited (not JSON, or in a form this command does not edit), and was left as it was",
+    ],
+    [
+      2,
+      "2 lines holding a value could not be edited (not JSON, or in a form this command does not edit), and were left as they were",
+    ],
   ])("a scrubbed file with %i unparseable line(s) says so, and exits 1", async (n, said) => {
     const s = await setup("claude", [SECOND]);
     const torn = Array.from({ length: n }, () => `{"a":"x ${GITHUB}"`);
@@ -1085,7 +1180,7 @@ describe("formats it does not edit", () => {
     const run = await runWith({ "cut.jsonl": `${good}\n${cut}` });
     expect(readFileSync(join(run.root, "cut.jsonl"), "utf8")).toBe(`${good}\n${cut}`);
     expect(run.stdout).toContain(
-      "cut.jsonl: 1 line holding a value could not be edited and still parse",
+      "cut.jsonl: 1 line holding a value could not be edited (not JSON, or in a form this command does not edit)",
     );
     expect(run.code).toBe(1);
   });
@@ -1095,7 +1190,7 @@ describe("formats it does not edit", () => {
     const run = await runWith({ "torn.jsonl": `${line}\n` });
     expect(readFileSync(join(run.root, "torn.jsonl"), "utf8")).toBe(`${line}\n`);
     expect(run.stdout).toContain(
-      "torn.jsonl: 1 line holding a value could not be edited and still parse",
+      "torn.jsonl: 1 line holding a value could not be edited (not JSON, or in a form this command does not edit)",
     );
     expect(run.code).toBe(1);
   });

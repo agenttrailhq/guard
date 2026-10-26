@@ -585,6 +585,8 @@ export async function checkSecrets(input: SecretsInput): Promise<SecretsCheck> {
 export interface LikelyRealValue {
   readonly value: string;
   readonly kind: SecretKind;
+  /** The transcript files the check found it in, in the order they were given. */
+  readonly files: readonly string[];
 }
 
 /** What `findLikelyReal` returns. */
@@ -719,7 +721,13 @@ async function classifySecrets(input: SecretsInput, keep: boolean): Promise<Like
     candidate.decided ??= "likely-real";
     if (keep && candidate.decided === "likely-real") {
       if (candidate.value === undefined) notHeld += 1;
-      else kept.push({ value: candidate.value, kind: candidate.kind });
+      else {
+        kept.push({
+          value: candidate.value,
+          kind: candidate.kind,
+          files: [...candidate.files].sort((a, b) => a - b).map((i) => input.files[i] as string),
+        });
+      }
     }
     candidate.value = undefined;
   }

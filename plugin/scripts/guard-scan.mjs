@@ -14187,7 +14187,13 @@ async function classifySecrets(input, keep) {
     candidate.decided ??= "likely-real";
     if (keep && candidate.decided === "likely-real") {
       if (candidate.value === void 0) notHeld += 1;
-      else kept.push({ value: candidate.value, kind: candidate.kind });
+      else {
+        kept.push({
+          value: candidate.value,
+          kind: candidate.kind,
+          files: [...candidate.files].sort((a, b) => a - b).map((i) => input.files[i])
+        });
+      }
     }
     candidate.value = void 0;
   }
@@ -14415,10 +14421,11 @@ function parsed(line) {
     return void 0;
   }
 }
-function planFileScrub(text, targets) {
+function planFileScrub(text, targets, held = []) {
   const forms = formsOf(targets).filter((form) => text.includes(form.raw));
+  const heldValues = [...new Set(held.filter((v) => v !== ""))];
   const counts = /* @__PURE__ */ new Map();
-  if (forms.length === 0) {
+  if (forms.length === 0 && heldValues.length === 0) {
     return {
       text,
       changed: false,
@@ -14435,7 +14442,13 @@ function planFileScrub(text, targets) {
   let linesLeft = 0;
   let linesIncomplete = 0;
   for (const [index, line] of lines.entries()) {
-    if (!forms.some((form) => line.includes(form.raw))) continue;
+    if (!forms.some((form) => line.includes(form.raw))) {
+      if (heldValues.length > 0 && line.includes("\\")) {
+        const decoded = parsed(line);
+        if (decoded !== void 0 && holdsValue(decoded.value, heldValues)) linesLeft += 1;
+      }
+      continue;
+    }
     const lineCounts = /* @__PURE__ */ new Map();
     const next = replaceInLine(line, forms, lineCounts);
     if (next === line) {
@@ -14547,6 +14560,18 @@ function skipText(reason, code2) {
       return reason;
   }
 }
+var HOLDS_VALUE = "; it holds a likely-real value, which stays in it";
+function heldByFile(found) {
+  const held = /* @__PURE__ */ new Map();
+  for (const { value, files } of found.values) {
+    for (const file2 of files) {
+      const list = held.get(file2);
+      if (list === void 0) held.set(file2, [value]);
+      else list.push(value);
+    }
+  }
+  return held;
+}
 function utf8(bytes) {
   try {
     return new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
@@ -14554,8 +14579,8 @@ function utf8(bytes) {
     return void 0;
   }
 }
-function planFiles(files, found, scrubIO) {
-  const planning = { changes: [], skipped: [], stuck: [] };
+function planFiles(files, found, held, scrubIO) {
+  const planning = { changes: [], skipped: [], stuck: [], notFound: [] };
   for (const path of files) {
     if (!path.endsWith(".jsonl")) {
       planning.skipped.push({ path, reason: "unsupported" });
@@ -14574,10 +14599,11 @@ function planFiles(files, found, scrubIO) {
       planning.skipped.push({ path, reason: "not-utf8" });
       continue;
     }
-    const { text: _text, ...plan } = planFileScrub(text, found.values);
+    const { text: _text, ...plan } = planFileScrub(text, found.values, held.get(path));
     const entry = { path, stat: read.stat, sha256: sha256(read.bytes), plan };
     if (plan.changed) planning.changes.push(entry);
     else if (plan.linesLeft > 0) planning.stuck.push(entry);
+    else if (held.has(path)) planning.notFound.push(path);
   }
   return planning;
 }
@@ -14632,7 +14658,10 @@ async function runScrub(input) {
     maxHeldValues: input.maxValues ?? MAX_SCRUB_VALUES
   });
   const facts = found.check.facts;
-  const planning = planFiles(files, found, scrubIO);
+  const held = heldByFile(found);
+  const planning = planFiles(files, found, held, scrubIO);
+  const heldSkips = planning.skipped.filter((skip) => held.has(skip.path));
+  const skipLine = (skip) => `  ${shown(skip.path)}: ${skipText(skip.reason)}${held.has(skip.path) ? HOLDS_VALUE : ""}`;
   lines.push("");
   const likely = facts.classes["likely-real"];
   lines.push(
@@ -14680,27 +14709,28 @@ async function runScrub(input) {
   }
   for (const entry of planning.stuck) {
     gaps.push(
-      `${shown(entry.path)}: ${counted2(entry.plan.linesLeft, "line")} holding a value could not be edited and still parse`
+      `${shown(entry.path)}: ${counted2(entry.plan.linesLeft, "line")} holding a value could not be edited (not JSON, or in a form this command does not edit)`
     );
+  }
+  for (const path of planning.notFound) {
+    gaps.push(`${shown(path)}: holds a likely-real value this command could not find to replace`);
   }
   if (planning.changes.length === 0) {
     lines.push("");
     lines.push(
       likely === 0 ? "Nothing to scrub." : "Nothing could be replaced: no file holds these values in a form this command can edit."
     );
-    for (const skip of planning.skipped)
-      lines.push(`  ${shown(skip.path)}: ${skipText(skip.reason)}`);
+    for (const skip of planning.skipped) lines.push(skipLine(skip));
     for (const gap of gaps) lines.push(c.yellow(`  ${gap}.`));
     flush();
-    return likely === 0 && gaps.length === 0 ? 0 : input.apply ? 1 : 0;
+    return likely === 0 && gaps.length === 0 && heldSkips.length === 0 ? 0 : input.apply ? 1 : 0;
   }
   lines.push("");
   lines.push(input.apply ? "To scrub:" : "Would scrub:");
   for (const entry of planning.changes) {
     lines.push(`  ${shown(entry.path)}  ${replacementText(entry.plan)}`);
   }
-  for (const skip of planning.skipped)
-    lines.push(`  ${shown(skip.path)}: ${skipText(skip.reason)}`);
+  for (const skip of planning.skipped) lines.push(skipLine(skip));
   for (const gap of gaps) lines.push(c.yellow(`  ${gap}.`));
   lines.push(c.dim(`Each value becomes [${SCRUB_MARKER}:<kind>].`));
   const advice = () => {
@@ -14896,16 +14926,17 @@ async function runScrub(input) {
       if (b.file.plan.linesLeft > 0) {
         lines.push(
           c.yellow(
-            `    ${counted2(b.file.plan.linesLeft, "line")} holding a value could not be edited and still parse, and ${b.file.plan.linesLeft === 1 ? "was" : "were"} left as ${b.file.plan.linesLeft === 1 ? "it was" : "they were"}`
+            `    ${counted2(b.file.plan.linesLeft, "line")} holding a value could not be edited (not JSON, or in a form this command does not edit), and ${b.file.plan.linesLeft === 1 ? "was" : "were"} left as ${b.file.plan.linesLeft === 1 ? "it was" : "they were"}`
           )
         );
       }
     }
   }
-  if (outcomes.length > 0) {
+  if (outcomes.length > 0 || heldSkips.length > 0) {
     lines.push("Not scrubbed:");
     for (const o of outcomes)
       lines.push(c.yellow(`  ${shown(o.path)}: ${skipText(o.reason, o.code)}.`));
+    for (const skip of heldSkips) lines.push(c.yellow(`${skipLine(skip)}.`));
   }
   lines.push("");
   lines.push("To put a file back as it was:");
@@ -14922,7 +14953,7 @@ async function runScrub(input) {
     )
   );
   flush();
-  const complete = outcomes.length === 0 && gaps.length === 0 && scrubbed.every((b) => b.file.plan.linesLeft === 0 && b.file.plan.linesIncomplete === 0);
+  const complete = outcomes.length === 0 && gaps.length === 0 && heldSkips.length === 0 && scrubbed.every((b) => b.file.plan.linesLeft === 0 && b.file.plan.linesIncomplete === 0);
   return complete ? 0 : 1;
 }
 

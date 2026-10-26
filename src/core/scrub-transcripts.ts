@@ -201,11 +201,22 @@ function parsed(line: string): { readonly value: unknown } | undefined {
   }
 }
 
-/** Scrub one file's text. See the module header. */
-export function planFileScrub(text: string, targets: readonly ScrubTarget[]): FileScrubPlan {
+/**
+ * Scrub one file's text. See the module header.
+ *
+ * `held` is the values the secrets check found in this file. A line with none of the tried
+ * forms is decoded and checked for them when it holds an escape, so a value written in a form
+ * none of the tried ones match is counted as left rather than missed.
+ */
+export function planFileScrub(
+  text: string,
+  targets: readonly ScrubTarget[],
+  held: readonly string[] = [],
+): FileScrubPlan {
   const forms = formsOf(targets).filter((form) => text.includes(form.raw));
+  const heldValues = [...new Set(held.filter((v) => v !== ""))];
   const counts = new Map<SecretKind, number>();
-  if (forms.length === 0) {
+  if (forms.length === 0 && heldValues.length === 0) {
     return {
       text,
       changed: false,
@@ -224,7 +235,14 @@ export function planFileScrub(text: string, targets: readonly ScrubTarget[]): Fi
   let linesIncomplete = 0;
 
   for (const [index, line] of lines.entries()) {
-    if (!forms.some((form) => line.includes(form.raw))) continue;
+    if (!forms.some((form) => line.includes(form.raw))) {
+      // No tried form here. A held value can still be here only behind an escape (`\`).
+      if (heldValues.length > 0 && line.includes("\\")) {
+        const decoded = parsed(line);
+        if (decoded !== undefined && holdsValue(decoded.value, heldValues)) linesLeft += 1;
+      }
+      continue;
+    }
     const lineCounts = new Map<SecretKind, number>();
     const next = replaceInLine(line, forms, lineCounts);
     if (next === line) {
