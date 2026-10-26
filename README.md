@@ -398,22 +398,30 @@ the exposure.
 - **Dry run by default.** Without `--apply` it lists each file with how many values of each
   kind it would replace, never the values, and changes nothing.
 - **Close the agent first.** A running session keeps appending to its transcript.
-  `--apply` refuses while a process of that app is running, and skips any file changed in
-  the last 5 minutes. There is no flag to override either. The first check goes by process
-  name, so it cannot see an agent running under a generic name such as `node`; the second
-  check is there for that case.
+  `--apply` refuses while a process of that app is running, or when the list of running
+  programs cannot be read in full, and skips any file changed in the last 5 minutes. There
+  is no flag to override either. The first check goes by process name, so it cannot see an
+  agent running under a generic name such as `node`; the second check is there for that
+  case.
 - **Backup first.** Before changing any file, `--apply` copies every file it will change to
   a new folder under `~/.agenttrail/scrub-backups/` (`0700`, files `0600`), with a manifest
   and a restore command for each file. **The backup still holds the credentials:** delete
-  it once you have checked the scrubbed files. If any backup fails, nothing is changed.
-  Each restore command quotes both paths. For a path holding a control character or a mark
-  that reorders text on screen, no command is made: the output names the backup file to
-  copy back by hand, and shows each such character as `?`.
+  it once you have checked the scrubbed files. If any backup fails, nothing is changed. A
+  backup folder reached through a symbolic link is refused.
+  Each restore command is `cp -p --` with both paths absolute and quoted. For a path holding
+  a control character, a mark that reorders text on screen, or a character that shows as
+  nothing, no command is made: the output names the backup file to copy back by hand, and
+  shows each such character as `?`.
 - **One step per file.** Each file is written beside the original, checked against what was
   read, and moved into place. A file that changed since it was read is left as it is.
 - **Lines stay as written.** Only the text inside JSON strings changes; every other byte of
-  the line is kept. A line that would not parse after the edit is left as it is and
-  reported.
+  the line is kept. A line that would not parse after the edit, or that holds a value in a
+  form this command does not edit, is left as it is and reported.
+- **Files it leaves alone, and says so:** a file that is not UTF-8, is over 256 MiB, is a
+  symbolic link, or has other names (hard links). A link is never followed or replaced.
+- **It fails rather than claim a clean run.** If any file the secrets check found a
+  likely-real value in is skipped, or still holds a value afterwards, the output names it
+  and `--apply` exits 1.
 - **Not scrubbed:** anything the app keeps outside its session files (its prompt history
   and caches), your shell history, and the backup itself.
 - **Codex: limited and unverified.** For Codex, `--scrub` has been tested only on synthetic
