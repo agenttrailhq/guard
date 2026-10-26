@@ -52,6 +52,9 @@ import {
 import type { SecretsFacts, Verification } from "../core/verify/types.js";
 import { decodeEntities } from "./html-text.js";
 import {
+  CODEX_ONLY_RESULT,
+  CURSOR_RESULT,
+  HIDING_RESULT,
   LOCAL_FIX_CATEGORIES,
   TEST_ONLY_BUILDERS,
   VERIFIED_META,
@@ -395,11 +398,40 @@ describe("every verified line comes from a template whose facts are present", ()
     ].join("\n");
   };
 
-  /** Lines in a card's fields with no template: a `<p>` inside a `<dd>` that names none. */
+  /**
+   * The fixed notes the verified sections carry: explanations that hold no count and no data.
+   * Every other line in those sections must name its template.
+   */
+  const FIXED_NOTES: readonly string[] = [
+    "Each credential that looks real, by its kind and how it got into the transcripts. Never the value, and never the name it was given.",
+    "What checking found, and how to fix it",
+    "A match means a guardrail fired on a command. Each card says what checking that on this machine found, how things stand now, and how to fix it. The checks only read: they changed nothing on this machine.",
+    "What the checks read on this machine:",
+  ];
+
+  /** The three verified sections of a page. */
+  const sectionsOf = (page: string): string =>
+    ["found", "also-checked", "what-happened"]
+      .map((id) => {
+        const at = page.indexOf(`id="${id}"`);
+        if (at === -1) return "";
+        return page.slice(page.lastIndexOf("<section", at), page.indexOf("</section>", at));
+      })
+      .join("\n");
+
+  /**
+   * Lines in the verified sections that name no template and are not a fixed note: every `<p>`
+   * and every chip's text, read with its markup stripped.
+   */
   const withoutTemplate = (page: string): string[] =>
-    [...page.matchAll(/<dd>([\s\S]*?)<\/dd>/g)].flatMap((m) =>
-      [...(m[1] ?? "").matchAll(/<p(?![^>]*data-template=)[^>]*>([^<]*)/g)].map((p) => p[1] ?? ""),
-    );
+    [
+      ...sectionsOf(page).matchAll(
+        /<(p|span)(?![^>]*data-template=)((?:\s[^>]*)?)>([\s\S]*?)<\/\1>/g,
+      ),
+    ]
+      .filter((m) => m[1] === "p" || /class="chip-text"/.test(m[2] ?? ""))
+      .map((m) => decodeEntities((m[3] ?? "").replace(/<[^>]+>/g, "")).trim())
+      .filter((text) => !FIXED_NOTES.includes(text));
 
   it("shipped template ids are unique", () => {
     expect(byId.size).toBe(SHIPPED.length);
@@ -429,15 +461,35 @@ describe("every verified line comes from a template whose facts are present", ()
     }
   });
 
-  it("no card field carries a line without a template", () => {
-    expect(withoutTemplate(html)).toEqual([]);
-    expect(html).toContain("<dd>");
+  it.each([
+    ["the secrets lead", VERIFIED_RESULT],
+    ["hiding forms", HIDING_RESULT],
+    ["Cursor", CURSOR_RESULT],
+    ["Codex", CODEX_ONLY_RESULT],
+  ] as const)("%s: no line in the verified sections is without a template, but the fixed notes", (_n, result) => {
+    const page = renderReport(result, VERIFIED_META, {
+      cardBuilders: TEST_ONLY_BUILDERS,
+      localFixCategories: LOCAL_FIX_CATEGORIES,
+    });
+    expect(sectionsOf(page)).toContain("<dd>");
+    expect(withoutTemplate(page)).toEqual([]);
   });
 
-  it("negative control: a hand-written line in a card field is caught", () => {
-    expect(withoutTemplate("<dd>\n<p>No Terraform runs.</p>\n</dd>")).toEqual([
+  it("the fixed notes hold no count and no data", () => {
+    for (const note of FIXED_NOTES) expect(note).not.toMatch(/\d/);
+  });
+
+  it("negative control: a hand-written line anywhere in the sections is caught", () => {
+    const section = (body: string) => `<section class="x" id="what-happened">${body}</section>`;
+    expect(withoutTemplate(section("<dd>\n<p>No Terraform runs.</p>\n</dd>"))).toEqual([
       "No Terraform runs.",
     ]);
+    expect(withoutTemplate(section('<p class="note">0 uploads ran.</p>'))).toEqual([
+      "0 uploads ran.",
+    ]);
+    expect(
+      withoutTemplate(section('<span class="chip-text">0 files sent off this machine</span>')),
+    ).toEqual(["0 files sent off this machine"]);
   });
 
   it("a template whose facts are absent says nothing", () => {
