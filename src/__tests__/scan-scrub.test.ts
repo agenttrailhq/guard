@@ -12,13 +12,16 @@
 import { execFileSync } from "node:child_process";
 import {
   existsSync,
+  fsyncSync,
   mkdirSync,
   mkdtempSync,
+  openSync,
   readdirSync,
   readFileSync,
   statSync,
   utimesSync,
   writeFileSync,
+  writeSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -566,6 +569,225 @@ describe("--apply when the machine gets in the way", () => {
     expect(run.stdout).toContain("Nothing was changed.");
     expect(snapshot(s.root)).toEqual(before);
     expect(backupFolders(s.home)).toEqual([]);
+  });
+});
+
+/** A third session, so a backup can fail after more than one file. */
+const THIRD: SessionEvent[] = [{ kind: "prompt", text: `a third time ${GITHUB}` }];
+
+/** A `ScrubIO` whose `writeBackupFile` fails on the call `when` picks. */
+function failingBackup(when: (path: string, call: number) => boolean): ScrubIO {
+  const real = createRealScrubIO();
+  let calls = 0;
+  return {
+    ...real,
+    writeBackupFile: (path, bytes) => {
+      calls += 1;
+      return when(path, calls) ? false : real.writeBackupFile(path, bytes);
+    },
+  };
+}
+
+/** A real `ScrubIO` whose writes to files matching `match` fail at `op`. */
+function failingWrites(match: (path: string) => boolean, op: "writeSync" | "fsyncSync"): ScrubIO {
+  const marked = new Set<number>();
+  return createRealScrubIO({
+    fs: {
+      openSync: (path, flags, mode) => {
+        const fd = openSync(path, flags, mode);
+        if (match(path)) marked.add(fd);
+        else marked.delete(fd);
+        return fd;
+      },
+      [op]: (fd: number, ...rest: [Uint8Array, number, number]) => {
+        if (marked.has(fd)) throw Object.assign(new Error("EIO"), { code: "EIO" });
+        return op === "writeSync" ? writeSync(fd, ...rest) : fsyncSync(fd);
+      },
+    },
+  });
+}
+
+describe("--apply when a backup fails part-way", () => {
+  it("a failure on the third of three files removes the two written, and changes nothing", async () => {
+    const s = await setup("claude", [SESSION, SECOND, THIRD]);
+    expect(s.files).toHaveLength(3);
+    const before = snapshot(s.root);
+    const run = await scan(s, "claude", ["--scrub", "--apply"], {
+      scrub: failingBackup((_path, call) => call === 3),
+    });
+    expect(run.code).toBe(1);
+    expect(run.stdout).toContain("the backup could not be written in full. Nothing was changed");
+    expect(snapshot(s.root)).toEqual(before);
+    expect(backupFolders(s.home)).toEqual([]);
+  });
+
+  it("cleans up only the files it wrote, and keeps a folder holding anything else", async () => {
+    const s = await setup("claude");
+    const real = createRealScrubIO();
+    let dir = "";
+    const scrub: ScrubIO = {
+      ...failingBackup((_path, call) => call === 2),
+      createBackupDir: (root, name) => {
+        dir = real.createBackupDir(root, name) as string;
+        writeFileSync(join(dir, "not-ours.txt"), "kept");
+        return dir;
+      },
+    };
+    const run = await scan(s, "claude", ["--scrub", "--apply"], { scrub });
+    expect(run.code).toBe(1);
+    expect(readdirSync(dir)).toEqual(["not-ours.txt"]);
+  });
+
+  it("refuses when a backup file's name is already taken (exclusive create)", async () => {
+    const s = await setup("claude");
+    const before = snapshot(s.root);
+    const real = createRealScrubIO();
+    let dir = "";
+    const scrub: ScrubIO = {
+      ...real,
+      createBackupDir: (root, name) => {
+        dir = real.createBackupDir(root, name) as string;
+        writeFileSync(join(dir, "1-session-0.jsonl"), "someone else's");
+        return dir;
+      },
+    };
+    const run = await scan(s, "claude", ["--scrub", "--apply"], { scrub });
+    expect(run.code).toBe(1);
+    expect(snapshot(s.root)).toEqual(before);
+    expect(readdirSync(dir)).toEqual(["1-session-0.jsonl"]);
+    expect(readFileSync(join(dir, "1-session-0.jsonl"), "utf8")).toBe("someone else's");
+  });
+
+  it.each([
+    "manifest.json",
+    "restore.txt",
+  ])("refuses, and removes the backup, when %s cannot be written", async (file) => {
+    const s = await setup("claude");
+    const before = snapshot(s.root);
+    const run = await scan(s, "claude", ["--scrub", "--apply"], {
+      scrub: failingBackup((path) => path.endsWith(file)),
+    });
+    expect(run.code).toBe(1);
+    expect(run.stdout).toContain("the backup could not be written in full");
+    expect(snapshot(s.root)).toEqual(before);
+    expect(backupFolders(s.home)).toEqual([]);
+  });
+
+  it.each([
+    "writeSync",
+    "fsyncSync",
+  ] as const)("a backup file whose %s fails aborts with nothing changed", async (op) => {
+    const s = await setup("claude");
+    const before = snapshot(s.root);
+    const run = await scan(s, "claude", ["--scrub", "--apply"], {
+      scrub: failingWrites((path) => path.includes("scrub-backups"), op),
+    });
+    expect(run.code).toBe(1);
+    expect(snapshot(s.root)).toEqual(before);
+    expect(backupFolders(s.home)).toEqual([]);
+  });
+
+  it("refuses when ~/.agenttrail is a file, so no backup folder can be made", async () => {
+    const s = await setup("claude");
+    writeFileSync(join(s.home, ".agenttrail"), "not a folder");
+    const before = snapshot(s.root);
+    const run = await scan(s, "claude", ["--scrub", "--apply"]);
+    expect(run.code).toBe(1);
+    expect(run.stdout).toContain("a private backup folder could not be made");
+    expect(snapshot(s.root)).toEqual(before);
+  });
+});
+
+describe("--apply when a replace fails part-way", () => {
+  it.each([
+    "writeSync",
+    "fsyncSync",
+  ] as const)("a temporary file whose %s fails leaves every original, and the backup", async (op) => {
+    const s = await setup("claude");
+    const before = snapshot(s.root);
+    const run = await scan(s, "claude", ["--scrub", "--apply"], {
+      scrub: failingWrites((path) => path.endsWith(".scrub-tmp"), op),
+    });
+    expect(run.code).toBe(1);
+    expect(run.stdout).toContain("the scrubbed copy could not be written beside it; left as it is");
+    expect(snapshot(s.root)).toEqual(before);
+    const [dir] = backupFolders(s.home);
+    expect(readdirSync(dir as string).sort()).toEqual([
+      "1-session-0.jsonl",
+      "2-session-1.jsonl",
+      "manifest.json",
+      "restore.txt",
+    ]);
+  });
+
+  it("a file that changed between planning and backup is left, and the rest scrubbed", async () => {
+    const s = await setup("claude");
+    const [first, second] = s.files as [string, string];
+    const real = createRealScrubIO();
+    const scrub: ScrubIO = {
+      ...real,
+      createBackupDir: (root, name) => {
+        writeFileSync(
+          first,
+          `${JSON.stringify({ type: "user", message: { content: "late" } })}\n`,
+          {
+            flag: "a",
+          },
+        );
+        return real.createBackupDir(root, name);
+      },
+    };
+    const run = await scan(s, "claude", ["--scrub", "--apply"], { scrub });
+    expect(run.code).toBe(1);
+    expect(readFileSync(first, "utf8")).toContain(GITHUB);
+    expect(readFileSync(second, "utf8")).not.toContain(GITHUB);
+    expect(run.stdout).toContain("session-0.jsonl: changed since it was read; left as it is.");
+  });
+
+  it("a file that reads back unreadable after the replace says to restore it", async () => {
+    const s = await setup("claude", [SESSION]);
+    const real = createRealScrubIO();
+    let replaced = false;
+    const scrub: ScrubIO = {
+      ...real,
+      replaceFile: (path, bytes, expected) => {
+        const result = real.replaceFile(path, bytes, expected);
+        replaced = result.ok;
+        return result;
+      },
+      read: (path) => (replaced ? { ok: false, reason: "missing" } : real.read(path)),
+    };
+    const run = await scan(s, "claude", ["--scrub", "--apply"], { scrub });
+    expect(run.code).toBe(1);
+    expect(run.stdout).toContain("did not read back as written; restore it from the backup");
+  });
+
+  it("a file that shrinks while it is planned is skipped as changed", async () => {
+    const s = await setup("claude", [SESSION]);
+    const scrub: ScrubIO = {
+      ...createRealScrubIO(),
+      read: () => ({ ok: false, reason: "changed" }),
+    };
+    const run = await scan(s, "claude", ["--scrub"], { scrub });
+    expect(run.stdout).toContain("session-0.jsonl: changed since it was read; left as it is");
+  });
+
+  it("a file too large to scrub is skipped and named", async () => {
+    const s = await setup("claude", [SESSION]);
+    const run = await scan(s, "claude", ["--scrub"], {
+      scrub: createRealScrubIO({ maxFileBytes: 10 }),
+    });
+    expect(run.stdout).toContain("session-0.jsonl: too large to scrub safely; left alone");
+  });
+
+  it("a file that cannot be read is skipped and named", async () => {
+    const s = await setup("claude", [SESSION]);
+    const scrub: ScrubIO = {
+      ...createRealScrubIO(),
+      read: () => ({ ok: false, reason: "missing" }),
+    };
+    const run = await scan(s, "claude", ["--scrub"], { scrub });
+    expect(run.stdout).toContain("session-0.jsonl: could not be read; left alone");
   });
 });
 
