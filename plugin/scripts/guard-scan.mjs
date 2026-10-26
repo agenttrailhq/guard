@@ -7996,6 +7996,18 @@ var VERIFY_STATUSES = [
 ];
 var RUN_STATES = ["ran", "mentioned", "unknown"];
 var RAN_EVIDENCE = ["tool-result", "output-record", "none"];
+var HIDING_FORMS = [
+  "shell-string",
+  "find-exec",
+  "xargs",
+  "process-substitution",
+  "command-substitution",
+  "eval",
+  "git-config",
+  "git-exec",
+  "git-hook",
+  "unread-shell"
+];
 var SECRET_PROVENANCES = [
   "pasted-into-prompt",
   "typed-into-command",
@@ -8033,6 +8045,7 @@ var FACT_VALUE_ENUMS = [
   VERIFY_STATUSES,
   RUN_STATES,
   RAN_EVIDENCE,
+  HIDING_FORMS,
   SECRET_PROVENANCES,
   SECRET_KINDS,
   SECRET_CLASSES,
@@ -8054,7 +8067,8 @@ var FACT_KEYS = [
   "reposNotChecked",
   "kind",
   "via",
-  "files"
+  "files",
+  "hidingForms"
 ];
 
 // src/core/verify/cards.ts
@@ -11853,7 +11867,7 @@ function createFingerprinter(key = randomBytes(KEY_BYTES)) {
 
 // src/core/verify/ran.ts
 function emptySegment() {
-  return { words: [], inputs: [], pipedOut: false, writesFile: false };
+  return { words: [], inputs: [], pipedOut: false, writesFile: false, written: [] };
 }
 function holdsSubstitution(text) {
   return text.includes("$(") || text.includes("`");
@@ -11938,6 +11952,10 @@ function parseShell(text) {
   const comments = [];
   const pending = [];
   const groups = [];
+  let substitution;
+  let targetWrites = false;
+  let processSubstitution = false;
+  let targetRuns = false;
   let segment = emptySegment();
   let next = "word";
   let wordStart = -1;
@@ -11957,7 +11975,11 @@ function parseShell(text) {
       });
     } else if (next === "herestring") {
       segment.inputs.push({ start: word.start, end: word.end, expands: runs });
+    } else if (next === "target") {
+      if (targetWrites) segment.written.push(value);
+      if (runs) targetRuns = true;
     }
+    targetWrites = false;
     next = "word";
     wordStart = -1;
     value = "";
@@ -12064,6 +12086,15 @@ function parseShell(text) {
       i = end;
       continue;
     }
+    if ((ch === "<" || ch === ">") && text[i + 1] === "(") {
+      endWord(i);
+      next = "word";
+      if (ch === ">") segment.pipedOut = true;
+      substitution = ch === "<" ? "input" : "output";
+      processSubstitution = true;
+      i += 1;
+      continue;
+    }
     if (ch === "<" || ch === ">") {
       if (wordStart >= 0 && /^\d+$/.test(value)) {
         wordStart = -1;
@@ -12085,6 +12116,7 @@ function parseShell(text) {
         const operator = text.slice(start, i);
         const toDescriptor = operator.endsWith("&") && /^\s*(?:\d|-)/.test(text.slice(i));
         if (operator.startsWith(">") && !toDescriptor) segment.writesFile = true;
+        targetWrites = operator.startsWith(">") && !toDescriptor;
         next = "target";
       }
       continue;
@@ -12095,18 +12127,22 @@ function parseShell(text) {
       if (text[i] === ">") i += 1;
       segment.writesFile = true;
       next = "target";
+      targetWrites = true;
       continue;
     }
     if (ch === "(") {
       endSegment(i);
-      groups.push(segments.length);
+      groups.push({ from: segments.length, read: substitution === "input" });
+      substitution = void 0;
       i += 1;
       continue;
     }
     if (ch === ")") {
       endSegment(i);
-      const from = groups.pop() ?? 0;
+      const group = groups.pop();
+      const from = group?.from ?? 0;
       i += 1;
+      if (group?.read === true) pipeFrom(from);
       const after = /^[ \t]*\|(?!\|)/.exec(text.slice(i));
       if (after !== null) pipeFrom(from);
       continue;
@@ -12124,7 +12160,7 @@ function parseShell(text) {
     i += 1;
   }
   endSegment(text.length);
-  return { segments, comments };
+  return { segments, comments, processSubstitution, targetRuns };
 }
 var PREFIX_WORDS = /* @__PURE__ */ new Set([
   "sudo",
@@ -12279,26 +12315,80 @@ function commandOf(segment) {
   const program = segment.words[at];
   if (program === void 0) return void 0;
   const name = programName(program);
-  if (name !== "git") return { name, sub: "" };
   const rest = segment.words.slice(at + 1);
+  if (name !== "git") return { name, sub: "", globals: [], args: rest };
   let k = 0;
   while (k < rest.length && rest[k].value.startsWith("-")) {
     k += GIT_GLOBAL_VALUE_OPTIONS.has(rest[k].value) ? 2 : 1;
   }
-  return { name, sub: rest[k]?.value ?? "" };
+  return {
+    name,
+    sub: rest[k]?.value ?? "",
+    globals: rest.slice(0, k),
+    args: rest.slice(k + 1)
+  };
 }
-function isInert(segment) {
+var GIT_CONFIG_OPTIONS = /^(?:-c|--config-env(?:=.*)?|--exec-path(?:=.*)?)$/;
+function setsGitConfig(command) {
+  return command.globals.some((w) => GIT_CONFIG_OPTIONS.test(w.value));
+}
+function runsGitProgram(command) {
+  return command.args.some(
+    (w) => w.value === "--ext-diff" || command.sub === "rebase" && /^(?:--exec(?:=.*)?|-x.*)$/.test(w.value)
+  );
+}
+var GIT_RUNNABLE_PATH = /(?:^|[\\/])(?:\.git[\\/]|\.husky[\\/]|\.githooks[\\/]|hooks[\\/])|(?:^|[\\/])(?:\.git(?:attributes|config|modules)|git[\\/]config)$/;
+function plainPath(path) {
+  return path.replace(/^(?:\.[\\/])+/, "").replace(/[\\/]+$/, "");
+}
+function hooksPathsNamed(segments) {
+  const out = [];
+  for (const segment of segments) {
+    segment.words.forEach((word, k) => {
+      const named = /^core\.hookspath(?:=(.*))?$/i.exec(word.value);
+      if (named === null) return;
+      const value = named[1] ?? segment.words[k + 1]?.value;
+      if (value !== void 0 && value !== "") out.push(plainPath(value));
+    });
+  }
+  return out;
+}
+function gitMayRun(path, hooksPaths) {
+  if (GIT_RUNNABLE_PATH.test(path)) return true;
+  const plain = plainPath(path);
+  return hooksPaths.some(
+    (dir) => plain === dir || plain.startsWith(`${dir}/`) || plain.startsWith(`${dir}\\`)
+  );
+}
+function runsAProgramOption(command) {
+  if (command.name === "rg") return command.args.some((w) => /^--pre(?:=|$)/.test(w.value));
+  if (command.name === "sort") {
+    return command.args.some((w) => /^--compress-program(?:=|$)/.test(w.value));
+  }
+  return false;
+}
+function isInert(segment, writtenBefore, hooksPaths) {
   const command = commandOf(segment);
   if (command === void 0) return true;
   if (segment.words[programIndex(segment.words)]?.value.includes("/")) return false;
-  if (command.name === "git") return INERT_GIT.has(command.sub);
+  if (command.name === "git") {
+    if (setsGitConfig(command) || runsGitProgram(command)) return false;
+    if (writtenBefore.some((path) => gitMayRun(path, hooksPaths))) return false;
+    return INERT_GIT.has(command.sub);
+  }
+  if (runsAProgramOption(command)) return false;
   return INERT_PROGRAMS.has(command.name);
 }
+function writtenBy(segment) {
+  const paths = [...segment.written];
+  const command = commandOf(segment);
+  if (command?.name === "tee") {
+    for (const w of command.args) if (!w.value.startsWith("-")) paths.push(w.value);
+  }
+  return paths;
+}
 function writesAFile(segment) {
-  if (segment.writesFile) return true;
-  if (commandOf(segment)?.name !== "tee") return false;
-  const at = programIndex(segment.words);
-  return segment.words.slice(at + 1).some((w) => !w.value.startsWith("-"));
+  return segment.writesFile || writtenBy(segment).length > 0;
 }
 function isHeredocValue(raw) {
   if (!raw.startsWith("$(") || skipSubstitution(raw, 1) !== raw.length) return false;
@@ -12319,7 +12409,14 @@ var TEST_FILTER_OPTIONS = /* @__PURE__ */ new Set([
   "--grep",
   "-g"
 ]);
-var GIT_GLOBAL_VALUE_OPTIONS = /* @__PURE__ */ new Set(["-C", "-c"]);
+var GIT_GLOBAL_VALUE_OPTIONS = /* @__PURE__ */ new Set([
+  "-C",
+  "-c",
+  "--config-env",
+  "--git-dir",
+  "--work-tree",
+  "--namespace"
+]);
 var GIT_HISTORY = /* @__PURE__ */ new Set([
   "log",
   "show",
@@ -12440,28 +12537,97 @@ function segmentRegions(segment, keep) {
   }
   return regions;
 }
-function executedView(command) {
+var SHELLS = /* @__PURE__ */ new Set([
+  "bash",
+  "sh",
+  "zsh",
+  "dash",
+  "ksh",
+  "mksh",
+  "ash",
+  "fish"
+]);
+function runsAString(args2) {
+  for (let k = 0; k < args2.length; k++) {
+    const value = args2[k].value;
+    if (value === "-o" || value === "+o") {
+      k += 1;
+      continue;
+    }
+    if (value === "--command" || /^-[A-Za-z]*c[A-Za-z]*$/.test(value)) return true;
+    if (!value.startsWith("-") && !value.startsWith("+")) return false;
+  }
+  return false;
+}
+function runsASubstitution(word) {
+  if (isDataValue(word)) return false;
+  const eq = word.value.indexOf("=");
+  return eq < 0 || !isDataValue(word, word.value.slice(eq + 1));
+}
+function segmentHidingForms(segment, command, gitConfigured, writtenBefore, hooksPaths) {
+  const forms = [];
+  if (segment.words.some(runsASubstitution) || segment.inputs.some((input) => input.expands)) {
+    forms.push("command-substitution");
+  }
+  if (command === void 0) return forms;
+  const { name, args: args2 } = command;
+  if (SHELLS.has(name) && runsAString(args2)) forms.push("shell-string");
+  if (name === "eval") forms.push("eval");
+  if (name === "xargs") forms.push("xargs");
+  if (name === "find" && args2.some((w) => /^-(?:exec|execdir|ok|okdir)$/.test(w.value))) {
+    forms.push("find-exec");
+  }
+  if ((name === "fd" || name === "fdfind") && args2.some((w) => /^(?:-x|-X|--exec|--exec-batch)(?:=.*)?$/.test(w.value))) {
+    forms.push("find-exec");
+  }
+  if (name === "git") {
+    if (setsGitConfig(command) || gitConfigured) forms.push("git-config");
+    if (runsGitProgram(command)) forms.push("git-exec");
+    if (writtenBefore.some((path) => gitMayRun(path, hooksPaths))) forms.push("git-hook");
+  }
+  return forms;
+}
+function readCommand(command, trustWrites) {
   const parsed = parseShell(command);
   const regions = parsed.comments.map((c) => ({ ...c, kind: "doc" }));
   const segments = parsed.segments;
-  const laterMayRun = (index) => segments.slice(index + 1).some((s) => !isInert(s));
+  const hooksPaths = hooksPathsNamed(segments);
+  const writtenBefore = (index) => segments.slice(0, index).flatMap(writtenBy);
+  const laterMayRun = (index) => !trustWrites && segments.some((s, j) => j > index && !isInert(s, writtenBefore(j), hooksPaths));
   const pipesOnlyToConsumers = (index) => {
     for (let j = index + 1; j < segments.length; j++) {
       const seg = segments[j];
       const command2 = commandOf(seg);
       if (command2 !== void 0) {
         if (!PURE_CONSUMERS.has(command2.name)) return false;
+        if (runsAProgramOption(command2)) return false;
         if (writesAFile(seg) && laterMayRun(j)) return false;
       }
       if (!seg.pipedOut) return true;
     }
     return true;
   };
+  const forms = /* @__PURE__ */ new Set();
+  if (parsed.processSubstitution) forms.add("process-substitution");
+  if (parsed.targetRuns) forms.add("command-substitution");
+  let gitConfigured = false;
   segments.forEach((segment, index) => {
     const keep = segment.pipedOut && !pipesOnlyToConsumers(index) || writesAFile(segment) && laterMayRun(index);
     regions.push(...segmentRegions(segment, keep));
+    const command2 = commandOf(segment);
+    for (const form of segmentHidingForms(
+      segment,
+      command2,
+      gitConfigured,
+      writtenBefore(index),
+      hooksPaths
+    )) {
+      forms.add(form);
+    }
+    if (command2?.name === "git" && command2.sub === "config") gitConfigured = true;
   });
-  if (regions.length === 0) return { text: command, kinds: [] };
+  const hidingForms = HIDING_FORMS.filter((form) => forms.has(form));
+  if (regions.length === 0) return { view: { text: command, kinds: [] }, hidingForms };
   regions.sort((a, b) => a.start - b.start);
   let out = "";
   let cursor = 0;
@@ -12475,7 +12641,10 @@ function executedView(command) {
   out += command.slice(cursor);
   const kinds = [];
   for (const region of regions) if (!kinds.includes(region.kind)) kinds.push(region.kind);
-  return { text: out, kinds };
+  return { view: { text: out, kinds }, hidingForms };
+}
+function executedView(command) {
+  return readCommand(command, false).view;
 }
 function ranEvidenceOf(agent) {
   switch (agent) {
@@ -12500,19 +12669,25 @@ function verdict(state, why) {
 function runVerdict(agent, mapped, result, stillMatches) {
   if (mapped.tool === "WebSearch") return verdict("mentioned", "search");
   const command = mapped.args.full_command;
+  const matchesIn = (text) => stillMatches({ ...mapped, args: { ...mapped.args, full_command: text } });
+  let onlyWrittenFile = () => false;
   if (SHELL_TOOLS2.has(mapped.tool) && command !== void 0) {
     const view = executedView(command);
     const first = view.kinds[0];
-    if (first !== void 0 && !stillMatches({ ...mapped, args: { ...mapped.args, full_command: view.text } })) {
-      return verdict("mentioned", first);
-    }
+    if (first !== void 0 && !matchesIn(view.text)) return verdict("mentioned", first);
+    onlyWrittenFile = () => {
+      const trusting = readCommand(command, true).view;
+      return trusting.text !== view.text && !matchesIn(trusting.text);
+    };
   }
   if (!recordsToolResults(agent)) return verdict("unknown", "not-recorded");
   if (result === void 0) return verdict("unknown", "no-result");
-  if (result.isError) {
-    return EXIT_CODE.test(result.content) ? verdict("ran", "exit-code") : verdict("unknown", "error-result");
-  }
-  return verdict("ran", "result");
+  if (result.isError && !EXIT_CODE.test(result.content)) return verdict("unknown", "error-result");
+  if (onlyWrittenFile()) return verdict("ran", "may-run-written-file");
+  return result.isError ? verdict("ran", "exit-code") : verdict("ran", "result");
+}
+function isResultBackedRun(run) {
+  return run.state === "ran" && (run.why === "result" || run.why === "exit-code");
 }
 var AGENT_REPLY = verdict("mentioned", "agent-reply");
 function tallyMatchedCalls(corpus, catalog, allowlist) {
@@ -12532,7 +12707,8 @@ function tallyMatchedCalls(corpus, catalog, allowlist) {
           if (call.kind !== "action") continue;
           const { mapped, decision } = evaluateAction(catalog, allowlist, call.candidates);
           if (decision.matches.length === 0) continue;
-          tally[runVerdict(agent, mapped, result, stillMatches).state] += 1;
+          const run = runVerdict(agent, mapped, result, stillMatches);
+          tally[run.state === "ran" && !isResultBackedRun(run) ? "unknown" : run.state] += 1;
         }
       }
     }

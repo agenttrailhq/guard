@@ -93,7 +93,11 @@ export type HeadlineBasis = (typeof HEADLINE_BASES)[number];
 export interface HeadlineClaim {
   /** What `count` counts. It must be the basis `HEADLINE_BASIS` names for the card's category. */
   readonly basis: HeadlineBasis;
-  /** The count the headline states, such as the number of likely-real credentials. */
+  /**
+   * The count the headline states, such as the number of likely-real credentials. A count of
+   * commands that ran counts only result-backed runs (`isResultBackedRun` in `ran.ts`): never a
+   * `may-run-written-file` call, never an `unknown`.
+   */
   readonly count: number;
   /**
    * The claim rests on Codex `ran` counts (`ranEvidence: "output-record"`), which may include

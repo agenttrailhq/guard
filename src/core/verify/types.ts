@@ -1,4 +1,4 @@
-// cspell:words reclassed
+// cspell:words reclassed execdir
 /**
  * The verification data: what `scan --verify` found when it checked a scan's matches against
  * this machine, read-only.
@@ -43,7 +43,8 @@ export type VerifyCategory = (typeof VERIFY_CATEGORIES)[number];
  *
  * - `act`: it found something to fix.
  * - `review`: it found something only a person can judge, such as a cloud change.
- * - `clean`: it ran to the end and found nothing.
+ * - `clean`: it ran to the end and found nothing, and no call that ran holds a form that could
+ *   hide what it looks for (see `HIDING_FORMS`).
  * - `not-checked`: there is no check for the category yet.
  * - `could-not-check`: a check exists and could not finish.
  */
@@ -73,6 +74,11 @@ export type RunState = (typeof RUN_STATES)[number];
  *   before running.
  * - `no-result`: the app records results, and this call has none.
  * - `not-recorded`: the app records no results at all, as Cursor's session files do not.
+ * - `may-run-written-file`: the call has a result, but the matched text sits only in printed
+ *   text or a heredoc written to a file, and counts only because a later command in the same
+ *   call might run that file (anything not on the short list of programs that cannot). The
+ *   call ran; whether the matched text did is not confirmed. Its `state` is `ran`, and
+ *   `isResultBackedRun` is false for it: no count or claim rests on it.
  * - `search`, `doc`, `test-string`, `heredoc`: the matched text sits only in a search pattern,
  *   printed or message text, a test-name filter or a heredoc fed to a file.
  * - `agent-reply`: the text is in the agent's own reply, not in a tool call.
@@ -83,6 +89,7 @@ export type RunWhy =
   | "error-result"
   | "no-result"
   | "not-recorded"
+  | "may-run-written-file"
   | "search"
   | "doc"
   | "test-string"
@@ -110,12 +117,53 @@ export const RAN_EVIDENCE = ["tool-result", "output-record", "none"] as const;
 /** One of `RAN_EVIDENCE`. */
 export type RanEvidence = (typeof RAN_EVIDENCE)[number];
 
-/** Calls by `RunState`. */
+/**
+ * Calls by whether they ran. `ran` counts only result-backed runs (`why` `result` or
+ * `exit-code`); a `may-run-written-file` call counts as `unknown`, since whether its matched
+ * text ran is not confirmed.
+ */
 export interface RunTally {
   readonly ran: number;
   readonly mentioned: number;
   readonly unknown: number;
 }
+
+/**
+ * The forms of shell text that run a command this reading does not take apart, so a call that
+ * holds one could have run something its text does not show. A check may not report a
+ * category `clean`, or say no such command ran, while a call that ran holds a form that could
+ * hide what it looks for: it reports that it could not confirm instead.
+ *
+ * - `shell-string`: a shell given a string to run, `bash -c "…"`, `sh -c`, `zsh -c`.
+ * - `find-exec`: `find -exec`, `-execdir`, `-ok`; `fd --exec`.
+ * - `xargs`: `xargs`, which runs a command built from its input.
+ * - `process-substitution`: `<(…)` or `>(…)`.
+ * - `command-substitution`: a `$(…)` or backticks, other than one that only prints a heredoc
+ *   (`-m "$(cat <<'EOF' … EOF)"`), or a heredoc whose body the shell expands and holds one.
+ * - `eval`: `eval`, which runs its arguments as shell text.
+ * - `git-config`: `git` with a global `-c`, `--config-env` or `--exec-path`, or after the call
+ *   ran `git config`: an alias, a pager or a diff driver set that way runs a program.
+ * - `git-exec`: `git rebase --exec` or `-x`, or `--ext-diff`.
+ * - `git-hook`: `git` after the call wrote a hook (`.git/hooks/…`, `.husky/…`, `.githooks/…`,
+ *   any `hooks/…` or a `core.hooksPath` it names) or git's own config or attributes.
+ * - `unread-shell`: a shell whose syntax this reading does not parse (PowerShell): the whole
+ *   command is unread.
+ */
+export const HIDING_FORMS = [
+  "shell-string",
+  "find-exec",
+  "xargs",
+  "process-substitution",
+  "command-substitution",
+  "eval",
+  "git-config",
+  "git-exec",
+  "git-hook",
+  "unread-shell",
+] as const;
+
+/** One of `HIDING_FORMS`. */
+export type HidingForm = (typeof HIDING_FORMS)[number];
 
 /** How a likely-real credential reached a transcript. */
 export const SECRET_PROVENANCES = [
@@ -404,6 +452,7 @@ export const FACT_VALUE_ENUMS: readonly (readonly string[])[] = [
   VERIFY_STATUSES,
   RUN_STATES,
   RAN_EVIDENCE,
+  HIDING_FORMS,
   SECRET_PROVENANCES,
   SECRET_KINDS,
   SECRET_CLASSES,
@@ -415,6 +464,10 @@ export const FACT_VALUE_ENUMS: readonly (readonly string[])[] = [
  * Every key a category's facts may use, besides the values of `FACT_VALUE_ENUMS` (a record
  * keyed by an enum, such as `classes`). The boundary drops any other key with its value. A
  * check adds its own keys here.
+ *
+ * A value may be a count, a boolean, one of the enums, or a list or record of those; a number
+ * in a list passes as it is. `hidingForms` is the shared key for the `HIDING_FORMS` held by the
+ * calls that kept a category from `clean`.
  */
 export const FACT_KEYS: readonly string[] = [
   "classes",
@@ -432,4 +485,5 @@ export const FACT_KEYS: readonly string[] = [
   "kind",
   "via",
   "files",
+  "hidingForms",
 ];

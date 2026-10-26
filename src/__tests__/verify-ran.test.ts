@@ -1,4 +1,4 @@
-// cspell:words pytest oneline BLANKERS
+// cspell:words pytest oneline BLANKERS pipefail execdir mktemp
 /**
  * Ran, or only mentioned (`core/verify/ran.ts`).
  *
@@ -16,12 +16,16 @@ import { evaluateAction } from "../core/scan-report.js";
 import type { AgentSource, MappedCall } from "../core/types.js";
 import {
   AGENT_REPLY,
+  commandHidingForms,
   executedView,
+  hidingFormsOf,
+  isResultBackedRun,
   ranEvidenceOf,
   recordsToolResults,
   runVerdict,
   tallyMatchedCalls,
 } from "../core/verify/ran.js";
+import { HIDING_FORMS } from "../core/verify/types.js";
 import { RULE_RM_RF } from "./scan-fixtures.js";
 import { codexExec, type SessionEvent, writeCorpus } from "./verify-fixtures.js";
 
@@ -494,6 +498,33 @@ describe("text the shell expands, or a later program may run, is never hidden", 
     ["a two-command group piped into sh", `(echo "${RUN}"; echo a) | sh`],
     ["a heredoc given to bash as a message", `git commit -m "$(bash <<'EOF'\n${RUN}\nEOF\n)"`],
     ["printed text piped through a consumer into sh", `echo "${RUN}" | head -1 | sh`],
+    // Git runs what a config value, an exec option or an external diff names.
+    ["a git alias set with -c", `echo "${RUN}" > x.sh && git -c alias.x='!sh x.sh' x`],
+    ["git rebase --exec", `echo "${RUN}" > x.sh && git rebase --exec ./x.sh main`],
+    ["git rebase -x", `echo "${RUN}" > x.sh && git rebase -x ./x.sh main`],
+    ["a diff driver set with -c", `echo "${RUN}" > x.sh && git -c diff.external=./x.sh diff`],
+    ["a config set from the environment", `echo "${RUN}" > x.sh && git --config-env=a.b=C diff`],
+    ["an exec path", `echo "${RUN}" > git-x && git --exec-path=. status`],
+    ["git diff --ext-diff", `echo "${RUN}" > x.sh && git diff --ext-diff`],
+    // A commit runs hooks; git reads its own config and attributes.
+    ["a git hook, then a commit", `echo "${RUN}" > .git/hooks/pre-commit && git commit -m wip`],
+    ["a husky hook, then a commit", `echo "${RUN}" > .husky/pre-commit && git commit -m wip`],
+    ["a .githooks hook, then a commit", `echo "${RUN}" > .githooks/pre-commit; git commit -m wip`],
+    ["a hooks folder, then a commit", `echo "${RUN}" | tee hooks/pre-commit && git commit -m x`],
+    [
+      "a hook in a folder the call names as core.hooksPath",
+      `git config core.hooksPath ci && echo "${RUN}" > ci/pre-commit && git commit -m wip`,
+    ],
+    ["git's config, then a diff", `echo "${RUN}" >> .git/config && git diff`],
+    ["attributes, then a diff", `echo "${RUN}" > .gitattributes && git diff`],
+    // Process substitution hands text to a command.
+    ["printed text into an output substitution", `echo "${RUN}" > >(sh)`],
+    ["a heredoc into an output substitution", `cat <<'EOF' > >(bash)\n${RUN}\nEOF`],
+    ["printed text teed into an output substitution", `echo "${RUN}" | tee >(sh)`],
+    // Options that make an otherwise inert program run another.
+    ["rg --pre", `echo "${RUN}" > pre.sh && rg --pre ./pre.sh x`],
+    ["sort --compress-program", `echo "${RUN}" > z.sh && sort --compress-program=./z.sh a`],
+    ["a search piped into rg --pre", `grep -h "${RUN}" notes | rg --pre=sh x`],
   ])("%s is ran", (_label, command) => {
     expect(leftToRun(command), JSON.stringify(command)).toBeGreaterThanOrEqual(1);
     expect(runVerdict("claude", bash(command), ok, stillMatches).state).toBe("ran");
@@ -513,7 +544,152 @@ describe("text the shell expands, or a later program may run, is never hidden", 
     ["a search piped through two consumers", `rg "${RUN}" | sort | uniq -c`],
     ["a group of printers piped into head", `(echo "${RUN}"; echo a) | head`],
     ["a quoted heredoc message", `git commit -m "$(cat <<'EOF'\n$(${RUN})\nEOF\n)"`],
+    [
+      "a file written, then added and committed",
+      `cat > notes.md <<'EOF'\n${RUN}\nEOF\ngit add notes.md && git commit -m "notes"`,
+    ],
+    [
+      "a file written, then committed in another folder",
+      `echo "${RUN}" > notes.md && git -C docs add notes.md && git -C docs commit -m notes`,
+    ],
+    ["a hook-like name outside a hooks folder", `echo "${RUN}" > ci/pre-commit && git commit -m x`],
   ])("%s stays mentioned", (_label, command) => {
     expect(runVerdict("claude", bash(command), ok, stillMatches).state).toBe("mentioned");
+  });
+});
+
+describe("a run kept only because a later command may run a written file", () => {
+  const WRITTEN_THEN_RUN = `cat > run.sh <<'EOF'\n${RUN}\nEOF\nbash run.sh`;
+
+  it("is ran, with its own reason, and is not result-backed", () => {
+    const run = runVerdict("claude", bash(WRITTEN_THEN_RUN), ok, stillMatches);
+    expect(run).toEqual({ state: "ran", why: "may-run-written-file" });
+    expect(isResultBackedRun(run)).toBe(false);
+  });
+
+  it("keeps that reason with an exit-code result, and needs a result to be ran at all", () => {
+    const failed = { ...ok, isError: true, content: "Exit code 2\nfailed" };
+    expect(runVerdict("claude", bash(WRITTEN_THEN_RUN), failed, stillMatches).why).toBe(
+      "may-run-written-file",
+    );
+    expect(runVerdict("claude", bash(WRITTEN_THEN_RUN), undefined, stillMatches)).toEqual({
+      state: "unknown",
+      why: "no-result",
+    });
+    const blocked = { ...ok, isError: true, content: "Blocked by a hook" };
+    expect(runVerdict("claude", bash(WRITTEN_THEN_RUN), blocked, stillMatches)).toEqual({
+      state: "unknown",
+      why: "error-result",
+    });
+  });
+
+  it.each([
+    ["a command that runs it directly", RUN],
+    ["a written file and a direct run", `echo "${RUN}" > run.sh; ${RUN}`],
+    ["text piped into a shell", `echo "${RUN}" | sh`],
+    ["a substitution", `echo "$(${RUN})"`],
+  ])("a run that does not rest on that rule is result-backed: %s", (_label, command) => {
+    const run = runVerdict("claude", bash(command), ok, stillMatches);
+    expect(run).toEqual({ state: "ran", why: "result" });
+    expect(isResultBackedRun(run)).toBe(true);
+  });
+
+  it("an exit-code run is result-backed; mentioned and unknown never are", () => {
+    expect(isResultBackedRun({ state: "ran", why: "exit-code" })).toBe(true);
+    expect(isResultBackedRun({ state: "mentioned", why: "heredoc" })).toBe(false);
+    expect(isResultBackedRun({ state: "unknown", why: "no-result" })).toBe(false);
+  });
+
+  it.each([
+    "claude",
+    "codex",
+  ] as const)("%s: the tally counts it as unknown, not ran", async (agent) => {
+    const { tally } = await tallyOf(agent, oneCall(WRITTEN_THEN_RUN, { text: "ok" }));
+    expect(tally).toEqual({ ran: 0, mentioned: 0, unknown: 1 });
+    const direct = await tallyOf(agent, oneCall(RUN, { text: "ok" }));
+    expect(direct.tally).toEqual({ ran: 1, mentioned: 0, unknown: 0 });
+  });
+});
+
+describe("what a call could hide", () => {
+  it.each([
+    ["bash -c", `bash -c "make all"`, ["shell-string"]],
+    ["sh -lc", `sh -lc 'make all'`, ["shell-string"]],
+    ["a shell option before -c", `bash -o pipefail -c 'make | tee log'`, ["shell-string"]],
+    ["sudo zsh --command", `sudo zsh --command 'make'`, ["shell-string"]],
+    ["find -exec", `find . -name '*.log' -exec wc -l {} +`, ["find-exec"]],
+    ["find -execdir", `find . -execdir ls {} \\;`, ["find-exec"]],
+    ["fd --exec", `fd -e ts --exec wc -l`, ["find-exec"]],
+    ["xargs", `ls | xargs wc -l`, ["xargs"]],
+    ["an input substitution", `diff <(sort a) <(sort b)`, ["process-substitution"]],
+    ["an output substitution", `make > >(tee log)`, ["process-substitution"]],
+    ["a substitution in a word", `echo "$(date)"`, ["command-substitution"]],
+    ["backticks", "echo `date`", ["command-substitution"]],
+    ["a substitution in a redirect target", `echo hi > "$(mktemp)"`, ["command-substitution"]],
+    [
+      "an unquoted heredoc that expands",
+      `cat > x.md <<EOF\n$(date)\nEOF`,
+      ["command-substitution"],
+    ],
+    ["a here-string that expands", `cat <<< "$(date)"`, ["command-substitution"]],
+    ["eval", `eval "$TASK"`, ["eval"]],
+    ["git -c", `git -c core.pager=cat log`, ["git-config"]],
+    ["git --config-env", `git --config-env=a.b=C status`, ["git-config"]],
+    ["git after git config", `git config alias.x '!make' && git x`, ["git-config"]],
+    ["git rebase -x", `git rebase -x 'make test' main`, ["git-exec"]],
+    ["git diff --ext-diff", `git diff --ext-diff`, ["git-exec"]],
+    [
+      "git after a hook is written",
+      `echo make > .husky/pre-commit && git commit -m x`,
+      ["git-hook"],
+    ],
+    [
+      "git after a hook in a named hooks folder",
+      `git config core.hooksPath ci && echo make > ci/pre-commit && git commit -m x`,
+      ["git-config", "git-hook"],
+    ],
+    [
+      "several, in the contract's order",
+      `eval "$X"; ls | xargs -n1 wc; bash -c 'make'`,
+      ["shell-string", "xargs", "eval"],
+    ],
+  ])("%s", (_label, command, forms) => {
+    expect(commandHidingForms(command)).toEqual(forms);
+  });
+
+  it.each([
+    ["a plain command", "ls -la src"],
+    ["a search for a hiding form", `grep -rn "bash -c" src`],
+    ["printed text naming one", `echo "use xargs or eval"`],
+    ["a message naming one", `git commit -m "drop find -exec"`],
+    ["a printed heredoc message", `git commit -m "$(cat <<'EOF'\nuse $(date)\nEOF\n)"`],
+    ["a quoted heredoc with a substitution in it", `cat > x.md <<'EOF'\n$(date)\nEOF`],
+    ["a shell given a script file", `bash ci.sh -c`],
+    ["git with -C", `git -C docs status`],
+    ["git commit -c, which reuses a message", `git commit -c HEAD`],
+    [
+      "a file written, then a commit",
+      `echo notes > notes.md && git add notes.md && git commit -m x`,
+    ],
+    ["single-quoted text that looks like a substitution", `echo '$(date)'`],
+  ])("none: %s", (_label, command) => {
+    expect(commandHidingForms(command)).toEqual([]);
+  });
+
+  it("per call: a shell call's forms, every PowerShell command, nothing for other tools", () => {
+    expect(hidingFormsOf(bash("ls | xargs wc -l"))).toEqual(["xargs"]);
+    expect(hidingFormsOf({ tool: "PowerShell", args: { full_command: "Get-ChildItem" } })).toEqual([
+      "unread-shell",
+    ]);
+    expect(hidingFormsOf({ tool: "Read", args: { file_path: "a.md" } })).toEqual([]);
+    expect(hidingFormsOf({ tool: "Bash", args: {} })).toEqual([]);
+  });
+
+  it("is an enum list only: every form is one of the contract's", () => {
+    const all = commandHidingForms(
+      `eval "$X"; bash -c a; find . -exec b {} +; ls | xargs c; diff <(d) e; git -c f=g h; git rebase -x i j; echo k > .git/hooks/l && git commit`,
+    );
+    for (const form of all) expect(HIDING_FORMS).toContain(form);
+    expect(all.length).toBeGreaterThan(5);
   });
 });

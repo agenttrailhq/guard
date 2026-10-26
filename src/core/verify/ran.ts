@@ -1,4 +1,4 @@
-// cspell:words egrep fgrep zgrep apropos whatis tldr whereis stdbuf bunx herestring heredocs redirections whatchanged shortlog pytest nohup iglob mtext Stext ovalue osascript
+// cspell:words egrep fgrep zgrep apropos whatis tldr whereis stdbuf bunx herestring heredocs redirections whatchanged shortlog pytest nohup iglob mtext Stext ovalue osascript hookspath mksh execdir okdir fdfind
 /**
  * Ran, or only mentioned: did a matched tool call actually run on this machine?
  *
@@ -33,7 +33,11 @@
  *    part of what it gets (`grep … | head`);
  *  - a command that writes a file blanks nothing unless every later command in the call is on
  *    a short list of programs that cannot run it (`git add`, `ls`, `wc`, …), since any other
- *    program might (`npx tsx x.ts`, `uv run x.py`, `ssh host bash < x.sh`, `crontab x`, `./x`);
+ *    program might (`npx tsx x.ts`, `uv run x.py`, `ssh host bash < x.sh`, `crontab x`, `./x`).
+ *    `git` is on it only with no global `-c`, `--config-env` or `--exec-path`, no `--ext-diff`
+ *    or `rebase --exec`, and only while the call has written no hook or git config. A call
+ *    kept only by this rule is `ran` with `why: "may-run-written-file"`, which no count uses.
+ *    A file written in one call and run in a later call is not seen: each call is read alone;
  *  - the body of a heredoc whose delimiter is not quoted (`<<EOF`) is expanded by the shell,
  *    so one holding `$(…)` or backticks is never blanked.
  * The one substitution read as data is a value that only prints a heredoc with a quoted
@@ -53,6 +57,12 @@
  *                 tested on synthetic sessions built from the documented rollout format only.
  *   Cursor        session files record no results and no tool-use ids, so no Cursor call is
  *                 ever `ran`: it is `unknown`, or `mentioned` when the text says so.
+ *
+ * ── What a call could hide ───────────────────────────────────────────────────
+ * `hidingFormsOf` reports, per call, the forms that run something this reading does not take
+ * apart: `bash -c`, `find -exec`, `xargs`, `<(…)`/`>(…)`, a `$(…)`, `eval`, `git` with a `-c`
+ * or after the call wrote a hook, and a PowerShell command. A check may not report a category
+ * clean while a call that ran holds one that could hide what it looks for. See `HIDING_FORMS`.
  */
 
 import { unhandledAgent } from "../agent.js";
@@ -61,7 +71,14 @@ import type { CompiledRule } from "../rules.js";
 import { evaluateAction, type ScanCorpus, toolUseCalls } from "../scan-report.js";
 import type { ToolResult } from "../transcript/transcript-types.js";
 import type { AgentSource, MappedCall } from "../types.js";
-import type { RanEvidence, RunTally, RunVerdict, RunWhy } from "./types.js";
+import {
+  HIDING_FORMS,
+  type HidingForm,
+  type RanEvidence,
+  type RunTally,
+  type RunVerdict,
+  type RunWhy,
+} from "./types.js";
 
 /** Why a region was blanked. */
 export type MentionKind = "search" | "doc" | "test-string" | "heredoc";
@@ -110,11 +127,13 @@ interface Segment {
   pipedOut: boolean;
   /** It redirects its output into a file (`>`, `>>`, `&>`). */
   writesFile: boolean;
+  /** The files its output redirects name, as written. */
+  readonly written: string[];
 }
 
 /** A segment with nothing in it yet. */
 function emptySegment(): Segment {
-  return { words: [], inputs: [], pipedOut: false, writesFile: false };
+  return { words: [], inputs: [], pipedOut: false, writesFile: false, written: [] };
 }
 
 /** A heredoc whose delimiter has been read and whose body starts after the next line break. */
@@ -142,6 +161,10 @@ interface Region {
 interface Parsed {
   readonly segments: readonly Segment[];
   readonly comments: readonly Body[];
+  /** It holds a process substitution, `<(…)` or `>(…)`. */
+  readonly processSubstitution: boolean;
+  /** A redirection target holds a `$(…)` or backticks, which run. */
+  readonly targetRuns: boolean;
 }
 
 /**
@@ -242,8 +265,15 @@ function parseShell(text: string): Parsed {
   const segments: Segment[] = [];
   const comments: Body[] = [];
   const pending: PendingHeredoc[] = [];
-  // Where each open `(` group starts, as an index into `segments`.
-  const groups: number[] = [];
+  // Each open `(` group: where it starts in `segments`, and whether its output is read by the
+  // command around it (an input process substitution, `<(…)`).
+  const groups: { readonly from: number; readonly read: boolean }[] = [];
+  // A `<(` or `>(` was just read, so the next `(` opens a process substitution.
+  let substitution: "input" | "output" | undefined;
+  // The redirect target being read is a file the output goes to.
+  let targetWrites = false;
+  let processSubstitution = false;
+  let targetRuns = false;
   let segment: Segment = emptySegment();
   // What the next completed word is: an ordinary word, a redirection target, a heredoc
   // delimiter or a here-string.
@@ -267,7 +297,11 @@ function parseShell(text: string): Parsed {
       });
     } else if (next === "herestring") {
       segment.inputs.push({ start: word.start, end: word.end, expands: runs });
+    } else if (next === "target") {
+      if (targetWrites) segment.written.push(value);
+      if (runs) targetRuns = true;
     }
+    targetWrites = false;
     next = "word";
     wordStart = -1;
     value = "";
@@ -391,6 +425,19 @@ function parseShell(text: string): Parsed {
       continue;
     }
 
+    if ((ch === "<" || ch === ">") && text[i + 1] === "(") {
+      // Process substitution. `>(cmd)` hands this command's output to `cmd`, so it is piped;
+      // `<(cmd)` hands `cmd`'s output to this command. Either way the text inside is commands,
+      // read as a group of their own.
+      endWord(i);
+      next = "word";
+      if (ch === ">") segment.pipedOut = true;
+      substitution = ch === "<" ? "input" : "output";
+      processSubstitution = true;
+      i += 1;
+      continue;
+    }
+
     if (ch === "<" || ch === ">") {
       // A word of digits right before is the file descriptor, not an argument.
       if (wordStart >= 0 && /^\d+$/.test(value)) {
@@ -415,6 +462,7 @@ function parseShell(text: string): Parsed {
         const operator = text.slice(start, i);
         const toDescriptor = operator.endsWith("&") && /^\s*(?:\d|-)/.test(text.slice(i));
         if (operator.startsWith(">") && !toDescriptor) segment.writesFile = true;
+        targetWrites = operator.startsWith(">") && !toDescriptor;
         next = "target";
       }
       continue;
@@ -426,20 +474,25 @@ function parseShell(text: string): Parsed {
       if (text[i] === ">") i += 1;
       segment.writesFile = true;
       next = "target";
+      targetWrites = true;
       continue;
     }
 
     if (ch === "(") {
       endSegment(i);
-      groups.push(segments.length);
+      groups.push({ from: segments.length, read: substitution === "input" });
+      substitution = undefined;
       i += 1;
       continue;
     }
 
     if (ch === ")") {
       endSegment(i);
-      const from = groups.pop() ?? 0;
+      const group = groups.pop();
+      const from = group?.from ?? 0;
       i += 1;
+      // What an input process substitution prints is read by the command around it.
+      if (group?.read === true) pipeFrom(from);
       // A group whose output goes into a pipe pipes every command in it.
       const after = /^[ \t]*\|(?!\|)/.exec(text.slice(i));
       if (after !== null) pipeFrom(from);
@@ -461,7 +514,7 @@ function parseShell(text: string): Parsed {
     i += 1;
   }
   endSegment(text.length);
-  return { segments, comments };
+  return { segments, comments, processSubstitution, targetRuns };
 }
 
 /** Words that come before the program and are not it. */
@@ -648,37 +701,143 @@ const PURE_CONSUMERS: ReadonlySet<string> = new Set([
   "printf",
 ]);
 
+/**
+ * The program a segment starts: `{ name: "ls" }`, or for `git` its subcommand, the global
+ * options before it, and the words after it.
+ */
+interface Command {
+  readonly name: string;
+  /** The `git` subcommand; empty for any other program. */
+  readonly sub: string;
+  /** `git`'s global options, before the subcommand, with their values. */
+  readonly globals: readonly Word[];
+  /** The words after the program, or after a `git` subcommand. */
+  readonly args: readonly Word[];
+}
+
 /** The program a segment starts, with any `git` subcommand: `["git", "add"]`, `["ls"]`. */
-function commandOf(segment: Segment): { name: string; sub: string } | undefined {
+function commandOf(segment: Segment): Command | undefined {
   const at = programIndex(segment.words);
   const program = segment.words[at];
   if (program === undefined) return undefined;
   const name = programName(program);
-  if (name !== "git") return { name, sub: "" };
   const rest = segment.words.slice(at + 1);
+  if (name !== "git") return { name, sub: "", globals: [], args: rest };
   let k = 0;
   while (k < rest.length && (rest[k] as Word).value.startsWith("-")) {
     k += GIT_GLOBAL_VALUE_OPTIONS.has((rest[k] as Word).value) ? 2 : 1;
   }
-  return { name, sub: rest[k]?.value ?? "" };
+  return {
+    name,
+    sub: rest[k]?.value ?? "",
+    globals: rest.slice(0, k),
+    args: rest.slice(k + 1),
+  };
 }
 
-/** Can this segment not run a file written before it? A segment with no program can't. */
-function isInert(segment: Segment): boolean {
+/** `git` global options that make it run a program: a config value or an exec path. */
+const GIT_CONFIG_OPTIONS = /^(?:-c|--config-env(?:=.*)?|--exec-path(?:=.*)?)$/;
+
+/** Does this `git` command carry a global `-c`, `--config-env` or `--exec-path`? */
+function setsGitConfig(command: Command): boolean {
+  return command.globals.some((w) => GIT_CONFIG_OPTIONS.test(w.value));
+}
+
+/** Does this `git` command run a program it names: `rebase --exec`/`-x`, or `--ext-diff`? */
+function runsGitProgram(command: Command): boolean {
+  return command.args.some(
+    (w) =>
+      w.value === "--ext-diff" ||
+      (command.sub === "rebase" && /^(?:--exec(?:=.*)?|-x.*)$/.test(w.value)),
+  );
+}
+
+/**
+ * A path whose content git runs or reads its configuration from: a hook (`.git/hooks/…`,
+ * `.husky/…`, `.githooks/…`, any `hooks/…`), a repository's or the user's config, or the
+ * attributes and modules files.
+ */
+const GIT_RUNNABLE_PATH =
+  /(?:^|[\\/])(?:\.git[\\/]|\.husky[\\/]|\.githooks[\\/]|hooks[\\/])|(?:^|[\\/])(?:\.git(?:attributes|config|modules)|git[\\/]config)$/;
+
+/** A path with any leading `./` and trailing separators removed, for comparing. */
+function plainPath(path: string): string {
+  return path.replace(/^(?:\.[\\/])+/, "").replace(/[\\/]+$/, "");
+}
+
+/**
+ * The folders the call names as `core.hooksPath`: `git config core.hooksPath x`, or
+ * `-c core.hooksPath=x`.
+ */
+function hooksPathsNamed(segments: readonly Segment[]): string[] {
+  const out: string[] = [];
+  for (const segment of segments) {
+    segment.words.forEach((word, k) => {
+      const named = /^core\.hookspath(?:=(.*))?$/i.exec(word.value);
+      if (named === null) return;
+      const value = named[1] ?? segment.words[k + 1]?.value;
+      if (value !== undefined && value !== "") out.push(plainPath(value));
+    });
+  }
+  return out;
+}
+
+/** Would git run, or read its configuration from, this written file? */
+function gitMayRun(path: string, hooksPaths: readonly string[]): boolean {
+  if (GIT_RUNNABLE_PATH.test(path)) return true;
+  const plain = plainPath(path);
+  return hooksPaths.some(
+    (dir) => plain === dir || plain.startsWith(`${dir}/`) || plain.startsWith(`${dir}\\`),
+  );
+}
+
+/** Options of an otherwise inert program that make it run another program. */
+function runsAProgramOption(command: Command): boolean {
+  if (command.name === "rg") return command.args.some((w) => /^--pre(?:=|$)/.test(w.value));
+  if (command.name === "sort") {
+    return command.args.some((w) => /^--compress-program(?:=|$)/.test(w.value));
+  }
+  return false;
+}
+
+/**
+ * Can this segment not run a file written before it? `writtenBefore` is every file the call
+ * wrote before this command, and `hooksPaths` the hook folders it names. A segment with no
+ * program can't.
+ */
+function isInert(
+  segment: Segment,
+  writtenBefore: readonly string[],
+  hooksPaths: readonly string[],
+): boolean {
   const command = commandOf(segment);
   if (command === undefined) return true;
   // A program named by a path (`./run.sh`, `bin/task`) may be a file just written.
   if (segment.words[programIndex(segment.words)]?.value.includes("/")) return false;
-  if (command.name === "git") return INERT_GIT.has(command.sub);
+  if (command.name === "git") {
+    // Git runs what a `-c`, an exec path or an external diff names, and a commit runs hooks:
+    // with any of those, or after the call wrote a hook or git's own config, it is not inert.
+    if (setsGitConfig(command) || runsGitProgram(command)) return false;
+    if (writtenBefore.some((path) => gitMayRun(path, hooksPaths))) return false;
+    return INERT_GIT.has(command.sub);
+  }
+  if (runsAProgramOption(command)) return false;
   return INERT_PROGRAMS.has(command.name);
+}
+
+/** The files this segment writes: its output redirect targets and `tee`'s file operands. */
+function writtenBy(segment: Segment): string[] {
+  const paths = [...segment.written];
+  const command = commandOf(segment);
+  if (command?.name === "tee") {
+    for (const w of command.args) if (!w.value.startsWith("-")) paths.push(w.value);
+  }
+  return paths;
 }
 
 /** Does this segment write a file: an output redirect, or `tee` with a file operand? */
 function writesAFile(segment: Segment): boolean {
-  if (segment.writesFile) return true;
-  if (commandOf(segment)?.name !== "tee") return false;
-  const at = programIndex(segment.words);
-  return segment.words.slice(at + 1).some((w) => !w.value.startsWith("-"));
+  return segment.writesFile || writtenBy(segment).length > 0;
 }
 
 /**
@@ -723,7 +882,14 @@ const TEST_FILTER_OPTIONS: ReadonlySet<string> = new Set([
 ]);
 
 /** `git` options that come before the subcommand and take the next word. */
-const GIT_GLOBAL_VALUE_OPTIONS: ReadonlySet<string> = new Set(["-C", "-c"]);
+const GIT_GLOBAL_VALUE_OPTIONS: ReadonlySet<string> = new Set([
+  "-C",
+  "-c",
+  "--config-env",
+  "--git-dir",
+  "--work-tree",
+  "--namespace",
+]);
 
 /** `git` subcommands that search history for a string. */
 const GIT_HISTORY: ReadonlySet<string> = new Set([
@@ -873,18 +1039,95 @@ function segmentRegions(segment: Segment, keep: boolean): Region[] {
   return regions;
 }
 
+/** Shells that run a string given with `-c`. */
+const SHELLS: ReadonlySet<string> = new Set([
+  "bash",
+  "sh",
+  "zsh",
+  "dash",
+  "ksh",
+  "mksh",
+  "ash",
+  "fish",
+]);
+
+/** Does this shell get a string to run: `-c`, a cluster holding `c` (`-lc`), `--command`? */
+function runsAString(args: readonly Word[]): boolean {
+  for (let k = 0; k < args.length; k++) {
+    const value = (args[k] as Word).value;
+    if (value === "-o" || value === "+o") {
+      k += 1;
+      continue;
+    }
+    if (value === "--command" || /^-[A-Za-z]*c[A-Za-z]*$/.test(value)) return true;
+    // The first operand is a script file; what follows is its arguments.
+    if (!value.startsWith("-") && !value.startsWith("+")) return false;
+  }
+  return false;
+}
+
+/** Is this word a `$(…)` or backticks that runs, rather than a value that prints a heredoc? */
+function runsASubstitution(word: Word): boolean {
+  if (isDataValue(word)) return false;
+  const eq = word.value.indexOf("=");
+  return eq < 0 || !isDataValue(word, word.value.slice(eq + 1));
+}
+
+/** The hiding forms one segment holds, given what the call did before it. */
+function segmentHidingForms(
+  segment: Segment,
+  command: Command | undefined,
+  gitConfigured: boolean,
+  writtenBefore: readonly string[],
+  hooksPaths: readonly string[],
+): HidingForm[] {
+  const forms: HidingForm[] = [];
+  if (segment.words.some(runsASubstitution) || segment.inputs.some((input) => input.expands)) {
+    forms.push("command-substitution");
+  }
+  if (command === undefined) return forms;
+  const { name, args } = command;
+  if (SHELLS.has(name) && runsAString(args)) forms.push("shell-string");
+  if (name === "eval") forms.push("eval");
+  if (name === "xargs") forms.push("xargs");
+  if (name === "find" && args.some((w) => /^-(?:exec|execdir|ok|okdir)$/.test(w.value))) {
+    forms.push("find-exec");
+  }
+  if (
+    (name === "fd" || name === "fdfind") &&
+    args.some((w) => /^(?:-x|-X|--exec|--exec-batch)(?:=.*)?$/.test(w.value))
+  ) {
+    forms.push("find-exec");
+  }
+  if (name === "git") {
+    if (setsGitConfig(command) || gitConfigured) forms.push("git-config");
+    if (runsGitProgram(command)) forms.push("git-exec");
+    if (writtenBefore.some((path) => gitMayRun(path, hooksPaths))) forms.push("git-hook");
+  }
+  return forms;
+}
+
+/** A command read once: its view with data blanked, and the hiding forms it holds. */
+interface Reading {
+  readonly view: ExecutedView;
+  readonly hidingForms: readonly HidingForm[];
+}
+
 /**
- * The command with every region that is only data blanked out. See the module header.
- *
- * Pure and total: any text gives a view, and a text with nothing to blank comes back as it is.
+ * Read a command. With `trustWrites`, a file the command writes is taken as never run by a
+ * later command in it, so its printed text and heredocs are blanked whatever follows; that view
+ * only tells a `may-run-written-file` call apart, and never decides `mentioned`.
  */
-export function executedView(command: string): ExecutedView {
+function readCommand(command: string, trustWrites: boolean): Reading {
   const parsed = parseShell(command);
   const regions: Region[] = parsed.comments.map((c) => ({ ...c, kind: "doc" as const }));
   const segments = parsed.segments;
+  const hooksPaths = hooksPathsNamed(segments);
+  /** Every file written by the commands before `index`. */
+  const writtenBefore = (index: number): string[] => segments.slice(0, index).flatMap(writtenBy);
   /** Could a command after `index` run a file written before it? */
   const laterMayRun = (index: number): boolean =>
-    segments.slice(index + 1).some((s) => !isInert(s));
+    !trustWrites && segments.some((s, j) => j > index && !isInert(s, writtenBefore(j), hooksPaths));
   /**
    * Does what `index` pipes go only to programs that print a part of it? Followed along the
    * pipeline; a consumer that writes a file a later command may run is not one.
@@ -895,12 +1138,18 @@ export function executedView(command: string): ExecutedView {
       const command = commandOf(seg);
       if (command !== undefined) {
         if (!PURE_CONSUMERS.has(command.name)) return false;
+        if (runsAProgramOption(command)) return false;
         if (writesAFile(seg) && laterMayRun(j)) return false;
       }
       if (!seg.pipedOut) return true;
     }
     return true;
   };
+
+  const forms = new Set<HidingForm>();
+  if (parsed.processSubstitution) forms.add("process-substitution");
+  if (parsed.targetRuns) forms.add("command-substitution");
+  let gitConfigured = false;
   segments.forEach((segment, index) => {
     // What a command prints into a pipe may be run by the next program; what it writes to a
     // file may be run by a later command. Either way, nothing in it is blanked.
@@ -908,8 +1157,20 @@ export function executedView(command: string): ExecutedView {
       (segment.pipedOut && !pipesOnlyToConsumers(index)) ||
       (writesAFile(segment) && laterMayRun(index));
     regions.push(...segmentRegions(segment, keep));
+    const command = commandOf(segment);
+    for (const form of segmentHidingForms(
+      segment,
+      command,
+      gitConfigured,
+      writtenBefore(index),
+      hooksPaths,
+    )) {
+      forms.add(form);
+    }
+    if (command?.name === "git" && command.sub === "config") gitConfigured = true;
   });
-  if (regions.length === 0) return { text: command, kinds: [] };
+  const hidingForms = HIDING_FORMS.filter((form) => forms.has(form));
+  if (regions.length === 0) return { view: { text: command, kinds: [] }, hidingForms };
 
   regions.sort((a, b) => a.start - b.start);
   let out = "";
@@ -924,7 +1185,39 @@ export function executedView(command: string): ExecutedView {
   out += command.slice(cursor);
   const kinds: MentionKind[] = [];
   for (const region of regions) if (!kinds.includes(region.kind)) kinds.push(region.kind);
-  return { text: out, kinds };
+  return { view: { text: out, kinds }, hidingForms };
+}
+
+/**
+ * The command with every region that is only data blanked out. See the module header.
+ *
+ * Pure and total: any text gives a view, and a text with nothing to blank comes back as it is.
+ */
+export function executedView(command: string): ExecutedView {
+  return readCommand(command, false).view;
+}
+
+/**
+ * The forms in a shell command that run something this reading does not take apart, in
+ * `HIDING_FORMS` order. Empty when it holds none. See `HIDING_FORMS`.
+ */
+export function commandHidingForms(command: string): readonly HidingForm[] {
+  return readCommand(command, false).hidingForms;
+}
+
+/**
+ * The hiding forms one tool call holds: a shell call's, read from its command; every command
+ * of a shell this reading does not parse (`unread-shell`); none for any other tool.
+ *
+ * A per-call signal for the checks: a category whose check finds nothing may be `clean` only
+ * when no call that ran holds a form that could hide what it looks for.
+ */
+export function hidingFormsOf(mapped: MappedCall): readonly HidingForm[] {
+  const command = mapped.args.full_command;
+  if (command === undefined) return [];
+  if (SHELL_TOOLS.has(mapped.tool)) return commandHidingForms(command);
+  if (UNREAD_SHELL_TOOLS.has(mapped.tool)) return ["unread-shell"];
+  return [];
 }
 
 /**
@@ -960,6 +1253,9 @@ const EXIT_CODE = /^\s*Exit code -?\d+/;
  */
 const SHELL_TOOLS: ReadonlySet<string> = new Set(["Bash"]);
 
+/** Shell tools whose syntax this reading does not parse: their every command is unread. */
+const UNREAD_SHELL_TOOLS: ReadonlySet<string> = new Set(["PowerShell"]);
+
 /** A verdict. */
 function verdict(state: RunVerdict["state"], why: RunWhy): RunVerdict {
   return { state, why };
@@ -972,6 +1268,10 @@ function verdict(state: RunVerdict["state"], why: RunWhy): RunVerdict {
  * regions blanked. If any guardrail still matches, the call is treated as having run — which
  * errs towards `ran` when a different guardrail matches the blanked copy. A match that came
  * only from a mentioned region leaves nothing to match.
+ *
+ * A call that ran, and whose match would be gone if a file it wrote were never run, is `ran`
+ * with `why: "may-run-written-file"`: it is kept only because a later command might run that
+ * file, so `isResultBackedRun` is false for it and nothing counts it as `ran`.
  */
 export function runVerdict(
   agent: AgentSource,
@@ -983,25 +1283,34 @@ export function runVerdict(
   if (mapped.tool === "WebSearch") return verdict("mentioned", "search");
 
   const command = mapped.args.full_command;
+  const matchesIn = (text: string): boolean =>
+    stillMatches({ ...mapped, args: { ...mapped.args, full_command: text } });
+  // Set when the match is kept only because a later command may run a file this call wrote.
+  let onlyWrittenFile = (): boolean => false;
   if (SHELL_TOOLS.has(mapped.tool) && command !== undefined) {
     const view = executedView(command);
     const first = view.kinds[0];
-    if (
-      first !== undefined &&
-      !stillMatches({ ...mapped, args: { ...mapped.args, full_command: view.text } })
-    ) {
-      return verdict("mentioned", first);
-    }
+    if (first !== undefined && !matchesIn(view.text)) return verdict("mentioned", first);
+    onlyWrittenFile = () => {
+      const trusting = readCommand(command, true).view;
+      return trusting.text !== view.text && !matchesIn(trusting.text);
+    };
   }
 
   if (!recordsToolResults(agent)) return verdict("unknown", "not-recorded");
   if (result === undefined) return verdict("unknown", "no-result");
-  if (result.isError) {
-    return EXIT_CODE.test(result.content)
-      ? verdict("ran", "exit-code")
-      : verdict("unknown", "error-result");
-  }
-  return verdict("ran", "result");
+  if (result.isError && !EXIT_CODE.test(result.content)) return verdict("unknown", "error-result");
+  if (onlyWrittenFile()) return verdict("ran", "may-run-written-file");
+  return result.isError ? verdict("ran", "exit-code") : verdict("ran", "result");
+}
+
+/**
+ * Is this a `ran` that a recorded result backs, with the matched text where the shell runs it:
+ * `why` `result` or `exit-code`? Every count and every claim of what ran uses only these; a
+ * `may-run-written-file` call ran, but its matched text is not confirmed to have.
+ */
+export function isResultBackedRun(run: RunVerdict): boolean {
+  return run.state === "ran" && (run.why === "result" || run.why === "exit-code");
 }
 
 /** Text in the agent's own reply is never a command that ran. */
@@ -1044,7 +1353,9 @@ export function tallyMatchedCalls(
           if (call.kind !== "action") continue;
           const { mapped, decision } = evaluateAction(catalog, allowlist, call.candidates);
           if (decision.matches.length === 0) continue;
-          tally[runVerdict(agent, mapped, result, stillMatches).state] += 1;
+          const run = runVerdict(agent, mapped, result, stillMatches);
+          // Only a result-backed run counts as ran; an unconfirmed one counts as unknown.
+          tally[run.state === "ran" && !isResultBackedRun(run) ? "unknown" : run.state] += 1;
         }
       }
     }

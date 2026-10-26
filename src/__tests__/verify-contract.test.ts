@@ -35,6 +35,9 @@ import {
   TONE_ORDER,
 } from "../core/verify/cards.js";
 import {
+  FACT_KEYS,
+  FACT_VALUE_ENUMS,
+  HIDING_FORMS,
   type SecretsFacts,
   VERIFY_CATEGORIES,
   type Verification,
@@ -496,6 +499,34 @@ describe("a checked category's facts reach the file as plain data", () => {
     for (const surface of [renderReport(result, meta), renderJson(result, meta)]) {
       expect(surface).not.toContain("FACTSCANARY");
     }
+  });
+
+  it("a category's hiding forms pass as an enum list, and anything else in it is dropped", () => {
+    expect(FACT_VALUE_ENUMS).toContain(HIDING_FORMS);
+    expect(FACT_KEYS).toContain("hidingForms");
+    const facts = {
+      hidingForms: ["xargs", "bash -c FACTSCANARY", "git-hook"],
+      byForm: { "shell-string": 2 },
+    };
+    const v = {
+      ...verification(),
+      categories: {
+        ...verification().categories,
+        "lost-work": { status: "could-not-check", matches: 2, facts },
+      },
+    } as unknown as Verification;
+    const result = aggregateScan(
+      { sessions: [], quarantined: 0, notRead: 0, projects: 0 },
+      compileCatalog([RULE_RM_RF]),
+      compileAllowlist([]),
+      new Set(),
+      v,
+    );
+    const copied = reportPayload(result, meta).verification?.categories["lost-work"] as unknown as {
+      facts: unknown;
+    };
+    expect(copied.facts).toEqual({ hidingForms: ["xargs", "git-hook"] });
+    expect(renderJson(result, meta)).not.toContain("FACTSCANARY");
   });
 
   it("negative control — the same strings are in the facts given", () => {
