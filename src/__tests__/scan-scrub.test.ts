@@ -375,10 +375,14 @@ describe("--apply", () => {
     }
   });
 
-  it("backs up first, privately, with the original bytes, a manifest and restore commands", async () => {
-    const s = await setup("claude");
+  it.each(
+    AGENTS,
+  )("%s: backs up first, privately, with the original bytes, a manifest and restore commands", async (agent) => {
+    const s = await setup(agent);
+    expect(s.files).toHaveLength(2);
     const originals = new Map(s.files.map((f) => [f, readFileSync(f)]));
-    const run = await scan(s, "claude", ["--scrub", "--apply"]);
+    const run = await scan(s, agent, ["--scrub", "--apply"]);
+    expect(run.code).toBe(0);
     const [folder] = backupFolders(s.home);
     expect(folder).toBeDefined();
     const dir = folder as string;
@@ -387,7 +391,11 @@ describe("--apply", () => {
       expect(statSync(join(dir, name)).mode & 0o777).toBe(0o600);
     }
     const manifest = JSON.parse(readFileSync(join(dir, "manifest.json"), "utf8"));
+    expect(manifest.agent).toBe(agent);
     expect(manifest.files).toHaveLength(2);
+    expect(manifest.files.map((e: { original: string }) => e.original).sort()).toEqual(
+      [...s.files].sort(),
+    );
     for (const entry of manifest.files) {
       const original = originals.get(entry.original) as Buffer;
       expect(readFileSync(entry.backup).equals(original)).toBe(true);
@@ -1282,9 +1290,9 @@ describe("never the value", () => {
     }
   });
 
-  it("no value in the manifest or the restore commands", async () => {
-    const s = await setup("claude");
-    await scan(s, "claude", ["--scrub", "--apply"]);
+  it.each(AGENTS)("%s: no value in the manifest or the restore commands", async (agent) => {
+    const s = await setup(agent);
+    await scan(s, agent, ["--scrub", "--apply"]);
     const dir = backupFolders(s.home)[0] as string;
     expectNoValue(readFileSync(join(dir, "manifest.json"), "utf8"));
     expectNoValue(readFileSync(join(dir, "restore.txt"), "utf8"));
