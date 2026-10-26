@@ -14,9 +14,12 @@
  */
 
 import { readableTime } from "./report.js";
-import type { LocalFix } from "./verify/cards.js";
+import { isLocalFix, type LocalFix, type UnsafeFix } from "./verify/cards.js";
 import { CATEGORY_TITLES } from "./verify/copy.js";
 import { VERIFY_CATEGORIES, type VerifyCategory } from "./verify/types.js";
+
+/** What a check hands the file: an exact command, or a fix it could not make safe. */
+export type FileFix = LocalFix | UnsafeFix;
 
 /** What the file says about itself. */
 export interface FixesFileMeta {
@@ -30,26 +33,48 @@ export interface FixesFileMeta {
 // biome-ignore lint/suspicious/noControlCharactersInRegex: control characters are what it finds.
 const CONTROL = /[\u0000-\u0008\u000a-\u001f\u007f]/;
 
-/** The commands the file can hold: one line each. */
-function writable(fixes: readonly LocalFix[]): LocalFix[] {
-  return fixes.filter((fix) => fix.command.trim() !== "" && !CONTROL.test(fix.command));
+/** The commands the file can hold: exact commands, one line each. */
+function writable(fixes: readonly FileFix[]): LocalFix[] {
+  return fixes.filter(
+    (fix): fix is LocalFix =>
+      isLocalFix(fix) && fix.command.trim() !== "" && !CONTROL.test(fix.command),
+  );
+}
+
+/** The fixes a check could not make safe: listed by category with a note, never as a command. */
+function unsafe(fixes: readonly FileFix[]): UnsafeFix[] {
+  return fixes.filter((fix): fix is UnsafeFix => !isLocalFix(fix) && "unsafe" in fix);
 }
 
 /** How many exact commands the file would hold. */
-export function exactFixCount(fixes: readonly LocalFix[]): number {
+export function exactFixCount(fixes: readonly FileFix[]): number {
   return writable(fixes).length;
 }
 
-/** The categories the file has commands for, in card order. */
-export function fixCategories(fixes: readonly LocalFix[]): VerifyCategory[] {
+/** How many fixes the file lists as could not be made safe. */
+export function unsafeFixCount(fixes: readonly FileFix[]): number {
+  return unsafe(fixes).length;
+}
+
+/**
+ * The categories the file holds an exact command for, in card order. A card names the file
+ * only for these: a category whose fixes all could not be made safe has no command in it.
+ */
+export function fixCategories(fixes: readonly FileFix[]): VerifyCategory[] {
   const kept = writable(fixes);
   return VERIFY_CATEGORIES.filter((category) => kept.some((fix) => fix.category === category));
 }
 
+/** Whether the file has anything to say: an exact command, or a fix that could not be made safe. */
+export function hasFileFixes(fixes: readonly FileFix[]): boolean {
+  return writable(fixes).length + unsafe(fixes).length > 0;
+}
+
 /** The file's text: a short header, then each category's commands under its card's title. */
-export function fixesFileText(fixes: readonly LocalFix[], meta: FixesFileMeta): string {
+export function fixesFileText(fixes: readonly FileFix[], meta: FixesFileMeta): string {
   const kept = writable(fixes);
-  const left = fixes.length - kept.length;
+  const notes = unsafe(fixes);
+  const left = fixes.length - kept.length - notes.length;
   const out: string[] = [
     "AgentTrail Guard: fix commands for this machine",
     "",
@@ -66,9 +91,17 @@ export function fixesFileText(fixes: readonly LocalFix[], meta: FixesFileMeta): 
       `${left === 1 ? "1 command was" : `${left} commands were`} left out because ${left === 1 ? "it does" : "they do"} not fit on one line.`,
     );
   }
-  for (const category of fixCategories(kept)) {
+  for (const category of VERIFY_CATEGORIES) {
+    const commands = kept.filter((fix) => fix.category === category);
+    const unsafeHere = notes.filter((fix) => fix.category === category).length;
+    if (commands.length + unsafeHere === 0) continue;
     out.push("", CATEGORY_TITLES[category]);
-    for (const fix of kept) if (fix.category === category) out.push(fix.command);
+    for (const fix of commands) out.push(fix.command);
+    if (unsafeHere > 0) {
+      out.push(
+        `(${unsafeHere === 1 ? "1 fix here: could not make a safe command" : `${unsafeHere} fixes here: could not make a safe command`}, so none is written for ${unsafeHere === 1 ? "it" : "them"}.)`,
+      );
+    }
   }
   return `${out.join("\n")}\n`;
 }

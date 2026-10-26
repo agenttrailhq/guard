@@ -9909,18 +9909,30 @@ function renderJson(result, meta) {
 // src/core/fixes-file.ts
 var CONTROL = /[\u0000-\u0008\u000a-\u001f\u007f]/;
 function writable(fixes) {
-  return fixes.filter((fix) => fix.command.trim() !== "" && !CONTROL.test(fix.command));
+  return fixes.filter(
+    (fix) => isLocalFix(fix) && fix.command.trim() !== "" && !CONTROL.test(fix.command)
+  );
+}
+function unsafe(fixes) {
+  return fixes.filter((fix) => !isLocalFix(fix) && "unsafe" in fix);
 }
 function exactFixCount(fixes) {
   return writable(fixes).length;
+}
+function unsafeFixCount(fixes) {
+  return unsafe(fixes).length;
 }
 function fixCategories(fixes) {
   const kept = writable(fixes);
   return VERIFY_CATEGORIES.filter((category) => kept.some((fix) => fix.category === category));
 }
+function hasFileFixes(fixes) {
+  return writable(fixes).length + unsafe(fixes).length > 0;
+}
 function fixesFileText(fixes, meta) {
   const kept = writable(fixes);
-  const left = fixes.length - kept.length;
+  const notes = unsafe(fixes);
+  const left = fixes.length - kept.length - notes.length;
   const out = [
     "AgentTrail Guard: fix commands for this machine",
     "",
@@ -9937,9 +9949,17 @@ function fixesFileText(fixes, meta) {
       `${left === 1 ? "1 command was" : `${left} commands were`} left out because ${left === 1 ? "it does" : "they do"} not fit on one line.`
     );
   }
-  for (const category of fixCategories(kept)) {
+  for (const category of VERIFY_CATEGORIES) {
+    const commands = kept.filter((fix) => fix.category === category);
+    const unsafeHere = notes.filter((fix) => fix.category === category).length;
+    if (commands.length + unsafeHere === 0) continue;
     out.push("", CATEGORY_TITLES[category]);
-    for (const fix of kept) if (fix.category === category) out.push(fix.command);
+    for (const fix of commands) out.push(fix.command);
+    if (unsafeHere > 0) {
+      out.push(
+        `(${unsafeHere === 1 ? "1 fix here: could not make a safe command" : `${unsafeHere} fixes here: could not make a safe command`}, so none is written for ${unsafeHere === 1 ? "it" : "them"}.)`
+      );
+    }
   }
   return `${out.join("\n")}
 `;
@@ -14723,10 +14743,11 @@ function renderReview(result, colorsEnabled, reportPath, mcpDisclosures = [], fi
       `That is the whole file, not a sample: the report lists at most ${MAX_ROWS} rows and ${MAX_EXAMPLES} shapes per row.`
     )
   );
-  if (fixesFile !== void 0 && fixesFile.commands > 0) {
+  if (fixesFile !== void 0 && fixesFile.commands + fixesFile.unsafe > 0) {
+    const notes = fixesFile.unsafe === 0 ? "" : `, and ${formatCount(fixesFile.unsafe)} ${fixesFile.unsafe === 1 ? "fix" : "fixes"} it could not make a safe command for`;
     out.push("");
     out.push(
-      `A yes also writes ${fixesFile.path}: ${formatCount(fixesFile.commands)} exact fix ${fixesFile.commands === 1 ? "command" : "commands"} for this machine, with real names and paths, not shown here and not part of the report.`
+      `A yes also writes ${fixesFile.path}: ${formatCount(fixesFile.commands)} exact fix ${fixesFile.commands === 1 ? "command" : "commands"} for this machine, with real names and paths${notes}, not shown here and not part of the report.`
     );
   }
   out.push("");
@@ -14796,7 +14817,7 @@ ${SCAN_USAGE}`);
   const colors = createColors(shouldUseColor({ env: io.env, isTTY: io.isTTY() }));
   const fixes = outcome?.localFixes ?? [];
   const fixesTarget = join5(dirname(reportPath), FIXES_FILENAME);
-  const writesFixes = fixCategories(fixes).length > 0 && fixesTarget !== reportPath;
+  const writesFixes = hasFileFixes(fixes) && fixesTarget !== reportPath;
   if (flags.review) {
     const disclosures = mcpReviewDisclosures(corpus, catalog, allowlist);
     io.writeStdout(
@@ -14805,7 +14826,7 @@ ${SCAN_USAGE}`);
         colors.enabled,
         reportPath,
         disclosures,
-        writesFixes ? { path: fixesTarget, commands: exactFixCount(fixes) } : void 0
+        writesFixes ? { path: fixesTarget, commands: exactFixCount(fixes), unsafe: unsafeFixCount(fixes) } : void 0
       )
     );
     const answer = await io.readLine();

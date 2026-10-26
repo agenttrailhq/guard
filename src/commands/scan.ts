@@ -50,7 +50,14 @@ import { createColors, hyperlink, shouldUseColor } from "../core/color.js";
 import { parseConfig } from "../core/config.js";
 import { defaultCursorProjectsRoot, readCursorCorpus } from "../core/cursor-transcript/scan.js";
 import { compileAllowlist } from "../core/evaluate.js";
-import { exactFixCount, fixCategories, fixesFileText } from "../core/fixes-file.js";
+import {
+  exactFixCount,
+  type FileFix,
+  fixCategories,
+  fixesFileText,
+  hasFileFixes,
+  unsafeFixCount,
+} from "../core/fixes-file.js";
 import { configPath, productLineStatePath, userRulesPath } from "../core/paths.js";
 import { takeProductLine } from "../core/product-line.js";
 import {
@@ -778,7 +785,7 @@ export function renderReview(
   reportPath: string,
   mcpDisclosures: readonly string[] = [],
   /** The local fixes file a yes also writes, and how many exact commands it holds. */
-  fixesFile?: { readonly path: string; readonly commands: number },
+  fixesFile?: { readonly path: string; readonly commands: number; readonly unsafe: number },
 ): string {
   const c = createColors(colorsEnabled);
   const groups = reviewStrings(result);
@@ -822,10 +829,14 @@ export function renderReview(
     ),
   );
   // A yes writes the fixes file too, so the question says so before it is asked.
-  if (fixesFile !== undefined && fixesFile.commands > 0) {
+  if (fixesFile !== undefined && fixesFile.commands + fixesFile.unsafe > 0) {
+    const notes =
+      fixesFile.unsafe === 0
+        ? ""
+        : `, and ${formatCount(fixesFile.unsafe)} ${fixesFile.unsafe === 1 ? "fix" : "fixes"} it could not make a safe command for`;
     out.push("");
     out.push(
-      `A yes also writes ${fixesFile.path}: ${formatCount(fixesFile.commands)} exact fix ${fixesFile.commands === 1 ? "command" : "commands"} for this machine, with real names and paths, not shown here and not part of the report.`,
+      `A yes also writes ${fixesFile.path}: ${formatCount(fixesFile.commands)} exact fix ${fixesFile.commands === 1 ? "command" : "commands"} for this machine, with real names and paths${notes}, not shown here and not part of the report.`,
     );
   }
   out.push("");
@@ -932,9 +943,10 @@ export async function runScan(
   const colors = createColors(shouldUseColor({ env: io.env, isTTY: io.isTTY() }));
 
   // The exact fix commands go to their own local file, never into the report.
-  const fixes = outcome?.localFixes ?? [];
+  // An exact command, or a fix a check could not make safe, which the file lists as a note.
+  const fixes: readonly FileFix[] = outcome?.localFixes ?? [];
   const fixesTarget = join(dirname(reportPath), FIXES_FILENAME);
-  const writesFixes = fixCategories(fixes).length > 0 && fixesTarget !== reportPath;
+  const writesFixes = hasFileFixes(fixes) && fixesTarget !== reportPath;
 
   if (flags.review) {
     const disclosures = mcpReviewDisclosures(corpus, catalog, allowlist);
@@ -944,7 +956,9 @@ export async function runScan(
         colors.enabled,
         reportPath,
         disclosures,
-        writesFixes ? { path: fixesTarget, commands: exactFixCount(fixes) } : undefined,
+        writesFixes
+          ? { path: fixesTarget, commands: exactFixCount(fixes), unsafe: unsafeFixCount(fixes) }
+          : undefined,
       ),
     );
     const answer = await io.readLine();

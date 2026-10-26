@@ -28,6 +28,7 @@ import {
   isLocalFix,
   type LocalFix,
   localFixCommand,
+  type UnsafeFix,
 } from "../core/verify/cards.js";
 import type { VerifyCategory } from "../core/verify/types.js";
 import { type VerifyInput, verifyScan } from "../core/verify/verify.js";
@@ -126,6 +127,8 @@ async function scan(
     readonly before?: string;
     /** Puts something in the work folder before the scan, such as a planted link. */
     readonly plant?: (work: string) => void;
+    /** Fixes added to whatever the checks make, of either kind. */
+    readonly extra?: readonly (LocalFix | UnsafeFix)[];
   } = {},
 ): Promise<{ code: number; stdout: string; work: string }> {
   const { root } = await writeCorpus("claude", [
@@ -156,9 +159,12 @@ async function scan(
     verify: async (input: VerifyInput) => {
       const outcome = await verifyScan(input);
       // Secrets is the one category with a check in this build, so its card names the file.
-      return options.fixes === false
-        ? outcome
-        : { ...outcome, localFixes: [...FIXES, SECRETS_LOCAL] };
+      const base = options.fixes === false ? [] : [...FIXES, SECRETS_LOCAL];
+      // The outcome's type holds exact commands only, until the checks hand over unsafe fixes.
+      return {
+        ...outcome,
+        localFixes: [...outcome.localFixes, ...base, ...(options.extra ?? [])] as LocalFix[],
+      };
     },
   });
   return { code, stdout: out.join(""), work };
@@ -262,5 +268,59 @@ describe("--review says a yes also writes the fixes file", () => {
   it("says nothing of it when there is no exact command", async () => {
     const run = await scan(["--verify", "--review"], { answer: "n", fixes: false });
     expect(run.stdout).not.toContain("A yes also writes");
+  });
+});
+
+describe("a fix that could not be made safe", () => {
+  // Built the way the checks build them: a value outside the safe set makes no command at all.
+  const spaced = localFixCommand("lost-work", ["git", "branch", { branch: "two words" }]);
+  const dashed = localFixCommand("unreviewed", ["git", "show", { ref: "-p" }]);
+
+  it("is what localFixCommand makes from a value outside the safe set", () => {
+    expect(isLocalFix(spaced)).toBe(false);
+    expect(isLocalFix(dashed)).toBe(false);
+  });
+
+  it("is listed under its category as a note, never as a command, and nothing crashes", () => {
+    const text = fixesFileText([BRANCH, spaced, dashed], {
+      version: "9.9.9",
+      generatedAt: AT,
+      reportName: REPORT_FILENAME,
+    });
+    expect(text).toContain(
+      [
+        "Lost work",
+        BRANCH.command,
+        "(1 fix here: could not make a safe command, so none is written for it.)",
+      ].join("\n"),
+    );
+    expect(text).toContain(
+      [
+        "Unreviewed code",
+        "(1 fix here: could not make a safe command, so none is written for it.)",
+      ].join("\n"),
+    );
+    expect(text).not.toContain("two words");
+    expect(text).not.toContain("left out because");
+  });
+
+  it("names the file on a card only where the file holds an exact command", () => {
+    expect(fixCategories([BRANCH, spaced, dashed])).toEqual(["lost-work"]);
+    expect(fixCategories([dashed])).toEqual([]);
+  });
+
+  it("is written, and said in --review, even when it is the only fix", async () => {
+    const run = await scan(["--verify", "--review"], {
+      answer: "y",
+      extra: [dashed],
+      fixes: false,
+    });
+    const text = readFileSync(join(run.work, FIXES_FILENAME), "utf8");
+    expect(text).toContain("Unreviewed code\n(1 fix here: could not make a safe command");
+    expect(run.stdout).toContain(
+      "0 exact fix commands for this machine, with real names and paths, and 1 fix it could not make a safe command for",
+    );
+    // No card names a file that holds no command for it.
+    expect(readFileSync(join(run.work, REPORT_FILENAME), "utf8")).not.toContain(FIXES_FILENAME);
   });
 });
