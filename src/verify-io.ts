@@ -112,8 +112,11 @@ export const MAX_OUTPUT_BYTES = 1024 * 1024;
 /** Largest file `readFile` reads. */
 export const MAX_FILE_BYTES = 1024 * 1024;
 
-/** Most process-list entries looked at. */
-const MAX_PROCESS_ENTRIES = 65_536;
+/**
+ * Most process-list entries read. A longer list is not cut short and read as complete: it is
+ * `too-large`, so a process not seen in it is unknown, never "not running".
+ */
+export const MAX_PROCESS_ENTRIES = 65_536;
 
 /** Is `args` exactly one of the allow-listed argument lists? */
 export function isAllowedGitCall(args: readonly string[]): boolean {
@@ -217,28 +220,37 @@ export function watchedProcessOf(entry: string): WatchedProcess | undefined {
     .replace(/\.exe$/, "");
   if (name === "claude") return "claude";
   if (name === "codex") return "codex";
-  if (/^cursor(?: helper(?: \([a-z ]+\))?)?$/.test(name)) return "cursor";
+  // The Cursor app and its helpers, and the Cursor CLI, `cursor-agent`.
+  if (/^cursor(?: helper(?: \([a-z ]+\))?)?$/.test(name) || name === "cursor-agent") {
+    return "cursor";
+  }
   return undefined;
 }
 
-/** The watched processes in a list of entries, each once, in `WATCHED_PROCESSES` order. */
-function watchedIn(entries: readonly string[]): WatchedProcess[] {
+/**
+ * The watched processes in a list of lines, each once, in `WATCHED_PROCESSES` order, or
+ * `too-large` when the list has more entries than `MAX_PROCESS_ENTRIES`: a list read only in
+ * part never reads as complete.
+ */
+function watchedIn(lines: readonly string[], entryOf: (line: string) => string): ProcessOutcome {
+  const entries = lines.filter((line) => line.trim() !== "");
+  if (entries.length > MAX_PROCESS_ENTRIES) return { ok: false, reason: "too-large" };
   const seen = new Set<WatchedProcess>();
-  for (const entry of entries.slice(0, MAX_PROCESS_ENTRIES)) {
-    const id = watchedProcessOf(entry);
+  for (const entry of entries) {
+    const id = watchedProcessOf(entryOf(entry));
     if (id !== undefined) seen.add(id);
   }
-  return WATCHED_PROCESSES.filter((id) => seen.has(id));
+  return { ok: true, running: WATCHED_PROCESSES.filter((id) => seen.has(id)) };
 }
 
 /** The watched processes in `ps -axo comm=` output: one entry per line. */
-export function watchedInPs(stdout: string): WatchedProcess[] {
-  return watchedIn(stdout.split(/\r?\n/));
+export function watchedInPs(stdout: string): ProcessOutcome {
+  return watchedIn(stdout.split(/\r?\n/), (line) => line);
 }
 
 /** The watched processes in `tasklist /fo csv /nh` output: the first quoted field per line. */
-export function watchedInTasklist(stdout: string): WatchedProcess[] {
-  return watchedIn(stdout.split(/\r?\n/).map((line) => /^"([^"]*)"/.exec(line.trim())?.[1] ?? ""));
+export function watchedInTasklist(stdout: string): ProcessOutcome {
+  return watchedIn(stdout.split(/\r?\n/), (line) => /^"([^"]*)"/.exec(line.trim())?.[1] ?? "");
 }
 
 /** Is `path` inside `root` (and not `root` itself)? Both are real paths. */
@@ -454,10 +466,7 @@ export function createRealVerifyIO(options: VerifyIOOptions = {}): VerifyIO {
         : await run(program, ["-axo", "comm="], undefined);
       if (typeof result === "string") return { ok: false, reason: result };
       if (result.kind !== "ok") return { ok: false, reason: failureOf(result) };
-      return {
-        ok: true,
-        running: windows ? watchedInTasklist(result.stdout) : watchedInPs(result.stdout),
-      };
+      return windows ? watchedInTasklist(result.stdout) : watchedInPs(result.stdout);
     },
   };
 }

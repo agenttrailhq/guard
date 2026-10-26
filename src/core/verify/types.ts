@@ -375,7 +375,8 @@ export const MAX_SECRET_ITEMS = 200;
  *
  * - `refused`: the call is not on the allow-list, or the path is outside every allowed root.
  * - `timeout`: it ran out of its per-call time.
- * - `too-large`: its output, or the file, is over the cap.
+ * - `too-large`: its output, the file, or the process list is over its cap. A list read only in
+ *   part is this, never a complete answer.
  * - `budget`: the run's total time is used up.
  * - `not-a-repo`: `git` says the folder is not in a repository.
  * - `missing`: the folder or file is not there, or `git` is not installed.
@@ -411,7 +412,11 @@ export const WATCHED_PROCESSES = ["claude", "cursor", "codex"] as const;
 /** One of `WATCHED_PROCESSES`. */
 export type WatchedProcess = (typeof WATCHED_PROCESSES)[number];
 
-/** Which watched processes are running, by id, each at most once, in `WATCHED_PROCESSES` order. */
+/**
+ * Which watched processes are running, by id, each at most once, in `WATCHED_PROCESSES` order.
+ * `ok` only when the whole list was read; a process not in a complete list is not running, and
+ * any failure, a list over its cap included, leaves every process unknown.
+ */
 export type ProcessOutcome =
   | { readonly ok: true; readonly running: readonly WatchedProcess[] }
   | { readonly ok: false; readonly reason: CheckFailure };

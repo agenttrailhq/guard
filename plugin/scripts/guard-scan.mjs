@@ -14137,22 +14137,26 @@ function watchedProcessOf(entry) {
   const name = (title.split(/[\\/]/).pop() ?? "").trim().toLowerCase().replace(/\.exe$/, "");
   if (name === "claude") return "claude";
   if (name === "codex") return "codex";
-  if (/^cursor(?: helper(?: \([a-z ]+\))?)?$/.test(name)) return "cursor";
+  if (/^cursor(?: helper(?: \([a-z ]+\))?)?$/.test(name) || name === "cursor-agent") {
+    return "cursor";
+  }
   return void 0;
 }
-function watchedIn(entries) {
+function watchedIn(lines, entryOf) {
+  const entries = lines.filter((line) => line.trim() !== "");
+  if (entries.length > MAX_PROCESS_ENTRIES) return { ok: false, reason: "too-large" };
   const seen = /* @__PURE__ */ new Set();
-  for (const entry of entries.slice(0, MAX_PROCESS_ENTRIES)) {
-    const id = watchedProcessOf(entry);
+  for (const entry of entries) {
+    const id = watchedProcessOf(entryOf(entry));
     if (id !== void 0) seen.add(id);
   }
-  return WATCHED_PROCESSES.filter((id) => seen.has(id));
+  return { ok: true, running: WATCHED_PROCESSES.filter((id) => seen.has(id)) };
 }
 function watchedInPs(stdout) {
-  return watchedIn(stdout.split(/\r?\n/));
+  return watchedIn(stdout.split(/\r?\n/), (line) => line);
 }
 function watchedInTasklist(stdout) {
-  return watchedIn(stdout.split(/\r?\n/).map((line) => /^"([^"]*)"/.exec(line.trim())?.[1] ?? ""));
+  return watchedIn(stdout.split(/\r?\n/), (line) => /^"([^"]*)"/.exec(line.trim())?.[1] ?? "");
 }
 function isInside(root, path, paths = { relative: relative2, isAbsolute: isAbsolute2 }) {
   const rel = paths.relative(root, path);
@@ -14303,10 +14307,7 @@ function createRealVerifyIO(options = {}) {
       const result = windows ? await run(program, ["/fo", "csv", "/nh"], void 0) : await run(program, ["-axo", "comm="], void 0);
       if (typeof result === "string") return { ok: false, reason: result };
       if (result.kind !== "ok") return { ok: false, reason: failureOf(result) };
-      return {
-        ok: true,
-        running: windows ? watchedInTasklist(result.stdout) : watchedInPs(result.stdout)
-      };
+      return windows ? watchedInTasklist(result.stdout) : watchedInPs(result.stdout);
     }
   };
 }

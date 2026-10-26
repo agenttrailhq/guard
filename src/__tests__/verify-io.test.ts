@@ -30,6 +30,7 @@ import {
   isAllowedGitCall,
   isNetworkPath,
   MAX_FILE_BYTES,
+  MAX_PROCESS_ENTRIES,
   realExec,
   resolveProgram,
   watchedInPs,
@@ -547,6 +548,9 @@ describe("process names: agent ids only, never arguments or titles", () => {
     ["Cursor.exe", "cursor"],
     ["C:\\Program Files\\Cursor\\Cursor.exe", "cursor"],
     ["claude.exe", "claude"],
+    ["cursor-agent", "cursor"],
+    ["/Users/a/.local/bin/cursor-agent", "cursor"],
+    ["cursor-agent.exe", "cursor"],
   ])("%s is %s", (entry, id) => {
     expect(watchedProcessOf(entry)).toBe(id);
   });
@@ -559,6 +563,8 @@ describe("process names: agent ids only, never arguments or titles", () => {
     "claude-helper",
     "my-codex-tool",
     "Cursor Helper (Plugin) extra",
+    "cursor-agent-helper",
+    "my-cursor-agent",
     "",
   ])("%j is no watched process", (entry) => {
     expect(watchedProcessOf(entry)).toBeUndefined();
@@ -576,8 +582,47 @@ describe("process names: agent ids only, never arguments or titles", () => {
       "",
     ].join("\n");
     const running = watchedInPs(stdout);
-    expect(running).toEqual(["claude", "cursor", "codex"]);
+    expect(running).toEqual({ ok: true, running: ["claude", "cursor", "codex"] });
     expect(JSON.stringify(running)).not.toMatch(/secretdb|alice|agent-exec|4c1d/);
+  });
+
+  it("reads the Cursor CLI as cursor", () => {
+    expect(watchedInPs("node\ncursor-agent\n")).toEqual({ ok: true, running: ["cursor"] });
+  });
+
+  it("a list longer than the cap is too large, never a complete list without the process", () => {
+    const filler = Array.from({ length: MAX_PROCESS_ENTRIES }, () => "node");
+    // The watched process sits past the cap: reading only the first part would miss it.
+    const over = [...filler, "claude"].join("\n");
+    expect(watchedInPs(over)).toEqual({ ok: false, reason: "too-large" });
+    const overTasklist = [...filler, "claude.exe"].map((n) => `"${n}","1"`).join("\r\n");
+    expect(watchedInTasklist(overTasklist)).toEqual({ ok: false, reason: "too-large" });
+  });
+
+  it("a list at the cap is complete, and blank lines do not count", () => {
+    const atCap = [...Array.from({ length: MAX_PROCESS_ENTRIES - 1 }, () => "node"), "claude"];
+    expect(watchedInPs(`${atCap.join("\n")}\n\n\n`)).toEqual({ ok: true, running: ["claude"] });
+  });
+
+  it("processNames passes a too-large list on as a reason", async () => {
+    const stdout = Array.from({ length: MAX_PROCESS_ENTRIES + 1 }, () => "node").join("\n");
+    const io = createRealVerifyIO({
+      exec: () => Promise.resolve({ kind: "ok", stdout }),
+      platform: "darwin",
+      env: { PATH: "/bin" },
+      isExecutable: (path) => path === "/bin/ps",
+    });
+    expect(await io.processNames()).toEqual({ ok: false, reason: "too-large" });
+  });
+
+  it("output over the byte cap is too large too", async () => {
+    const io = createRealVerifyIO({
+      exec: () => Promise.resolve({ kind: "too-large" }),
+      platform: "darwin",
+      env: { PATH: "/bin" },
+      isExecutable: (path) => path === "/bin/ps",
+    });
+    expect(await io.processNames()).toEqual({ ok: false, reason: "too-large" });
   });
 
   it("reads tasklist output down to ids", () => {
@@ -585,7 +630,7 @@ describe("process names: agent ids only, never arguments or titles", () => {
       watchedInTasklist(
         '"node.exe","123","Console","1","10,000 K"\r\n"Cursor.exe","9","C","1","1 K"\r\n"codex.exe","7","C","1","1 K"\r\n',
       ),
-    ).toEqual(["cursor", "codex"]);
+    ).toEqual({ ok: true, running: ["cursor", "codex"] });
   });
 
   it("runs ps, or tasklist on Windows, each by absolute path", async () => {
