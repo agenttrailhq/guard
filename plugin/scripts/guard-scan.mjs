@@ -7975,6 +7975,22 @@ ${REPORT_SCRIPT_GLUE.trim()}
 })();
 `;
 
+// src/core/verify/types.ts
+var SECRET_PROVENANCES = [
+  "pasted-into-prompt",
+  "typed-into-command",
+  "printed-by-command",
+  "in-agent-reply"
+];
+var MAX_SECRET_ITEMS = 200;
+
+// src/core/verify/cards.ts
+var LOCAL_ONLY = /* @__PURE__ */ Symbol("local-only");
+var LOCAL_FIX_SERIALIZED = "a local fix command belongs in the local fixes file only, and is never serialized";
+function isLocalFix(value) {
+  return typeof value === "object" && value !== null && LOCAL_ONLY in value;
+}
+
 // src/core/report.ts
 var REPOSITORY_URL = "https://github.com/agenttrailhq/guard";
 var SITE_URL = "https://www.agenttrail.sh";
@@ -8114,6 +8130,35 @@ function payloadSecrets(check) {
     }
   };
 }
+var MAX_FACTS_DEPTH = 6;
+function copyPlain(value, depth = 0) {
+  if (isLocalFix(value)) throw new Error(LOCAL_FIX_SERIALIZED);
+  if (typeof value === "number" || typeof value === "boolean" || typeof value === "string") {
+    return value;
+  }
+  if (depth >= MAX_FACTS_DEPTH) return void 0;
+  if (Array.isArray(value)) {
+    return value.slice(0, MAX_ROWS).map((item) => copyPlain(item, depth + 1));
+  }
+  if (value !== null && typeof value === "object" && Object.getPrototypeOf(value) === Object.prototype) {
+    const out = {};
+    for (const [key, item] of Object.entries(value)) {
+      const copied = copyPlain(item, depth + 1);
+      if (copied !== void 0) out[key] = copied;
+    }
+    return out;
+  }
+  return void 0;
+}
+function payloadCategory(result) {
+  if (!("facts" in result)) return { status: result.status };
+  const checked = result;
+  return {
+    status: checked.status,
+    matches: checked.matches,
+    facts: copyPlain(checked.facts)
+  };
+}
 function payloadVerification(verification) {
   const categories = verification.categories;
   return {
@@ -8126,14 +8171,14 @@ function payloadVerification(verification) {
     ranEvidence: verification.ranEvidence,
     categories: {
       secrets: payloadSecrets(categories.secrets),
-      "skipped-checks": { status: categories["skipped-checks"].status },
-      "lost-work": { status: categories["lost-work"].status },
-      cloud: { status: categories.cloud.status },
-      "prod-infra": { status: categories["prod-infra"].status },
-      tests: { status: categories.tests.status },
-      destructive: { status: categories.destructive.status },
-      unreviewed: { status: categories.unreviewed.status },
-      egress: { status: categories.egress.status }
+      "skipped-checks": payloadCategory(categories["skipped-checks"]),
+      "lost-work": payloadCategory(categories["lost-work"]),
+      cloud: payloadCategory(categories.cloud),
+      "prod-infra": payloadCategory(categories["prod-infra"]),
+      tests: payloadCategory(categories.tests),
+      destructive: payloadCategory(categories.destructive),
+      unreviewed: payloadCategory(categories.unreviewed),
+      egress: payloadCategory(categories.egress)
     }
   };
 }
@@ -12373,15 +12418,6 @@ function lineText(agent, line) {
   }
 }
 
-// src/core/verify/types.ts
-var SECRET_PROVENANCES = [
-  "pasted-into-prompt",
-  "typed-into-command",
-  "printed-by-command",
-  "in-agent-reply"
-];
-var MAX_SECRET_ITEMS = 200;
-
 // src/core/verify/secrets.ts
 var CONTEXT = 256;
 var MAX_ALIGN_STEPS = 5e3;
@@ -12745,6 +12781,7 @@ async function checkSecrets(input) {
 }
 
 // src/core/verify/verify.ts
+var VERIFY_BY_DEFAULT = false;
 var NOT_CHECKED = { status: "not-checked" };
 var UNAVAILABLE_VERIFY_IO = {
   git: () => Promise.resolve({ ok: false, reason: "missing" }),
@@ -12762,7 +12799,7 @@ async function verifyScan(input) {
     io: input.io,
     fingerprint: input.fingerprint ?? createFingerprinter()
   });
-  return {
+  const verification = {
     matchedCalls: matched.tally,
     resultsRecorded: matched.resultsRecorded,
     ranEvidence: matched.ranEvidence,
@@ -12778,6 +12815,7 @@ async function verifyScan(input) {
       egress: NOT_CHECKED
     }
   };
+  return { verification, localFixes: [] };
 }
 
 // src/core/version.ts
@@ -13298,14 +13336,14 @@ ${SCAN_USAGE}`);
   const catalog = compileCatalog([...shipped, ...userRules], config);
   const allowlist = compileAllowlist(config.allowlist);
   const corpus = await readCorpusFor(agent, root, io);
-  const verification = flags.verify ? await verifyScan({
+  const outcome = flags.verify || VERIFY_BY_DEFAULT ? await verifyScan({
     corpus,
     catalog,
     allowlist,
     readLines: (path) => io.readLines(path),
     io: deps.createVerifyIO?.() ?? UNAVAILABLE_VERIFY_IO
   }) : void 0;
-  const result = aggregateScan(corpus, catalog, allowlist, new Set(shipped), verification);
+  const result = aggregateScan(corpus, catalog, allowlist, new Set(shipped), outcome?.verification);
   const meta = { version: VERSION, generatedAt: now };
   if (flags.json) {
     io.writeStdout(renderJson(result, meta));

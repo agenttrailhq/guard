@@ -81,7 +81,12 @@ import type { ParsedSession } from "../core/transcript/transcript-types.js";
 import type { AgentSource, GuardRule } from "../core/types.js";
 import { parseUserRulesData } from "../core/user-rules-data.js";
 import type { Verification, VerifyIO } from "../core/verify/types.js";
-import { UNAVAILABLE_VERIFY_IO, verifyScan } from "../core/verify/verify.js";
+import {
+  UNAVAILABLE_VERIFY_IO,
+  VERIFY_BY_DEFAULT,
+  type VerifyOutcome,
+  verifyScan,
+} from "../core/verify/verify.js";
 import { VERSION } from "../core/version.js";
 import type { ScanIO } from "../scan-io.js";
 import { agentChoiceMessage, chosenAgent } from "./agent-choice.js";
@@ -855,19 +860,21 @@ export async function runScan(
   const allowlist = compileAllowlist(config.allowlist);
 
   const corpus: ScanCorpus = await readCorpusFor(agent, root, io);
-  // Only when asked for: until every category has a check, verification is a preview.
-  const verification: Verification | undefined = flags.verify
-    ? await verifyScan({
-        corpus,
-        catalog,
-        allowlist,
-        readLines: (path) => io.readLines(path),
-        io: deps.createVerifyIO?.() ?? UNAVAILABLE_VERIFY_IO,
-      })
-    : undefined;
+  // Only when asked for, until `VERIFY_BY_DEFAULT` turns it on. The outcome's local fixes stay
+  // here, beside the result, for the local fixes file; they never enter `ScanResult`.
+  const outcome: VerifyOutcome | undefined =
+    flags.verify || VERIFY_BY_DEFAULT
+      ? await verifyScan({
+          corpus,
+          catalog,
+          allowlist,
+          readLines: (path) => io.readLines(path),
+          io: deps.createVerifyIO?.() ?? UNAVAILABLE_VERIFY_IO,
+        })
+      : undefined;
   // The shipped rule OBJECTS, so a finding is labelled `library` by identity: a user rule
   // that reuses a shipped id is still the user's own rule.
-  const result = aggregateScan(corpus, catalog, allowlist, new Set(shipped), verification);
+  const result = aggregateScan(corpus, catalog, allowlist, new Set(shipped), outcome?.verification);
   const meta: ReportMeta = { version: VERSION, generatedAt: now };
 
   if (flags.json) {

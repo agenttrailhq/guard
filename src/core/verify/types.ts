@@ -218,12 +218,16 @@ export interface SecretsFacts {
   readonly reposNotChecked: number;
 }
 
-/** The secrets category. */
-export interface SecretsCheck {
+/**
+ * A category whose check ran, with that check's typed facts.
+ *
+ * `matches` is the raw match count the card shows. `facts` holds only counts, fixed enums and
+ * lists of those; a list is capped where it is made, with a `more…` count beside it.
+ */
+export interface CheckedCategory<F> {
   readonly status: VerifyStatus;
-  /** Distinct credential-shaped values found, in all four classes. */
   readonly matches: number;
-  readonly facts: SecretsFacts;
+  readonly facts: F;
 }
 
 /** A category whose check does not exist yet. */
@@ -231,12 +235,44 @@ export interface PendingCheck {
   readonly status: "not-checked";
 }
 
-/** Every category but secrets, which has a check. */
+/** The secrets category. */
+export type SecretsCheck = CheckedCategory<SecretsFacts>;
+
+/**
+ * Each category's facts type, keyed by category.
+ *
+ * A module that adds a check adds its category here from its OWN file, by module augmentation,
+ * so checks written side by side never edit one shared union:
+ *
+ *     declare module "./types.js" {
+ *       interface CategoryFactsMap {
+ *         "lost-work": LostWorkFacts;
+ *       }
+ *     }
+ *
+ * A category with no entry can only be `PendingCheck`.
+ */
+export interface CategoryFactsMap {
+  secrets: SecretsFacts;
+}
+
+/** The categories whose check exists. */
+export type CheckedCategoryName = Extract<keyof CategoryFactsMap, VerifyCategory>;
+
+/** One category's result: its facts when it has a check, or not-checked. */
+export type CategoryResult<C extends VerifyCategory> = C extends CheckedCategoryName
+  ? CheckedCategory<CategoryFactsMap[C]> | PendingCheck
+  : PendingCheck;
+
+/** Every category but secrets, which always runs. */
 export type PendingCategory = Exclude<VerifyCategory, "secrets">;
 
-/** Each category's result. */
+/**
+ * Each category's result. Secrets always runs, so it is always checked; every other category is
+ * not-checked until its check exists and runs.
+ */
 export type VerifyCategories = { readonly secrets: SecretsCheck } & {
-  readonly [C in PendingCategory]: PendingCheck;
+  readonly [C in PendingCategory]: CategoryResult<C>;
 };
 
 /** What `scan --verify` found. Value-free; see the module header. */

@@ -89,7 +89,12 @@ import type {
 } from "./scan-report.js";
 import { formatCount, formatTokens, type TokenTotals, totalTokens } from "./tokens.js";
 import type { AgentSource, GuardAction } from "./types.js";
-import type { SecretsCheck, Verification } from "./verify/types.js";
+import { isLocalFix, LOCAL_FIX_SERIALIZED } from "./verify/cards.js";
+import type {
+  SecretsCheck,
+  Verification,
+  VerifyStatus as VerificationStatus,
+} from "./verify/types.js";
 
 /** Where the source lives. Rendered as text. */
 export const REPOSITORY_URL = "https://github.com/agenttrailhq/guard";
@@ -414,6 +419,51 @@ function payloadSecrets(check: SecretsCheck): SecretsCheck {
   };
 }
 
+/** Deepest nesting `copyPlain` copies. Facts are flat records and short lists. */
+const MAX_FACTS_DEPTH = 6;
+
+/**
+ * Plain data copied value by value: numbers, booleans, strings, lists capped at `MAX_ROWS`,
+ * and objects with their own enumerable keys. Anything else is dropped. A category's facts are
+ * counts and fixed enums by contract (`verify/types.ts`), so this copies them without the file
+ * learning each check's shape; a value that is not plain data cannot ride along. A `LocalFix` —
+ * an exact command for the local fixes file — is refused outright, never copied.
+ */
+function copyPlain(value: unknown, depth = 0): unknown {
+  if (isLocalFix(value)) throw new Error(LOCAL_FIX_SERIALIZED);
+  if (typeof value === "number" || typeof value === "boolean" || typeof value === "string") {
+    return value;
+  }
+  if (depth >= MAX_FACTS_DEPTH) return undefined;
+  if (Array.isArray(value)) {
+    return value.slice(0, MAX_ROWS).map((item) => copyPlain(item, depth + 1));
+  }
+  if (
+    value !== null &&
+    typeof value === "object" &&
+    Object.getPrototypeOf(value) === Object.prototype
+  ) {
+    const out: Record<string, unknown> = {};
+    for (const [key, item] of Object.entries(value)) {
+      const copied = copyPlain(item, depth + 1);
+      if (copied !== undefined) out[key] = copied;
+    }
+    return out;
+  }
+  return undefined;
+}
+
+/** One category's result other than secrets, copied: its status, and its count and facts. */
+function payloadCategory<T extends { readonly status: VerificationStatus }>(result: T): T {
+  if (!("facts" in result)) return { status: result.status } as T;
+  const checked = result as T & { readonly matches: number; readonly facts: unknown };
+  return {
+    status: checked.status,
+    matches: checked.matches,
+    facts: copyPlain(checked.facts),
+  } as unknown as T;
+}
+
 /** The verification, copied field by field. */
 function payloadVerification(verification: Verification): Verification {
   const categories = verification.categories;
@@ -427,14 +477,14 @@ function payloadVerification(verification: Verification): Verification {
     ranEvidence: verification.ranEvidence,
     categories: {
       secrets: payloadSecrets(categories.secrets),
-      "skipped-checks": { status: categories["skipped-checks"].status },
-      "lost-work": { status: categories["lost-work"].status },
-      cloud: { status: categories.cloud.status },
-      "prod-infra": { status: categories["prod-infra"].status },
-      tests: { status: categories.tests.status },
-      destructive: { status: categories.destructive.status },
-      unreviewed: { status: categories.unreviewed.status },
-      egress: { status: categories.egress.status },
+      "skipped-checks": payloadCategory(categories["skipped-checks"]),
+      "lost-work": payloadCategory(categories["lost-work"]),
+      cloud: payloadCategory(categories.cloud),
+      "prod-infra": payloadCategory(categories["prod-infra"]),
+      tests: payloadCategory(categories.tests),
+      destructive: payloadCategory(categories.destructive),
+      unreviewed: payloadCategory(categories.unreviewed),
+      egress: payloadCategory(categories.egress),
     },
   };
 }

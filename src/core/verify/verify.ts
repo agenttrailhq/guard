@@ -15,6 +15,7 @@
 import type { CompiledAllowlist } from "../evaluate.js";
 import type { CompiledRule } from "../rules.js";
 import type { ScanCorpus } from "../scan-report.js";
+import type { LocalFix } from "./cards.js";
 import { createFingerprinter, type Fingerprinter } from "./fingerprint.js";
 import { tallyMatchedCalls } from "./ran.js";
 import { checkSecrets } from "./secrets.js";
@@ -32,6 +33,21 @@ export interface VerifyInput {
   readonly fingerprint?: Fingerprinter;
 }
 
+/**
+ * Whether `scan` verifies without being asked. The one switch for turning verification on by
+ * default; until it is `true`, `scan --verify` is how to ask for it.
+ */
+export const VERIFY_BY_DEFAULT = false;
+
+/**
+ * What verification produced: the value-free `Verification` that `ScanResult` carries, and,
+ * beside it and never inside it, the exact fix commands for the local fixes file.
+ */
+export interface VerifyOutcome {
+  readonly verification: Verification;
+  readonly localFixes: readonly LocalFix[];
+}
+
 /** A category with no check yet. */
 const NOT_CHECKED: PendingCheck = { status: "not-checked" };
 
@@ -47,7 +63,7 @@ export const UNAVAILABLE_VERIFY_IO: VerifyIO = {
 };
 
 /** Run every check there is. Never throws. */
-export async function verifyScan(input: VerifyInput): Promise<Verification> {
+export async function verifyScan(input: VerifyInput): Promise<VerifyOutcome> {
   const agent = input.corpus.agent ?? "claude";
   const matched = tallyMatchedCalls(input.corpus, input.catalog, input.allowlist);
   const secrets = await checkSecrets({
@@ -57,7 +73,7 @@ export async function verifyScan(input: VerifyInput): Promise<Verification> {
     io: input.io,
     fingerprint: input.fingerprint ?? createFingerprinter(),
   });
-  return {
+  const verification: Verification = {
     matchedCalls: matched.tally,
     resultsRecorded: matched.resultsRecorded,
     ranEvidence: matched.ranEvidence,
@@ -73,4 +89,6 @@ export async function verifyScan(input: VerifyInput): Promise<Verification> {
       egress: NOT_CHECKED,
     },
   };
+  // No check makes a local fix yet; the checks that find something to fix add theirs here.
+  return { verification, localFixes: [] };
 }
