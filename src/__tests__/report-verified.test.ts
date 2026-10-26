@@ -8,7 +8,14 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { FIXES_FILENAME, MAX_ROWS, renderReport, reportPayload } from "../core/report.js";
+import {
+  escapeHtml,
+  FIXES_FILENAME,
+  MAX_ROWS,
+  renderReport,
+  reportPayload,
+  reviewStrings,
+} from "../core/report.js";
 import { REPORT_SCRIPT } from "../core/report-script.js";
 import { CARD_BUILDERS } from "../core/verify/builders.js";
 import { TONE_ORDER } from "../core/verify/cards.js";
@@ -26,6 +33,7 @@ import {
   type Verification,
   type VerifyCategory,
 } from "../core/verify/types.js";
+import { decodeEntities } from "./html-text.js";
 import {
   baseResult,
   CLOUD_LEAD_RESULT,
@@ -383,5 +391,55 @@ describe("the page script is unchanged and still finds everything it needs", () 
   it("ids are unique", () => {
     const all = [...HTML.matchAll(/\sid="([^"]+)"/g)].map((m) => m[1]);
     expect(new Set(all).size).toBe(all.length);
+  });
+});
+
+describe("scan --review lists every line the verified sections write", () => {
+  const group = reviewStrings(VERIFIED_RESULT, TEST_ONLY_BUILDERS).find((g) =>
+    g.label.startsWith("What the checks found on this machine"),
+  );
+  const pieces = (group?.lines ?? []).flatMap((line) => line.split("  ").filter(Boolean));
+
+  it("every piece it shows is in the file", () => {
+    expect(pieces.length).toBeGreaterThan(40);
+    for (const piece of pieces) {
+      expect(HTML, `"${piece}" was reviewed but is not in the file`).toContain(escapeHtml(piece));
+    }
+  });
+
+  it("every templated line in the file is in it: the direction that matters", () => {
+    const verified = [
+      HTML.match(/<h1[^>]*>[^<]*<\/h1>/)?.[0] ?? "",
+      section(HTML, "found"),
+      section(HTML, "also-checked"),
+      section(HTML, "what-happened"),
+    ].join("\n");
+    // Every line made from a template, bar the fixes-file note, which names a fixed file.
+    const lines = [...verified.matchAll(/data-template="([^"]+)"[^>]*>([^<]*)</g)]
+      .filter((m) => m[1] !== "card.fixes-file")
+      .map((m) => decodeEntities(m[2] ?? ""));
+    expect(lines.length).toBeGreaterThan(30);
+    const reviewed = new Set(pieces);
+    expect(lines.filter((line) => !reviewed.has(line))).toEqual([]);
+    // And the fix shapes, which are code rather than sentences.
+    for (const m of section(HTML, "what-happened").matchAll(/<code id="fix-[^"]+">([^<]*)</g)) {
+      expect(reviewed.has(decodeEntities(m[1] ?? ""))).toBe(true);
+    }
+  });
+
+  it("lists the evidence rows and the chips", () => {
+    expect(group?.lines).toContain(
+      "GitHub token  you pasted it into a prompt  in 4 transcript files",
+    );
+    expect(group?.lines).toContain("Production infrastructure  0 production databases touched");
+  });
+
+  it("is absent without verification, and with no tool calls read", () => {
+    const labels = (r: Parameters<typeof reviewStrings>[0]) =>
+      reviewStrings(r, TEST_ONLY_BUILDERS).map((g) => g.label);
+    expect(labels(baseResult(undefined)).some((l) => l.startsWith("What the checks"))).toBe(false);
+    expect(
+      labels({ ...VERIFIED_RESULT, toolCalls: 0 }).some((l) => l.startsWith("What the checks")),
+    ).toBe(false);
   });
 });

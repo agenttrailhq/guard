@@ -9176,16 +9176,29 @@ ${sentenceHtml({ template: MORE_EVIDENCE.id, text: more }, "note")}`}
 <p class="note"><a href="#${cardId("secrets")}">What checking found, and how to fix it</a></p>
 </section>`;
 }
+function chipsFor(cards, lead) {
+  return chipCategories(lead?.category).flatMap((category) => {
+    const card = cards.find((c) => c.category === category);
+    if (card === void 0) return [];
+    const chip = chipText(card);
+    const text = chip.count === void 0 ? chip.label.text : `${formatCount(chip.count)} ${chip.label.text}`;
+    return [
+      {
+        category,
+        tone: card.tone,
+        title: CATEGORY_TITLES[category],
+        text,
+        template: chip.label.template
+      }
+    ];
+  });
+}
 function alsoCheckedSection(payload, cards, lead) {
   const verification = payload.verification;
   if (verification === void 0) return "";
-  const chips = chipCategories(lead?.category).map((category) => {
-    const card = cards.find((c) => c.category === category);
-    if (card === void 0) return "";
-    const chip = chipText(card);
-    const text = chip.count === void 0 ? chip.label.text : `${formatCount(chip.count)} ${chip.label.text}`;
-    return `<li><a class="check-chip v-${card.tone}" href="#${cardId(category)}"><span class="chip-title">${escapeHtml(CATEGORY_TITLES[category])}</span><span class="chip-text" data-template="${escapeHtml(chip.label.template)}">${escapeHtml(text)}</span></a></li>`;
-  }).filter((chip) => chip !== "").join("\n");
+  const chips = chipsFor(cards, lead).map(
+    (chip) => `<li><a class="check-chip v-${chip.tone}" href="#${cardId(chip.category)}"><span class="chip-title">${escapeHtml(chip.title)}</span><span class="chip-text" data-template="${escapeHtml(chip.template)}">${escapeHtml(chip.text)}</span></a></li>`
+  ).join("\n");
   const notes = leadNotes(verification).map((line) => sentenceHtml(line, "note")).join("\n");
   return `<section class="also-checked" id="also-checked" aria-labelledby="also-checked-heading">
 <h2 id="also-checked-heading">Also checked on this machine</h2>
@@ -9813,8 +9826,8 @@ ${dataBlockText(payload)}
 </html>
 `;
 }
-function reviewStrings(result) {
-  const payload = reportPayload(result, { version: "", generatedAt: /* @__PURE__ */ new Date(0) });
+function reviewStrings(result, builders = CARD_BUILDERS) {
+  const payload = reportPayload(result, { version: "", generatedAt: /* @__PURE__ */ new Date(0) }, builders);
   const seen = /* @__PURE__ */ new Set();
   const take = (value) => {
     if (seen.has(value)) return [];
@@ -9837,10 +9850,49 @@ function reviewStrings(result) {
     groups.push({ label: "Guardrails named in the report", lines: guardrails });
   if (commands.length > 0) groups.push({ label: "Command shapes in the report", lines: commands });
   if (tools.length > 0) groups.push({ label: "Tool names in the report", lines: tools });
+  const verified = verifiedLines(payload).flatMap(take);
+  if (verified.length > 0) {
+    groups.push({
+      label: "What the checks found on this machine, by count and kind, never a value",
+      lines: verified
+    });
+  }
   if (payload.findings.length > 0) {
     groups.push({ label: "The suggested post, which you can edit", lines: [payload.shareText] });
   }
   return groups;
+}
+function verifiedLines(payload) {
+  const cards = payload.toolCalls > 0 ? payload.cards : void 0;
+  if (cards === void 0 || payload.verification === void 0) return [];
+  const lines = [];
+  const lead = pickHeadline(cards, { ranEvidence: payload.verification.ranEvidence });
+  if (lead?.headline !== void 0) lines.push(lead.headline.sentence.text);
+  const facts = payload.verification.categories.secrets.facts;
+  for (const item of facts.items) {
+    const row = evidenceRow(item);
+    lines.push(`${row.kind}  ${row.how}  ${row.files}`);
+  }
+  const more = MORE_EVIDENCE.render({ more: facts.moreItems });
+  if (more !== void 0) lines.push(more);
+  for (const note of leadNotes(payload.verification)) lines.push(note.text);
+  for (const chip of chipsFor(cards, lead)) lines.push(`${chip.title}  ${chip.text}`);
+  const tally = sentence(TONE_TALLY, cards);
+  if (tally !== void 0) lines.push(tally.text);
+  const read = sentence(READ_NOTE, facts);
+  if (read !== void 0) lines.push(read.text);
+  for (const card of cards) {
+    const title = CATEGORY_TITLES[card.category];
+    const count2 = CARD_COUNT.render(card);
+    if (count2 !== void 0) lines.push(`${title}  ${count2}`);
+    for (const line of [...card.found, ...card.now, ...card.fixSteps ?? []]) {
+      lines.push(`${title}  ${line.text}`);
+    }
+    for (const fix of card.fixes) lines.push(`${title}  ${fix.shape}`);
+    const caveat = sentence(CODEX_CAVEAT, card);
+    if (caveat !== void 0) lines.push(`${title}  ${caveat.text}`);
+  }
+  return lines;
 }
 function renderJson(result, meta) {
   const safe = result.verification === void 0 ? result : { ...result, verification: copyVerification(result.verification, false) };

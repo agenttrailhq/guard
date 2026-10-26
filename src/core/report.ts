@@ -1115,6 +1115,36 @@ ${rows}
 </section>`;
 }
 
+/** One chip, as the page writes it. */
+interface Chip {
+  readonly category: VerifyCategory;
+  readonly tone: VerificationStatus;
+  readonly title: string;
+  /** Its count and label, or its tone when it has no claim. */
+  readonly text: string;
+  readonly template: string;
+}
+
+/** The chips for a page whose headline is `lead`, in order. */
+function chipsFor(cards: readonly CardView[], lead?: CardView): Chip[] {
+  return chipCategories(lead?.category).flatMap((category): Chip[] => {
+    const card = cards.find((c) => c.category === category);
+    if (card === undefined) return [];
+    const chip = chipText(card);
+    const text =
+      chip.count === undefined ? chip.label.text : `${formatCount(chip.count)} ${chip.label.text}`;
+    return [
+      {
+        category,
+        tone: card.tone,
+        title: CATEGORY_TITLES[category],
+        text,
+        template: chip.label.template,
+      },
+    ];
+  });
+}
+
 /** "Also checked on this machine": six chips, zeros included, each linking to its card. */
 function alsoCheckedSection(
   payload: ReportPayload,
@@ -1123,18 +1153,11 @@ function alsoCheckedSection(
 ): string {
   const verification = payload.verification;
   if (verification === undefined) return "";
-  const chips = chipCategories(lead?.category)
-    .map((category) => {
-      const card = cards.find((c) => c.category === category);
-      if (card === undefined) return "";
-      const chip = chipText(card);
-      const text =
-        chip.count === undefined
-          ? chip.label.text
-          : `${formatCount(chip.count)} ${chip.label.text}`;
-      return `<li><a class="check-chip v-${card.tone}" href="#${cardId(category)}"><span class="chip-title">${escapeHtml(CATEGORY_TITLES[category])}</span><span class="chip-text" data-template="${escapeHtml(chip.label.template)}">${escapeHtml(text)}</span></a></li>`;
-    })
-    .filter((chip) => chip !== "")
+  const chips = chipsFor(cards, lead)
+    .map(
+      (chip) =>
+        `<li><a class="check-chip v-${chip.tone}" href="#${cardId(chip.category)}"><span class="chip-title">${escapeHtml(chip.title)}</span><span class="chip-text" data-template="${escapeHtml(chip.template)}">${escapeHtml(chip.text)}</span></a></li>`,
+    )
     .join("\n");
   const notes = leadNotes(verification)
     .map((line) => sentenceHtml(line, "note"))
@@ -2027,8 +2050,12 @@ export interface ReviewGroup {
  *
  * De-duplicated, first appearance wins.
  */
-export function reviewStrings(result: ScanResult): readonly ReviewGroup[] {
-  const payload = reportPayload(result, { version: "", generatedAt: new Date(0) });
+export function reviewStrings(
+  result: ScanResult,
+  /** The card builders. For tests; the report uses `CARD_BUILDERS`. */
+  builders: CardBuilders = CARD_BUILDERS,
+): readonly ReviewGroup[] {
+  const payload = reportPayload(result, { version: "", generatedAt: new Date(0) }, builders);
   const seen = new Set<string>();
   const take = (value: string): string[] => {
     if (seen.has(value)) return [];
@@ -2055,10 +2082,54 @@ export function reviewStrings(result: ScanResult): readonly ReviewGroup[] {
     groups.push({ label: "Guardrails named in the report", lines: guardrails });
   if (commands.length > 0) groups.push({ label: "Command shapes in the report", lines: commands });
   if (tools.length > 0) groups.push({ label: "Tool names in the report", lines: tools });
+  const verified = verifiedLines(payload).flatMap(take);
+  if (verified.length > 0) {
+    groups.push({
+      label: "What the checks found on this machine, by count and kind, never a value",
+      lines: verified,
+    });
+  }
   if (payload.findings.length > 0) {
     groups.push({ label: "The suggested post, which you can edit", lines: [payload.shareText] });
   }
   return groups;
+}
+
+/**
+ * Every line the verified sections write, as the page writes it. A card's lines are prefixed
+ * with its title, two spaces apart, so each piece is a string the file carries.
+ */
+function verifiedLines(payload: ReportPayload): string[] {
+  const cards = payload.toolCalls > 0 ? payload.cards : undefined;
+  if (cards === undefined || payload.verification === undefined) return [];
+  const lines: string[] = [];
+  const lead = pickHeadline(cards, { ranEvidence: payload.verification.ranEvidence });
+  if (lead?.headline !== undefined) lines.push(lead.headline.sentence.text);
+  const facts = payload.verification.categories.secrets.facts;
+  for (const item of facts.items) {
+    const row = evidenceRow(item);
+    lines.push(`${row.kind}  ${row.how}  ${row.files}`);
+  }
+  const more = MORE_EVIDENCE.render({ more: facts.moreItems });
+  if (more !== undefined) lines.push(more);
+  for (const note of leadNotes(payload.verification)) lines.push(note.text);
+  for (const chip of chipsFor(cards, lead)) lines.push(`${chip.title}  ${chip.text}`);
+  const tally = sentence(TONE_TALLY, cards);
+  if (tally !== undefined) lines.push(tally.text);
+  const read = sentence(READ_NOTE, facts);
+  if (read !== undefined) lines.push(read.text);
+  for (const card of cards) {
+    const title = CATEGORY_TITLES[card.category];
+    const count = CARD_COUNT.render(card);
+    if (count !== undefined) lines.push(`${title}  ${count}`);
+    for (const line of [...card.found, ...card.now, ...(card.fixSteps ?? [])]) {
+      lines.push(`${title}  ${line.text}`);
+    }
+    for (const fix of card.fixes) lines.push(`${title}  ${fix.shape}`);
+    const caveat = sentence(CODEX_CAVEAT, card);
+    if (caveat !== undefined) lines.push(`${title}  ${caveat.text}`);
+  }
+  return lines;
 }
 
 /**
