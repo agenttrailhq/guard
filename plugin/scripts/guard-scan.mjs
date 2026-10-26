@@ -6825,151 +6825,6 @@ function evaluateCall(catalog, context, mapped, allowlist) {
   };
 }
 
-// src/core/paths.ts
-import { join as join3 } from "path";
-function guardDir(homedir3) {
-  return join3(homedir3, ".agenttrail", "guard");
-}
-function configPath(homedir3) {
-  return join3(guardDir(homedir3), "config.json");
-}
-function userRulesPath(homedir3) {
-  return join3(guardDir(homedir3), "guardrails.json");
-}
-function productLineStatePath(homedir3) {
-  return join3(guardDir(homedir3), ".product-line");
-}
-
-// src/core/tokens.ts
-function tok(n) {
-  return typeof n === "number" && Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
-}
-var EMPTY_TOKEN_TOTALS = {
-  input: 0,
-  output: 0,
-  cacheRead: 0,
-  cacheCreation: 0,
-  cacheCreation5m: 0,
-  cacheCreation1h: 0,
-  turnsWithSplit: 0,
-  turns: 0
-};
-function addUsage(totals, usage) {
-  const u = usage ?? {};
-  const hasSplit = u.cache_creation !== void 0;
-  return {
-    input: totals.input + tok(u.input_tokens),
-    output: totals.output + tok(u.output_tokens),
-    cacheRead: totals.cacheRead + tok(u.cache_read_input_tokens),
-    cacheCreation: totals.cacheCreation + tok(u.cache_creation_input_tokens),
-    cacheCreation5m: totals.cacheCreation5m + (hasSplit ? tok(u.cache_creation?.ephemeral_5m_input_tokens) : 0),
-    cacheCreation1h: totals.cacheCreation1h + (hasSplit ? tok(u.cache_creation?.ephemeral_1h_input_tokens) : 0),
-    turnsWithSplit: totals.turnsWithSplit + (hasSplit ? 1 : 0),
-    turns: totals.turns + 1
-  };
-}
-function totalTokens(t) {
-  return t.input + t.output + t.cacheRead + t.cacheCreation;
-}
-function formatTokens(n) {
-  if (!Number.isFinite(n) || n < 0) return "0";
-  if (n >= 1e9) return `${(n / 1e9).toFixed(1)}B`;
-  if (n >= 1e6) return `${(n / 1e6).toFixed(1)}M`;
-  if (n >= 1e3) return `${(n / 1e3).toFixed(1)}K`;
-  return String(Math.floor(n));
-}
-function formatCount(n) {
-  if (!Number.isFinite(n) || n < 0) return "0";
-  return Math.floor(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
-}
-
-// src/core/product-line.ts
-var SUPPORTED_AGENTS = /* @__PURE__ */ new Set(["claude", "cursor"]);
-var plural = (n, one, many) => `${formatCount(n)} ${n === 1 ? one : many}`;
-var PRODUCT_LINE = {
-  destination: "https://agenttrail.sh/agenttrail-os",
-  utm: "utm_source=guard&utm_medium=cli",
-  /** `config.json` key. Only `false` turns the line off. */
-  configKey: "productLine",
-  /** At most one showing per command in this many hours. */
-  intervalHours: 24,
-  /** How far back `status` counts decisions. */
-  statusWindowDays: 7,
-  text: {
-    init: (url) => `Want a teammate to approve risky actions, and every session on record? AgentTrail OS (Team plan): ${url}`,
-    statusAsks: (asks, url) => `This week guard asked about ${plural(asks, "action", "actions")}. In AgentTrail OS a teammate approves them from the app (Team plan): ${url}`,
-    statusBlocks: (blocks, url) => `Guard blocked ${plural(blocks, "action", "actions")} this week. AgentTrail OS finds the failures agents repeat and suggests the guardrail that stops them: ${url}`,
-    scanAsks: (asks, url) => `${formatCount(asks)} of these would have waited for a teammate's approval in AgentTrail OS (Team plan), not a prompt: ${url}`,
-    scanMatches: (url) => `AgentTrail OS finds the failures agents repeat and suggests the guardrail that stops them: ${url}`,
-    add: (id, url) => `Share it: with everyone, run agenttrail-guard guardrails export ${id}; with your team, AgentTrail OS syncs guardrails to every teammate (Team plan): ${url}`
-  }
-};
-function productLineUrl(surface) {
-  return `${PRODUCT_LINE.destination}?${PRODUCT_LINE.utm}&utm_content=${surface}`;
-}
-function productLineText(facts) {
-  const url = productLineUrl(facts.surface);
-  const t = PRODUCT_LINE.text;
-  switch (facts.surface) {
-    case "init":
-      return SUPPORTED_AGENTS.has(facts.agent) ? t.init(url) : void 0;
-    case "status":
-      if (facts.asks > 0) return t.statusAsks(facts.asks, url);
-      if (facts.blocks > 0) return t.statusBlocks(facts.blocks, url);
-      return void 0;
-    case "scan":
-      if (!SUPPORTED_AGENTS.has(facts.agent) || facts.matches === 0) return void 0;
-      return facts.asks > 0 ? t.scanAsks(facts.asks, url) : t.scanMatches(url);
-    case "add":
-      return t.add(facts.guardrailId, url);
-    default:
-      return void 0;
-  }
-}
-function productLineEnabled(configText) {
-  if (configText === void 0) return true;
-  try {
-    const raw = JSON.parse(configText);
-    if (raw === null || typeof raw !== "object" || Array.isArray(raw)) return true;
-    return raw[PRODUCT_LINE.configKey] !== false;
-  } catch {
-    return true;
-  }
-}
-function readState(text) {
-  if (text === void 0) return {};
-  try {
-    const raw = JSON.parse(text);
-    return raw !== null && typeof raw === "object" && !Array.isArray(raw) ? { ...raw } : {};
-  } catch {
-    return {};
-  }
-}
-function productLineDue(stateText, surface, now) {
-  const last = readState(stateText)[surface];
-  if (typeof last !== "string") return true;
-  const at = Date.parse(last);
-  if (Number.isNaN(at) || at > now.getTime()) return true;
-  return now.getTime() - at >= PRODUCT_LINE.intervalHours * 36e5;
-}
-function recordProductLine(stateText, surface, now) {
-  const state = readState(stateText);
-  state[surface] = now.toISOString();
-  return `${JSON.stringify(state, null, 2)}
-`;
-}
-function takeProductLine(ctx, facts) {
-  if (!ctx.interactive || !productLineEnabled(ctx.configText)) return void 0;
-  const text = productLineText(facts);
-  if (text === void 0) return void 0;
-  const state = ctx.readFile(ctx.statePath);
-  if (!productLineDue(state, facts.surface, ctx.now)) return void 0;
-  if (!ctx.writeFile(ctx.statePath, recordProductLine(state, facts.surface, ctx.now))) {
-    return void 0;
-  }
-  return text;
-}
-
 // src/core/report.ts
 import { createHash } from "crypto";
 
@@ -8085,6 +7940,49 @@ ${REPORT_SCRIPT_LOGIC.trim()}
 ${REPORT_SCRIPT_GLUE.trim()}
 })();
 `;
+
+// src/core/tokens.ts
+function tok(n) {
+  return typeof n === "number" && Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
+}
+var EMPTY_TOKEN_TOTALS = {
+  input: 0,
+  output: 0,
+  cacheRead: 0,
+  cacheCreation: 0,
+  cacheCreation5m: 0,
+  cacheCreation1h: 0,
+  turnsWithSplit: 0,
+  turns: 0
+};
+function addUsage(totals, usage) {
+  const u = usage ?? {};
+  const hasSplit = u.cache_creation !== void 0;
+  return {
+    input: totals.input + tok(u.input_tokens),
+    output: totals.output + tok(u.output_tokens),
+    cacheRead: totals.cacheRead + tok(u.cache_read_input_tokens),
+    cacheCreation: totals.cacheCreation + tok(u.cache_creation_input_tokens),
+    cacheCreation5m: totals.cacheCreation5m + (hasSplit ? tok(u.cache_creation?.ephemeral_5m_input_tokens) : 0),
+    cacheCreation1h: totals.cacheCreation1h + (hasSplit ? tok(u.cache_creation?.ephemeral_1h_input_tokens) : 0),
+    turnsWithSplit: totals.turnsWithSplit + (hasSplit ? 1 : 0),
+    turns: totals.turns + 1
+  };
+}
+function totalTokens(t) {
+  return t.input + t.output + t.cacheRead + t.cacheCreation;
+}
+function formatTokens(n) {
+  if (!Number.isFinite(n) || n < 0) return "0";
+  if (n >= 1e9) return `${(n / 1e9).toFixed(1)}B`;
+  if (n >= 1e6) return `${(n / 1e6).toFixed(1)}M`;
+  if (n >= 1e3) return `${(n / 1e3).toFixed(1)}K`;
+  return String(Math.floor(n));
+}
+function formatCount(n) {
+  if (!Number.isFinite(n) || n < 0) return "0";
+  return Math.floor(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+}
 
 // src/core/verify/types.ts
 var VERIFY_CATEGORIES = [
@@ -9225,7 +9123,7 @@ ${block(card.now)}
 </dd></div>`);
   }
   const steps = card.fixSteps ?? [];
-  const fileNote = localFixes ? FIXES_FILE_NOTE.render({ variant }) : void 0;
+  const fileNote = localFixes && card.tone !== "not-checked" ? FIXES_FILE_NOTE.render({ variant }) : void 0;
   if (steps.length > 0 || card.fixes.length > 0 || fileNote !== void 0) {
     const shapes = card.fixes.map(
       (fix, i) => copyable(
@@ -9908,6 +9806,144 @@ function renderJson(result, meta) {
     2
   )}
 `;
+}
+
+// src/core/fixes-file.ts
+var CONTROL = /[\u0000-\u0008\u000a-\u001f\u007f]/;
+function writable(fixes) {
+  return fixes.filter((fix) => fix.command.trim() !== "" && !CONTROL.test(fix.command));
+}
+function fixCategories(fixes) {
+  const kept = writable(fixes);
+  return VERIFY_CATEGORIES.filter((category) => kept.some((fix) => fix.category === category));
+}
+function fixesFileText(fixes, meta) {
+  const kept = writable(fixes);
+  const left = fixes.length - kept.length;
+  const out = [
+    "AgentTrail Guard: fix commands for this machine",
+    "",
+    `Written by agenttrail-guard ${meta.version} on ${readableTime(meta.generatedAt)}, with ${meta.reportName}.`,
+    "",
+    "These are the exact commands behind the redacted shapes in the report, with real",
+    "branch names and paths. Keep this file on this machine: it is not part of the",
+    "report, and only your user account can read it. Read each command before you run",
+    "it. Nothing here has been run."
+  ];
+  if (left > 0) {
+    out.push(
+      "",
+      `${left === 1 ? "1 command was" : `${left} commands were`} left out because ${left === 1 ? "it does" : "they do"} not fit on one line.`
+    );
+  }
+  for (const category of fixCategories(kept)) {
+    out.push("", CATEGORY_TITLES[category]);
+    for (const fix of kept) if (fix.category === category) out.push(fix.command);
+  }
+  return `${out.join("\n")}
+`;
+}
+
+// src/core/paths.ts
+import { join as join3 } from "path";
+function guardDir(homedir3) {
+  return join3(homedir3, ".agenttrail", "guard");
+}
+function configPath(homedir3) {
+  return join3(guardDir(homedir3), "config.json");
+}
+function userRulesPath(homedir3) {
+  return join3(guardDir(homedir3), "guardrails.json");
+}
+function productLineStatePath(homedir3) {
+  return join3(guardDir(homedir3), ".product-line");
+}
+
+// src/core/product-line.ts
+var SUPPORTED_AGENTS = /* @__PURE__ */ new Set(["claude", "cursor"]);
+var plural = (n, one, many) => `${formatCount(n)} ${n === 1 ? one : many}`;
+var PRODUCT_LINE = {
+  destination: "https://agenttrail.sh/agenttrail-os",
+  utm: "utm_source=guard&utm_medium=cli",
+  /** `config.json` key. Only `false` turns the line off. */
+  configKey: "productLine",
+  /** At most one showing per command in this many hours. */
+  intervalHours: 24,
+  /** How far back `status` counts decisions. */
+  statusWindowDays: 7,
+  text: {
+    init: (url) => `Want a teammate to approve risky actions, and every session on record? AgentTrail OS (Team plan): ${url}`,
+    statusAsks: (asks, url) => `This week guard asked about ${plural(asks, "action", "actions")}. In AgentTrail OS a teammate approves them from the app (Team plan): ${url}`,
+    statusBlocks: (blocks, url) => `Guard blocked ${plural(blocks, "action", "actions")} this week. AgentTrail OS finds the failures agents repeat and suggests the guardrail that stops them: ${url}`,
+    scanAsks: (asks, url) => `${formatCount(asks)} of these would have waited for a teammate's approval in AgentTrail OS (Team plan), not a prompt: ${url}`,
+    scanMatches: (url) => `AgentTrail OS finds the failures agents repeat and suggests the guardrail that stops them: ${url}`,
+    add: (id, url) => `Share it: with everyone, run agenttrail-guard guardrails export ${id}; with your team, AgentTrail OS syncs guardrails to every teammate (Team plan): ${url}`
+  }
+};
+function productLineUrl(surface) {
+  return `${PRODUCT_LINE.destination}?${PRODUCT_LINE.utm}&utm_content=${surface}`;
+}
+function productLineText(facts) {
+  const url = productLineUrl(facts.surface);
+  const t = PRODUCT_LINE.text;
+  switch (facts.surface) {
+    case "init":
+      return SUPPORTED_AGENTS.has(facts.agent) ? t.init(url) : void 0;
+    case "status":
+      if (facts.asks > 0) return t.statusAsks(facts.asks, url);
+      if (facts.blocks > 0) return t.statusBlocks(facts.blocks, url);
+      return void 0;
+    case "scan":
+      if (!SUPPORTED_AGENTS.has(facts.agent) || facts.matches === 0) return void 0;
+      return facts.asks > 0 ? t.scanAsks(facts.asks, url) : t.scanMatches(url);
+    case "add":
+      return t.add(facts.guardrailId, url);
+    default:
+      return void 0;
+  }
+}
+function productLineEnabled(configText) {
+  if (configText === void 0) return true;
+  try {
+    const raw = JSON.parse(configText);
+    if (raw === null || typeof raw !== "object" || Array.isArray(raw)) return true;
+    return raw[PRODUCT_LINE.configKey] !== false;
+  } catch {
+    return true;
+  }
+}
+function readState(text) {
+  if (text === void 0) return {};
+  try {
+    const raw = JSON.parse(text);
+    return raw !== null && typeof raw === "object" && !Array.isArray(raw) ? { ...raw } : {};
+  } catch {
+    return {};
+  }
+}
+function productLineDue(stateText, surface, now) {
+  const last = readState(stateText)[surface];
+  if (typeof last !== "string") return true;
+  const at = Date.parse(last);
+  if (Number.isNaN(at) || at > now.getTime()) return true;
+  return now.getTime() - at >= PRODUCT_LINE.intervalHours * 36e5;
+}
+function recordProductLine(stateText, surface, now) {
+  const state = readState(stateText);
+  state[surface] = now.toISOString();
+  return `${JSON.stringify(state, null, 2)}
+`;
+}
+function takeProductLine(ctx, facts) {
+  if (!ctx.interactive || !productLineEnabled(ctx.configText)) return void 0;
+  const text = productLineText(facts);
+  if (text === void 0) return void 0;
+  const state = ctx.readFile(ctx.statePath);
+  if (!productLineDue(state, facts.surface, ctx.now)) return void 0;
+  if (!ctx.writeFile(ctx.statePath, recordProductLine(state, facts.surface, ctx.now))) {
+    return void 0;
+  }
+  return text;
 }
 
 // src/engine/matchers.ts
@@ -14367,7 +14403,7 @@ var CONTROL_CHARS = new RegExp(
 function terminalText(text) {
   return text.replace(CONTROL_CHARS, " ").replace(/\s+/g, " ").trim();
 }
-function renderSummary(result, colorsEnabled, reportPath) {
+function renderSummary(result, colorsEnabled, reportPath, fixesPath) {
   const c = createColors(colorsEnabled);
   const out = [];
   const t = result.tokens;
@@ -14475,6 +14511,10 @@ function renderSummary(result, colorsEnabled, reportPath) {
     out.push(
       `Full report: ${hyperlink(colorsEnabled, pathToFileURL(reportPath).href, reportPath)}`
     );
+  }
+  if (fixesPath !== void 0) {
+    out.push(`Fix commands for this machine: ${fixesPath}`);
+    out.push(c.dim("Only you can read it, and it is not part of the report: keep it to yourself."));
   }
   return `${out.join("\n")}
 `;
@@ -14628,7 +14668,7 @@ ${SCAN_USAGE}`);
   const catalog = compileCatalog([...shipped, ...userRules], config);
   const allowlist = compileAllowlist(config.allowlist);
   const corpus = await readCorpusFor(agent, root, io);
-  const outcome = flags.verify || VERIFY_BY_DEFAULT ? await verifyScan({
+  const outcome = flags.verify || VERIFY_BY_DEFAULT ? await (deps.verify ?? verifyScan)({
     corpus,
     catalog,
     allowlist,
@@ -14663,11 +14703,29 @@ ${SCAN_USAGE}`);
     }
     io.writeStdout("\n");
   }
+  const fixes = outcome?.localFixes ?? [];
+  const fixesTarget = join5(dirname(reportPath), FIXES_FILENAME);
+  let fixesPath;
+  if (fixCategories(fixes).length > 0 && fixesTarget !== reportPath) {
+    const text = fixesFileText(fixes, {
+      version: VERSION,
+      generatedAt: now,
+      reportName: basename3(reportPath)
+    });
+    if (io.writeFile(fixesTarget, text)) fixesPath = fixesTarget;
+    else io.writeStdout(colors.yellow(`Could not write the fix commands to ${fixesTarget}
+`));
+  }
   const written = io.writeFile(
     reportPath,
-    renderReport(result, meta, { variant: flags.artifact ? "artifact" : "document" })
+    renderReport(result, meta, {
+      variant: flags.artifact ? "artifact" : "document",
+      localFixCategories: fixesPath === void 0 ? [] : fixCategories(fixes)
+    })
   );
-  io.writeStdout(renderSummary(result, colors.enabled, written ? reportPath : void 0));
+  io.writeStdout(
+    renderSummary(result, colors.enabled, written ? reportPath : void 0, fixesPath)
+  );
   if (!written) {
     io.writeStdout(colors.yellow(`
 Could not write the report to ${reportPath}
@@ -14705,7 +14763,14 @@ ${osLine}
 
 // src/scan-io.ts
 import { spawn } from "child_process";
-import { createReadStream as createReadStream2, readdirSync as readdirSync2, readFileSync, statSync as statSync2, writeFileSync } from "fs";
+import {
+  chmodSync,
+  createReadStream as createReadStream2,
+  readdirSync as readdirSync2,
+  readFileSync,
+  statSync as statSync2,
+  writeFileSync
+} from "fs";
 import { homedir as homedir2 } from "os";
 import { createInterface as createInterface2 } from "readline";
 function openCommand(platform, path) {
@@ -14766,6 +14831,7 @@ function createRealScanIO() {
     writeFile(path, text) {
       try {
         writeFileSync(path, text, { encoding: "utf8", mode: 384 });
+        chmodSync(path, 384);
         return true;
       } catch {
         return false;

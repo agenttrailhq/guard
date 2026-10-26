@@ -1186,7 +1186,9 @@ function verifiedCard(card: CardView, variant: ReportVariant, localFixes: boolea
     fields.push(`<div><dt>Now</dt><dd>\n${block(card.now)}\n</dd></div>`);
   }
   const steps = card.fixSteps ?? [];
-  const fileNote = localFixes ? FIXES_FILE_NOTE.render({ variant }) : undefined;
+  // A category with no check has no commands, whatever the file holds.
+  const fileNote =
+    localFixes && card.tone !== "not-checked" ? FIXES_FILE_NOTE.render({ variant }) : undefined;
   if (steps.length > 0 || card.fixes.length > 0 || fileNote !== undefined) {
     const shapes = card.fixes.map((fix, i) =>
       copyable(

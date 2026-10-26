@@ -316,6 +316,16 @@ describe("What actually happened", () => {
     expect(none).not.toContain(FIXES_FILENAME);
   });
 
+  it("a category with no check never names the fixes file, whatever the file holds", () => {
+    const html = renderReport(VERIFIED_RESULT, VERIFIED_META, {
+      cardBuilders: TEST_ONLY_BUILDERS,
+      localFixCategories: ["unreviewed", "tests"],
+    });
+    expect(card(html, "unreviewed")).not.toContain(FIXES_FILENAME);
+    // A check that could not finish may still have made some commands.
+    expect(card(html, "tests")).toContain(FIXES_FILENAME);
+  });
+
   it("a card whose counts rest on Codex output records says they may include blocked calls", () => {
     const v = verification({
       ...verifiedCategories(),

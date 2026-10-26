@@ -28,7 +28,14 @@
  */
 
 import { spawn } from "node:child_process";
-import { createReadStream, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  createReadStream,
+  readdirSync,
+  readFileSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { homedir } from "node:os";
 import { createInterface } from "node:readline";
 
@@ -166,6 +173,8 @@ export function createRealScanIO(): ScanIO {
         // shared — but sharing it should be a thing the user does deliberately, not
         // something the default mode does for them on a shared machine.
         writeFileSync(path, text, { encoding: "utf8", mode: 0o600 });
+        // `mode` applies only to a file this call creates, so a file already there is set too.
+        chmodSync(path, 0o600);
         return true;
       } catch {
         return false;

@@ -50,6 +50,7 @@ import { createColors, hyperlink, shouldUseColor } from "../core/color.js";
 import { parseConfig } from "../core/config.js";
 import { defaultCursorProjectsRoot, readCursorCorpus } from "../core/cursor-transcript/scan.js";
 import { compileAllowlist } from "../core/evaluate.js";
+import { fixCategories, fixesFileText } from "../core/fixes-file.js";
 import { configPath, productLineStatePath, userRulesPath } from "../core/paths.js";
 import { takeProductLine } from "../core/product-line.js";
 import {
@@ -57,6 +58,7 @@ import {
   actionLabel,
   agentName,
   bySeverityThenCount,
+  FIXES_FILENAME,
   MAX_EXAMPLES,
   MAX_ROWS,
   matchTally,
@@ -84,6 +86,7 @@ import type { Verification, VerifyIO } from "../core/verify/types.js";
 import {
   UNAVAILABLE_VERIFY_IO,
   VERIFY_BY_DEFAULT,
+  type VerifyInput,
   type VerifyOutcome,
   verifyScan,
 } from "../core/verify/verify.js";
@@ -297,6 +300,8 @@ export interface ScanDeps {
    * could-not-check.
    */
   readonly createVerifyIO?: () => VerifyIO;
+  /** Runs the checks. For tests; production uses `verifyScan`. */
+  readonly verify?: (input: VerifyInput) => Promise<VerifyOutcome>;
 }
 
 /** Deepest directory nesting the file tally will descend. */
@@ -526,6 +531,8 @@ export function renderSummary(
   result: ScanResult,
   colorsEnabled: boolean,
   reportPath: string | undefined,
+  /** The local fixes file, when one was written. */
+  fixesPath?: string,
 ): string {
   const c = createColors(colorsEnabled);
   const out: string[] = [];
@@ -653,6 +660,10 @@ export function renderSummary(
     out.push(
       `Full report: ${hyperlink(colorsEnabled, pathToFileURL(reportPath).href, reportPath)}`,
     );
+  }
+  if (fixesPath !== undefined) {
+    out.push(`Fix commands for this machine: ${fixesPath}`);
+    out.push(c.dim("Only you can read it, and it is not part of the report: keep it to yourself."));
   }
 
   return `${out.join("\n")}\n`;
@@ -884,7 +895,7 @@ export async function runScan(
   // here, beside the result, for the local fixes file; they never enter `ScanResult`.
   const outcome: VerifyOutcome | undefined =
     flags.verify || VERIFY_BY_DEFAULT
-      ? await verifyScan({
+      ? await (deps.verify ?? verifyScan)({
           corpus,
           catalog,
           allowlist,
@@ -932,14 +943,34 @@ export async function runScan(
     io.writeStdout("\n");
   }
 
+  // The exact fix commands go to their own local file, first, so the report names it only once
+  // it exists. They never reach the report: its cards carry redacted shapes.
+  const fixes = outcome?.localFixes ?? [];
+  const fixesTarget = join(dirname(reportPath), FIXES_FILENAME);
+  let fixesPath: string | undefined;
+  if (fixCategories(fixes).length > 0 && fixesTarget !== reportPath) {
+    const text = fixesFileText(fixes, {
+      version: VERSION,
+      generatedAt: now,
+      reportName: basename(reportPath),
+    });
+    if (io.writeFile(fixesTarget, text)) fixesPath = fixesTarget;
+    else io.writeStdout(colors.yellow(`Could not write the fix commands to ${fixesTarget}\n`));
+  }
+
   const written = io.writeFile(
     reportPath,
-    renderReport(result, meta, { variant: flags.artifact ? "artifact" : "document" }),
+    renderReport(result, meta, {
+      variant: flags.artifact ? "artifact" : "document",
+      localFixCategories: fixesPath === undefined ? [] : fixCategories(fixes),
+    }),
   );
 
   // The summary is printed whether or not the file was written — it is the payoff, and
   // it must not depend on a writable working directory.
-  io.writeStdout(renderSummary(result, colors.enabled, written ? reportPath : undefined));
+  io.writeStdout(
+    renderSummary(result, colors.enabled, written ? reportPath : undefined, fixesPath),
+  );
 
   if (!written) {
     io.writeStdout(colors.yellow(`\nCould not write the report to ${reportPath}\n`));
