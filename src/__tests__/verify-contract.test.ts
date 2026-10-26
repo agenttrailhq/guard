@@ -12,11 +12,15 @@ import { compileCatalog } from "../core/rules.js";
 import { aggregateScan } from "../core/scan-report.js";
 import {
   type CardBuilders,
+  type CardContext,
   type CardView,
   COULD_NOT_CHECK_SENTENCE,
   cardsFor,
   couldNotCheckCard,
+  HEADLINE_BASES,
+  HEADLINE_BASIS,
   HEADLINE_ORDER,
+  type HeadlineBasis,
   isLocalFix,
   LOCAL_FIX_SERIALIZED,
   localFix,
@@ -98,6 +102,7 @@ const BUILDERS: CardBuilders = {
     fixes: [{ shape: "agenttrail-guard scan --scrub" }],
     codexCaveat: context.ranEvidence === "output-record",
     headline: {
+      basis: "likely-real-credentials",
       count: result.facts.classes["likely-real"],
       restsOnCodexRan: false,
       sentence: sentence(LIKELY, result.facts) ?? { template: LIKELY.id, text: "" },
@@ -188,23 +193,43 @@ describe("cards", () => {
   });
 });
 
-/** A card that claims `count` for the headline. */
+/** The scan context of a Claude Code, a Codex and a Cursor scan. */
+const CLAUDE: CardContext = { ranEvidence: "tool-result" };
+const CODEX: CardContext = { ranEvidence: "output-record" };
+const CURSOR: CardContext = { ranEvidence: "none" };
+
+/** The tone each leading category leads from. */
+const LEAD_TONE = (category: VerifyCategory): VerifyStatus =>
+  category === "cloud" ? "review" : "act";
+
+/** The basis a category leads with, or one that leads nowhere for the other three. */
+const BASIS_OF = (category: VerifyCategory): HeadlineBasis =>
+  (HEADLINE_BASIS as Readonly<Record<string, HeadlineBasis>>)[category] ??
+  "likely-real-credentials";
+
+/** A card that claims `count` for the headline, with its category's own basis unless given. */
 function claim(
   category: VerifyCategory,
-  tone: VerifyStatus = "act",
+  tone: VerifyStatus = LEAD_TONE(category),
   count = 1,
   restsOnCodexRan = false,
+  basis: HeadlineBasis = BASIS_OF(category),
 ): CardView {
   return {
     ...notCheckedCard(category),
     tone,
     count,
-    headline: { count, restsOnCodexRan, sentence: { template: `${category}.headline`, text: "x" } },
+    headline: {
+      basis,
+      count,
+      restsOnCodexRan,
+      sentence: { template: `${category}.headline`, text: "x" },
+    },
   };
 }
 
 describe("the headline", () => {
-  it("is in the fixed priority order", () => {
+  it("is in the fixed priority order, each category with one basis", () => {
     expect(HEADLINE_ORDER).toEqual([
       "secrets",
       "skipped-checks",
@@ -213,11 +238,12 @@ describe("the headline", () => {
       "tests",
       "destructive",
     ]);
+    expect(HEADLINE_ORDER.map((c) => HEADLINE_BASIS[c])).toEqual([...HEADLINE_BASES]);
   });
 
   it.each(HEADLINE_ORDER)("%s wins on its own", (category) => {
-    const tone = category === "cloud" ? "review" : "act";
-    expect(pickHeadline([claim(category, tone)])?.category).toBe(category);
+    expect(pickHeadline([claim(category)], CLAUDE)?.category).toBe(category);
+    expect(pickHeadline([claim(category)], CURSOR)?.category).toBe(category);
   });
 
   it.each(
@@ -225,46 +251,80 @@ describe("the headline", () => {
       HEADLINE_ORDER.slice(0, i).map((higher) => [higher, lower] as const),
     ),
   )("%s beats %s", (higher, lower) => {
-    const tone = (c: VerifyCategory) => (c === "cloud" ? "review" : "act");
-    expect(pickHeadline([claim(lower, tone(lower)), claim(higher, tone(higher))])?.category).toBe(
-      higher,
-    );
+    expect(pickHeadline([claim(lower), claim(higher)], CLAUDE)?.category).toBe(higher);
   });
 
   it.each(
     HEADLINE_ORDER,
   )("a clean, not-checked or could-not-check %s is never the headline", (category) => {
     for (const tone of ["clean", "not-checked", "could-not-check"] as const) {
-      expect(pickHeadline([claim(category, tone)])).toBeUndefined();
+      expect(pickHeadline([claim(category, tone)], CLAUDE)).toBeUndefined();
     }
   });
 
-  it("only a cloud change may lead from review, since that is the only tone it has", () => {
-    expect(pickHeadline([claim("secrets", "review")])).toBeUndefined();
-    expect(pickHeadline([claim("cloud", "review")])?.category).toBe("cloud");
+  it.each(HEADLINE_ORDER)("nothing leads a Codex scan, not even %s", (category) => {
+    expect(pickHeadline([claim(category)], CODEX)).toBeUndefined();
+    expect(
+      pickHeadline(
+        HEADLINE_ORDER.map((c) => claim(c, LEAD_TONE(c), 9)),
+        CODEX,
+      ),
+    ).toBeUndefined();
+  });
+
+  it("a Codex scan's cards from a builder never lead, while the same cards lead elsewhere", () => {
+    const codex = { ...verification("act", 4), ranEvidence: "output-record" as const };
+    const cards = cardsFor(codex, BUILDERS);
+    expect(cards.find((c) => c.category === "secrets")?.headline?.count).toBe(4);
+    expect(pickHeadline(cards, { ranEvidence: codex.ranEvidence })).toBeUndefined();
+    expect(pickHeadline(cardsFor(verification("act", 4), BUILDERS), CLAUDE)?.category).toBe(
+      "secrets",
+    );
+  });
+
+  it("cloud leads only from review, and only with the IAM-change count", () => {
+    expect(pickHeadline([claim("cloud", "review")], CLAUDE)?.category).toBe("cloud");
+    expect(pickHeadline([claim("cloud", "act")], CLAUDE)).toBeUndefined();
+    for (const basis of HEADLINE_BASES.filter((b) => b !== "iam-changes")) {
+      expect(pickHeadline([claim("cloud", "review", 3, false, basis)], CLAUDE)).toBeUndefined();
+    }
+  });
+
+  it("no other category leads from review", () => {
+    for (const category of HEADLINE_ORDER.filter((c) => c !== "cloud")) {
+      expect(pickHeadline([claim(category, "review")], CLAUDE)).toBeUndefined();
+    }
+  });
+
+  it.each(HEADLINE_ORDER)("a %s claim with another category's basis never leads", (category) => {
+    const other = HEADLINE_BASES.find((b) => b !== HEADLINE_BASIS[category]) as HeadlineBasis;
+    expect(
+      pickHeadline([claim(category, LEAD_TONE(category), 2, false, other)], CLAUDE),
+    ).toBeUndefined();
   });
 
   it.each(
     HEADLINE_ORDER,
   )("a %s claim that rests on Codex ran counts is never the headline", (category) => {
-    const tone = category === "cloud" ? "review" : "act";
-    expect(pickHeadline([claim(category, tone, 5, true)])).toBeUndefined();
+    expect(pickHeadline([claim(category, LEAD_TONE(category), 5, true)], CLAUDE)).toBeUndefined();
   });
 
   it("a Codex-only claim gives way to a lower one that does not rest on Codex", () => {
     expect(
-      pickHeadline([claim("skipped-checks", "act", 9, true), claim("destructive", "act", 1)])
-        ?.category,
+      pickHeadline(
+        [claim("skipped-checks", "act", 9, true), claim("destructive", "act", 1)],
+        CLAUDE,
+      )?.category,
     ).toBe("destructive");
   });
 
   it("a zero count, a card with no claim, and the other three categories never lead", () => {
-    expect(pickHeadline([claim("secrets", "act", 0)])).toBeUndefined();
-    expect(pickHeadline([{ ...notCheckedCard("secrets"), tone: "act" }])).toBeUndefined();
+    expect(pickHeadline([claim("secrets", "act", 0)], CLAUDE)).toBeUndefined();
+    expect(pickHeadline([{ ...notCheckedCard("secrets"), tone: "act" }], CLAUDE)).toBeUndefined();
     for (const category of ["prod-infra", "unreviewed", "egress"] as const) {
-      expect(pickHeadline([claim(category)])).toBeUndefined();
+      expect(pickHeadline([claim(category)], CLAUDE)).toBeUndefined();
     }
-    expect(pickHeadline([])).toBeUndefined();
+    expect(pickHeadline([], CLAUDE)).toBeUndefined();
   });
 });
 

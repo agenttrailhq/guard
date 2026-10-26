@@ -16,10 +16,10 @@
  * into JSON, so a serializer that reaches one fails rather than writing it.
  *
  * ── The headline ─────────────────────────────────────────────────────────────
- * `pickHeadline` takes the cards' headline claims in a fixed priority order. Only a category
- * whose check found something can lead: a clean, not-checked or could-not-check category never
- * does, and neither does a claim that rests on Codex `ran` counts, which may include calls a
- * hook blocked.
+ * `pickHeadline` takes the cards' headline claims in a fixed priority order, each with a typed
+ * basis. Only a category whose check found something can lead: a clean, not-checked or
+ * could-not-check category never does, and nothing leads a Codex scan, whose reading is
+ * limited and unverified.
  *
  * Pure. No I/O.
  */
@@ -72,8 +72,27 @@ export interface FixShape {
   readonly shape: string;
 }
 
+/**
+ * What a headline claim counts. Each leading category has exactly one, and a claim with any
+ * other basis cannot lead: the cloud card may lead only with the count of IAM changes that
+ * ran, never with its other cloud actions.
+ */
+export const HEADLINE_BASES = [
+  "likely-real-credentials",
+  "commits-on-main-without-checks",
+  "recoverable-deleted-work",
+  "iam-changes",
+  "lowered-test-floors",
+  "unguarded-recursive-deletes",
+] as const;
+
+/** One of `HEADLINE_BASES`. */
+export type HeadlineBasis = (typeof HEADLINE_BASES)[number];
+
 /** What may lead the report, from one card. */
 export interface HeadlineClaim {
+  /** What `count` counts. It must be the basis `HEADLINE_BASIS` names for the card's category. */
+  readonly basis: HeadlineBasis;
   /** The count the headline states, such as the number of likely-real credentials. */
   readonly count: number;
   /**
@@ -222,33 +241,55 @@ export const HEADLINE_ORDER = [
   "destructive",
 ] as const satisfies readonly VerifyCategory[];
 
+/** A category that may lead. */
+type HeadlineCategory = (typeof HEADLINE_ORDER)[number];
+
 /**
- * The tones that may lead, per category. A finding leads only when its check found something
- * (`act`). Cloud changes cannot be confirmed locally, so their card is always `review`; that is
- * the only tone they ever have, and it is what lets an IAM change lead.
+ * The tone each category may lead from. A finding leads only when its check found something
+ * (`act`). Cloud changes cannot be confirmed locally, so the cloud card is always `review`, and
+ * it leads only from `review`, saying that IAM changes ran and need review — never that harm
+ * was done.
  */
-const HEADLINE_TONES: Readonly<Record<(typeof HEADLINE_ORDER)[number], readonly VerifyStatus[]>> = {
-  secrets: ["act"],
-  "skipped-checks": ["act"],
-  "lost-work": ["act"],
-  cloud: ["act", "review"],
-  tests: ["act"],
-  destructive: ["act"],
+const HEADLINE_TONES: Readonly<Record<HeadlineCategory, VerifyStatus>> = {
+  secrets: "act",
+  "skipped-checks": "act",
+  "lost-work": "act",
+  cloud: "review",
+  tests: "act",
+  destructive: "act",
+};
+
+/** The one basis each leading category's claim may have. */
+export const HEADLINE_BASIS: Readonly<Record<HeadlineCategory, HeadlineBasis>> = {
+  secrets: "likely-real-credentials",
+  "skipped-checks": "commits-on-main-without-checks",
+  "lost-work": "recoverable-deleted-work",
+  cloud: "iam-changes",
+  tests: "lowered-test-floors",
+  destructive: "unguarded-recursive-deletes",
 };
 
 /**
  * The card whose claim leads the report, or `undefined` for the totals headline.
  *
- * A claim leads only when its category is in `HEADLINE_ORDER`, its tone may lead, its count is
- * above zero and it does not rest on Codex `ran` counts. Among those, the highest priority wins.
+ * Nothing leads a Codex scan (`ranEvidence: "output-record"`): Codex reading is limited and
+ * unverified, so every finding of such a scan is Codex-only. Otherwise a claim leads only when
+ * its category is in `HEADLINE_ORDER`, its tone is the one that category may lead from, its
+ * basis is the one that category may lead with, its count is above zero and it does not rest
+ * on Codex `ran` counts. Among those, the highest priority wins.
  */
-export function pickHeadline(cards: readonly CardView[]): CardView | undefined {
+export function pickHeadline(
+  cards: readonly CardView[],
+  context: CardContext,
+): CardView | undefined {
+  if (context.ranEvidence === "output-record") return undefined;
   for (const category of HEADLINE_ORDER) {
     const card = cards.find(
       (c) =>
         c.category === category &&
         c.headline !== undefined &&
-        HEADLINE_TONES[category].includes(c.tone) &&
+        c.tone === HEADLINE_TONES[category] &&
+        c.headline.basis === HEADLINE_BASIS[category] &&
         c.headline.count > 0 &&
         !c.headline.restsOnCodexRan,
     );
