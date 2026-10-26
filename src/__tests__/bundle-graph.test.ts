@@ -349,6 +349,7 @@ describe("only the scrub path can write a transcript", () => {
     "chmodSync",
     "copyFileSync",
     "createWriteStream",
+    "fchmodSync",
     "fsyncSync",
     "mkdirSync",
     "openSync",

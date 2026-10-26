@@ -1505,6 +1505,14 @@ const UNSAFE_CHARS = [
   "\u200f",
   "\u200e",
   "\u061c",
+  // Characters that show as nothing.
+  "\u00ad",
+  "\u180e",
+  "\u200b",
+  "\u200d",
+  "\u2060",
+  "\u2064",
+  "\ufeff",
 ];
 
 describe("restore commands with hostile names", () => {

@@ -14412,7 +14412,7 @@ function holdsValue(parsed2, values) {
       }
     }
   }
-  return false;
+  return stack.length > 0;
 }
 function parsed(line) {
   try {
@@ -14507,7 +14507,7 @@ var PROCESS_NAME_GAP = `If an agent is running under a generic name (for example
 function isRecentlyModified(mtimeMs, nowMs) {
   return nowMs - mtimeMs < RECENT_WRITE_WINDOW_MS;
 }
-var UNSAFE_PATH_SOURCE = "[\\u0000-\\u001f\\u007f-\\u009f\\u061c\\u200e\\u200f\\u2028-\\u202e\\u2066-\\u2069]";
+var UNSAFE_PATH_SOURCE = "[\\u0000-\\u001f\\u007f-\\u009f\\u00ad\\u061c\\u180e\\u200b-\\u200f\\u2028-\\u202e\\u2060-\\u2064\\u2066-\\u2069\\ufeff]";
 var UNSAFE_PATH_CHARS = new RegExp(UNSAFE_PATH_SOURCE);
 var BACKUP_NAME_UNSAFE = /[^A-Za-z0-9._-]/g;
 var MAX_BACKUP_NAME = 100;
@@ -15797,6 +15797,7 @@ import {
   chmodSync,
   closeSync as closeSync2,
   constants as constants2,
+  fchmodSync as fchmodSync2,
   fstatSync,
   fsyncSync as fsyncSync2,
   lstatSync,
@@ -15820,6 +15821,7 @@ var NODE_FS = {
   fsyncSync: (fd) => fsyncSync2(fd),
   closeSync: (fd) => closeSync2(fd),
   chmodSync: (path, mode) => chmodSync(path, mode),
+  fchmodSync: (fd, mode) => fchmodSync2(fd, mode),
   mkdirSync: (path, options) => {
     mkdirSync(path, options);
   },
@@ -15894,9 +15896,10 @@ function removeQuietly(fs, path) {
   } catch {
   }
 }
-function writeSyncClose(fs, fd, bytes) {
+function writeSyncClose(fs, fd, bytes, mode) {
   try {
     writeAll(fs, fd, bytes);
+    fs.fchmodSync(fd, mode);
     fs.fsyncSync(fd);
   } catch {
     closeQuietly(fs, fd);
@@ -15932,6 +15935,10 @@ function createRealScrubIO(options = {}) {
     createBackupDir(root, name) {
       try {
         fs.mkdirSync(root, { recursive: true, mode: BACKUP_DIR_MODE });
+        for (const folder of [dirname3(root), root]) {
+          const stat2 = fs.lstatSync(folder);
+          if (stat2.isSymbolicLink() || !stat2.isDirectory()) return void 0;
+        }
       } catch {
         return void 0;
       }
@@ -15967,17 +15974,12 @@ function createRealScrubIO(options = {}) {
       } catch {
         return false;
       }
-      if (!writeSyncClose(fs, fd, bytes)) {
+      if (!writeSyncClose(fs, fd, bytes, BACKUP_FILE_MODE)) {
         removeQuietly(fs, path);
         return false;
       }
-      try {
-        fs.chmodSync(path, BACKUP_FILE_MODE);
-        return true;
-      } catch {
-        removeQuietly(fs, path);
-        return false;
-      }
+      syncFolder(fs, dirname3(path));
+      return true;
     },
     replaceFile(path, bytes, expected) {
       const folder = dirname3(path);
@@ -15988,13 +15990,7 @@ function createRealScrubIO(options = {}) {
       } catch {
         return { ok: false, reason: "write-failed" };
       }
-      if (!writeSyncClose(fs, fd, bytes)) {
-        removeQuietly(fs, temp);
-        return { ok: false, reason: "write-failed" };
-      }
-      try {
-        fs.chmodSync(temp, expected.stat.mode);
-      } catch {
+      if (!writeSyncClose(fs, fd, bytes, expected.stat.mode)) {
         removeQuietly(fs, temp);
         return { ok: false, reason: "write-failed" };
       }

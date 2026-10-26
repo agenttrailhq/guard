@@ -171,7 +171,10 @@ function replaceInLine(line: string, forms: readonly Form[], counts: Map<SecretK
 /** Most strings `holdsValue` looks at in one line. */
 const MAX_STRINGS = 100_000;
 
-/** Does any string in a parsed line, key or value, still contain one of `values`? */
+/**
+ * Does any string in a parsed line, key or value, still contain one of `values`? A line too big
+ * to walk to the end within `MAX_STRINGS` counts as holding one, so the cap never reads as clean.
+ */
 function holdsValue(parsed: unknown, values: readonly string[]): boolean {
   const stack: unknown[] = [parsed];
   let seen = 0;
@@ -189,7 +192,7 @@ function holdsValue(parsed: unknown, values: readonly string[]): boolean {
       }
     }
   }
-  return false;
+  return stack.length > 0;
 }
 
 /** `JSON.parse`, or `undefined` for text that is not JSON. */

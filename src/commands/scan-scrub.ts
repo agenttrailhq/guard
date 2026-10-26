@@ -131,11 +131,13 @@ export function isRecentlyModified(mtimeMs: number, nowMs: number): boolean {
 
 /**
  * Characters a path may not carry into a printed command or onto the terminal: control
- * characters (C0, DEL, C1), the line and paragraph separators, and the marks that reorder text
- * on screen. A command holding one could run something other than what it shows.
+ * characters (C0, DEL, C1), the line and paragraph separators, the marks that reorder text on
+ * screen, and characters that show as nothing (soft hyphen, zero-width spaces and joiners, the
+ * word joiner and invisible operators, the byte-order mark). A command holding one could run
+ * something other than what it shows, or show something other than what it runs.
  */
 const UNSAFE_PATH_SOURCE =
-  "[\\u0000-\\u001f\\u007f-\\u009f\\u061c\\u200e\\u200f\\u2028-\\u202e\\u2066-\\u2069]";
+  "[\\u0000-\\u001f\\u007f-\\u009f\\u00ad\\u061c\\u180e\\u200b-\\u200f\\u2028-\\u202e\\u2060-\\u2064\\u2066-\\u2069\\ufeff]";
 
 /** One unsafe character. Built from a string because a regex literal may not hold control characters. */
 const UNSAFE_PATH_CHARS = new RegExp(UNSAFE_PATH_SOURCE);

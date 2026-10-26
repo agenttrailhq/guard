@@ -33,6 +33,7 @@ import {
   chmodSync,
   closeSync,
   constants,
+  fchmodSync,
   fstatSync,
   fsyncSync,
   lstatSync,
@@ -141,8 +142,13 @@ export interface ScrubFs {
   readonly fsyncSync: (fd: number) => void;
   readonly closeSync: (fd: number) => void;
   readonly chmodSync: (path: string, mode: number) => void;
+  readonly fchmodSync: (fd: number, mode: number) => void;
   readonly mkdirSync: (path: string, options: { recursive?: boolean; mode: number }) => void;
-  readonly lstatSync: (path: string) => { isDirectory(): boolean; readonly mode: number };
+  readonly lstatSync: (path: string) => {
+    isDirectory(): boolean;
+    isSymbolicLink(): boolean;
+    readonly mode: number;
+  };
   readonly renameSync: (from: string, to: string) => void;
   readonly unlinkSync: (path: string) => void;
   readonly rmdirSync: (path: string) => void;
@@ -158,6 +164,7 @@ const NODE_FS: ScrubFs = {
   fsyncSync: (fd) => fsyncSync(fd),
   closeSync: (fd) => closeSync(fd),
   chmodSync: (path, mode) => chmodSync(path, mode),
+  fchmodSync: (fd, mode) => fchmodSync(fd, mode),
   mkdirSync: (path, options) => {
     mkdirSync(path, options);
   },
@@ -255,10 +262,15 @@ function removeQuietly(fs: ScrubFs, path: string): void {
   }
 }
 
-/** Write `bytes` to an open file, `fsync` it and close it. `false` when any step fails. */
-function writeSyncClose(fs: ScrubFs, fd: number, bytes: Uint8Array): boolean {
+/**
+ * Write `bytes` to an open file, set its mode, `fsync` it and close it. `false` when any step
+ * fails.
+ */
+function writeSyncClose(fs: ScrubFs, fd: number, bytes: Uint8Array, mode: number): boolean {
   try {
     writeAll(fs, fd, bytes);
+    // On the open file, so no other file can take its place by name in between.
+    fs.fchmodSync(fd, mode);
     fs.fsyncSync(fd);
   } catch {
     closeQuietly(fs, fd);
@@ -312,6 +324,11 @@ export function createRealScrubIO(options: ScrubIOOptions = {}): ScrubIO {
     createBackupDir(root: string, name: string): string | undefined {
       try {
         fs.mkdirSync(root, { recursive: true, mode: BACKUP_DIR_MODE });
+        // A root, or the folder holding it, that is a link could put the backup anywhere.
+        for (const folder of [dirname(root), root]) {
+          const stat = fs.lstatSync(folder);
+          if (stat.isSymbolicLink() || !stat.isDirectory()) return undefined;
+        }
       } catch {
         return undefined;
       }
@@ -352,17 +369,13 @@ export function createRealScrubIO(options: ScrubIOOptions = {}): ScrubIO {
       } catch {
         return false;
       }
-      if (!writeSyncClose(fs, fd, bytes)) {
+      if (!writeSyncClose(fs, fd, bytes, BACKUP_FILE_MODE)) {
         removeQuietly(fs, path);
         return false;
       }
-      try {
-        fs.chmodSync(path, BACKUP_FILE_MODE);
-        return true;
-      } catch {
-        removeQuietly(fs, path);
-        return false;
-      }
+      // The folder too, so the backup's name is on disk before any transcript is replaced.
+      syncFolder(fs, dirname(path));
+      return true;
     },
 
     replaceFile(path, bytes, expected): ReplaceOutcome {
@@ -374,13 +387,7 @@ export function createRealScrubIO(options: ScrubIOOptions = {}): ScrubIO {
       } catch {
         return { ok: false, reason: "write-failed" };
       }
-      if (!writeSyncClose(fs, fd, bytes)) {
-        removeQuietly(fs, temp);
-        return { ok: false, reason: "write-failed" };
-      }
-      try {
-        fs.chmodSync(temp, expected.stat.mode);
-      } catch {
+      if (!writeSyncClose(fs, fd, bytes, expected.stat.mode)) {
         removeQuietly(fs, temp);
         return { ok: false, reason: "write-failed" };
       }

@@ -235,6 +235,20 @@ describe("lines that cannot be edited safely", () => {
     expect(planFileScrub(text, targets, [""]).linesLeft).toBe(0);
   });
 
+  it("counts a line too big to check to the end as still holding a value", () => {
+    // Past 100,000 strings the check stops; what it did not read is not taken as clean.
+    const many = Array.from({ length: 100_001 }, () => "x");
+    const line = JSON.stringify({ a: GITHUB, b: many });
+    const plan = planFileScrub(`${line}\n`, targets);
+    expect(plan.changed).toBe(true);
+    expect(plan.linesIncomplete).toBe(1);
+    const small = planFileScrub(
+      `${JSON.stringify({ a: GITHUB, b: many.slice(0, 10) })}\n`,
+      targets,
+    );
+    expect(small.linesIncomplete).toBe(0);
+  });
+
   it("counts a changed line that still holds a value in a form it does not edit", () => {
     const value = `Qm7${"Xn2Lp9Vz4"}`;
     // Upper-case hex escapes are not one of the forms tried.

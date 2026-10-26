@@ -6,6 +6,7 @@
 import {
   chmodSync,
   existsSync,
+  fsyncSync,
   linkSync,
   lstatSync,
   mkdirSync,
@@ -21,7 +22,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, sep } from "node:path";
 import { describe, expect, it } from "vitest";
 import { sha256 } from "../core/scrub-transcripts.js";
 import {
@@ -298,13 +299,42 @@ describe("the backup folder fails safely", () => {
     expect(names(root)).toHaveLength(MAX_BACKUP_DIR_ATTEMPTS);
   });
 
+  /** An `lstat` that answers `fake` for the run folder `x` and the truth for anything else. */
+  const runFolderLstat = (fake: () => ReturnType<ScrubFs["lstatSync"]>): Partial<ScrubFs> => ({
+    lstatSync: (path) => (path.endsWith(`${sep}x`) ? fake() : lstatSync(path)),
+  });
+
   it.each([
     ["chmod fails", failing("chmodSync")],
-    ["lstat fails", failing("lstatSync")],
-    ["it is not a folder", { lstatSync: () => ({ isDirectory: () => false, mode: 0o40700 }) }],
+    [
+      "lstat fails",
+      runFolderLstat(() => {
+        throw fsError("EIO");
+      }),
+    ],
+    [
+      "it is not a folder",
+      runFolderLstat(() => ({
+        isDirectory: () => false,
+        isSymbolicLink: () => false,
+        mode: 0o40700,
+      })),
+    ],
+    [
+      "it is a link",
+      runFolderLstat(() => ({
+        isDirectory: () => false,
+        isSymbolicLink: () => true,
+        mode: 0o40700,
+      })),
+    ],
     [
       "its mode is wider than 0700",
-      { lstatSync: () => ({ isDirectory: () => true, mode: 0o40755 }) },
+      runFolderLstat(() => ({
+        isDirectory: () => true,
+        isSymbolicLink: () => false,
+        mode: 0o40755,
+      })),
     ],
   ] as const)("a folder that cannot be shown private is removed when %s", (_why, fs) => {
     if (!POSIX) return;
@@ -317,7 +347,12 @@ describe("the backup folder fails safely", () => {
     const root = folder();
     const io = createRealScrubIO({
       platform: "win32",
-      fs: { lstatSync: () => ({ isDirectory: () => true, mode: 0o40777 }) },
+      fs: {
+        lstatSync: (path) =>
+          path.endsWith(`${sep}x`)
+            ? { isDirectory: () => true, isSymbolicLink: () => false, mode: 0o40777 }
+            : lstatSync(path),
+      },
     });
     expect(io.createBackupDir(root, "x")).toBe(join(root, "x"));
   });
@@ -328,6 +363,48 @@ describe("the backup folder fails safely", () => {
     expect(io.createBackupDir(root, "x")).toBeUndefined();
     expect(names(join(root, "x"))).toEqual([]);
   });
+
+  it("is not made under a root that is a link", () => {
+    if (!POSIX) return;
+    const elsewhere = folder();
+    const root = join(folder(), "scrub-backups");
+    symlinkSync(elsewhere, root);
+    expect(createRealScrubIO().createBackupDir(root, "x")).toBeUndefined();
+    expect(names(elsewhere)).toEqual([]);
+  });
+
+  it("is not made under a root whose own folder is a link", () => {
+    if (!POSIX) return;
+    const elsewhere = folder();
+    const agenttrail = join(folder(), ".agenttrail");
+    symlinkSync(elsewhere, agenttrail);
+    expect(
+      createRealScrubIO().createBackupDir(join(agenttrail, "scrub-backups"), "x"),
+    ).toBeUndefined();
+    expect(names(join(elsewhere, "scrub-backups"))).toEqual([]);
+  });
+
+  it("is fsynced after each backup file, so its names are on disk before any replace", () => {
+    const dir = folder();
+    const opened = new Map<number, string | number>();
+    const synced: string[] = [];
+    const io = createRealScrubIO({
+      fs: {
+        openSync: (path, flags, mode) => {
+          const fd = openSync(path, flags, mode);
+          opened.set(fd, path);
+          return fd;
+        },
+        fsyncSync: (fd) => {
+          synced.push(String(opened.get(fd)));
+          fsyncSync(fd);
+        },
+      },
+    });
+    const path = join(dir, "1-session.jsonl");
+    expect(io.writeBackupFile(path, new Uint8Array([1]))).toBe(true);
+    expect(synced).toEqual([path, dir]);
+  });
 });
 
 describe("a backup file fails safely", () => {
@@ -336,7 +413,7 @@ describe("a backup file fails safely", () => {
     ["a write that makes no progress", { writeSync: () => 0 }],
     ["the fsync", failing("fsyncSync")],
     ["the close", failing("closeSync")],
-    ["the chmod", failing("chmodSync")],
+    ["the mode set on the open file", failing("fchmodSync")],
   ] as const)("when %s fails, nothing is left behind", (_what, fs) => {
     const dir = folder();
     const path = join(dir, "1-session.jsonl");
@@ -359,7 +436,7 @@ describe("replaceFile fails safely", () => {
     ["a write that makes no progress", { writeSync: () => 0 }],
     ["the temporary file's fsync", failing("fsyncSync")],
     ["the temporary file's close", failing("closeSync")],
-    ["the temporary file's chmod", failing("chmodSync")],
+    ["the temporary file's mode", failing("fchmodSync")],
   ] as const)("when %s fails: write-failed, original kept, no temporary file", (_what, fs) => {
     const { path, stat, sha } = fileWith('{"a":"old"}\n');
     expect(
