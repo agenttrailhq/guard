@@ -7976,14 +7976,86 @@ ${REPORT_SCRIPT_GLUE.trim()}
 `;
 
 // src/core/verify/types.ts
+var VERIFY_CATEGORIES = [
+  "secrets",
+  "skipped-checks",
+  "lost-work",
+  "cloud",
+  "prod-infra",
+  "tests",
+  "destructive",
+  "unreviewed",
+  "egress"
+];
+var VERIFY_STATUSES = [
+  "act",
+  "review",
+  "clean",
+  "not-checked",
+  "could-not-check"
+];
+var RUN_STATES = ["ran", "mentioned", "unknown"];
+var RAN_EVIDENCE = ["tool-result", "output-record", "none"];
 var SECRET_PROVENANCES = [
   "pasted-into-prompt",
   "typed-into-command",
   "printed-by-command",
   "in-agent-reply"
 ];
+var SECRET_KINDS = [
+  "aws-access-key",
+  "aws-secret-key",
+  "private-key",
+  "github-token",
+  "slack-token",
+  "api-key",
+  "jwt",
+  "bearer-token",
+  "auth-header",
+  "database-url",
+  "url-credentials",
+  "password",
+  "named-secret",
+  "random-string",
+  "other"
+];
+var SECRET_CLASSES = [
+  "likely-real",
+  "committed-fixture",
+  "placeholder",
+  "local-dev"
+];
+var FIXTURE_CHECKS = ["complete", "partial", "unavailable", "not-needed"];
 var MAX_SECRET_ITEMS = 200;
 var WATCHED_PROCESSES = ["claude", "cursor", "codex"];
+var FACT_VALUE_ENUMS = [
+  VERIFY_CATEGORIES,
+  VERIFY_STATUSES,
+  RUN_STATES,
+  RAN_EVIDENCE,
+  SECRET_PROVENANCES,
+  SECRET_KINDS,
+  SECRET_CLASSES,
+  FIXTURE_CHECKS,
+  WATCHED_PROCESSES
+];
+var FACT_KEYS = [
+  "classes",
+  "items",
+  "moreItems",
+  "filesRead",
+  "filesNotRead",
+  "unplaced",
+  "setAside",
+  "unnamedOutputOnly",
+  "namedNotCredentialShaped",
+  "fixtureCheck",
+  "reposChecked",
+  "reposNotChecked",
+  "kind",
+  "via",
+  "files"
+];
 
 // src/core/verify/cards.ts
 var LOCAL_ONLY = /* @__PURE__ */ Symbol("local-only");
@@ -8136,35 +8208,40 @@ function payloadSecrets(check) {
   };
 }
 var MAX_FACTS_DEPTH = 6;
-function copyPlain(value, depth = 0) {
+var FACT_VALUES = new Set(FACT_VALUE_ENUMS.flat());
+var FACT_KEY_SET = /* @__PURE__ */ new Set([...FACT_KEYS, ...FACT_VALUES]);
+function copyFacts(value, capLists, depth = 0) {
   if (isLocalFix(value)) throw new Error(LOCAL_FIX_SERIALIZED);
-  if (typeof value === "number" || typeof value === "boolean" || typeof value === "string") {
-    return value;
-  }
+  if (typeof value === "number" || typeof value === "boolean") return value;
+  if (typeof value === "string") return FACT_VALUES.has(value) ? value : void 0;
   if (depth >= MAX_FACTS_DEPTH) return void 0;
   if (Array.isArray(value)) {
-    return value.slice(0, MAX_ROWS).map((item) => copyPlain(item, depth + 1));
+    const items = capLists ? value.slice(0, MAX_ROWS) : value;
+    return items.map((item) => copyFacts(item, capLists, depth + 1)).filter((item) => item !== void 0);
   }
   if (value !== null && typeof value === "object" && Object.getPrototypeOf(value) === Object.prototype) {
     const out = {};
     for (const [key, item] of Object.entries(value)) {
-      const copied = copyPlain(item, depth + 1);
+      if (!FACT_KEY_SET.has(key)) continue;
+      const copied = copyFacts(item, capLists, depth + 1);
       if (copied !== void 0) out[key] = copied;
     }
     return out;
   }
   return void 0;
 }
-function payloadCategory(result) {
+function copyCategory(result, capLists) {
   const out = {
     status: result.status
   };
   const matches = result.matches;
   if (typeof matches === "number") out.matches = matches;
-  if ("facts" in result) out.facts = copyPlain(result.facts);
+  if ("facts" in result) {
+    out.facts = copyFacts(result.facts, capLists);
+  }
   return out;
 }
-function payloadVerification(verification) {
+function copyVerification(verification, capLists) {
   const categories = verification.categories;
   return {
     matchedCalls: {
@@ -8175,15 +8252,15 @@ function payloadVerification(verification) {
     resultsRecorded: verification.resultsRecorded,
     ranEvidence: verification.ranEvidence,
     categories: {
-      secrets: payloadSecrets(categories.secrets),
-      "skipped-checks": payloadCategory(categories["skipped-checks"]),
-      "lost-work": payloadCategory(categories["lost-work"]),
-      cloud: payloadCategory(categories.cloud),
-      "prod-infra": payloadCategory(categories["prod-infra"]),
-      tests: payloadCategory(categories.tests),
-      destructive: payloadCategory(categories.destructive),
-      unreviewed: payloadCategory(categories.unreviewed),
-      egress: payloadCategory(categories.egress)
+      secrets: capLists ? payloadSecrets(categories.secrets) : copyCategory(categories.secrets, false),
+      "skipped-checks": copyCategory(categories["skipped-checks"], capLists),
+      "lost-work": copyCategory(categories["lost-work"], capLists),
+      cloud: copyCategory(categories.cloud, capLists),
+      "prod-infra": copyCategory(categories["prod-infra"], capLists),
+      tests: copyCategory(categories.tests, capLists),
+      destructive: copyCategory(categories.destructive, capLists),
+      unreviewed: copyCategory(categories.unreviewed, capLists),
+      egress: copyCategory(categories.egress, capLists)
     }
   };
 }
@@ -8257,7 +8334,7 @@ function reportPayload(result, meta) {
       guardrailCount: t.guardrailCount
     }))
   };
-  const withVerification = result.verification === void 0 ? payload : { ...payload, verification: payloadVerification(result.verification) };
+  const withVerification = result.verification === void 0 ? payload : { ...payload, verification: copyVerification(result.verification, true) };
   const skipped = result.skipped;
   if (skipped === void 0) return withVerification;
   return {
@@ -9095,13 +9172,14 @@ function reviewStrings(result) {
   return groups;
 }
 function renderJson(result, meta) {
+  const safe = result.verification === void 0 ? result : { ...result, verification: copyVerification(result.verification, false) };
   return `${JSON.stringify(
     {
       tool: "agenttrail-guard",
       version: meta.version,
       generatedAt: meta.generatedAt.toISOString(),
       catalog: formatCatalogStamp(catalogStamp(), meta.generatedAt),
-      result
+      result: safe
     },
     null,
     2

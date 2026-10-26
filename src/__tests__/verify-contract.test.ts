@@ -1,4 +1,4 @@
-// cspell:words LOCALFIXCANARY
+// cspell:words LOCALFIXCANARY FACTSCANARY
 /**
  * The shapes later checks and the page build on (`core/verify/cards.ts`, `types.ts`): cards,
  * sentences, the headline order, the local-only fix channel, the payload copy of a category's
@@ -348,7 +348,7 @@ describe("exact fix commands stay in the local channel", () => {
         "lost-work": {
           status: "act",
           matches: 1,
-          facts: { fixes: [localFix("lost-work", CANARY)] },
+          facts: { items: [localFix("lost-work", CANARY)] },
         },
       },
     } as unknown as Verification;
@@ -365,6 +365,30 @@ describe("exact fix commands stay in the local channel", () => {
     expect(() => renderJson(result, meta)).toThrow(LOCAL_FIX_SERIALIZED);
   });
 
+  it("under a key facts may not use, one is dropped with the key and never written", () => {
+    const dropped = {
+      ...verification(),
+      categories: {
+        ...verification().categories,
+        "lost-work": {
+          status: "act",
+          matches: 1,
+          facts: { fixes: [localFix("lost-work", CANARY)] },
+        },
+      },
+    } as unknown as Verification;
+    const result = aggregateScan(
+      { sessions: [], quarantined: 0, notRead: 0, projects: 0 },
+      compileCatalog([RULE_RM_RF]),
+      compileAllowlist([]),
+      new Set(),
+      dropped,
+    );
+    const meta = { version: "0.0.0", generatedAt: new Date(0) };
+    expect(renderReport(result, meta)).not.toContain("LOCALFIXCANARY");
+    expect(renderJson(result, meta)).not.toContain("LOCALFIXCANARY");
+  });
+
   it("Verification has no field for them", () => {
     const v: Verification = {
       ...verification(),
@@ -378,20 +402,22 @@ describe("exact fix commands stay in the local channel", () => {
 describe("a checked category's facts reach the file as plain data", () => {
   const meta = { version: "0.0.0", generatedAt: new Date(0) };
 
-  it("counts and enums are copied, lists capped at the row cap, and anything else dropped", () => {
+  it("only registered keys and enum strings reach the file and --json; lists are capped in the file", () => {
     class NotPlain {
       readonly x = 1;
     }
     const facts = {
-      count: 3,
-      flag: true,
-      kind: "act",
-      rows: Array.from({ length: MAX_ROWS + 5 }, (_, i) => ({ n: i })),
+      filesRead: 3,
+      fixtureCheck: "partial",
+      items: Array.from({ length: MAX_ROWS + 5 }, (_, i) => ({ files: i, kind: "github-token" })),
+      classes: { "likely-real": 2, "/Users/FACTSCANARY/.env": 1 },
+      kind: "feature/FACTSCANARY-branch",
+      via: ["pasted-into-prompt", "/Users/FACTSCANARY/.env"],
+      unregistered: 5,
       fn: () => 1,
       map: new Map([["a", 1]]),
       instance: new NotPlain(),
       nothing: null,
-      deep: { a: { b: { c: { d: { e: { f: 1 } } } } } },
     };
     const v = {
       ...verification(),
@@ -411,12 +437,80 @@ describe("a checked category's facts reach the file as plain data", () => {
     };
     expect(tests.status).toBe("act");
     expect(tests.matches).toBe(3);
-    expect(tests.facts.count).toBe(3);
-    expect(tests.facts.flag).toBe(true);
-    expect(tests.facts.kind).toBe("act");
-    expect(tests.facts.rows).toHaveLength(MAX_ROWS);
-    expect(Object.keys(tests.facts).sort()).toEqual(["count", "deep", "flag", "kind", "rows"]);
-    expect(JSON.stringify(tests.facts.deep)).toBe('{"a":{"b":{"c":{"d":{}}}}}');
+    expect(tests.facts).toEqual({
+      filesRead: 3,
+      fixtureCheck: "partial",
+      items: Array.from({ length: MAX_ROWS }, (_, i) => ({ files: i, kind: "github-token" })),
+      classes: { "likely-real": 2 },
+      via: ["pasted-into-prompt"],
+    });
+    const json = JSON.parse(renderJson(result, meta)).result.verification.categories.tests.facts;
+    expect(json.items).toHaveLength(MAX_ROWS + 5);
+    expect(json.kind).toBeUndefined();
+    expect(json.via).toEqual(["pasted-into-prompt"]);
+    for (const surface of [renderReport(result, meta), renderJson(result, meta)]) {
+      expect(surface).not.toContain("FACTSCANARY");
+    }
+  });
+
+  it("negative control — the same strings are in the facts given", () => {
+    expect(JSON.stringify({ kind: "feature/FACTSCANARY-branch" })).toContain("FACTSCANARY");
+  });
+
+  it("deep facts are cut at the depth cap", () => {
+    const deep = {
+      classes: {
+        classes: { classes: { classes: { classes: { classes: { classes: { filesRead: 1 } } } } } },
+      },
+    };
+    const v = {
+      ...verification(),
+      categories: {
+        ...verification().categories,
+        tests: { status: "clean", matches: 0, facts: deep },
+      },
+    } as unknown as Verification;
+    const result = aggregateScan(
+      { sessions: [], quarantined: 0, notRead: 0, projects: 0 },
+      compileCatalog([RULE_RM_RF]),
+      compileAllowlist([]),
+      new Set(),
+      v,
+    );
+    const facts = (
+      reportPayload(result, meta).verification?.categories.tests as unknown as {
+        facts: unknown;
+      }
+    ).facts;
+    expect(JSON.stringify(facts)).toBe(
+      '{"classes":{"classes":{"classes":{"classes":{"classes":{}}}}}}',
+    );
+  });
+
+  it("the secrets facts in --json pass the same boundary, uncapped", () => {
+    const many = Array.from({ length: MAX_ROWS + 3 }, () => ({
+      kind: "github-token" as const,
+      via: ["pasted-into-prompt" as const],
+      files: 1,
+    }));
+    const v = verification("act", 2);
+    const withItems = {
+      ...v,
+      categories: {
+        ...v.categories,
+        secrets: { ...v.categories.secrets, facts: { ...v.categories.secrets.facts, items: many } },
+      },
+    };
+    const result = aggregateScan(
+      { sessions: [], quarantined: 0, notRead: 0, projects: 0 },
+      compileCatalog([RULE_RM_RF]),
+      compileAllowlist([]),
+      new Set(),
+      withItems,
+    );
+    const json = JSON.parse(renderJson(result, meta)).result.verification.categories.secrets;
+    expect(json.facts.items).toHaveLength(MAX_ROWS + 3);
+    expect(json.facts.setAside).toEqual({ unnamedOutputOnly: 0, namedNotCredentialShaped: 0 });
   });
 
   it("a could-not-check result with a count and no facts keeps its count, in the file and on the card", () => {
@@ -448,7 +542,7 @@ describe("a checked category's facts reach the file as plain data", () => {
       ...verification(),
       categories: {
         ...verification().categories,
-        tests: { status: "clean", matches: 0, facts: { lowered: 0 } },
+        tests: { status: "clean", matches: 0, facts: { filesRead: 0 } },
       },
     } as unknown as Verification;
     const result = aggregateScan(
@@ -461,7 +555,7 @@ describe("a checked category's facts reach the file as plain data", () => {
     expect(reportPayload(result, meta).verification?.categories.tests).toEqual({
       status: "clean",
       matches: 0,
-      facts: { lowered: 0 },
+      facts: { filesRead: 0 },
     });
   });
 

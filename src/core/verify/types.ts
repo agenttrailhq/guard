@@ -390,3 +390,46 @@ export interface VerifyIO {
    */
   charge?(ms: number): boolean;
 }
+
+// ── What a category's facts may say ──────────────────────────────────────────
+
+/**
+ * Every string a category's facts may hold as a value. Facts are counts, booleans and these
+ * enums; the report and `--json` drop any other string at the boundary, so a branch name or a
+ * path put into facts by mistake never reaches the page or the JSON. A check whose facts use
+ * an enum of its own adds that enum here.
+ */
+export const FACT_VALUE_ENUMS: readonly (readonly string[])[] = [
+  VERIFY_CATEGORIES,
+  VERIFY_STATUSES,
+  RUN_STATES,
+  RAN_EVIDENCE,
+  SECRET_PROVENANCES,
+  SECRET_KINDS,
+  SECRET_CLASSES,
+  FIXTURE_CHECKS,
+  WATCHED_PROCESSES,
+];
+
+/**
+ * Every key a category's facts may use, besides the values of `FACT_VALUE_ENUMS` (a record
+ * keyed by an enum, such as `classes`). The boundary drops any other key with its value. A
+ * check adds its own keys here.
+ */
+export const FACT_KEYS: readonly string[] = [
+  "classes",
+  "items",
+  "moreItems",
+  "filesRead",
+  "filesNotRead",
+  "unplaced",
+  "setAside",
+  "unnamedOutputOnly",
+  "namedNotCredentialShaped",
+  "fixtureCheck",
+  "reposChecked",
+  "reposNotChecked",
+  "kind",
+  "via",
+  "files",
+];
