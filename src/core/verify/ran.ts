@@ -1,0 +1,736 @@
+// cspell:words egrep fgrep zgrep apropos whatis tldr whereis stdbuf bunx herestring heredocs redirections whatchanged shortlog pytest nohup iglob mtext Stext ovalue
+/**
+ * Ran, or only mentioned: did a matched tool call actually run on this machine?
+ *
+ * Every check counts commands that ran, so this module decides it, in two halves.
+ *
+ * ── Where the matched text sits ──────────────────────────────────────────────
+ * A guardrail matches text, and the same text can sit where nothing runs it:
+ *
+ *     grep -rn "rm -rf /" src          a search pattern
+ *     echo "never run rm -rf /"        printed text
+ *     git commit -m "stop rm -rf /"    a message
+ *     cat > notes.md <<EOF … EOF        a heredoc written to a file
+ *     vitest run -t "rm -rf /"         a test-name filter
+ *     # rm -rf /                        a comment
+ *
+ * `executedView` returns the command with those regions blanked out, and `runVerdict`
+ * evaluates the guardrails again on it. If nothing matches any more, the match came only from
+ * text that was never run, and the call is `mentioned`. If something still matches, the
+ * matched text sits where the shell runs it.
+ *
+ * The reading is deliberately one-sided. A region is blanked only when the program that takes
+ * it is known to treat it as data: `grep`'s pattern, `echo`'s arguments, a `-m` message. Any
+ * other program's argument is kept, because `psql -c "DROP TABLE t"` runs the text it is
+ * given, and so do `bash -c`, `ssh`, `xargs` and a heredoc fed to `psql`. A text inside a
+ * `$(…)` or backticks is kept too: `echo "$(rm -rf x)"` runs `rm`. Getting it wrong in that
+ * direction counts a mention as a command, which overstates; the other direction would hide a
+ * command that ran.
+ *
+ * ── Whether it ran ───────────────────────────────────────────────────────────
+ * A call whose matched text sits where the shell runs it is `ran` only when the transcript
+ * records a result for it:
+ *
+ *   Claude Code   a `tool_result` for the call's id. An error result counts as `ran` only
+ *                 when it reports the command's exit code; otherwise it was refused, blocked
+ *                 or failed before it started.
+ *   Codex         a `custom_tool_call_output` for the call's `call_id`.
+ *   Cursor        session files record no results and no tool-use ids, so no Cursor call is
+ *                 ever `ran`: it is `unknown`, or `mentioned` when the text says so.
+ */
+
+import { unhandledAgent } from "../agent.js";
+import type { CompiledAllowlist } from "../evaluate.js";
+import type { CompiledRule } from "../rules.js";
+import { evaluateAction, type ScanCorpus, toolUseCalls } from "../scan-report.js";
+import type { ToolResult } from "../transcript/transcript-types.js";
+import type { AgentSource, MappedCall } from "../types.js";
+import type { RanEvidence, RunTally, RunVerdict, RunWhy } from "./types.js";
+
+/** Why a region was blanked. */
+export type MentionKind = "search" | "doc" | "test-string" | "heredoc";
+
+/** A command with every region that is only data blanked out. */
+export interface ExecutedView {
+  /** The command, with each data region replaced by spaces. Line breaks are kept. */
+  readonly text: string;
+  /** The kinds of region blanked, in the order they appear. Empty when nothing was. */
+  readonly kinds: readonly MentionKind[];
+}
+
+/** One word of a command, with where it sits in the original text. */
+interface Word {
+  readonly start: number;
+  readonly end: number;
+  /** The word with its quotes and escapes removed. */
+  readonly value: string;
+  /** It holds a `$(…)` or a backtick substitution, so part of it runs. */
+  readonly runs: boolean;
+}
+
+/** A heredoc's body, as a range of the original text. */
+interface Body {
+  readonly start: number;
+  readonly end: number;
+}
+
+/** One simple command: its words, and the data fed to its standard input. */
+interface Segment {
+  /** Words other than redirection targets, in order. */
+  readonly words: Word[];
+  /** Heredoc bodies and here-strings fed to this command. */
+  readonly inputs: Body[];
+}
+
+/** A heredoc whose delimiter has been read and whose body starts after the next line break. */
+interface PendingHeredoc {
+  readonly delimiter: string;
+  readonly stripTabs: boolean;
+  readonly segment: Segment;
+}
+
+/** One blanked range, and why. */
+interface Region {
+  readonly start: number;
+  readonly end: number;
+  readonly kind: MentionKind;
+}
+
+/** A command split into simple commands, with its comments. */
+interface Parsed {
+  readonly segments: readonly Segment[];
+  readonly comments: readonly Body[];
+}
+
+/** Where a command substitution or a quoted string ends, starting at an opening character. */
+function skipQuoted(text: string, at: number, quote: string): number {
+  let i = at + 1;
+  while (i < text.length) {
+    const ch = text[i];
+    if (quote !== "'" && ch === "\\") {
+      i += 2;
+      continue;
+    }
+    if (ch === quote) return i + 1;
+    i += 1;
+  }
+  return text.length;
+}
+
+/** Where a `$(…)` ends, counting nested parentheses and skipping quoted text. */
+function skipSubstitution(text: string, at: number): number {
+  let depth = 0;
+  let i = at;
+  while (i < text.length) {
+    const ch = text[i];
+    if (ch === "'" || ch === '"' || ch === "`") {
+      i = skipQuoted(text, i, ch);
+      continue;
+    }
+    if (ch === "\\") {
+      i += 2;
+      continue;
+    }
+    if (ch === "(") depth += 1;
+    else if (ch === ")") {
+      depth -= 1;
+      if (depth === 0) return i + 1;
+    }
+    i += 1;
+  }
+  return text.length;
+}
+
+/**
+ * Split a shell command into simple commands.
+ *
+ * A best-effort reading of POSIX shell: quotes, escapes, `$(…)` and backticks, the control
+ * operators, redirections, here-strings, heredocs and comments. It never fails; text it cannot
+ * place stays in a word, which keeps it on the "runs" side.
+ */
+function parseShell(text: string): Parsed {
+  const segments: Segment[] = [];
+  const comments: Body[] = [];
+  const pending: PendingHeredoc[] = [];
+  let segment: Segment = { words: [], inputs: [] };
+  // What the next completed word is: an ordinary word, a redirection target, a heredoc
+  // delimiter or a here-string.
+  let next: "word" | "target" | "heredoc" | "herestring" | "heredoc-tabs" = "word";
+  let wordStart = -1;
+  let value = "";
+  let runs = false;
+
+  const endWord = (end: number): void => {
+    if (wordStart < 0) return;
+    const word: Word = { start: wordStart, end, value, runs };
+    if (next === "word") segment.words.push(word);
+    else if (next === "heredoc" || next === "heredoc-tabs") {
+      pending.push({ delimiter: value, stripTabs: next === "heredoc-tabs", segment });
+    } else if (next === "herestring") segment.inputs.push({ start: word.start, end: word.end });
+    next = "word";
+    wordStart = -1;
+    value = "";
+    runs = false;
+  };
+  const endSegment = (end: number): void => {
+    endWord(end);
+    if (segment.words.length > 0 || segment.inputs.length > 0) segments.push(segment);
+    segment = { words: [], inputs: [] };
+  };
+  const startWord = (at: number): void => {
+    if (wordStart < 0) wordStart = at;
+  };
+
+  let i = 0;
+  while (i < text.length) {
+    const ch = text[i] as string;
+
+    if (ch === "\n") {
+      endSegment(i);
+      i += 1;
+      // Heredoc bodies start on the line after the one that declared them, in order.
+      while (pending.length > 0 && i <= text.length) {
+        const doc = pending.shift() as PendingHeredoc;
+        const start = i;
+        let end = text.length;
+        let after = text.length;
+        while (i < text.length) {
+          const lineEnd = text.indexOf("\n", i);
+          const stop = lineEnd < 0 ? text.length : lineEnd;
+          const line = text.slice(i, stop);
+          if ((doc.stripTabs ? line.replace(/^\t+/, "") : line) === doc.delimiter) {
+            end = i;
+            after = lineEnd < 0 ? text.length : lineEnd + 1;
+            break;
+          }
+          i = lineEnd < 0 ? text.length : lineEnd + 1;
+        }
+        doc.segment.inputs.push({ start, end });
+        i = after;
+      }
+      continue;
+    }
+
+    if (ch === " " || ch === "\t" || ch === "\r") {
+      endWord(i);
+      i += 1;
+      continue;
+    }
+
+    if (ch === "#" && wordStart < 0) {
+      const lineEnd = text.indexOf("\n", i);
+      const stop = lineEnd < 0 ? text.length : lineEnd;
+      comments.push({ start: i, end: stop });
+      i = stop;
+      continue;
+    }
+
+    if (ch === "'" || ch === '"') {
+      startWord(i);
+      const end = skipQuoted(text, i, ch);
+      const inner = text.slice(i + 1, Math.max(i + 1, end - 1));
+      if (ch === '"' && (inner.includes("$(") || inner.includes("`"))) runs = true;
+      value += ch === '"' ? inner.replace(/\\(["\\$`])/g, "$1") : inner;
+      i = end;
+      continue;
+    }
+
+    if (ch === "\\") {
+      startWord(i);
+      // A backslash before a line break joins the two lines.
+      if (text[i + 1] !== "\n") value += text[i + 1] ?? "";
+      i += 2;
+      continue;
+    }
+
+    if (ch === "$" && text[i + 1] === "(") {
+      startWord(i);
+      const end = skipSubstitution(text, i + 1);
+      value += text.slice(i, end);
+      runs = true;
+      i = end;
+      continue;
+    }
+
+    if (ch === "`") {
+      startWord(i);
+      const end = skipQuoted(text, i, "`");
+      value += text.slice(i, end);
+      runs = true;
+      i = end;
+      continue;
+    }
+
+    if (ch === "<" || ch === ">") {
+      // A word of digits right before is the file descriptor, not an argument.
+      if (wordStart >= 0 && /^\d+$/.test(value)) {
+        wordStart = -1;
+        value = "";
+      } else endWord(i);
+      if (text.startsWith("<<<", i)) {
+        next = "herestring";
+        i += 3;
+      } else if (text.startsWith("<<-", i)) {
+        next = "heredoc-tabs";
+        i += 3;
+      } else if (text.startsWith("<<", i)) {
+        next = "heredoc";
+        i += 2;
+      } else {
+        // `>`, `>>`, `<`, `>|`, `<>`, and `>&` / `<&` with a descriptor.
+        i += 1;
+        while (i < text.length && /[>|&<]/.test(text[i] as string)) i += 1;
+        next = "target";
+      }
+      continue;
+    }
+
+    if (ch === "&" && text[i + 1] === ">") {
+      endWord(i);
+      i += 2;
+      if (text[i] === ">") i += 1;
+      next = "target";
+      continue;
+    }
+
+    if (ch === ";" || ch === "&" || ch === "|" || ch === "(" || ch === ")") {
+      endSegment(i);
+      i += 1;
+      // `&&`, `||`, `|&` and `;;` are one operator.
+      if ((ch === "&" || ch === "|" || ch === ";") && /[&|;]/.test(text[i] ?? "")) i += 1;
+      continue;
+    }
+
+    startWord(i);
+    value += ch;
+    i += 1;
+  }
+  endSegment(text.length);
+  return { segments, comments };
+}
+
+/** Words that come before the program and are not it. */
+const PREFIX_WORDS: ReadonlySet<string> = new Set([
+  "sudo",
+  "env",
+  "command",
+  "builtin",
+  "exec",
+  "time",
+  "nohup",
+  "nice",
+  "stdbuf",
+  "timeout",
+  "!",
+  "{",
+  "}",
+  "if",
+  "then",
+  "else",
+  "elif",
+  "do",
+  "while",
+  "until",
+]);
+
+/** Options of a prefix word that take the next word as their value. */
+const PREFIX_VALUE_OPTIONS: ReadonlySet<string> = new Set(["-u", "-g", "-n", "-s", "-k"]);
+
+/** A shell variable assignment before the program, such as `HUSKY=0`. */
+const ASSIGNMENT = /^[A-Za-z_][A-Za-z0-9_]*=/;
+
+/** The program's name: its file name, lower-cased, without `.exe`. */
+function programName(word: Word): string {
+  const base = word.value.split(/[\\/]/).pop() ?? "";
+  return base.toLowerCase().replace(/\.exe$/, "");
+}
+
+/** The index of the program word, past assignments and prefix words such as `sudo`. */
+function programIndex(words: readonly Word[]): number {
+  let k = 0;
+  while (k < words.length) {
+    const word = words[k] as Word;
+    if (ASSIGNMENT.test(word.value)) {
+      k += 1;
+      continue;
+    }
+    const name = programName(word);
+    if (!PREFIX_WORDS.has(name)) return k;
+    k += 1;
+    // A prefix word's own options, and `timeout`'s duration.
+    while (k < words.length && (words[k] as Word).value.startsWith("-")) {
+      const option = (words[k] as Word).value;
+      k += PREFIX_VALUE_OPTIONS.has(option) ? 2 : 1;
+    }
+    if (name === "timeout" && k < words.length) k += 1;
+  }
+  return k;
+}
+
+/** Programs whose arguments are printed, not run. */
+const PRINTERS: ReadonlySet<string> = new Set(["echo", "printf"]);
+
+/** Programs that look a word up. Their arguments are searched for, not run. */
+const LOOKUPS: ReadonlySet<string> = new Set([
+  "man",
+  "which",
+  "type",
+  "apropos",
+  "whatis",
+  "tldr",
+  "whereis",
+  "help",
+]);
+
+/** Programs that search for a pattern. */
+const SEARCHERS: ReadonlySet<string> = new Set([
+  "grep",
+  "egrep",
+  "fgrep",
+  "zgrep",
+  "rg",
+  "ag",
+  "ack",
+]);
+
+/** A searcher's options that take the next word as their value, which is not the pattern. */
+const SEARCH_VALUE_OPTIONS: ReadonlySet<string> = new Set([
+  "-A",
+  "-B",
+  "-C",
+  "-m",
+  "-f",
+  "-d",
+  "-D",
+  "-g",
+  "-t",
+  "-T",
+  "-j",
+  "-M",
+  "-E",
+  "--glob",
+  "--iglob",
+  "--type",
+  "--type-not",
+  "--max-count",
+  "--file",
+  "--context",
+  "--after-context",
+  "--before-context",
+  "--max-columns",
+  "--encoding",
+]);
+
+/** Programs that feed a heredoc or a here-string into a file or the terminal. */
+const INPUT_SINKS: ReadonlySet<string> = new Set(["cat", "tee", "echo", "printf"]);
+
+/** Test runners, and the words that start one through a package manager. */
+const TEST_RUNNERS: ReadonlySet<string> = new Set(["vitest", "jest", "mocha", "pytest", "test"]);
+
+/** Package managers and launchers a test runner is started through. */
+const LAUNCHERS: ReadonlySet<string> = new Set(["npx", "pnpm", "npm", "yarn", "bun", "bunx"]);
+
+/** A test runner's options whose value names tests to run. */
+const TEST_FILTER_OPTIONS: ReadonlySet<string> = new Set([
+  "-t",
+  "--testNamePattern",
+  "-k",
+  "--grep",
+  "-g",
+]);
+
+/** `git` options that come before the subcommand and take the next word. */
+const GIT_GLOBAL_VALUE_OPTIONS: ReadonlySet<string> = new Set(["-C", "-c"]);
+
+/** `git` subcommands that search history for a string. */
+const GIT_HISTORY: ReadonlySet<string> = new Set([
+  "log",
+  "show",
+  "whatchanged",
+  "shortlog",
+  "rev-list",
+]);
+
+/** `git` subcommands that take a message. */
+const GIT_MESSAGE: ReadonlySet<string> = new Set(["commit", "tag", "merge", "notes", "stash"]);
+
+/** `gh` command groups whose text options are a title or a body. */
+const GH_TEXT_GROUPS: ReadonlySet<string> = new Set([
+  "pr",
+  "issue",
+  "release",
+  "api",
+  "gist",
+  "repo",
+]);
+
+/** `gh` options whose value is text for a page, not something to run. */
+const GH_TEXT_OPTIONS: ReadonlySet<string> = new Set([
+  "-t",
+  "--title",
+  "-b",
+  "--body",
+  "-n",
+  "--notes",
+  "-f",
+  "-F",
+  "--field",
+  "--raw-field",
+  "-d",
+  "--description",
+]);
+
+/**
+ * The values of `options` among `words`, as `--opt value`, `--opt=value` or `-ovalue`.
+ *
+ * A value that holds a substitution is left out: part of it runs.
+ */
+function optionValues(words: readonly Word[], options: ReadonlySet<string>): Word[] {
+  const out: Word[] = [];
+  for (let k = 0; k < words.length; k++) {
+    const word = words[k] as Word;
+    if (options.has(word.value)) {
+      const value = words[k + 1];
+      if (value !== undefined && !value.runs) out.push(value);
+      k += 1;
+      continue;
+    }
+    if (word.runs) continue;
+    const eq = word.value.indexOf("=");
+    if (word.value.startsWith("--") && eq > 0 && options.has(word.value.slice(0, eq))) {
+      out.push(word);
+      continue;
+    }
+    // `-mtext`, `-Stext`: a short option with its value attached.
+    if (/^-[A-Za-z]./.test(word.value) && !word.value.startsWith("--")) {
+      if (options.has(word.value.slice(0, 2))) out.push(word);
+    }
+  }
+  return out;
+}
+
+/** A searcher's pattern words: every `-e` value, or else the first operand. */
+function searchPatterns(words: readonly Word[]): Word[] {
+  const explicit = optionValues(words, new Set(["-e", "--regexp"]));
+  if (explicit.length > 0) return explicit;
+  for (let k = 0; k < words.length; k++) {
+    const word = words[k] as Word;
+    if (word.value === "--") {
+      const operand = words[k + 1];
+      return operand === undefined || operand.runs ? [] : [operand];
+    }
+    if (word.value.startsWith("-")) {
+      if (SEARCH_VALUE_OPTIONS.has(word.value)) k += 1;
+      continue;
+    }
+    return word.runs ? [] : [word];
+  }
+  return [];
+}
+
+/** The regions of one simple command that are only data. */
+function segmentRegions(segment: Segment): Region[] {
+  const words = segment.words;
+  const at = programIndex(words);
+  const program = words[at];
+  if (program === undefined) return [];
+  const name = programName(program);
+  const rest = words.slice(at + 1);
+  const regions: Region[] = [];
+  const blank = (list: readonly Word[], kind: MentionKind): void => {
+    for (const word of list) regions.push({ start: word.start, end: word.end, kind });
+  };
+
+  if (PRINTERS.has(name))
+    blank(
+      rest.filter((w) => !w.runs),
+      "doc",
+    );
+  else if (LOOKUPS.has(name))
+    blank(
+      rest.filter((w) => !w.runs),
+      "search",
+    );
+  else if (SEARCHERS.has(name)) blank(searchPatterns(rest), "search");
+  else if (name === "git") {
+    let k = 0;
+    while (k < rest.length && (rest[k] as Word).value.startsWith("-")) {
+      k += GIT_GLOBAL_VALUE_OPTIONS.has((rest[k] as Word).value) ? 2 : 1;
+    }
+    const sub = rest[k]?.value ?? "";
+    const args = rest.slice(k + 1);
+    if (sub === "grep") blank(searchPatterns(args), "search");
+    else if (GIT_HISTORY.has(sub)) {
+      blank(optionValues(args, new Set(["-S", "-G", "--grep"])), "search");
+    } else if (GIT_MESSAGE.has(sub)) {
+      blank(optionValues(args, new Set(["-m", "--message"])), "doc");
+    }
+  } else if (name === "gh" && GH_TEXT_GROUPS.has(rest[0]?.value ?? "")) {
+    blank(optionValues(rest, GH_TEXT_OPTIONS), "doc");
+  }
+
+  const startsTests =
+    TEST_RUNNERS.has(name) || (LAUNCHERS.has(name) && rest.some((w) => TEST_RUNNERS.has(w.value)));
+  if (startsTests && name !== "test") {
+    blank(optionValues(rest, TEST_FILTER_OPTIONS), "test-string");
+  }
+
+  if (INPUT_SINKS.has(name)) {
+    for (const input of segment.inputs) regions.push({ ...input, kind: "heredoc" });
+  }
+  return regions;
+}
+
+/**
+ * The command with every region that is only data blanked out. See the module header.
+ *
+ * Pure and total: any text gives a view, and a text with nothing to blank comes back as it is.
+ */
+export function executedView(command: string): ExecutedView {
+  const parsed = parseShell(command);
+  const regions: Region[] = parsed.comments.map((c) => ({ ...c, kind: "doc" as const }));
+  for (const segment of parsed.segments) regions.push(...segmentRegions(segment));
+  if (regions.length === 0) return { text: command, kinds: [] };
+
+  regions.sort((a, b) => a.start - b.start);
+  let out = "";
+  let cursor = 0;
+  for (const region of regions) {
+    if (region.end <= cursor) continue;
+    const start = Math.max(region.start, cursor);
+    out += command.slice(cursor, start);
+    out += command.slice(start, region.end).replace(/[^\n]/g, " ");
+    cursor = region.end;
+  }
+  out += command.slice(cursor);
+  const kinds: MentionKind[] = [];
+  for (const region of regions) if (!kinds.includes(region.kind)) kinds.push(region.kind);
+  return { text: out, kinds };
+}
+
+/**
+ * What a `ran` verdict rests on for this app. See `RAN_EVIDENCE`.
+ *
+ * A checked switch, so a new app does not inherit another app's answer.
+ */
+export function ranEvidenceOf(agent: AgentSource): RanEvidence {
+  switch (agent) {
+    case "claude":
+      return "tool-result";
+    case "codex":
+      return "output-record";
+    case "cursor":
+      return "none";
+    default:
+      return unhandledAgent(agent);
+  }
+}
+
+/** Does this app's transcript record a result for each tool call? */
+export function recordsToolResults(agent: AgentSource): boolean {
+  return ranEvidenceOf(agent) !== "none";
+}
+
+/** An error result that reports the command's exit code: the command ran and failed. */
+const EXIT_CODE = /^\s*Exit code -?\d+/;
+
+/**
+ * The tools whose command is POSIX shell text. Every reader maps a shell call to `Bash`;
+ * `PowerShell` has its own syntax, which `executedView` does not read, so its calls are judged
+ * by their result alone.
+ */
+const SHELL_TOOLS: ReadonlySet<string> = new Set(["Bash"]);
+
+/** A verdict. */
+function verdict(state: RunVerdict["state"], why: RunWhy): RunVerdict {
+  return { state, why };
+}
+
+/**
+ * Did this call run? See the module header.
+ *
+ * `stillMatches` evaluates the guardrails that matched the call on a changed copy of it; it is
+ * how a match that came only from a mentioned region is told apart from one that did not.
+ */
+export function runVerdict(
+  agent: AgentSource,
+  mapped: MappedCall,
+  result: ToolResult | undefined,
+  stillMatches: (call: MappedCall) => boolean,
+): RunVerdict {
+  // A web search's whole input is a search phrase.
+  if (mapped.tool === "WebSearch") return verdict("mentioned", "search");
+
+  const command = mapped.args.full_command;
+  if (SHELL_TOOLS.has(mapped.tool) && command !== undefined) {
+    const view = executedView(command);
+    const first = view.kinds[0];
+    if (
+      first !== undefined &&
+      !stillMatches({ ...mapped, args: { ...mapped.args, full_command: view.text } })
+    ) {
+      return verdict("mentioned", first);
+    }
+  }
+
+  if (!recordsToolResults(agent)) return verdict("unknown", "not-recorded");
+  if (result === undefined) return verdict("unknown", "no-result");
+  if (result.isError) {
+    return EXIT_CODE.test(result.content)
+      ? verdict("ran", "exit-code")
+      : verdict("unknown", "error-result");
+  }
+  return verdict("ran", "result");
+}
+
+/** Text in the agent's own reply is never a command that ran. */
+export const AGENT_REPLY: RunVerdict = verdict("mentioned", "agent-reply");
+
+/** The matched calls of a corpus, by whether they ran, and what a `ran` rests on. */
+export interface MatchedCallTally {
+  readonly tally: RunTally;
+  readonly resultsRecorded: boolean;
+  readonly ranEvidence: RanEvidence;
+}
+
+/**
+ * Classify every tool call that matched a guardrail.
+ *
+ * Calls are read and evaluated exactly as `aggregateScan` reads and evaluates them, through the
+ * same per-app mapping, so the totals agree. A tool-use id seen twice in one session (a main
+ * transcript and a sub-agent file that both carry the call) counts once, as it does there.
+ */
+export function tallyMatchedCalls(
+  corpus: ScanCorpus,
+  catalog: readonly CompiledRule[],
+  allowlist: CompiledAllowlist,
+): MatchedCallTally {
+  const agent: AgentSource = corpus.agent ?? "claude";
+  const tally = { ran: 0, mentioned: 0, unknown: 0 };
+  const stillMatches = (call: MappedCall): boolean =>
+    evaluateAction(catalog, allowlist, [call]).decision.matches.length > 0;
+
+  for (const session of corpus.sessions) {
+    const seen = new Set<string>();
+    for (const turn of session.turns) {
+      for (const use of turn.toolUses) {
+        if (agent === "claude" && use.toolUseId !== "") {
+          if (seen.has(use.toolUseId)) continue;
+          seen.add(use.toolUseId);
+        }
+        const result = session.toolResults.get(use.toolUseId);
+        for (const call of toolUseCalls(agent, use)) {
+          if (call.kind !== "action") continue;
+          const { mapped, decision } = evaluateAction(catalog, allowlist, call.candidates);
+          if (decision.matches.length === 0) continue;
+          tally[runVerdict(agent, mapped, result, stillMatches).state] += 1;
+        }
+      }
+    }
+  }
+  return {
+    tally,
+    resultsRecorded: recordsToolResults(agent),
+    ranEvidence: ranEvidenceOf(agent),
+  };
+}
