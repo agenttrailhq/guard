@@ -66,7 +66,11 @@ export interface ScrubStat {
 /** One file read. */
 export type ScrubRead =
   | { readonly ok: true; readonly bytes: Uint8Array; readonly stat: ScrubStat }
-  | { readonly ok: false; readonly reason: "missing" | "not-a-file" | "too-large" };
+  | {
+      readonly ok: false;
+      /** `changed`: the file ended before the size it was opened at. */
+      readonly reason: "missing" | "not-a-file" | "too-large" | "changed";
+    };
 
 /** The outcome of replacing one file. */
 export type ReplaceOutcome =
@@ -104,65 +108,150 @@ export interface ScrubIO {
   discardBackup(dir: string, files: readonly string[]): void;
 }
 
-/** Read a whole open file. */
-function readAll(fd: number, size: number): Uint8Array {
+/**
+ * The file operations this seam uses. Production uses `node:fs`; a test can replace any one of
+ * them to make it fail.
+ */
+export interface ScrubFs {
+  readonly openSync: (path: string, flags: string, mode?: number) => number;
+  readonly fstatSync: (fd: number) => {
+    isFile(): boolean;
+    readonly size: number;
+    readonly mtimeMs: number;
+    readonly ino: number;
+    readonly mode: number;
+  };
+  readonly readSync: (
+    fd: number,
+    buffer: Uint8Array,
+    offset: number,
+    length: number,
+    position: number,
+  ) => number;
+  readonly writeSync: (fd: number, buffer: Uint8Array, offset: number, length: number) => number;
+  readonly fsyncSync: (fd: number) => void;
+  readonly closeSync: (fd: number) => void;
+  readonly chmodSync: (path: string, mode: number) => void;
+  readonly mkdirSync: (path: string, options: { recursive?: boolean; mode: number }) => void;
+  readonly lstatSync: (path: string) => { isDirectory(): boolean; readonly mode: number };
+  readonly renameSync: (from: string, to: string) => void;
+  readonly unlinkSync: (path: string) => void;
+  readonly rmdirSync: (path: string) => void;
+}
+
+/** `node:fs`, as `ScrubFs`. */
+const NODE_FS: ScrubFs = {
+  openSync: (path, flags, mode) => openSync(path, flags, mode),
+  fstatSync: (fd) => fstatSync(fd),
+  readSync: (fd, buffer, offset, length, position) =>
+    readSync(fd, buffer, offset, length, position),
+  writeSync: (fd, buffer, offset, length) => writeSync(fd, buffer, offset, length),
+  fsyncSync: (fd) => fsyncSync(fd),
+  closeSync: (fd) => closeSync(fd),
+  chmodSync: (path, mode) => chmodSync(path, mode),
+  mkdirSync: (path, options) => {
+    mkdirSync(path, options);
+  },
+  lstatSync: (path) => lstatSync(path),
+  renameSync: (from, to) => renameSync(from, to),
+  unlinkSync: (path) => unlinkSync(path),
+  rmdirSync: (path) => rmdirSync(path),
+};
+
+/**
+ * Read a whole open file of `size` bytes, or `undefined` when it ends sooner: it shrank after
+ * it was opened.
+ */
+function readAll(fs: ScrubFs, fd: number, size: number): Uint8Array | undefined {
   const bytes = new Uint8Array(size);
   let at = 0;
   while (at < size) {
-    const n = readSync(fd, bytes, at, size - at, at);
-    if (n === 0) break;
+    const n = fs.readSync(fd, bytes, at, size - at, at);
+    if (n <= 0) return undefined;
     at += n;
   }
-  return at === size ? bytes : bytes.subarray(0, at);
+  return bytes;
 }
 
-/** Write all of `bytes` to an open file. */
-function writeAll(fd: number, bytes: Uint8Array): void {
+/** Write all of `bytes` to an open file. Throws when a write fails or makes no progress. */
+function writeAll(fs: ScrubFs, fd: number, bytes: Uint8Array): void {
   let at = 0;
-  while (at < bytes.length) at += writeSync(fd, bytes, at, bytes.length - at);
+  while (at < bytes.length) {
+    const n = fs.writeSync(fd, bytes, at, bytes.length - at);
+    if (n <= 0) throw new Error("write made no progress");
+    at += n;
+  }
+}
+
+/** Close a file, ignoring any failure. Used only on a path that already failed. */
+function closeQuietly(fs: ScrubFs, fd: number): void {
+  try {
+    fs.closeSync(fd);
+  } catch {
+    // The operation has already failed; a failed close changes nothing about that.
+  }
 }
 
 /** Read `path` with the stat of the same open file. */
-function readWithStat(path: string, maxBytes: number): ScrubRead {
+function readWithStat(fs: ScrubFs, path: string, maxBytes: number): ScrubRead {
   let fd: number;
   try {
-    fd = openSync(path, "r");
+    fd = fs.openSync(path, "r");
   } catch {
     return { ok: false, reason: "missing" };
   }
   try {
-    const stat = fstatSync(fd);
+    const stat = fs.fstatSync(fd);
     if (!stat.isFile()) return { ok: false, reason: "not-a-file" };
     if (stat.size > maxBytes) return { ok: false, reason: "too-large" };
+    const bytes = readAll(fs, fd, stat.size);
+    if (bytes === undefined) return { ok: false, reason: "changed" };
     return {
       ok: true,
-      bytes: readAll(fd, stat.size),
+      bytes,
       stat: { size: stat.size, mtimeMs: stat.mtimeMs, ino: stat.ino, mode: stat.mode & 0o777 },
     };
   } catch {
     return { ok: false, reason: "missing" };
   } finally {
-    closeSync(fd);
+    closeQuietly(fs, fd);
   }
 }
 
 /** Remove a file, ignoring any failure. */
-function removeQuietly(path: string): void {
+function removeQuietly(fs: ScrubFs, path: string): void {
   try {
-    unlinkSync(path);
+    fs.unlinkSync(path);
   } catch {
     // Already gone, or not ours to remove.
   }
 }
 
-/** `fsync` a folder, so a rename in it is on disk. Not possible on every platform. */
-function syncFolder(path: string): void {
+/** Write `bytes` to an open file, `fsync` it and close it. `false` when any step fails. */
+function writeSyncClose(fs: ScrubFs, fd: number, bytes: Uint8Array): boolean {
   try {
-    const fd = openSync(path, "r");
+    writeAll(fs, fd, bytes);
+    fs.fsyncSync(fd);
+  } catch {
+    closeQuietly(fs, fd);
+    return false;
+  }
+  try {
+    fs.closeSync(fd);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** `fsync` a folder, so a rename in it is on disk. Not possible on every platform. */
+function syncFolder(fs: ScrubFs, path: string): void {
+  try {
+    const fd = fs.openSync(path, "r");
     try {
-      fsyncSync(fd);
+      fs.fsyncSync(fd);
     } finally {
-      closeSync(fd);
+      closeQuietly(fs, fd);
     }
   } catch {
     // Windows cannot open a folder for this; the rename itself has still happened.
@@ -172,47 +261,58 @@ function syncFolder(path: string): void {
 /** What `createRealScrubIO` may be given. Production passes nothing. */
 export interface ScrubIOOptions {
   readonly platform?: string;
-  /** For tests: the rename, to make it fail as Windows does for a file held open. */
-  readonly rename?: (from: string, to: string) => void;
+  /** For tests: file operations to use in place of `node:fs`, to make one of them fail. */
+  readonly fs?: Partial<ScrubFs>;
   /** For tests: the largest file read. */
   readonly maxFileBytes?: number;
 }
 
+/** Most numbered names tried for a backup folder before giving up. */
+export const MAX_BACKUP_DIR_ATTEMPTS = 100;
+
 /** The real `ScrubIO`. Created only by the CLI entries, used only by `scan --scrub`. */
 export function createRealScrubIO(options: ScrubIOOptions = {}): ScrubIO {
   const platform = options.platform ?? process.platform;
-  const rename = options.rename ?? renameSync;
+  const fs: ScrubFs = { ...NODE_FS, ...options.fs };
   const maxBytes = options.maxFileBytes ?? MAX_SCRUB_FILE_BYTES;
 
   return {
     read(path: string): ScrubRead {
-      return readWithStat(path, maxBytes);
+      return readWithStat(fs, path, maxBytes);
     },
 
     createBackupDir(root: string, name: string): string | undefined {
       try {
-        mkdirSync(root, { recursive: true, mode: BACKUP_DIR_MODE });
+        fs.mkdirSync(root, { recursive: true, mode: BACKUP_DIR_MODE });
       } catch {
         return undefined;
       }
-      for (let attempt = 0; attempt < 100; attempt++) {
+      for (let attempt = 0; attempt < MAX_BACKUP_DIR_ATTEMPTS; attempt++) {
         const dir = join(root, attempt === 0 ? name : `${name}-${attempt}`);
         try {
-          mkdirSync(dir, { mode: BACKUP_DIR_MODE });
+          fs.mkdirSync(dir, { mode: BACKUP_DIR_MODE });
         } catch (error) {
           if ((error as NodeJS.ErrnoException).code === "EEXIST") continue;
           return undefined;
         }
+        let isPrivate = false;
         try {
           // The mode given to `mkdir` is narrowed by the umask, never widened; set it outright.
-          chmodSync(dir, BACKUP_DIR_MODE);
-          const stat = lstatSync(dir);
-          if (!stat.isDirectory()) return undefined;
-          if (platform !== "win32" && (stat.mode & 0o777) !== BACKUP_DIR_MODE) return undefined;
-          return dir;
+          fs.chmodSync(dir, BACKUP_DIR_MODE);
+          const stat = fs.lstatSync(dir);
+          isPrivate =
+            stat.isDirectory() && (platform === "win32" || (stat.mode & 0o777) === BACKUP_DIR_MODE);
         } catch {
-          return undefined;
+          isPrivate = false;
         }
+        if (isPrivate) return dir;
+        // Made, but not provably private: remove the empty folder rather than use it.
+        try {
+          fs.rmdirSync(dir);
+        } catch {
+          // Left empty; nothing was written into it.
+        }
+        return undefined;
       }
       return undefined;
     },
@@ -220,24 +320,19 @@ export function createRealScrubIO(options: ScrubIOOptions = {}): ScrubIO {
     writeBackupFile(path: string, bytes: Uint8Array): boolean {
       let fd: number;
       try {
-        fd = openSync(path, "wx", BACKUP_FILE_MODE);
+        fd = fs.openSync(path, "wx", BACKUP_FILE_MODE);
       } catch {
         return false;
       }
-      try {
-        writeAll(fd, bytes);
-        fsyncSync(fd);
-      } catch {
-        closeSync(fd);
-        removeQuietly(path);
+      if (!writeSyncClose(fs, fd, bytes)) {
+        removeQuietly(fs, path);
         return false;
       }
-      closeSync(fd);
       try {
-        chmodSync(path, BACKUP_FILE_MODE);
+        fs.chmodSync(path, BACKUP_FILE_MODE);
         return true;
       } catch {
-        removeQuietly(path);
+        removeQuietly(fs, path);
         return false;
       }
     },
@@ -247,28 +342,23 @@ export function createRealScrubIO(options: ScrubIOOptions = {}): ScrubIO {
       const temp = join(folder, `.${basename(path)}.${randomBytes(6).toString("hex")}.scrub-tmp`);
       let fd: number;
       try {
-        fd = openSync(temp, "wx", expected.stat.mode);
+        fd = fs.openSync(temp, "wx", expected.stat.mode);
       } catch {
         return { ok: false, reason: "write-failed" };
       }
-      try {
-        writeAll(fd, bytes);
-        fsyncSync(fd);
-      } catch {
-        closeSync(fd);
-        removeQuietly(temp);
+      if (!writeSyncClose(fs, fd, bytes)) {
+        removeQuietly(fs, temp);
         return { ok: false, reason: "write-failed" };
       }
-      closeSync(fd);
       try {
-        chmodSync(temp, expected.stat.mode);
+        fs.chmodSync(temp, expected.stat.mode);
       } catch {
-        removeQuietly(temp);
+        removeQuietly(fs, temp);
         return { ok: false, reason: "write-failed" };
       }
 
       // The change check, as late as possible before the rename.
-      const now = readWithStat(path, Number.POSITIVE_INFINITY);
+      const now = readWithStat(fs, path, Number.POSITIVE_INFINITY);
       if (
         !now.ok ||
         now.stat.size !== expected.stat.size ||
@@ -276,25 +366,29 @@ export function createRealScrubIO(options: ScrubIOOptions = {}): ScrubIO {
         now.stat.ino !== expected.stat.ino ||
         sha256(now.bytes) !== expected.sha256
       ) {
-        removeQuietly(temp);
+        removeQuietly(fs, temp);
         return { ok: false, reason: "changed" };
       }
 
       try {
-        rename(temp, path);
+        fs.renameSync(temp, path);
       } catch (error) {
-        removeQuietly(temp);
-        const code = (error as NodeJS.ErrnoException).code;
-        return { ok: false, reason: "rename-failed", ...(code === undefined ? {} : { code }) };
+        removeQuietly(fs, temp);
+        const code = (error as NodeJS.ErrnoException | undefined)?.code;
+        return {
+          ok: false,
+          reason: "rename-failed",
+          ...(typeof code === "string" ? { code } : {}),
+        };
       }
-      syncFolder(folder);
+      syncFolder(fs, folder);
       return { ok: true };
     },
 
     discardBackup(dir: string, files: readonly string[]): void {
-      for (const file of files) removeQuietly(file);
+      for (const file of files) removeQuietly(fs, file);
       try {
-        rmdirSync(dir);
+        fs.rmdirSync(dir);
       } catch {
         // Not empty, or already gone: either way, nothing more of ours to remove.
       }

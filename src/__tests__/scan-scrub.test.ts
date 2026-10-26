@@ -500,8 +500,10 @@ describe("--apply refuses or skips", () => {
     const s = await setup("claude");
     const before = snapshot(s.root);
     const scrub = createRealScrubIO({
-      rename: () => {
-        throw Object.assign(new Error("held open"), { code });
+      fs: {
+        renameSync: () => {
+          throw Object.assign(new Error("held open"), { code });
+        },
       },
     });
     const run = await scan(s, "claude", ["--scrub", "--apply"], { scrub });

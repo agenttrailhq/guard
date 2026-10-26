@@ -14542,7 +14542,7 @@ function planFiles(files, found, scrubIO) {
     if (!read.ok) {
       planning.skipped.push({
         path,
-        reason: read.reason === "too-large" ? "too-large" : "unreadable"
+        reason: read.reason === "too-large" ? "too-large" : read.reason === "changed" ? "changed" : "unreadable"
       });
       continue;
     }
@@ -14764,11 +14764,7 @@ async function runScrub(input) {
       outcomes.push({ path: file2.path, reason: "changed" });
       continue;
     }
-    const text = utf8(read.bytes);
-    if (text === void 0) {
-      outcomes.push({ path: file2.path, reason: "changed" });
-      continue;
-    }
+    const text = new TextDecoder("utf-8", { ignoreBOM: true }).decode(read.bytes);
     const name = `${String(i + 1).padStart(width, "0")}-${file2.path.split(/[\\/]/).pop() ?? "file"}`;
     const backup = join5(backupDir, name);
     if (!scrubIO.writeBackupFile(backup, read.bytes)) {
@@ -15743,114 +15739,158 @@ import { basename as basename5, dirname as dirname3, join as join8 } from "path"
 var MAX_SCRUB_FILE_BYTES = 256 * 1024 * 1024;
 var BACKUP_DIR_MODE = 448;
 var BACKUP_FILE_MODE = 384;
-function readAll(fd, size) {
+var NODE_FS = {
+  openSync: (path, flags, mode) => openSync2(path, flags, mode),
+  fstatSync: (fd) => fstatSync(fd),
+  readSync: (fd, buffer, offset, length, position) => readSync(fd, buffer, offset, length, position),
+  writeSync: (fd, buffer, offset, length) => writeSync(fd, buffer, offset, length),
+  fsyncSync: (fd) => fsyncSync2(fd),
+  closeSync: (fd) => closeSync2(fd),
+  chmodSync: (path, mode) => chmodSync(path, mode),
+  mkdirSync: (path, options) => {
+    mkdirSync(path, options);
+  },
+  lstatSync: (path) => lstatSync(path),
+  renameSync: (from, to) => renameSync2(from, to),
+  unlinkSync: (path) => unlinkSync2(path),
+  rmdirSync: (path) => rmdirSync(path)
+};
+function readAll(fs, fd, size) {
   const bytes = new Uint8Array(size);
   let at = 0;
   while (at < size) {
-    const n = readSync(fd, bytes, at, size - at, at);
-    if (n === 0) break;
+    const n = fs.readSync(fd, bytes, at, size - at, at);
+    if (n <= 0) return void 0;
     at += n;
   }
-  return at === size ? bytes : bytes.subarray(0, at);
+  return bytes;
 }
-function writeAll(fd, bytes) {
+function writeAll(fs, fd, bytes) {
   let at = 0;
-  while (at < bytes.length) at += writeSync(fd, bytes, at, bytes.length - at);
+  while (at < bytes.length) {
+    const n = fs.writeSync(fd, bytes, at, bytes.length - at);
+    if (n <= 0) throw new Error("write made no progress");
+    at += n;
+  }
 }
-function readWithStat(path, maxBytes) {
+function closeQuietly(fs, fd) {
+  try {
+    fs.closeSync(fd);
+  } catch {
+  }
+}
+function readWithStat(fs, path, maxBytes) {
   let fd;
   try {
-    fd = openSync2(path, "r");
+    fd = fs.openSync(path, "r");
   } catch {
     return { ok: false, reason: "missing" };
   }
   try {
-    const stat2 = fstatSync(fd);
+    const stat2 = fs.fstatSync(fd);
     if (!stat2.isFile()) return { ok: false, reason: "not-a-file" };
     if (stat2.size > maxBytes) return { ok: false, reason: "too-large" };
+    const bytes = readAll(fs, fd, stat2.size);
+    if (bytes === void 0) return { ok: false, reason: "changed" };
     return {
       ok: true,
-      bytes: readAll(fd, stat2.size),
+      bytes,
       stat: { size: stat2.size, mtimeMs: stat2.mtimeMs, ino: stat2.ino, mode: stat2.mode & 511 }
     };
   } catch {
     return { ok: false, reason: "missing" };
   } finally {
-    closeSync2(fd);
+    closeQuietly(fs, fd);
   }
 }
-function removeQuietly(path) {
+function removeQuietly(fs, path) {
   try {
-    unlinkSync2(path);
+    fs.unlinkSync(path);
   } catch {
   }
 }
-function syncFolder(path) {
+function writeSyncClose(fs, fd, bytes) {
   try {
-    const fd = openSync2(path, "r");
+    writeAll(fs, fd, bytes);
+    fs.fsyncSync(fd);
+  } catch {
+    closeQuietly(fs, fd);
+    return false;
+  }
+  try {
+    fs.closeSync(fd);
+    return true;
+  } catch {
+    return false;
+  }
+}
+function syncFolder(fs, path) {
+  try {
+    const fd = fs.openSync(path, "r");
     try {
-      fsyncSync2(fd);
+      fs.fsyncSync(fd);
     } finally {
-      closeSync2(fd);
+      closeQuietly(fs, fd);
     }
   } catch {
   }
 }
+var MAX_BACKUP_DIR_ATTEMPTS = 100;
 function createRealScrubIO(options = {}) {
   const platform = options.platform ?? process.platform;
-  const rename = options.rename ?? renameSync2;
+  const fs = { ...NODE_FS, ...options.fs };
   const maxBytes = options.maxFileBytes ?? MAX_SCRUB_FILE_BYTES;
   return {
     read(path) {
-      return readWithStat(path, maxBytes);
+      return readWithStat(fs, path, maxBytes);
     },
     createBackupDir(root, name) {
       try {
-        mkdirSync(root, { recursive: true, mode: BACKUP_DIR_MODE });
+        fs.mkdirSync(root, { recursive: true, mode: BACKUP_DIR_MODE });
       } catch {
         return void 0;
       }
-      for (let attempt = 0; attempt < 100; attempt++) {
+      for (let attempt = 0; attempt < MAX_BACKUP_DIR_ATTEMPTS; attempt++) {
         const dir = join8(root, attempt === 0 ? name : `${name}-${attempt}`);
         try {
-          mkdirSync(dir, { mode: BACKUP_DIR_MODE });
+          fs.mkdirSync(dir, { mode: BACKUP_DIR_MODE });
         } catch (error) {
           if (error.code === "EEXIST") continue;
           return void 0;
         }
+        let isPrivate = false;
         try {
-          chmodSync(dir, BACKUP_DIR_MODE);
-          const stat2 = lstatSync(dir);
-          if (!stat2.isDirectory()) return void 0;
-          if (platform !== "win32" && (stat2.mode & 511) !== BACKUP_DIR_MODE) return void 0;
-          return dir;
+          fs.chmodSync(dir, BACKUP_DIR_MODE);
+          const stat2 = fs.lstatSync(dir);
+          isPrivate = stat2.isDirectory() && (platform === "win32" || (stat2.mode & 511) === BACKUP_DIR_MODE);
         } catch {
-          return void 0;
+          isPrivate = false;
         }
+        if (isPrivate) return dir;
+        try {
+          fs.rmdirSync(dir);
+        } catch {
+        }
+        return void 0;
       }
       return void 0;
     },
     writeBackupFile(path, bytes) {
       let fd;
       try {
-        fd = openSync2(path, "wx", BACKUP_FILE_MODE);
+        fd = fs.openSync(path, "wx", BACKUP_FILE_MODE);
       } catch {
         return false;
       }
-      try {
-        writeAll(fd, bytes);
-        fsyncSync2(fd);
-      } catch {
-        closeSync2(fd);
-        removeQuietly(path);
+      if (!writeSyncClose(fs, fd, bytes)) {
+        removeQuietly(fs, path);
         return false;
       }
-      closeSync2(fd);
       try {
-        chmodSync(path, BACKUP_FILE_MODE);
+        fs.chmodSync(path, BACKUP_FILE_MODE);
         return true;
       } catch {
-        removeQuietly(path);
+        removeQuietly(fs, path);
         return false;
       }
     },
@@ -15859,44 +15899,43 @@ function createRealScrubIO(options = {}) {
       const temp = join8(folder, `.${basename5(path)}.${randomBytes3(6).toString("hex")}.scrub-tmp`);
       let fd;
       try {
-        fd = openSync2(temp, "wx", expected.stat.mode);
+        fd = fs.openSync(temp, "wx", expected.stat.mode);
       } catch {
+        return { ok: false, reason: "write-failed" };
+      }
+      if (!writeSyncClose(fs, fd, bytes)) {
+        removeQuietly(fs, temp);
         return { ok: false, reason: "write-failed" };
       }
       try {
-        writeAll(fd, bytes);
-        fsyncSync2(fd);
+        fs.chmodSync(temp, expected.stat.mode);
       } catch {
-        closeSync2(fd);
-        removeQuietly(temp);
+        removeQuietly(fs, temp);
         return { ok: false, reason: "write-failed" };
       }
-      closeSync2(fd);
-      try {
-        chmodSync(temp, expected.stat.mode);
-      } catch {
-        removeQuietly(temp);
-        return { ok: false, reason: "write-failed" };
-      }
-      const now = readWithStat(path, Number.POSITIVE_INFINITY);
+      const now = readWithStat(fs, path, Number.POSITIVE_INFINITY);
       if (!now.ok || now.stat.size !== expected.stat.size || now.stat.mtimeMs !== expected.stat.mtimeMs || now.stat.ino !== expected.stat.ino || sha256(now.bytes) !== expected.sha256) {
-        removeQuietly(temp);
+        removeQuietly(fs, temp);
         return { ok: false, reason: "changed" };
       }
       try {
-        rename(temp, path);
+        fs.renameSync(temp, path);
       } catch (error) {
-        removeQuietly(temp);
-        const code2 = error.code;
-        return { ok: false, reason: "rename-failed", ...code2 === void 0 ? {} : { code: code2 } };
+        removeQuietly(fs, temp);
+        const code2 = error?.code;
+        return {
+          ok: false,
+          reason: "rename-failed",
+          ...typeof code2 === "string" ? { code: code2 } : {}
+        };
       }
-      syncFolder(folder);
+      syncFolder(fs, folder);
       return { ok: true };
     },
     discardBackup(dir, files) {
-      for (const file2 of files) removeQuietly(file2);
+      for (const file2 of files) removeQuietly(fs, file2);
       try {
-        rmdirSync(dir);
+        fs.rmdirSync(dir);
       } catch {
       }
     }

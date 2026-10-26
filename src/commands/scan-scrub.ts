@@ -208,7 +208,12 @@ function planFiles(files: readonly string[], found: LikelyRealValues, scrubIO: S
     if (!read.ok) {
       planning.skipped.push({
         path,
-        reason: read.reason === "too-large" ? "too-large" : "unreadable",
+        reason:
+          read.reason === "too-large"
+            ? "too-large"
+            : read.reason === "changed"
+              ? "changed"
+              : "unreadable",
       });
       continue;
     }
@@ -483,11 +488,8 @@ export async function runScrub(input: ScrubRunInput): Promise<number> {
       outcomes.push({ path: file.path, reason: "changed" });
       continue;
     }
-    const text = utf8(read.bytes);
-    if (text === undefined) {
-      outcomes.push({ path: file.path, reason: "changed" });
-      continue;
-    }
+    // The same bytes as were planned, which decoded as UTF-8 then.
+    const text = new TextDecoder("utf-8", { ignoreBOM: true }).decode(read.bytes);
     const name = `${String(i + 1).padStart(width, "0")}-${file.path.split(/[\\/]/).pop() ?? "file"}`;
     const backup = join(backupDir, name);
     if (!scrubIO.writeBackupFile(backup, read.bytes)) {
