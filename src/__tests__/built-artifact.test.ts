@@ -1206,6 +1206,98 @@ describe("scan, against the built binary", () => {
     expect(readFileSync(out, "utf8").startsWith("<title>")).toBe(true);
   });
 
+  it("scan --verify, from both bundles: no network call, nothing in HOME, no value printed or written", () => {
+    // The verify path runs `git` in a real repo and reads the transcript again. Its token is
+    // assembled at runtime and made up.
+    const base = mkdtempSync(join(tmpdir(), "agenttrail-guard-verify-"));
+    const repo = join(base, "repo");
+    mkdirSync(repo, { recursive: true });
+    execFileSync("git", ["init", "-q"], { cwd: repo });
+    const token = `ghp${"_"}BUILTverify0aB1cD2eF3gH4iJ5kL6mN7oP8q`;
+    const projects = join(base, "projects", "-repo");
+    mkdirSync(projects, { recursive: true });
+    writeFileSync(
+      join(projects, "verify-1.jsonl"),
+      `${[
+        JSON.stringify({
+          type: "user",
+          uuid: "u1",
+          sessionId: "verify-1",
+          cwd: repo,
+          message: { role: "user", content: `deploy with ${token}` },
+        }),
+        JSON.stringify({
+          type: "assistant",
+          uuid: "a1",
+          sessionId: "verify-1",
+          cwd: repo,
+          message: {
+            role: "assistant",
+            content: [
+              {
+                type: "tool_use",
+                id: "t1",
+                name: "Bash",
+                input: { command: `rm -rf ${join(repo, "build")}` },
+              },
+            ],
+          },
+        }),
+        JSON.stringify({
+          type: "user",
+          uuid: "r1",
+          sessionId: "verify-1",
+          cwd: repo,
+          message: {
+            role: "user",
+            content: [{ type: "tool_result", tool_use_id: "t1", content: "" }],
+          },
+        }),
+      ].join("\n")}\n`,
+    );
+
+    for (const [bundle, prefix] of [
+      [CLI_BUNDLE, ["scan"]],
+      [SCAN_BUNDLE, []],
+    ] as const) {
+      const work = mkdtempSync(join(base, "work-"));
+      const home = scratchHome();
+      const log = join(work, "net.log");
+      writeFileSync(log, "");
+      const r = spawnSync(
+        "node",
+        [
+          "--import",
+          join(HERE, "preload", "net-recorder.mjs"),
+          bundle,
+          ...prefix,
+          "--agent",
+          "claude",
+          "--dir",
+          join(base, "projects"),
+          "--verify",
+          "--no-open",
+        ],
+        {
+          cwd: work,
+          encoding: "utf8",
+          env: { ...envWithHome(home), AGENTTRAIL_TEST_NET_LOG: log },
+        },
+      );
+      expect(r.status, r.stderr).toBe(0);
+      expect(readFileSync(log, "utf8")).toBe("");
+      expect(r.stdout).toContain(
+        "Checked on this machine (read-only, offline): 1 likely-real credential in 1 transcript file",
+      );
+      expect(r.stdout).toContain("1 matched call ran");
+      expect(`${r.stdout}${r.stderr}`).not.toContain("BUILTverify");
+      expect(readFileSync(join(work, "agenttrail-guard-report.html"), "utf8")).not.toContain(
+        "BUILTverify",
+      );
+      expect(readdirSync(home)).toEqual([]);
+    }
+  });
+
   it("the plugin's scan bundle makes no network call either", () => {
     const { projects, work } = fixture();
     const log = join(work, "net.log");

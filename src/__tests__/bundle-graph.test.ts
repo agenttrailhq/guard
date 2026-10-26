@@ -256,6 +256,19 @@ describe("the hook can never gain the ability to spawn a process", () => {
     expect(hookBundleGraph()).not.toContain(scanIo);
   });
 
+  it("verify-io.ts is the third spawner, and it is outside the graph too", () => {
+    // `scan --verify` runs read-only `git` and lists process names through it.
+    const verifyIo = join(PKG_ROOT, "src", "verify-io.ts");
+    expect(readFileSync(verifyIo, "utf8")).toContain("node:child_process");
+    expect(hookBundleGraph()).not.toContain(verifyIo);
+  });
+
+  it("nothing under core/verify/ is in the hook graph", () => {
+    const verifyDir = join(PKG_ROOT, "src", "core", "verify");
+    expect(existsSync(verifyDir)).toBe(true);
+    expect(hookBundleGraph().filter((f) => f.startsWith(verifyDir))).toEqual([]);
+  });
+
   it("the scan command is outside the hook graph, not just its IO seam", () => {
     // `commands/scan.ts` pulls the colour helper and the HTML generator, and neither
     // belongs in the file Claude Code executes before every tool call.
@@ -293,6 +306,12 @@ describe("the scan-only plugin bundle carries scan and nothing else", () => {
     const file = join(PKG_ROOT, "src", ...module.split("/"));
     expect(existsSync(file)).toBe(true);
     expect(graph).not.toContain(file);
+  });
+
+  it("carries verification, so the fences over this graph cover it", () => {
+    expect(graph).toContain(join(PKG_ROOT, "src", "verify-io.ts"));
+    expect(graph).toContain(join(PKG_ROOT, "src", "core", "verify", "verify.ts"));
+    expect(graph).toContain(join(PKG_ROOT, "src", "core", "verify", "secrets.ts"));
   });
 
   it("reaches nothing under src/net/", () => {

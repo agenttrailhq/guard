@@ -199,6 +199,39 @@ describe("no network — the sender is unreachable from the scan-only plugin bun
   });
 });
 
+describe("no network — the verify graph", () => {
+  // `scan --verify` reads this machine: transcripts, tracked files, read-only `git`. None of it
+  // may reach the network, and no value it reads may be sent anywhere.
+  const VERIFY_ENTRIES = [
+    join(SRC, "verify-io.ts"),
+    join(SRC, "core", "verify", "verify.ts"),
+    ...readdirSync(join(SRC, "core", "verify"))
+      .filter((f) => f.endsWith(".ts"))
+      .map((f) => join(SRC, "core", "verify", f)),
+  ];
+
+  it("finds every verify module", () => {
+    expect(VERIFY_ENTRIES.length).toBeGreaterThan(6);
+    for (const file of VERIFY_ENTRIES) expect(existsSync(file)).toBe(true);
+  });
+
+  it.each(
+    VERIFY_ENTRIES.map((f) => [f.replace(`${SRC}/`, ""), f] as const),
+  )("%s reaches nothing under src/net/ and references no network", (_label, entry) => {
+    const graph = graphFrom(entry);
+    expect(graph.filter((f) => f.startsWith(join(SRC, "net")))).toEqual([]);
+    expect(graph.filter((f) => NETWORK.test(code(f))).map((f) => f.replace(`${SRC}/`, ""))).toEqual(
+      [],
+    );
+  });
+
+  it("the scan entry reaches the verify graph, so the scan fences above cover it too", () => {
+    const graph = graphFrom(SCAN_ENTRY);
+    expect(graph).toContain(join(SRC, "verify-io.ts"));
+    expect(graph).toContain(join(SRC, "core", "verify", "verify.ts"));
+  });
+});
+
 describe("no network — and unreachable from every command except the sender", () => {
   // Globbing `commands/` rather than naming files means a new command is fenced the
   // day it is created, with no edit here, including a command that does not exist yet.
