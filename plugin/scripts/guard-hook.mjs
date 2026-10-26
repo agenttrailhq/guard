@@ -1774,6 +1774,9 @@ var require_picomatch2 = __commonJS({
   }
 });
 
+// src/hook-entry.ts
+import { realpathSync } from "fs";
+
 // src/core/types.ts
 var AGENTS = ["claude", "cursor", "codex"];
 
@@ -6151,6 +6154,9 @@ function eventsPath(homedir2) {
 function dedupMarkerPath(homedir2) {
   return join(guardDir(homedir2), ".last-decision");
 }
+function steppedAsideMarkerPath(homedir2) {
+  return join(guardDir(homedir2), ".stepped-aside");
+}
 function crashesDir(homedir2) {
   return join(guardDir(homedir2), "crashes");
 }
@@ -7213,6 +7219,40 @@ function createEventRecorder(io2, now = Date.now) {
     }
   };
 }
+var STEPPED_ASIDE_INTERVAL_MS = 60 * 60 * 1e3;
+function recordSteppedAside(io2, projectKey, agent, now = Date.now) {
+  try {
+    const home = io2.homedir();
+    const nowMs = now();
+    let marks = {};
+    try {
+      const parsed = JSON.parse(io2.readFile(steppedAsideMarkerPath(home)) ?? "{}");
+      if (parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)) {
+        for (const [key, value] of Object.entries(parsed)) {
+          if (typeof value === "number" && nowMs - value < MAX_AGE_MS) marks[key] = value;
+        }
+      }
+    } catch {
+      marks = {};
+    }
+    const last = marks[projectKey];
+    if (last !== void 0 && nowMs - last < STEPPED_ASIDE_INTERVAL_MS) return;
+    if (!io2.mkdirp(guardDir(home))) return;
+    const line = JSON.stringify({
+      ts: new Date(nowMs).toISOString(),
+      event: "stepped-aside",
+      project: projectKey,
+      agent
+    });
+    const path = eventsPath(home);
+    if (!io2.appendFile(path, `${line}
+`)) return;
+    marks[projectKey] = nowMs;
+    io2.writeFileAtomic(steppedAsideMarkerPath(home), JSON.stringify(marks));
+    if (io2.fileSize(path) > MAX_BYTES) compact(io2, path, nowMs);
+  } catch {
+  }
+}
 
 // src/core/normalize.ts
 var NIL_UUID = "00000000-0000-0000-0000-000000000000";
@@ -7249,6 +7289,193 @@ function buildGuardSpanContext(mapped) {
     attributes: normalizeSpanAttributes(attributes)
   };
   return { span, agentId: NIL_UUID, projectId: NIL_UUID, developerId: null };
+}
+
+// src/core/os-step-aside.ts
+import { createHash } from "crypto";
+import { dirname, isAbsolute, join as join2, sep } from "path";
+var OS_PLUGIN_ID = "agenttrail@agenttrail";
+var OS_MARKETPLACE_NAME = "agenttrail";
+var RECORD_VERSION = 1;
+var ENV_ENFORCE = "AGENTTRAIL_PEP_ENFORCE";
+var ENV_URL = "AGENTTRAIL_PEP_URL";
+var ENV_TOKEN = "AGENTTRAIL_PEP_TOKEN";
+var ENV_PROJECT_DIR = "CLAUDE_PROJECT_DIR";
+var ENV_CONFIG_DIR = "CLAUDE_CONFIG_DIR";
+function enforcedProjectsPath(home) {
+  return join2(home, ".agenttrail", "os", "enforced-projects.json");
+}
+function claudeDir(home, env) {
+  const configured = env[ENV_CONFIG_DIR]?.trim();
+  return configured !== void 0 && configured.length > 0 ? configured : join2(home, ".claude");
+}
+function managedSettingsFiles(platform, listDir) {
+  const dir = platform === "darwin" ? "/Library/Application Support/ClaudeCode" : platform === "win32" ? "C:\\Program Files\\ClaudeCode" : "/etc/claude-code";
+  const dropIns = join2(dir, "managed-settings.d");
+  return [
+    join2(dir, "managed-settings.json"),
+    ...[...listDir(dropIns)].filter((name) => name.endsWith(".json")).sort().map((name) => join2(dropIns, name))
+  ];
+}
+function isRecord3(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+function parseJson(text) {
+  if (text === void 0) return void 0;
+  try {
+    return JSON.parse(text);
+  } catch {
+    return void 0;
+  }
+}
+function parseEnforcedProjects(text) {
+  const parsed = parseJson(text);
+  if (!isRecord3(parsed) || parsed.version !== RECORD_VERSION || !Array.isArray(parsed.entries)) {
+    return [];
+  }
+  const out = [];
+  for (const raw of parsed.entries) {
+    if (!isRecord3(raw)) continue;
+    const { scope, projectRoot, apiOrigin, pluginId, marketplaceSource, tokenFingerprint: tokenFingerprint2 } = raw;
+    if (pluginId !== OS_PLUGIN_ID) continue;
+    if (typeof apiOrigin !== "string" || apiOrigin.length === 0) continue;
+    if (typeof tokenFingerprint2 !== "string" || !/^[0-9a-f]{16}$/.test(tokenFingerprint2)) continue;
+    if (typeof raw.writtenAt !== "string") continue;
+    if (!isRecord3(marketplaceSource)) continue;
+    if (scope === "global") {
+      out.push({ scope, apiOrigin, marketplaceSource, tokenFingerprint: tokenFingerprint2 });
+    } else if (scope === "project" && typeof projectRoot === "string" && isAbsolute(projectRoot)) {
+      out.push({ scope, projectRoot, apiOrigin, marketplaceSource, tokenFingerprint: tokenFingerprint2 });
+    }
+  }
+  return out;
+}
+function tokenFingerprint(token) {
+  return createHash("sha256").update(token, "utf8").digest("hex").slice(0, 16);
+}
+function projectKeyOf(root) {
+  return createHash("sha256").update(root ?? "global", "utf8").digest("hex").slice(0, 16);
+}
+function originOf(url) {
+  if (url === void 0 || url.trim().length === 0) return void 0;
+  try {
+    return new URL(url.trim()).origin;
+  } catch {
+    return void 0;
+  }
+}
+function canonical(value) {
+  if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
+  if (isRecord3(value)) {
+    return `{${Object.keys(value).sort().map((k) => `${JSON.stringify(k)}:${canonical(value[k])}`).join(",")}}`;
+  }
+  return JSON.stringify(value) ?? "null";
+}
+function safeRealpath(path, realpath) {
+  try {
+    return realpath(path);
+  } catch {
+    return void 0;
+  }
+}
+function within(path, root) {
+  return path === root || path.startsWith(root.endsWith(sep) ? root : `${root}${sep}`);
+}
+function projectSettingsFolders(starts, home) {
+  const seen = /* @__PURE__ */ new Set();
+  const out = [];
+  for (const start of starts) {
+    let dir = start;
+    for (; ; ) {
+      if (dir === home || seen.has(dir)) break;
+      seen.add(dir);
+      out.push(dir);
+      const parent = dirname(dir);
+      if (parent === dir) break;
+      dir = parent;
+    }
+  }
+  return out;
+}
+function enabledIn(text) {
+  if (text === void 0) return void 0;
+  const parsed = parseJson(text);
+  if (!isRecord3(parsed)) return "unreadable";
+  const plugins = parsed.enabledPlugins;
+  if (plugins === void 0) return void 0;
+  if (!isRecord3(plugins)) return "unreadable";
+  const value = plugins[OS_PLUGIN_ID];
+  return typeof value === "boolean" ? value : void 0;
+}
+function enabledFor(folder, input, managed, user) {
+  const layers = [
+    ...managed,
+    enabledIn(input.readFile(join2(folder, ".claude", "settings.local.json"))),
+    enabledIn(input.readFile(join2(folder, ".claude", "settings.json"))),
+    user
+  ];
+  for (const layer of layers) {
+    if (layer === "unreadable") return false;
+    if (layer !== void 0) return layer;
+  }
+  return false;
+}
+function sourceMatches(entry, input) {
+  const plugins = join2(claudeDir(input.home, input.env), "plugins");
+  const installed = parseJson(input.readFile(join2(plugins, "installed_plugins.json")));
+  if (!isRecord3(installed) || !isRecord3(installed.plugins)) return false;
+  const rows = installed.plugins[OS_PLUGIN_ID];
+  if (!Array.isArray(rows) || rows.length === 0) return false;
+  const marketplaces = parseJson(input.readFile(join2(plugins, "known_marketplaces.json")));
+  if (!isRecord3(marketplaces)) return false;
+  const ours = marketplaces[OS_MARKETPLACE_NAME];
+  if (!isRecord3(ours) || !isRecord3(ours.source)) return false;
+  return canonical(ours.source) === canonical(entry.marketplaceSource);
+}
+function evaluateStepAside(input) {
+  try {
+    return evaluate(input);
+  } catch {
+    return { standDown: false, failed: "record" };
+  }
+}
+function evaluate(input) {
+  const { env } = input;
+  if (env[ENV_ENFORCE]?.trim() !== "1") return { standDown: false, failed: "sentinel" };
+  const projectDirRaw = env[ENV_PROJECT_DIR]?.trim();
+  const projectDir = projectDirRaw !== void 0 && projectDirRaw.length > 0 && isAbsolute(projectDirRaw) ? safeRealpath(projectDirRaw, input.realpath) : void 0;
+  const cwd = input.cwd !== void 0 && input.cwd.length > 0 && isAbsolute(input.cwd) ? safeRealpath(input.cwd, input.realpath) : void 0;
+  const here = projectDir !== void 0 && (cwd === void 0 || within(cwd, projectDir)) ? projectDir : cwd;
+  if (here === void 0) return { standDown: false, failed: "record" };
+  const entries = parseEnforcedProjects(input.readFile(enforcedProjectsPath(input.home)));
+  const candidates = [
+    ...entries.filter((e) => e.scope === "project" && e.projectRoot === here),
+    ...entries.filter((e) => e.scope === "global")
+  ];
+  if (candidates.length === 0) return { standDown: false, failed: "record" };
+  const origin = originOf(env[ENV_URL]);
+  const token = env[ENV_TOKEN]?.trim();
+  const fingerprint = token !== void 0 && token.length > 0 ? tokenFingerprint(token) : void 0;
+  const sameOrigin = candidates.filter((e) => origin !== void 0 && e.apiOrigin === origin);
+  if (sameOrigin.length === 0) return { standDown: false, failed: "origin" };
+  const matched = sameOrigin.find(
+    (e) => fingerprint !== void 0 && e.tokenFingerprint === fingerprint
+  );
+  if (matched === void 0) return { standDown: false, failed: "token" };
+  const home = safeRealpath(input.home, input.realpath) ?? input.home;
+  const managed = managedSettingsFiles(input.platform ?? process.platform, input.listDir).map(
+    (path) => enabledIn(input.readFile(path))
+  );
+  const user = enabledIn(input.readFile(join2(claudeDir(input.home, env), "settings.json")));
+  const starts = [here, ...cwd !== void 0 && cwd !== here ? [cwd] : []];
+  const folders = projectSettingsFolders(starts, home);
+  const enabled = folders.length === 0 ? enabledFor(home, { ...input, readFile: () => void 0 }, managed, user) : folders.every((folder) => enabledFor(folder, input, managed, user));
+  if (!enabled) return { standDown: false, failed: "enabled" };
+  if (!sourceMatches(matched, input)) return { standDown: false, failed: "source" };
+  return {
+    standDown: true,
+    projectKey: projectKeyOf(matched.scope === "global" ? void 0 : matched.projectRoot)
+  };
 }
 
 // src/engine/matchers.ts
@@ -7710,6 +7937,23 @@ async function runHook(io2, deps = {}) {
   }
 }
 function answerClaudeCodeCall(io2, deps, payload, sentBy, emitter) {
+  if (deps.env !== void 0 && deps.realpath !== void 0) {
+    const cwd = payload.cwd;
+    const aside = evaluateStepAside({
+      env: deps.env,
+      home: io2.homedir(),
+      ...typeof cwd === "string" ? { cwd } : {},
+      readFile: (path) => io2.readFile(path),
+      listDir: (path) => io2.listDir(path),
+      realpath: deps.realpath,
+      ...deps.platform !== void 0 ? { platform: deps.platform } : {}
+    });
+    if (aside.standDown) {
+      emitter.emit("allow", "");
+      recordSteppedAside(io2, aside.projectKey, sentBy);
+      return;
+    }
+  }
   const mapped = mapToolCall(payload);
   const { catalog, allowlist } = loadRules(io2, deps);
   const decision = evaluateCall(catalog, buildGuardSpanContext(mapped), mapped, allowlist);
@@ -7731,12 +7975,12 @@ function answerCursorCall(io2, deps, payload, launchedAs, emitter) {
     return;
   }
   const { catalog, allowlist } = loadRules(io2, deps);
-  const evaluate = (mapped) => ({
+  const evaluate2 = (mapped) => ({
     mapped,
     decision: evaluateCall(catalog, buildGuardSpanContext(mapped), mapped, allowlist)
   });
   const [first, ...rest] = call.candidates;
-  const kept = strictestCandidate([evaluate(first), ...rest.map(evaluate)]);
+  const kept = strictestCandidate([evaluate2(first), ...rest.map(evaluate2)]);
   const cursorEntryPresent = !isGuardsCursorEntry(launchedAs) && hasGuardCursorEntry(io2.readFile(cursorHooksPath(io2.homedir())));
   const answer = buildCursorAnswer({
     launchedAs,
@@ -7765,12 +8009,12 @@ function answerCodexCall(io2, deps, payload, emitter) {
     return;
   }
   const { catalog, allowlist } = loadRules(io2, deps);
-  const evaluate = (mapped) => ({
+  const evaluate2 = (mapped) => ({
     mapped,
     decision: evaluateCall(catalog, buildGuardSpanContext(mapped), mapped, allowlist)
   });
   const [first, ...rest] = call.candidates;
-  const kept = strictestCandidate([evaluate(first), ...rest.map(evaluate)]);
+  const kept = strictestCandidate([evaluate2(first), ...rest.map(evaluate2)]);
   const answer = buildCodexAnswer({ event: call.event, decision: kept.decision });
   emitter.emit(answer.output);
   if (answer.record) {
@@ -7946,7 +8190,7 @@ import {
   writeFileSync
 } from "fs";
 import { homedir } from "os";
-import { join as join2 } from "path";
+import { join as join3 } from "path";
 function createRealIO() {
   return {
     async readStdin() {
@@ -7978,7 +8222,7 @@ function createRealIO() {
       }
     },
     writeFileAtomic(path, text) {
-      const tmp = join2(
+      const tmp = join3(
         path.slice(0, Math.max(0, path.lastIndexOf("/"))) || ".",
         `.${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}.tmp`
       );
@@ -8034,6 +8278,8 @@ await runHook(io, {
   // The app named on the hook's command line: `--agent claude` in the Claude Code
   // plugin's `hooks/hooks.json`.
   agent: agentFromArgv(process.argv.slice(2)),
+  env: process.env,
+  realpath: (path) => realpathSync.native(path),
   captureCrash: (err) => {
     captureCrash(err, {
       io,

@@ -77,6 +77,7 @@
  * pattern, so the silence suggestion is withheld and explained rather than printed.
  */
 
+import { realpathSync } from "node:fs";
 import { join } from "node:path";
 import { type CodexFileIO, createRealCodexFileIO } from "../codex/codex-io.js";
 import {
@@ -103,7 +104,8 @@ import {
 import { inspectConfig } from "../core/config-report.js";
 import { readSpool } from "../core/crash-store.js";
 import { GUARD_CURSOR_EVENTS, isGuardCursorCommand } from "../core/cursor-entry.js";
-import { mostFrequentMatch, parseDecisionLog } from "../core/decision-log.js";
+import { mostFrequentMatch, parseDecisionLog, steppedAsideProjects } from "../core/decision-log.js";
+import { osStatusLines } from "../core/os-step-aside.js";
 import {
   codexHooksPath,
   codexInstallRecordPath,
@@ -238,6 +240,16 @@ export interface StatusDeps {
    * a test need not depend on the runner's environment.
    */
   readonly settingsPath?: string;
+  /**
+   * What the AgentTrail OS lines read: the folder, the environment and a real-path resolver.
+   * The process's own when omitted.
+   */
+  readonly os?: {
+    cwd: string;
+    env: Readonly<Record<string, string | undefined>>;
+    realpath: (p: string) => string;
+    platform?: NodeJS.Platform;
+  };
 }
 
 /** What `status` found for guard's Cursor install. */
@@ -689,6 +701,22 @@ export async function runStatus(io: SetupIO, deps: StatusDeps = {}): Promise<num
   }
   out.push(`  ${formatCatalogStamp(catalogStamp(), now)}`);
   if (crashLine !== undefined) out.push(crashLine);
+  if (claudeFound && installed !== undefined) {
+    const os = deps.os ?? {
+      cwd: process.cwd(),
+      env: process.env,
+      realpath: (p: string) => realpathSync.native(p),
+    };
+    out.push(
+      ...osStatusLines({
+        ...os,
+        home,
+        readFile: (p) => io.readFile(p),
+        listDir: (p) => io.readdir?.(p) ?? [],
+        steppedAsideCount: steppedAsideProjects(io.readFile(eventsPath(home)), now.getTime()),
+      }),
+    );
+  }
 
   // Printed only while enforcing. A not-installed or disabled guard holds nothing, so a
   // "will not prompt" line beside it would name a hole that is not the current one.

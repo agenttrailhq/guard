@@ -115,3 +115,33 @@ export function mostFrequentMatch(records: readonly DecisionRecord[]): FrequentM
 
   return { ruleId: bestRule, count: bestCount, command: bestCommand };
 }
+
+/**
+ * How many projects guard stood down in because AgentTrail OS enforces there, counted as the
+ * distinct `project` hashes on `stepped-aside` lines in the last `windowMs` (default 30 days,
+ * the log's own age bound). Never throws.
+ */
+export function steppedAsideProjects(
+  text: string | undefined,
+  nowMs: number,
+  windowMs = 30 * 24 * 60 * 60 * 1000,
+): number {
+  if (text === undefined) return 0;
+  const projects = new Set<string>();
+  for (const line of text.split("\n")) {
+    if (!line.includes("stepped-aside")) continue;
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) continue;
+    const rec = parsed as Record<string, unknown>;
+    if (rec.event !== "stepped-aside" || typeof rec.project !== "string") continue;
+    const ms = typeof rec.ts === "string" ? Date.parse(rec.ts) : Number.NaN;
+    if (!Number.isFinite(ms) || nowMs - ms > windowMs) continue;
+    projects.add(rec.project);
+  }
+  return projects.size;
+}

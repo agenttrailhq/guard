@@ -57,6 +57,15 @@ export function dedupMarkerPath(homedir: string): string {
 }
 
 /**
+ * `.stepped-aside` — when each project's last `stepped-aside` line was written, keyed by the
+ * project's hash (`core/os-step-aside.ts` `projectKeyOf`), so a busy session adds one line an
+ * hour rather than one per tool call. Hashes and timestamps only. Deleting it is always safe.
+ */
+export function steppedAsideMarkerPath(homedir: string): string {
+  return join(guardDir(homedir), ".stepped-aside");
+}
+
+/**
  * `crashes/` — the local crash spool.
  *
  * A DIRECTORY, not a file, because `hook` can run many times concurrently and
