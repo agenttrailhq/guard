@@ -5,8 +5,8 @@
  * a value or the name a value was given. A count of credentials is of distinct values.
  *
  * The card makes no claim that rests on calls having run: a credential is found in the text of a
- * transcript, whatever app wrote it. So it never needs the Codex caveat, and its headline is
- * never held back by the Codex rule.
+ * transcript, whatever app wrote it, so it never needs the Codex caveat. It still never leads a
+ * Codex scan: nothing does, since the Codex reading is limited and unverified (`pickHeadline`).
  *
  * Pure. No I/O.
  */

@@ -149,12 +149,25 @@ const CODEX_RAN: SentenceTemplate<CallFacts> = {
       : undefined,
 };
 
+/** What every Codex scan says about its own reading, the same words the terminal uses. */
+export const CODEX_UNVERIFIED_TEXT =
+  "The Codex reading is limited and unverified: it is tested on synthetic sessions only.";
+
+const CODEX_UNVERIFIED: SentenceTemplate<CallFacts> = {
+  id: "lead.codex-unverified",
+  render: (v) =>
+    v.ranEvidence === "output-record"
+      ? `${CODEX_UNVERIFIED_TEXT} No Codex finding leads this page.`
+      : undefined,
+};
+
 /** The notes above the chips, in order. */
 export const LEAD_NOTES: readonly SentenceTemplate<CallFacts>[] = [
   RAN_BASIS,
   NO_RESULTS,
   MENTIONED,
   UNCONFIRMED,
+  CODEX_UNVERIFIED,
   CODEX_RAN,
 ];
 

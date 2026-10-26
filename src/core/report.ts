@@ -104,6 +104,7 @@ import {
   CARD_COUNT,
   CATEGORY_TITLES,
   CODEX_CAVEAT,
+  CODEX_UNVERIFIED_TEXT,
   chipCategories,
   chipText,
   evidenceRow,
@@ -1822,8 +1823,13 @@ function corpusSection(result: ScanResult): string {
     );
   }
   const coverage = coverageNote(result);
+  // Every Codex page says how far its reading can be trusted, verified or not.
+  const codex =
+    result.agent === "codex"
+      ? `\n<p class="note codex-reading">${escapeHtml(CODEX_UNVERIFIED_TEXT)}</p>`
+      : "";
   return `<section id="scanned"><h2>What was scanned</h2>
-<p class="note">${lines.join(" ")}</p>${coverage === "" ? "" : `\n${coverage}`}
+<p class="note">${lines.join(" ")}</p>${coverage === "" ? "" : `\n${coverage}`}${codex}
 </section>`;
 }
 

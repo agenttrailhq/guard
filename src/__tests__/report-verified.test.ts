@@ -493,3 +493,44 @@ describe("the verified sections print", () => {
     }
   });
 });
+
+describe("every Codex page says its reading is limited and unverified", () => {
+  const NOTE =
+    "The Codex reading is limited and unverified: it is tested on synthetic sessions only.";
+  const BLOCKED = "which may include calls a hook blocked";
+  const codexPage = (ran: number, verified = true): string => {
+    const v = verification(verifiedCategories(), { ranEvidence: "output-record" });
+    const result = {
+      ...baseResult(verified ? { ...v, matchedCalls: { ...v.matchedCalls, ran } } : undefined),
+      agent: "codex" as const,
+    };
+    return renderReport(result, VERIFIED_META, OPTIONS);
+  };
+
+  it("a verified Codex scan where no matched call ran still says so, above the chips", () => {
+    const html = codexPage(0);
+    expect(section(html, "also-checked")).toContain(NOTE);
+    expect(section(html, "also-checked")).toContain("No Codex finding leads this page.");
+    expect(section(html, "also-checked")).not.toContain(BLOCKED);
+    expect(section(html, "scanned")).toContain(NOTE);
+  });
+
+  it("and with calls that ran, adds that they may include blocked calls", () => {
+    const notes = section(codexPage(5), "also-checked");
+    expect(notes).toContain(NOTE);
+    expect(notes).toContain(BLOCKED);
+  });
+
+  it("a Codex scan with no verification says it under what was scanned", () => {
+    const html = codexPage(0, false);
+    expect(html).not.toContain('id="also-checked"');
+    expect(section(html, "scanned")).toContain(NOTE);
+  });
+
+  it("no other app's page says it", () => {
+    for (const agent of ["claude", "cursor"] as const) {
+      const html = renderReport({ ...VERIFIED_RESULT, agent }, VERIFIED_META, OPTIONS);
+      expect(html).not.toContain("Codex reading");
+    }
+  });
+});

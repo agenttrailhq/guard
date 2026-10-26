@@ -8271,11 +8271,17 @@ var CODEX_RAN = {
   id: "lead.codex-ran",
   render: (v) => v.ranEvidence === "output-record" && v.matchedCalls.ran > 0 ? "A Codex call counts as ran when Codex recorded an output for it, which may include calls a hook blocked." : void 0
 };
+var CODEX_UNVERIFIED_TEXT = "The Codex reading is limited and unverified: it is tested on synthetic sessions only.";
+var CODEX_UNVERIFIED = {
+  id: "lead.codex-unverified",
+  render: (v) => v.ranEvidence === "output-record" ? `${CODEX_UNVERIFIED_TEXT} No Codex finding leads this page.` : void 0
+};
 var LEAD_NOTES = [
   RAN_BASIS,
   NO_RESULTS,
   MENTIONED,
   UNCONFIRMED,
+  CODEX_UNVERIFIED,
   CODEX_RAN
 ];
 function leadNotes(verification) {
@@ -9574,9 +9580,11 @@ function corpusSection(result) {
     );
   }
   const coverage = coverageNote(result);
+  const codex = result.agent === "codex" ? `
+<p class="note codex-reading">${escapeHtml(CODEX_UNVERIFIED_TEXT)}</p>` : "";
   return `<section id="scanned"><h2>What was scanned</h2>
 <p class="note">${lines.join(" ")}</p>${coverage === "" ? "" : `
-${coverage}`}
+${coverage}`}${codex}
 </section>`;
 }
 function skippedSection(payload) {
