@@ -49,6 +49,12 @@ import {
   type ScanResult,
 } from "../core/scan-report.js";
 import { bash, session, TEST_CATALOG, toolUse, turn } from "./scan-fixtures.js";
+import {
+  LOCAL_FIX_CATEGORIES,
+  TEST_ONLY_BUILDERS,
+  VERIFIED_META,
+  VERIFIED_RESULT,
+} from "./verified-corpus.js";
 
 /**
  * The fixture's rules with OWASP ids, as a shipped guardrail carries them, so every rendering
@@ -124,7 +130,18 @@ const CODEX = {
 const CODEX_HTML = renderReport(CODEX, META);
 const CODEX_ARTIFACT = renderReport(CODEX, META, { variant: "artifact" });
 
-/** Every form the file can take: each app, both variants. */
+/** The synthetic verified report, both variants, with the fixes file named on its cards. */
+const VERIFIED_OPTIONS = {
+  cardBuilders: TEST_ONLY_BUILDERS,
+  localFixCategories: LOCAL_FIX_CATEGORIES,
+};
+const VERIFIED_HTML = renderReport(VERIFIED_RESULT, VERIFIED_META, VERIFIED_OPTIONS);
+const VERIFIED_ARTIFACT = renderReport(VERIFIED_RESULT, VERIFIED_META, {
+  ...VERIFIED_OPTIONS,
+  variant: "artifact",
+});
+
+/** Every form the file can take: each app, both variants, and a verified report. */
 const RENDERINGS: readonly [string, string][] = [
   ["a Claude Code document", HTML],
   ["a Claude Code artifact", ARTIFACT],
@@ -132,6 +149,8 @@ const RENDERINGS: readonly [string, string][] = [
   ["a Cursor artifact", CURSOR_ARTIFACT],
   ["a Codex document", CODEX_HTML],
   ["a Codex artifact", CODEX_ARTIFACT],
+  ["a verified document", VERIFIED_HTML],
+  ["a verified artifact", VERIFIED_ARTIFACT],
 ];
 
 /** Every `href` value in a page, in document order, whatever the quoting. */
@@ -538,6 +557,14 @@ describe("no currency, in any spelling", () => {
     // Without this, "the chrome has no `$`" would pass on an empty string.
     expect(chrome.length).toBeGreaterThan(2000);
     expect(chrome).toContain("All findings");
+  });
+
+  it("the verified sections add no currency, in either form", () => {
+    for (const html of [VERIFIED_HTML, VERIFIED_ARTIFACT]) {
+      expect(chromeOf(html)).not.toMatch(CURRENCY_SYMBOL);
+      expect(html).not.toMatch(CURRENCY_WORD);
+      expect(chromeOf(html)).toContain("What actually happened");
+    }
   });
 
   it("a shell variable in a command SURVIVES, which is the point of the split", () => {
