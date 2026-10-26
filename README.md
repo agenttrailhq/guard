@@ -378,6 +378,40 @@ guarantee. Use `--review` and read the report before sharing it. The review outp
 include raw MCP values that the report itself redacts. Details:
 [Seeing what already happened](#seeing-what-already-happened).
 
+### Scrub credentials from transcripts
+
+A credential pasted into a prompt or printed by a command stays in the agent's transcript.
+`scan --scrub` replaces the ones that look real with `[REDACTED-BY-AGENTTRAIL:<kind>]`:
+
+```sh
+agenttrail-guard scan --agent claude --scrub           # dry run: says what it would replace
+agenttrail-guard scan --agent claude --scrub --apply   # makes the change
+```
+
+**Rotate the credential first, then scrub.** Taking it out of a transcript does not undo
+the exposure.
+
+- **What it replaces:** only values classed as likely real. A value that is also in a
+  git-tracked file of a repo the sessions ran in (a committed fixture), a placeholder, and
+  a credential for a database on this machine are left alone. Cursor's session files name
+  no working folder, so for Cursor no repo is searched and a fixture counts as likely real.
+- **Dry run by default.** Without `--apply` it lists each file with how many values of each
+  kind it would replace, never the values, and changes nothing.
+- **Close the agent first.** A running session keeps appending to its transcript.
+  `--apply` refuses while a process of that app is running, and skips any file changed in
+  the last 5 minutes. There is no flag to override either.
+- **Backup first.** Before changing any file, `--apply` copies every file it will change to
+  a new folder under `~/.agenttrail/scrub-backups/` (`0700`, files `0600`), with a manifest
+  and a restore command for each file. **The backup still holds the credentials:** delete
+  it once you have checked the scrubbed files. If any backup fails, nothing is changed.
+- **One step per file.** Each file is written beside the original, checked against what was
+  read, and moved into place. A file that changed since it was read is left as it is.
+- **Lines stay as written.** Only the text inside JSON strings changes; every other byte of
+  the line is kept. A line that would not parse after the edit is left as it is and
+  reported.
+- **Not scrubbed:** anything the app keeps outside its session files (its prompt history
+  and caches), your shell history, and the backup itself.
+
 ## The commands
 
 | Command | What it does |
@@ -385,7 +419,7 @@ include raw MCP values that the report itself redacts. Details:
 | `agenttrail-guard init --agent <claude\|cursor\|codex>` | Install the integration, seed settings, and demonstrate the engine. Safe to re-run. |
 | `agenttrail-guard status` | Inspect installation state, recent decisions, and settings that need attention. |
 | `agenttrail-guard guardrails` | List, inspect, customize, and validate guardrails. |
-| `agenttrail-guard scan --agent <claude\|cursor\|codex>` | Check past sessions and create a local HTML report. |
+| `agenttrail-guard scan --agent <claude\|cursor\|codex>` | Check past sessions and create a local HTML report. With `--scrub`, replace likely-real credentials in that agent's transcripts; a dry run unless you add `--apply`. |
 | `agenttrail-guard crash-report` | Manage opt-in crash reports. Off by default. |
 | `agenttrail-guard uninstall --agent <claude\|cursor\|codex>` | Remove that integration and keep your settings. |
 
