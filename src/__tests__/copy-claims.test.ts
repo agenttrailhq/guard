@@ -95,6 +95,7 @@ const QUALIFY_IF_CLAIMED = [
   // The words of the verified sections and the local fixes file, which the report carries.
   join(PKG_ROOT, "src", "core", "verify", "copy.ts"),
   join(PKG_ROOT, "src", "core", "verify", "secrets-card.ts"),
+  join(PKG_ROOT, "src", "core", "verify", "notes.ts"),
   join(PKG_ROOT, "src", "core", "fixes-file.ts"),
 ];
 

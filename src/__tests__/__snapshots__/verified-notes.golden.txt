@@ -1,0 +1,156 @@
+# Claude Code
+gb.git-no-verify  note.no-verify  4 commits skipped the hooks of a repo that has them; 3 are on main now.
+gb.hooks-disable  note.hooks-off  Hooks are on now in every repo where they were switched. 1 command turned Husky off for that command only.
+wt.branch-force-delete  note.branches  2 deleted branches can still be recovered by commit id.
+wt.stash-drop  note.stashes  1 dropped stash can still be recovered by commit id.
+wt.checkout-discard  note.discards  All 4 discarded paths were in the agent's own worktree or a scratch copy.
+wt.restore-path  note.discards  All 4 discarded paths were in the agent's own worktree or a scratch copy.
+wt.reset-hard  note.discards  All 4 discarded paths were in the agent's own worktree or a scratch copy.
+require-approval-rm-rf  note.rm-targets  Mostly scratch, temp or build folders. No tracked file is missing. 1 target held untracked files in a repo.
+dd.rm-rf-absolute  note.rm-targets  Mostly scratch, temp or build folders. No tracked file is missing. 1 target held untracked files in a repo.
+dd.database-drop  note.databases  Only local or scratch databases: 2 local, 0 scratch.
+block-destructive-sql  note.databases  Only local or scratch databases: 2 local, 0 scratch.
+se.env-print  note.secrets-printed  Likely-real credentials printed by a command: 1.
+se.token-print  note.secrets-printed  Likely-real credentials printed by a command: 1.
+se.secret-manager-read  note.secrets-printed  Likely-real credentials printed by a command: 1.
+se.credential-file  note.secrets-printed  Likely-real credentials printed by a command: 1.
+block-env-file-read  note.secrets-printed  Likely-real credentials printed by a command: 1.
+warn-op-read-secret  note.secrets-printed  Likely-real credentials printed by a command: 1.
+block-hardcoded-secrets  note.secrets-typed  Likely-real credentials typed into a command: 1.
+ps.iam-grant  note.iam  2 IAM changes ran. They cannot be checked from this machine, so review them by hand.
+pi.terraform-auto-approve  note.terraform  1 Terraform command that changes infrastructure or state ran, 1 with auto-approve. It cannot be checked from this machine, so review it by hand.
+pi.terraform-state-mutate  note.terraform  1 Terraform command that changes infrastructure or state ran, 1 with auto-approve. It cannot be checked from this machine, so review it by hand.
+pi.kubectl-delete  note.infra  1 production infrastructure command or edit ran. It cannot be checked from this machine, so review it by hand.
+pi.prod-namespace  note.infra  1 production infrastructure command or edit ran. It cannot be checked from this machine, so review it by hand.
+pi.helm-release  note.infra  1 production infrastructure command or edit ran. It cannot be checked from this machine, so review it by hand.
+pi.cloud-resource-delete  note.infra  1 production infrastructure command or edit ran. It cannot be checked from this machine, so review it by hand.
+pi.deploy-to-prod  note.infra  1 production infrastructure command or edit ran. It cannot be checked from this machine, so review it by hand.
+block-prod-config-edit  note.infra  1 production infrastructure command or edit ran. It cannot be checked from this machine, so review it by hand.
+ti.test-file-delete  note.tests-deleted  1 test file deleted, 1 after a test run reported it failing.
+ti.test-config-edit  note.tests-config  No coverage floor went down: the 2 threshold drops undid an automatic raise.
+ti.coverage-bypass  note.tests-pass  1 test run or config allowed passing with no tests.
+block-force-push  note.pushes  1 push went straight to main or master, carrying 2 commits still on it.
+ex.file-upload  note.uploads  False positive: the 3 upload-shaped calls that ran went to this machine or LocalStack.
+se.secret-egress  note.uploads  False positive: the 3 upload-shaped calls that ran went to this machine or LocalStack.
+ex.paste-service  note.uploads  False positive: the 3 upload-shaped calls that ran went to this machine or LocalStack.
+ex.reverse-shell  note.uploads  False positive: the 3 upload-shaped calls that ran went to this machine or LocalStack.
+ex.tunnel-expose  note.tunnels  No known tunnel or relay program was seen running now.
+flag-dependency-install  note.installs  2 package installs ran, not counting 3 lockfile restores. Package age is not checked: the scan runs offline.
+rce.unverified-package  note.installs  2 package installs ran, not counting 3 lockfile restores. Package age is not checked: the scan runs offline.
+# Codex
+gb.git-no-verify  note.no-verify  4 commits skipped the hooks of a repo that has them; 3 are on main now. Codex counts here include every call Codex recorded an output for, which may include calls a hook blocked.
+gb.hooks-disable  note.hooks-off  Hooks are on now in every repo where they were switched. 1 command turned Husky off for that command only. Codex counts here include every call Codex recorded an output for, which may include calls a hook blocked.
+wt.branch-force-delete  note.branches  2 deleted branches can still be recovered by commit id. Codex counts here include every call Codex recorded an output for, which may include calls a hook blocked.
+wt.stash-drop  note.stashes  1 dropped stash can still be recovered by commit id. Codex counts here include every call Codex recorded an output for, which may include calls a hook blocked.
+wt.checkout-discard  note.discards  All 4 discarded paths were in the agent's own worktree or a scratch copy. Codex counts here include every call Codex recorded an output for, which may include calls a hook blocked.
+wt.restore-path  note.discards  All 4 discarded paths were in the agent's own worktree or a scratch copy. Codex counts here include every call Codex recorded an output for, which may include calls a hook blocked.
+wt.reset-hard  note.discards  All 4 discarded paths were in the agent's own worktree or a scratch copy. Codex counts here include every call Codex recorded an output for, which may include calls a hook blocked.
+require-approval-rm-rf  note.rm-targets  Mostly scratch, temp or build folders. No tracked file is missing. 1 target held untracked files in a repo. Codex counts here include every call Codex recorded an output for, which may include calls a hook blocked.
+dd.rm-rf-absolute  note.rm-targets  Mostly scratch, temp or build folders. No tracked file is missing. 1 target held untracked files in a repo. Codex counts here include every call Codex recorded an output for, which may include calls a hook blocked.
+dd.database-drop  note.databases  Only local or scratch databases: 2 local, 0 scratch. Codex counts here include every call Codex recorded an output for, which may include calls a hook blocked.
+block-destructive-sql  note.databases  Only local or scratch databases: 2 local, 0 scratch. Codex counts here include every call Codex recorded an output for, which may include calls a hook blocked.
+se.env-print  note.secrets-printed  Likely-real credentials printed by a command: 1.
+se.token-print  note.secrets-printed  Likely-real credentials printed by a command: 1.
+se.secret-manager-read  note.secrets-printed  Likely-real credentials printed by a command: 1.
+se.credential-file  note.secrets-printed  Likely-real credentials printed by a command: 1.
+block-env-file-read  note.secrets-printed  Likely-real credentials printed by a command: 1.
+warn-op-read-secret  note.secrets-printed  Likely-real credentials printed by a command: 1.
+block-hardcoded-secrets  note.secrets-typed  Likely-real credentials typed into a command: 1.
+ps.iam-grant  note.iam  2 IAM changes ran. They cannot be checked from this machine, so review them by hand. Codex counts here include every call Codex recorded an output for, which may include calls a hook blocked.
+pi.terraform-auto-approve  note.terraform  1 Terraform command that changes infrastructure or state ran, 1 with auto-approve. It cannot be checked from this machine, so review it by hand. Codex counts here include every call Codex recorded an output for, which may include calls a hook blocked.
+pi.terraform-state-mutate  note.terraform  1 Terraform command that changes infrastructure or state ran, 1 with auto-approve. It cannot be checked from this machine, so review it by hand. Codex counts here include every call Codex recorded an output for, which may include calls a hook blocked.
+pi.kubectl-delete  note.infra  1 production infrastructure command or edit ran. It cannot be checked from this machine, so review it by hand. Codex counts here include every call Codex recorded an output for, which may include calls a hook blocked.
+pi.prod-namespace  note.infra  1 production infrastructure command or edit ran. It cannot be checked from this machine, so review it by hand. Codex counts here include every call Codex recorded an output for, which may include calls a hook blocked.
+pi.helm-release  note.infra  1 production infrastructure command or edit ran. It cannot be checked from this machine, so review it by hand. Codex counts here include every call Codex recorded an output for, which may include calls a hook blocked.
+pi.cloud-resource-delete  note.infra  1 production infrastructure command or edit ran. It cannot be checked from this machine, so review it by hand. Codex counts here include every call Codex recorded an output for, which may include calls a hook blocked.
+pi.deploy-to-prod  note.infra  1 production infrastructure command or edit ran. It cannot be checked from this machine, so review it by hand. Codex counts here include every call Codex recorded an output for, which may include calls a hook blocked.
+block-prod-config-edit  note.infra  1 production infrastructure command or edit ran. It cannot be checked from this machine, so review it by hand. Codex counts here include every call Codex recorded an output for, which may include calls a hook blocked.
+ti.test-file-delete  note.tests-deleted  1 test file deleted, 1 after a test run reported it failing. Codex counts here include every call Codex recorded an output for, which may include calls a hook blocked.
+ti.test-config-edit  note.tests-config  No coverage floor went down: the 2 threshold drops undid an automatic raise. Codex counts here include every call Codex recorded an output for, which may include calls a hook blocked.
+ti.coverage-bypass  note.tests-pass  1 test run or config allowed passing with no tests. Codex counts here include every call Codex recorded an output for, which may include calls a hook blocked.
+block-force-push  note.pushes  1 push went straight to main or master, carrying 2 commits still on it. Codex counts here include every call Codex recorded an output for, which may include calls a hook blocked.
+ex.file-upload  note.uploads  False positive: the 3 upload-shaped calls that ran went to this machine or LocalStack. Codex counts here include every call Codex recorded an output for, which may include calls a hook blocked.
+se.secret-egress  note.uploads  False positive: the 3 upload-shaped calls that ran went to this machine or LocalStack. Codex counts here include every call Codex recorded an output for, which may include calls a hook blocked.
+ex.paste-service  note.uploads  False positive: the 3 upload-shaped calls that ran went to this machine or LocalStack. Codex counts here include every call Codex recorded an output for, which may include calls a hook blocked.
+ex.reverse-shell  note.uploads  False positive: the 3 upload-shaped calls that ran went to this machine or LocalStack. Codex counts here include every call Codex recorded an output for, which may include calls a hook blocked.
+ex.tunnel-expose  note.tunnels  No known tunnel or relay program was seen running now. Codex counts here include every call Codex recorded an output for, which may include calls a hook blocked.
+flag-dependency-install  note.installs  2 package installs ran, not counting 3 lockfile restores. Package age is not checked: the scan runs offline. Codex counts here include every call Codex recorded an output for, which may include calls a hook blocked.
+rce.unverified-package  note.installs  2 package installs ran, not counting 3 lockfile restores. Package age is not checked: the scan runs offline. Codex counts here include every call Codex recorded an output for, which may include calls a hook blocked.
+# Cursor
+gb.git-no-verify  could-not-confirm  Could not confirm: these sessions record no command output, so a count of commands that ran is zero because nothing could be confirmed, not because nothing ran.
+gb.hooks-disable  could-not-confirm  Could not confirm: these sessions record no command output, so a count of commands that ran is zero because nothing could be confirmed, not because nothing ran.
+wt.branch-force-delete  could-not-confirm  Could not confirm: these sessions record no command output, so a count of commands that ran is zero because nothing could be confirmed, not because nothing ran.
+wt.stash-drop  could-not-confirm  Could not confirm: these sessions record no command output, so a count of commands that ran is zero because nothing could be confirmed, not because nothing ran.
+wt.checkout-discard  could-not-confirm  Could not confirm: these sessions record no command output, so a count of commands that ran is zero because nothing could be confirmed, not because nothing ran.
+wt.restore-path  could-not-confirm  Could not confirm: these sessions record no command output, so a count of commands that ran is zero because nothing could be confirmed, not because nothing ran.
+wt.reset-hard  could-not-confirm  Could not confirm: these sessions record no command output, so a count of commands that ran is zero because nothing could be confirmed, not because nothing ran.
+require-approval-rm-rf  could-not-confirm  Could not confirm: these sessions record no command output, so a count of commands that ran is zero because nothing could be confirmed, not because nothing ran.
+dd.rm-rf-absolute  could-not-confirm  Could not confirm: these sessions record no command output, so a count of commands that ran is zero because nothing could be confirmed, not because nothing ran.
+dd.database-drop  could-not-confirm  Could not confirm: these sessions record no command output, so a count of commands that ran is zero because nothing could be confirmed, not because nothing ran.
+block-destructive-sql  could-not-confirm  Could not confirm: these sessions record no command output, so a count of commands that ran is zero because nothing could be confirmed, not because nothing ran.
+se.env-print  note.secrets-printed  Likely-real credentials printed by a command: 1.
+se.token-print  note.secrets-printed  Likely-real credentials printed by a command: 1.
+se.secret-manager-read  note.secrets-printed  Likely-real credentials printed by a command: 1.
+se.credential-file  note.secrets-printed  Likely-real credentials printed by a command: 1.
+block-env-file-read  note.secrets-printed  Likely-real credentials printed by a command: 1.
+warn-op-read-secret  note.secrets-printed  Likely-real credentials printed by a command: 1.
+block-hardcoded-secrets  note.secrets-typed  Likely-real credentials typed into a command: 1.
+ps.iam-grant  could-not-confirm  Could not confirm: these sessions record no command output, so a count of commands that ran is zero because nothing could be confirmed, not because nothing ran.
+pi.terraform-auto-approve  could-not-confirm  Could not confirm: these sessions record no command output, so a count of commands that ran is zero because nothing could be confirmed, not because nothing ran.
+pi.terraform-state-mutate  could-not-confirm  Could not confirm: these sessions record no command output, so a count of commands that ran is zero because nothing could be confirmed, not because nothing ran.
+pi.kubectl-delete  could-not-confirm  Could not confirm: these sessions record no command output, so a count of commands that ran is zero because nothing could be confirmed, not because nothing ran.
+pi.prod-namespace  could-not-confirm  Could not confirm: these sessions record no command output, so a count of commands that ran is zero because nothing could be confirmed, not because nothing ran.
+pi.helm-release  could-not-confirm  Could not confirm: these sessions record no command output, so a count of commands that ran is zero because nothing could be confirmed, not because nothing ran.
+pi.cloud-resource-delete  could-not-confirm  Could not confirm: these sessions record no command output, so a count of commands that ran is zero because nothing could be confirmed, not because nothing ran.
+pi.deploy-to-prod  could-not-confirm  Could not confirm: these sessions record no command output, so a count of commands that ran is zero because nothing could be confirmed, not because nothing ran.
+block-prod-config-edit  could-not-confirm  Could not confirm: these sessions record no command output, so a count of commands that ran is zero because nothing could be confirmed, not because nothing ran.
+ti.test-file-delete  could-not-confirm  Could not confirm: these sessions record no command output, so a count of commands that ran is zero because nothing could be confirmed, not because nothing ran.
+ti.test-config-edit  could-not-confirm  Could not confirm: these sessions record no command output, so a count of commands that ran is zero because nothing could be confirmed, not because nothing ran.
+ti.coverage-bypass  could-not-confirm  Could not confirm: these sessions record no command output, so a count of commands that ran is zero because nothing could be confirmed, not because nothing ran.
+block-force-push  could-not-confirm  Could not confirm: these sessions record no command output, so a count of commands that ran is zero because nothing could be confirmed, not because nothing ran.
+ex.file-upload  could-not-confirm  Could not confirm: these sessions record no command output, so a count of commands that ran is zero because nothing could be confirmed, not because nothing ran.
+se.secret-egress  could-not-confirm  Could not confirm: these sessions record no command output, so a count of commands that ran is zero because nothing could be confirmed, not because nothing ran.
+ex.paste-service  could-not-confirm  Could not confirm: these sessions record no command output, so a count of commands that ran is zero because nothing could be confirmed, not because nothing ran.
+ex.reverse-shell  could-not-confirm  Could not confirm: these sessions record no command output, so a count of commands that ran is zero because nothing could be confirmed, not because nothing ran.
+ex.tunnel-expose  could-not-confirm  Could not confirm: these sessions record no command output, so a count of commands that ran is zero because nothing could be confirmed, not because nothing ran.
+flag-dependency-install  could-not-confirm  Could not confirm: these sessions record no command output, so a count of commands that ran is zero because nothing could be confirmed, not because nothing ran.
+rce.unverified-package  could-not-confirm  Could not confirm: these sessions record no command output, so a count of commands that ran is zero because nothing could be confirmed, not because nothing ran.
+# Hiding forms in every check
+gb.git-no-verify  could-not-confirm  Could not confirm: commands that ran here used a shell given a string to run, which can run commands this reading does not take apart, so this is not a clean result.
+gb.hooks-disable  could-not-confirm  Could not confirm: commands that ran here used a shell given a string to run, which can run commands this reading does not take apart, so this is not a clean result.
+wt.branch-force-delete  could-not-confirm  Could not confirm: commands that ran here used a shell given a string to run, which can run commands this reading does not take apart, so this is not a clean result.
+wt.stash-drop  could-not-confirm  Could not confirm: commands that ran here used a shell given a string to run, which can run commands this reading does not take apart, so this is not a clean result.
+wt.checkout-discard  could-not-confirm  Could not confirm: commands that ran here used a shell given a string to run, which can run commands this reading does not take apart, so this is not a clean result.
+wt.restore-path  could-not-confirm  Could not confirm: commands that ran here used a shell given a string to run, which can run commands this reading does not take apart, so this is not a clean result.
+wt.reset-hard  could-not-confirm  Could not confirm: commands that ran here used a shell given a string to run, which can run commands this reading does not take apart, so this is not a clean result.
+require-approval-rm-rf  could-not-confirm  Could not confirm: commands that ran here used a shell given a string to run, which can run commands this reading does not take apart, so this is not a clean result.
+dd.rm-rf-absolute  could-not-confirm  Could not confirm: commands that ran here used a shell given a string to run, which can run commands this reading does not take apart, so this is not a clean result.
+dd.database-drop  could-not-confirm  Could not confirm: commands that ran here used a shell given a string to run, which can run commands this reading does not take apart, so this is not a clean result.
+block-destructive-sql  could-not-confirm  Could not confirm: commands that ran here used a shell given a string to run, which can run commands this reading does not take apart, so this is not a clean result.
+se.env-print  could-not-confirm  Could not confirm: commands that ran here used a shell given a string to run, which can run commands this reading does not take apart, so this is not a clean result.
+se.token-print  could-not-confirm  Could not confirm: commands that ran here used a shell given a string to run, which can run commands this reading does not take apart, so this is not a clean result.
+se.secret-manager-read  could-not-confirm  Could not confirm: commands that ran here used a shell given a string to run, which can run commands this reading does not take apart, so this is not a clean result.
+se.credential-file  could-not-confirm  Could not confirm: commands that ran here used a shell given a string to run, which can run commands this reading does not take apart, so this is not a clean result.
+block-env-file-read  could-not-confirm  Could not confirm: commands that ran here used a shell given a string to run, which can run commands this reading does not take apart, so this is not a clean result.
+warn-op-read-secret  could-not-confirm  Could not confirm: commands that ran here used a shell given a string to run, which can run commands this reading does not take apart, so this is not a clean result.
+block-hardcoded-secrets  could-not-confirm  Could not confirm: commands that ran here used a shell given a string to run, which can run commands this reading does not take apart, so this is not a clean result.
+ps.iam-grant  could-not-confirm  Could not confirm: commands that ran here used a shell given a string to run, which can run commands this reading does not take apart, so this is not a clean result.
+pi.terraform-auto-approve  could-not-confirm  Could not confirm: commands that ran here used a shell given a string to run, which can run commands this reading does not take apart, so this is not a clean result.
+pi.terraform-state-mutate  could-not-confirm  Could not confirm: commands that ran here used a shell given a string to run, which can run commands this reading does not take apart, so this is not a clean result.
+pi.kubectl-delete  could-not-confirm  Could not confirm: commands that ran here used a shell given a string to run, which can run commands this reading does not take apart, so this is not a clean result.
+pi.prod-namespace  could-not-confirm  Could not confirm: commands that ran here used a shell given a string to run, which can run commands this reading does not take apart, so this is not a clean result.
+pi.helm-release  could-not-confirm  Could not confirm: commands that ran here used a shell given a string to run, which can run commands this reading does not take apart, so this is not a clean result.
+pi.cloud-resource-delete  could-not-confirm  Could not confirm: commands that ran here used a shell given a string to run, which can run commands this reading does not take apart, so this is not a clean result.
+pi.deploy-to-prod  could-not-confirm  Could not confirm: commands that ran here used a shell given a string to run, which can run commands this reading does not take apart, so this is not a clean result.
+block-prod-config-edit  could-not-confirm  Could not confirm: commands that ran here used a shell given a string to run, which can run commands this reading does not take apart, so this is not a clean result.
+ti.test-file-delete  could-not-confirm  Could not confirm: commands that ran here used a shell given a string to run, which can run commands this reading does not take apart, so this is not a clean result.
+ti.test-config-edit  could-not-confirm  Could not confirm: commands that ran here used a shell given a string to run, which can run commands this reading does not take apart, so this is not a clean result.
+ti.coverage-bypass  could-not-confirm  Could not confirm: commands that ran here used a shell given a string to run, which can run commands this reading does not take apart, so this is not a clean result.
+block-force-push  could-not-confirm  Could not confirm: commands that ran here used a shell given a string to run, which can run commands this reading does not take apart, so this is not a clean result.
+ex.file-upload  could-not-confirm  Could not confirm: commands that ran here used a shell given a string to run, which can run commands this reading does not take apart, so this is not a clean result.
+se.secret-egress  could-not-confirm  Could not confirm: commands that ran here used a shell given a string to run, which can run commands this reading does not take apart, so this is not a clean result.
+ex.paste-service  could-not-confirm  Could not confirm: commands that ran here used a shell given a string to run, which can run commands this reading does not take apart, so this is not a clean result.
+ex.reverse-shell  could-not-confirm  Could not confirm: commands that ran here used a shell given a string to run, which can run commands this reading does not take apart, so this is not a clean result.
+ex.tunnel-expose  could-not-confirm  Could not confirm: commands that ran here used a shell given a string to run, which can run commands this reading does not take apart, so this is not a clean result.
+flag-dependency-install  could-not-confirm  Could not confirm: commands that ran here used a shell given a string to run, which can run commands this reading does not take apart, so this is not a clean result.
+rce.unverified-package  could-not-confirm  Could not confirm: commands that ran here used a shell given a string to run, which can run commands this reading does not take apart, so this is not a clean result.
