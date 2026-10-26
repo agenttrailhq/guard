@@ -31,6 +31,7 @@ import {
 import { countOf } from "../core/verify/copy.js";
 import type {
   CheckedCategory,
+  HidingForm,
   SecretsFacts,
   Verification,
   VerifyCategory,
@@ -125,8 +126,56 @@ export const SECRETS_CLEAN: SecretsFacts = {
 
 // ── TEST-ONLY builders for the categories with no check yet ──────────────────
 
-/** Counts only: the shape every test-only fact set takes. */
+/** Counts by name, as the test-only templates read them. */
 type Counts = Readonly<Record<string, number>>;
+
+/**
+ * Test-only facts, made only of registered keys so they pass the payload's key and enum boundary
+ * as a real check's facts do: `items`, a list of counts (a number in a list passes as it is),
+ * and the shared `hidingForms`. Each test-only card names its counts in `COUNT_NAMES` and reads
+ * them back by position.
+ */
+export interface TestFacts {
+  readonly items: readonly number[];
+  readonly hidingForms?: readonly HidingForm[];
+}
+
+/** The names of each test-only card's counts, in `items` order. */
+const COUNT_NAMES: Readonly<Record<Exclude<VerifyCategory, "secrets">, readonly string[]>> = {
+  "skipped-checks": [
+    "commits",
+    "reachedMain",
+    "oneOff",
+    "memoryFiles",
+    "memoryPresent",
+    "hooksOffNow",
+    "codex",
+  ],
+  "lost-work": ["branches", "stashes", "scratch", "recoverable", "codex"],
+  cloud: ["iam", "s3", "terraform", "codex"],
+  "prod-infra": ["other", "local", "codex"],
+  tests: ["lowered", "codex"],
+  destructive: ["ran", "trackedMissing", "unguarded", "codex"],
+  unreviewed: ["pushed", "codex"],
+  egress: ["uploads", "falsePositives", "tunnelsNow", "codex"],
+};
+
+/** Test-only facts for a category, from named counts. */
+export function testFacts(
+  category: Exclude<VerifyCategory, "secrets">,
+  counts: Counts,
+  hidingForms?: readonly HidingForm[],
+): TestFacts {
+  return {
+    items: COUNT_NAMES[category].map((name) => counts[name] ?? 0),
+    ...(hidingForms === undefined ? {} : { hidingForms }),
+  };
+}
+
+/** The named counts in test-only facts. */
+function countsOf(category: Exclude<VerifyCategory, "secrets">, facts: TestFacts): Counts {
+  return Object.fromEntries(COUNT_NAMES[category].map((name, i) => [name, facts.items?.[i] ?? 0]));
+}
 
 /** A test-only template. Its id says so. */
 function t(id: string, render: (f: Counts) => string | undefined): SentenceTemplate<Counts> {
@@ -148,9 +197,9 @@ export function basisOf(category: VerifyCategory): HeadlineBasis {
 }
 
 /** A test-only card builder from templates over counts. */
-function testBuilder(category: VerifyCategory, spec: TestCard) {
-  return (result: CheckedCategory<Counts>): CardView => {
-    const f = result.facts;
+function testBuilder(category: Exclude<VerifyCategory, "secrets">, spec: TestCard) {
+  return (result: CheckedCategory<TestFacts>): CardView => {
+    const f = countsOf(category, result.facts);
     const claim = (
       part: { readonly count: string; readonly template: SentenceTemplate<Counts> } | undefined,
     ): { count: number; line: CardSentence } | undefined => {
@@ -167,7 +216,7 @@ function testBuilder(category: VerifyCategory, spec: TestCard) {
       found: sentences(spec.found, f),
       now: sentences(spec.now ?? [], f),
       fixSteps: sentences(spec.fixSteps ?? [], f),
-      fixes: f.fixable === 0 ? [] : (spec.fixes ?? []),
+      fixes: spec.fixes ?? [],
       codexCaveat: f.codex === 1,
       ...(headline === undefined
         ? {}
@@ -381,21 +430,27 @@ export const TEST_ONLY_BUILDERS = {
   ...Object.fromEntries(
     Object.entries(TEST_ONLY_CARDS).map(([category, spec]) => [
       category,
-      testBuilder(category as VerifyCategory, spec),
+      testBuilder(category as Exclude<VerifyCategory, "secrets">, spec),
     ]),
   ),
 } as unknown as CardBuilders;
 
 /** One category's synthetic result. */
-function checked(status: VerifyStatus, matches: number, facts: Counts) {
-  return { status, matches, facts };
+function checked(
+  category: Exclude<VerifyCategory, "secrets">,
+  status: VerifyStatus,
+  matches: number,
+  counts: Counts,
+  hidingForms?: readonly HidingForm[],
+) {
+  return { status, matches, facts: testFacts(category, counts, hidingForms) };
 }
 
 /** The main corpus: three to act on, one to review, three clean, one failed, one unchecked. */
 export function verifiedCategories(): Verification["categories"] {
   return {
     secrets: { status: "act", matches: 11, facts: SECRETS_ACT },
-    "skipped-checks": checked("act", 6, {
+    "skipped-checks": checked("skipped-checks", "act", 6, {
       commits: 4,
       reachedMain: 3,
       oneOff: 1,
@@ -403,13 +458,18 @@ export function verifiedCategories(): Verification["categories"] {
       memoryPresent: 1,
       hooksOffNow: 0,
     }),
-    "lost-work": checked("act", 3, { branches: 2, stashes: 1, scratch: 4, recoverable: 3 }),
-    cloud: checked("review", 4, { iam: 2, s3: 1, terraform: 1 }),
-    "prod-infra": checked("clean", 2, { other: 0, local: 2 }),
-    tests: checked("could-not-check", 2, {}),
-    destructive: checked("clean", 7, { ran: 7, trackedMissing: 0, unguarded: 0 }),
+    "lost-work": checked("lost-work", "act", 3, {
+      branches: 2,
+      stashes: 1,
+      scratch: 4,
+      recoverable: 3,
+    }),
+    cloud: checked("cloud", "review", 4, { iam: 2, s3: 1, terraform: 1 }),
+    "prod-infra": checked("prod-infra", "clean", 2, { other: 0, local: 2 }),
+    tests: checked("tests", "could-not-check", 2, {}),
+    destructive: checked("destructive", "clean", 7, { ran: 7, trackedMissing: 0, unguarded: 0 }),
     unreviewed: { status: "not-checked" },
-    egress: checked("clean", 3, { uploads: 0, falsePositives: 3, tunnelsNow: 0 }),
+    egress: checked("egress", "clean", 3, { uploads: 0, falsePositives: 3, tunnelsNow: 0 }),
   } as unknown as Verification["categories"];
 }
 
@@ -434,8 +494,12 @@ export const CLOUD_LEAD_RESULT: ScanResult = baseResult(
   verification({
     ...verifiedCategories(),
     secrets: { status: "clean", matches: 3, facts: SECRETS_CLEAN },
-    "skipped-checks": checked("clean", 1, { commits: 0, reachedMain: 0, hooksOffNow: 0 }),
-    "lost-work": checked("clean", 0, { recoverable: 0 }),
+    "skipped-checks": checked("skipped-checks", "clean", 1, {
+      commits: 0,
+      reachedMain: 0,
+      hooksOffNow: 0,
+    }),
+    "lost-work": checked("lost-work", "clean", 0, { recoverable: 0 }),
   } as unknown as Verification["categories"]),
 );
 
@@ -446,7 +510,7 @@ export const FALLBACK_RESULT: ScanResult = baseResult(
     secrets: { status: "clean", matches: 3, facts: SECRETS_CLEAN },
     "skipped-checks": { status: "not-checked" },
     "lost-work": { status: "not-checked" },
-    cloud: checked("review", 1, { iam: 0, s3: 1, terraform: 0 }),
+    cloud: checked("cloud", "review", 1, { iam: 0, s3: 1, terraform: 0 }),
   } as unknown as Verification["categories"]),
 );
 
@@ -460,7 +524,7 @@ export const CODEX_ONLY_RESULT: ScanResult = {
       {
         ...verifiedCategories(),
         secrets: { status: "clean", matches: 3, facts: SECRETS_CLEAN },
-        "skipped-checks": checked("act", 6, {
+        "skipped-checks": checked("skipped-checks", "act", 6, {
           commits: 4,
           reachedMain: 3,
           memoryFiles: 0,
@@ -468,8 +532,8 @@ export const CODEX_ONLY_RESULT: ScanResult = {
           hooksOffNow: 0,
           codex: 1,
         }),
-        "lost-work": checked("clean", 0, { recoverable: 0 }),
-        cloud: checked("review", 1, { iam: 0, s3: 1, terraform: 0 }),
+        "lost-work": checked("lost-work", "clean", 0, { recoverable: 0 }),
+        cloud: checked("cloud", "review", 1, { iam: 0, s3: 1, terraform: 0 }),
       } as unknown as Verification["categories"],
       { ranEvidence: "output-record" },
     ),

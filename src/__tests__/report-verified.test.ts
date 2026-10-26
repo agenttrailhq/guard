@@ -41,6 +41,7 @@ import {
   LOCAL_FIX_CATEGORIES,
   SECRETS_ACT,
   TEST_ONLY_BUILDERS,
+  testFacts,
   VERIFIED_META,
   VERIFIED_RESULT,
   verification,
@@ -333,7 +334,7 @@ describe("What actually happened", () => {
       "skipped-checks": {
         status: "act",
         matches: 6,
-        facts: { commits: 2, reachedMain: 1, codex: 1 },
+        facts: testFacts("skipped-checks", { commits: 2, reachedMain: 1, codex: 1 }),
       },
     } as unknown as Verification["categories"]);
     const html = renderReport(baseResult(v), VERIFIED_META, OPTIONS);

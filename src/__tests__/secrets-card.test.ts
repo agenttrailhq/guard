@@ -166,9 +166,11 @@ describe("the card", () => {
     expect(card.tone).toBe("act");
     expect(card.count).toBe(9);
     expect(card.fixes).toEqual([]);
-    // Found in text, so its claim never rests on Codex ran records.
+    // Found in text, so its claim does not rest on Codex ran records; a Codex scan still never
+    // leads with it, since nothing leads a Codex scan.
     expect(card.codexCaveat).toBe(false);
     expect(card.headline).toEqual({
+      basis: "likely-real-credentials",
       count: 2,
       restsOnCodexRan: false,
       sentence: {

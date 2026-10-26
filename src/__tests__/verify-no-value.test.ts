@@ -235,8 +235,10 @@ describe.each([
     const out = join(work, "with-lead.html");
     const run = await scan(["--agent", agent, "--dir", root, "--verify", "--out", out], work);
     const html = run.written.get(out) ?? "";
+    // Nothing leads a Codex scan, whose reading is unverified; every other app leads here.
+    if (agent === "codex") expect(html).not.toContain('data-template="secrets.headline"');
+    else expect(html).toContain('data-template="secrets.headline"');
     for (const part of [
-      'data-template="secrets.headline"',
       'id="found"',
       'class="evidence-kind"',
       'id="also-checked"',
@@ -278,7 +280,7 @@ describe.each([
     expect(run.stdout).toContain("Checked on this machine (read-only, offline)");
     // The review lists the verified lines, so they were searched too.
     expect(run.stdout).toContain("What the checks found on this machine");
-    expect(run.stdout).toContain("likely-real credentials are still in the agent's transcripts");
+    expect(run.stdout).toContain("Found 4 likely-real credentials");
     for (const marker of MARKERS) {
       expect(run.stdout.toLowerCase()).not.toContain(marker.toLowerCase());
     }

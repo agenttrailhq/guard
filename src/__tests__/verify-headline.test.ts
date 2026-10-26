@@ -4,8 +4,9 @@
  *
  * Asserted on the RENDERED page, so the wiring from verification to `<h1>` is what is tested:
  * each category leading on its own, each losing to every higher one, a clean, not-checked or
- * could-not-check category never leading, a Codex-only finding never leading, and the totals
- * headline whenever nothing may lead, verification absent included.
+ * could-not-check category never leading, nothing leading a Codex scan (its reading is limited
+ * and unverified) or resting on Codex ran records, and the totals headline whenever nothing may
+ * lead, verification absent included.
  *
  * Secrets is driven through its real card. Every other category's claim comes from a TEST-ONLY
  * builder, since those checks do not exist in this build.
@@ -17,6 +18,7 @@ import type { ScanResult } from "../core/scan-report.js";
 import { CARD_BUILDERS } from "../core/verify/builders.js";
 import { type CardBuilders, type CardView, HEADLINE_ORDER } from "../core/verify/cards.js";
 import {
+  type RanEvidence,
   type SecretsFacts,
   VERIFY_CATEGORIES,
   type Verification,
@@ -39,26 +41,34 @@ function claimCard(category: VerifyCategory) {
   return (result: {
     readonly status: VerifyStatus;
     readonly matches: number;
-    readonly facts: { readonly claim: number; readonly codex: boolean };
-  }): CardView => ({
-    category,
-    tone: result.status,
-    count: result.matches,
-    found: [],
-    now: [],
-    fixes: [],
-    codexCaveat: result.facts.codex,
-    ...(result.facts.claim > 0
-      ? {
-          headline: {
-            basis: basisOf(category),
-            count: result.facts.claim,
-            restsOnCodexRan: result.facts.codex,
-            sentence: { template: `test-only.headline.${category}`, text: `Lead from ${category}` },
-          },
-        }
-      : {}),
-  });
+    readonly facts: { readonly items: readonly number[] };
+  }): CardView => {
+    // Registered keys only: the claim and the Codex flag ride in `items`.
+    const claim = result.facts.items[0] ?? 0;
+    const codex = result.facts.items[1] === 1;
+    return {
+      category,
+      tone: result.status,
+      count: result.matches,
+      found: [],
+      now: [],
+      fixes: [],
+      codexCaveat: codex,
+      ...(claim > 0
+        ? {
+            headline: {
+              basis: basisOf(category),
+              count: claim,
+              restsOnCodexRan: codex,
+              sentence: {
+                template: `test-only.headline.${category}`,
+                text: `Lead from ${category}`,
+              },
+            },
+          }
+        : {}),
+    };
+  };
 }
 
 /** The real secrets card, and a test-only card for every other category. */
@@ -77,7 +87,10 @@ function secretsFacts(n: number): SecretsFacts {
 }
 
 /** A verification where the named categories report, and every other is not checked. */
-function verificationOf(entries: Partial<Record<VerifyCategory, Entry>>): Verification {
+function verificationOf(
+  entries: Partial<Record<VerifyCategory, Entry>>,
+  ranEvidence: RanEvidence = "tool-result",
+): Verification {
   const categories = Object.fromEntries(
     VERIFY_CATEGORIES.map((category) => {
       const entry = entries[category];
@@ -97,7 +110,7 @@ function verificationOf(entries: Partial<Record<VerifyCategory, Entry>>): Verifi
           : {
               status: entry.status,
               matches: entry.claim,
-              facts: { claim: entry.claim, codex: entry.codex ?? false },
+              facts: { items: [entry.claim, entry.codex === true ? 1 : 0] },
             },
       ];
     }),
@@ -105,7 +118,7 @@ function verificationOf(entries: Partial<Record<VerifyCategory, Entry>>): Verifi
   return {
     matchedCalls: { ran: 5, mentioned: 0, unknown: 0 },
     resultsRecorded: true,
-    ranEvidence: "tool-result",
+    ranEvidence,
     categories: categories as unknown as Verification["categories"],
   };
 }
@@ -189,13 +202,34 @@ describe("what never leads", () => {
   });
 
   it.each(
+    HEADLINE_ORDER,
+  )("a %s finding on a Codex scan, whose reading is unverified", (category) => {
+    const entries = { [category]: { status: leading(category), claim: 4 } };
+    // The same finding leads a scan whose results are recorded, so the test is not vacuous.
+    expect(h1(page(entries)).template).toBe(templateOf(category));
+    const codex = renderReport(
+      baseResult(verificationOf(entries, "output-record")),
+      VERIFIED_META,
+      { cardBuilders: BUILDERS },
+    );
+    expect(h1(codex)).toEqual({ template: undefined, text: TOTALS });
+  });
+
+  it.each(
     HEADLINE_ORDER.filter((c) => c !== "secrets"),
-  )("a %s finding seen only through Codex output records", (category) => {
+  )("a %s claim that rests on Codex ran records", (category) => {
     const html = page({ [category]: { status: leading(category), claim: 4, codex: true } });
     expect(h1(html)).toEqual({ template: undefined, text: TOTALS });
   });
 
-  it("a Codex-only finding gives way to a lower one that does not rest on Codex", () => {
+  it("a cloud card to act on: cloud leads only from review", () => {
+    expect(h1(page({ cloud: { status: "act", claim: 4 } })).template).toBeUndefined();
+    expect(h1(page({ cloud: { status: "review", claim: 4 } })).template).toBe(
+      "test-only.headline.cloud",
+    );
+  });
+
+  it("a claim that rests on Codex ran records gives way to a lower one that does not", () => {
     const html = page({
       "skipped-checks": { status: "act", claim: 9, codex: true },
       destructive: { status: "act", claim: 1 },
@@ -278,7 +312,11 @@ describe("the secrets card's own headline", () => {
     expect(h1(secretsPage(secretsFacts(0))).template).toBeUndefined();
   });
 
-  it("still leads on Codex: a credential is found in text, not in a call that ran", () => {
-    expect(h1(secretsPage(SECRETS_ACT, "output-record")).template).toBe("secrets.headline");
+  it("never leads a Codex scan, and its card and chip still render", () => {
+    const html = secretsPage(SECRETS_ACT, "output-record");
+    expect(h1(html)).toEqual({ template: undefined, text: TOTALS });
+    expect(html).toContain('id="check-secrets"');
+    expect(html).toContain('id="found"');
+    expect(html).not.toContain("lead totals");
   });
 });

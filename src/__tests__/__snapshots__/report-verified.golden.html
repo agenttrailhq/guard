@@ -646,6 +646,10 @@
      "filesRead": 18,
      "filesNotRead": 0,
      "unplaced": 0,
+     "setAside": {
+      "unnamedOutputOnly": 0,
+      "namedNotCredentialShaped": 0
+     },
      "fixtureCheck": "complete",
      "reposChecked": 2,
      "reposNotChecked": 0
@@ -655,53 +659,73 @@
     "status": "act",
     "matches": 6,
     "facts": {
-     "commits": 4,
-     "reachedMain": 3,
-     "oneOff": 1,
-     "memoryFiles": 1,
-     "memoryPresent": 1,
-     "hooksOffNow": 0
+     "items": [
+      4,
+      3,
+      1,
+      1,
+      1,
+      0,
+      0
+     ]
     }
    },
    "lost-work": {
     "status": "act",
     "matches": 3,
     "facts": {
-     "branches": 2,
-     "stashes": 1,
-     "scratch": 4,
-     "recoverable": 3
+     "items": [
+      2,
+      1,
+      4,
+      3,
+      0
+     ]
     }
    },
    "cloud": {
     "status": "review",
     "matches": 4,
     "facts": {
-     "iam": 2,
-     "s3": 1,
-     "terraform": 1
+     "items": [
+      2,
+      1,
+      1,
+      0
+     ]
     }
    },
    "prod-infra": {
     "status": "clean",
     "matches": 2,
     "facts": {
-     "other": 0,
-     "local": 2
+     "items": [
+      0,
+      2,
+      0
+     ]
     }
    },
    "tests": {
     "status": "could-not-check",
     "matches": 2,
-    "facts": {}
+    "facts": {
+     "items": [
+      0,
+      0
+     ]
+    }
    },
    "destructive": {
     "status": "clean",
     "matches": 7,
     "facts": {
-     "ran": 7,
-     "trackedMissing": 0,
-     "unguarded": 0
+     "items": [
+      7,
+      0,
+      0,
+      0
+     ]
     }
    },
    "unreviewed": {
@@ -711,9 +735,12 @@
     "status": "clean",
     "matches": 3,
     "facts": {
-     "uploads": 0,
-     "falsePositives": 3,
-     "tunnelsNow": 0
+     "items": [
+      0,
+      3,
+      0,
+      0
+     ]
     }
    }
   }
@@ -764,6 +791,7 @@
    "fixes": [],
    "codexCaveat": false,
    "headline": {
+    "basis": "likely-real-credentials",
     "count": 3,
     "restsOnCodexRan": false,
     "sentence": {
@@ -820,6 +848,7 @@
    ],
    "codexCaveat": false,
    "headline": {
+    "basis": "commits-on-main-without-checks",
     "count": 3,
     "restsOnCodexRan": false,
     "sentence": {
@@ -870,6 +899,7 @@
    ],
    "codexCaveat": false,
    "headline": {
+    "basis": "recoverable-deleted-work",
     "count": 3,
     "restsOnCodexRan": false,
     "sentence": {
@@ -912,6 +942,7 @@
    ],
    "codexCaveat": false,
    "headline": {
+    "basis": "iam-changes",
     "count": 2,
     "restsOnCodexRan": false,
     "sentence": {
