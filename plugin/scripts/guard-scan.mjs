@@ -219,8 +219,8 @@ var require_constants = __commonJS({
       /**
        * Create GLOB_CHARS
        */
-      globChars(win32) {
-        return win32 === true ? WINDOWS_CHARS : POSIX_CHARS;
+      globChars(win322) {
+        return win322 === true ? WINDOWS_CHARS : POSIX_CHARS;
       }
     };
   }
@@ -624,7 +624,7 @@ var require_scan = __commonJS({
 var require_parse = __commonJS({
   "node_modules/picomatch/lib/parse.js"(exports, module) {
     "use strict";
-    var constants = require_constants();
+    var constants2 = require_constants();
     var utils = require_utils();
     var {
       MAX_LENGTH,
@@ -632,7 +632,7 @@ var require_parse = __commonJS({
       REGEX_NON_SPECIAL_CHARS,
       REGEX_SPECIAL_CHARS_BACKREF,
       REPLACEMENTS
-    } = constants;
+    } = constants2;
     var expandRange = (args2, options) => {
       if (typeof options.expandRange === "function") {
         return options.expandRange(...args2, options);
@@ -838,7 +838,7 @@ var require_parse = __commonJS({
       if (options.maxExtglobRecursion === false) {
         return { risky: false };
       }
-      const max = typeof options.maxExtglobRecursion === "number" ? options.maxExtglobRecursion : constants.DEFAULT_MAX_EXTGLOB_RECURSION;
+      const max = typeof options.maxExtglobRecursion === "number" ? options.maxExtglobRecursion : constants2.DEFAULT_MAX_EXTGLOB_RECURSION;
       const branches = splitTopLevel(body).map((branch) => branch.trim());
       if (branches.length > 1) {
         if (branches.some((branch) => branch === "") || branches.some((branch) => /^[*?]+$/.test(branch)) || hasRepeatedCharPrefixOverlap(branches)) {
@@ -870,8 +870,8 @@ var require_parse = __commonJS({
       const bos = { type: "bos", value: "", output: opts.prepend || "" };
       const tokens = [bos];
       const capture = opts.capture ? "" : "?:";
-      const PLATFORM_CHARS = constants.globChars(opts.windows);
-      const EXTGLOB_CHARS = constants.extglobChars(PLATFORM_CHARS);
+      const PLATFORM_CHARS = constants2.globChars(opts.windows);
+      const EXTGLOB_CHARS = constants2.extglobChars(PLATFORM_CHARS);
       const {
         DOT_LITERAL,
         PLUS_LITERAL,
@@ -1125,9 +1125,9 @@ var require_parse = __commonJS({
                 const idx = prev.value.lastIndexOf("[");
                 const pre = prev.value.slice(0, idx);
                 const rest2 = prev.value.slice(idx + 2);
-                const posix = POSIX_REGEX_SOURCE[rest2];
-                if (posix) {
-                  prev.value = pre + posix;
+                const posix2 = POSIX_REGEX_SOURCE[rest2];
+                if (posix2) {
+                  prev.value = pre + posix2;
                   state.backtrack = true;
                   advance();
                   if (!bos.output && tokens.indexOf(prev) === 1) {
@@ -1566,7 +1566,7 @@ var require_parse = __commonJS({
         NO_DOTS_SLASH,
         STAR,
         START_ANCHOR
-      } = constants.globChars(opts.windows);
+      } = constants2.globChars(opts.windows);
       const nodot = opts.dot ? NO_DOTS : NO_DOT;
       const slashDot = opts.dot ? NO_DOTS_SLASH : NO_DOT;
       const capture = opts.capture ? "" : "?:";
@@ -1624,7 +1624,7 @@ var require_picomatch = __commonJS({
     var scan = require_scan();
     var parse = require_parse();
     var utils = require_utils();
-    var constants = require_constants();
+    var constants2 = require_constants();
     var isObject = (val) => val && typeof val === "object" && !Array.isArray(val);
     var picomatch3 = (glob, options, returnState = false) => {
       if (Array.isArray(glob)) {
@@ -1643,7 +1643,7 @@ var require_picomatch = __commonJS({
         throw new TypeError("Expected pattern to be a non-empty string");
       }
       const opts = options || {};
-      const posix = opts.windows;
+      const posix2 = opts.windows;
       const regex = isState ? picomatch3.compileRe(glob, options) : picomatch3.makeRe(glob, options, false, true);
       const state = regex.state;
       delete regex.state;
@@ -1653,8 +1653,8 @@ var require_picomatch = __commonJS({
         isIgnored = picomatch3(opts.ignore, ignoreOpts, returnState);
       }
       const matcher = (input, returnObject = false) => {
-        const { isMatch, match, output } = picomatch3.test(input, regex, options, { glob, posix });
-        const result = { glob, state, regex, posix, input, output, match, isMatch };
+        const { isMatch, match, output } = picomatch3.test(input, regex, options, { glob, posix: posix2 });
+        const result = { glob, state, regex, posix: posix2, input, output, match, isMatch };
         if (typeof opts.onResult === "function") {
           opts.onResult(result);
         }
@@ -1679,7 +1679,7 @@ var require_picomatch = __commonJS({
       }
       return matcher;
     };
-    picomatch3.test = (input, regex, options, { glob, posix } = {}) => {
+    picomatch3.test = (input, regex, options, { glob, posix: posix2 } = {}) => {
       if (typeof input !== "string") {
         throw new TypeError("Expected input to be a string");
       }
@@ -1687,7 +1687,7 @@ var require_picomatch = __commonJS({
         return { isMatch: false, output: "" };
       }
       const opts = options || {};
-      const format = opts.format || (posix ? utils.toPosixSlashes : null);
+      const format = opts.format || (posix2 ? utils.toPosixSlashes : null);
       let match = input === glob;
       let output = match && format ? format(input) : input;
       if (match === false) {
@@ -1696,7 +1696,7 @@ var require_picomatch = __commonJS({
       }
       if (match === false || opts.capture === true) {
         if (opts.matchBase === true || opts.basename === true) {
-          match = picomatch3.matchBase(input, regex, options, posix);
+          match = picomatch3.matchBase(input, regex, options, posix2);
         } else {
           match = regex.exec(output);
         }
@@ -1752,7 +1752,7 @@ var require_picomatch = __commonJS({
         return /$^/;
       }
     };
-    picomatch3.constants = constants;
+    picomatch3.constants = constants2;
     module.exports = picomatch3;
   }
 });
@@ -12382,6 +12382,11 @@ function tallyMatchedCalls(corpus, catalog, allowlist) {
   };
 }
 
+// src/core/verify/paths.ts
+function isNetworkPath(path) {
+  return /^[\\/]{2}/.test(path) || /^\/(?:net|Network)(?:\/|$)/.test(path);
+}
+
 // src/core/verify/sources.ts
 var EMPTY = { pieces: [], workingDirs: [] };
 var MAX_DEPTH = 32;
@@ -12723,6 +12728,10 @@ async function findRepos(io, workingDirs) {
   const roots = /* @__PURE__ */ new Set();
   const gone = /* @__PURE__ */ new Set();
   for (const cwd of [...workingDirs].slice(0, MAX_WORKING_DIRS)) {
+    if (isNetworkPath(cwd)) {
+      gone.add(cwd);
+      continue;
+    }
     let dir = cwd;
     let steps = 0;
     while (dir !== void 0 && io.isDirectory(dir) !== true && steps < MAX_PARENT_STEPS) {
@@ -13632,8 +13641,17 @@ function createRealScanIO() {
 
 // src/verify-io.ts
 import { execFile } from "child_process";
-import { readFileSync as readFileSync2, realpathSync, statSync as statSync3 } from "fs";
-import { isAbsolute as isAbsolute2, relative as relative2 } from "path";
+import {
+  accessSync,
+  closeSync,
+  constants,
+  fstatSync,
+  openSync,
+  readSync,
+  realpathSync,
+  statSync as statSync3
+} from "fs";
+import { isAbsolute as isAbsolute2, posix, relative as relative2, win32 } from "path";
 var GIT_ALLOW_LIST = [
   ["rev-parse", "--show-toplevel"],
   ["ls-files", "-z"]
@@ -13711,14 +13729,45 @@ function parseTasklistNames(stdout) {
   }
   return names.slice(0, MAX_PROCESS_NAMES);
 }
-function isInside(root, path) {
-  const rel = relative2(root, path);
-  return rel !== "" && !rel.startsWith("..") && !isAbsolute2(rel);
+function isInside(root, path, paths = { relative: relative2, isAbsolute: isAbsolute2 }) {
+  const rel = paths.relative(root, path);
+  return rel !== "" && !rel.startsWith("..") && !paths.isAbsolute(rel);
+}
+function defaultIsExecutable(platform) {
+  return (path) => {
+    try {
+      if (!statSync3(path).isFile()) return false;
+      if (platform !== "win32") accessSync(path, constants.X_OK);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+}
+function resolveProgram(name, env, platform, isExecutable) {
+  const paths = platform === "win32" ? win32 : posix;
+  const file2 = platform === "win32" ? `${name}.exe` : name;
+  for (const entry of (env.PATH ?? env.Path ?? "").split(paths.delimiter)) {
+    if (entry === "" || !paths.isAbsolute(entry) || isNetworkPath(entry)) continue;
+    const candidate = paths.join(entry, file2);
+    if (isExecutable(candidate)) return candidate;
+  }
+  return void 0;
 }
 function createRealVerifyIO(options = {}) {
   const exec = options.exec ?? realExec;
-  const env = gitEnvironment(options.env ?? process.env);
+  const callerEnv = options.env ?? process.env;
+  const env = gitEnvironment(callerEnv);
   const platform = options.platform ?? process.platform;
+  const isExecutable = options.isExecutable ?? defaultIsExecutable(platform);
+  const programs = /* @__PURE__ */ new Map();
+  const programPath = (name) => {
+    if (!programs.has(name)) {
+      programs.set(name, resolveProgram(name, callerEnv, platform, isExecutable) ?? null);
+    }
+    return programs.get(name) ?? void 0;
+  };
+  let scratch;
   const now = options.now ?? (() => Date.now());
   const callTimeout = options.callTimeoutMs ?? CALL_TIMEOUT_MS;
   const budget = options.totalBudgetMs ?? TOTAL_BUDGET_MS;
@@ -13756,8 +13805,15 @@ function createRealVerifyIO(options = {}) {
   };
   return {
     async git(cwd, args2) {
-      if (!isAllowedGitCall(args2)) return { ok: false, reason: "refused" };
-      const result = await run("git", [...GIT_SAFETY_ARGS, ...args2], cwd);
+      if (!isAllowedGitCall(args2) || isNetworkPath(cwd)) return { ok: false, reason: "refused" };
+      const git = programPath("git");
+      if (git === void 0) return { ok: false, reason: "missing" };
+      const paths = platform === "win32" ? win32 : posix;
+      const from = paths.resolve(cwd);
+      if (paths.resolve(git) === from || isInside(from, paths.resolve(git), paths)) {
+        return { ok: false, reason: "refused" };
+      }
+      const result = await run(git, [...GIT_SAFETY_ARGS, ...args2], cwd);
       if (typeof result === "string") return { ok: false, reason: result };
       if (result.kind !== "ok") return { ok: false, reason: failureOf(result) };
       if (args2[0] === "rev-parse") {
@@ -13770,6 +13826,7 @@ function createRealVerifyIO(options = {}) {
       return { ok: true, stdout: result.stdout };
     },
     isDirectory(path) {
+      if (isNetworkPath(path)) return void 0;
       try {
         return statSync3(path).isDirectory();
       } catch {
@@ -13778,25 +13835,43 @@ function createRealVerifyIO(options = {}) {
     },
     readFile(path) {
       if (spent >= budget) return Promise.resolve({ ok: false, reason: "budget" });
+      if (isNetworkPath(path)) return Promise.resolve({ ok: false, reason: "refused" });
       const started = now();
+      let fd;
       try {
         const real = realpathSync(path);
         if (![...roots].some((root) => isInside(root, real))) {
           return Promise.resolve({ ok: false, reason: "refused" });
         }
-        const stat2 = statSync3(real);
+        fd = openSync(
+          real,
+          constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0)
+        );
+        const stat2 = fstatSync(fd);
         if (!stat2.isFile()) return Promise.resolve({ ok: false, reason: "failed" });
         if (stat2.size > MAX_FILE_BYTES) return Promise.resolve({ ok: false, reason: "too-large" });
-        return Promise.resolve({ ok: true, text: readFileSync2(real, "utf8") });
+        scratch ??= Buffer.allocUnsafe(MAX_FILE_BYTES + 1);
+        let total = 0;
+        for (; ; ) {
+          const read = readSync(fd, scratch, total, scratch.length - total, null);
+          if (read === 0) break;
+          total += read;
+          if (total === scratch.length) break;
+        }
+        if (total > MAX_FILE_BYTES) return Promise.resolve({ ok: false, reason: "too-large" });
+        return Promise.resolve({ ok: true, text: scratch.toString("utf8", 0, total) });
       } catch {
         return Promise.resolve({ ok: false, reason: "missing" });
       } finally {
+        if (fd !== void 0) closeSync(fd);
         spent += Math.max(0, now() - started);
       }
     },
     async processNames() {
       const windows = platform === "win32";
-      const result = windows ? await run("tasklist", ["/fo", "csv", "/nh"], void 0) : await run("ps", ["-axo", "comm="], void 0);
+      const program = programPath(windows ? "tasklist" : "ps");
+      if (program === void 0) return { ok: false, reason: "missing" };
+      const result = windows ? await run(program, ["/fo", "csv", "/nh"], void 0) : await run(program, ["-axo", "comm="], void 0);
       if (typeof result === "string") return { ok: false, reason: result };
       if (result.kind !== "ok") return { ok: false, reason: failureOf(result) };
       return {

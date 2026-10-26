@@ -1,4 +1,4 @@
-// cspell:words fsmonitor tasklist SYSTEMROOT
+// cspell:words fsmonitor tasklist SYSTEMROOT automount Statting
 /**
  * `VerifyIO` — the read-only seam `scan --verify` checks this machine through.
  *
@@ -12,12 +12,29 @@
  * repository only.
  *
  * ── How `git` is run ─────────────────────────────────────────────────────────
- * Through `execFile`, never a shell, so no argument is ever shell syntax. Every call carries
- * `GIT_SAFETY_ARGS`, which stop a repository's own config from starting a program: no
- * file-system monitor, no pager, no external diff tool. The environment is built fresh rather
+ * Through `execFile`, never a shell, so no argument is ever shell syntax, and by ABSOLUTE path:
+ * `git`, `ps` and `tasklist` are each found once, in the absolute folders on `PATH` only. A
+ * bare name would let the operating system look in the call's working directory first (Windows
+ * does), and a relative `PATH` entry would do the same anywhere, so a repository that commits
+ * its own `git` could have it run. A program found inside the folder a call runs in is refused,
+ * and a program not found reads as missing. Every call carries `GIT_SAFETY_ARGS`, which stop a
+ * repository's own config from starting a program: no file-system monitor, no pager, no
+ * external diff tool. (The two allowed subcommands consult only the first; the other two are
+ * there for the read-only commands later checks add.) The environment is built fresh rather
  * than inherited, so a `GIT_DIR`, `GIT_CONFIG_*` or `GIT_SSH_COMMAND` in the caller's shell
  * never reaches it, and it sets `GIT_OPTIONAL_LOCKS=0` (no index refresh is written) and
  * `GIT_TERMINAL_PROMPT=0` (nothing waits for a password).
+ *
+ * ── Network paths are not touched ────────────────────────────────────────────
+ * A working directory named in a transcript can be a network share (`\\host\share`,
+ * `//host/share`) or an automount (`/net/…`, `/Network/…`). Statting it or running `git` in
+ * it would reach the network, so such a path reads as not there, and nothing runs in it.
+ *
+ * ── How a file is read ───────────────────────────────────────────────────────
+ * Opened once, without following a final link and without blocking, then checked through
+ * the open descriptor: anything that is not a regular file is refused, and at most
+ * `MAX_FILE_BYTES` + 1 bytes are read, so a pipe swapped in or a file that grew after the
+ * check can neither hang the scan nor slip past the size cap.
  *
  * ── Limits, and what a failure means ─────────────────────────────────────────
  * Each call has `CALL_TIMEOUT_MS` and an output cap of `MAX_OUTPUT_BYTES`, and all calls share
@@ -29,8 +46,18 @@
  */
 
 import { execFile } from "node:child_process";
-import { readFileSync, realpathSync, statSync } from "node:fs";
-import { isAbsolute, relative } from "node:path";
+import {
+  accessSync,
+  closeSync,
+  constants,
+  fstatSync,
+  openSync,
+  readSync,
+  realpathSync,
+  statSync,
+} from "node:fs";
+import { isAbsolute, posix, relative, win32 } from "node:path";
+import { isNetworkPath } from "./core/verify/paths.js";
 import type {
   CheckFailure,
   FileOutcome,
@@ -178,9 +205,51 @@ export function parseTasklistNames(stdout: string): string[] {
 }
 
 /** Is `path` inside `root` (and not `root` itself)? Both are real paths. */
-function isInside(root: string, path: string): boolean {
-  const rel = relative(root, path);
-  return rel !== "" && !rel.startsWith("..") && !isAbsolute(rel);
+function isInside(
+  root: string,
+  path: string,
+  paths: { relative: typeof relative; isAbsolute: typeof isAbsolute } = { relative, isAbsolute },
+): boolean {
+  const rel = paths.relative(root, path);
+  return rel !== "" && !rel.startsWith("..") && !paths.isAbsolute(rel);
+}
+
+export { isNetworkPath };
+
+/** Is `path` a regular file this process may execute? */
+function defaultIsExecutable(platform: string): (path: string) => boolean {
+  return (path) => {
+    try {
+      if (!statSync(path).isFile()) return false;
+      if (platform !== "win32") accessSync(path, constants.X_OK);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+}
+
+/**
+ * The absolute path of `name` on `PATH`, or `undefined`.
+ *
+ * Only absolute entries are searched: an empty or relative entry names the working directory
+ * of whatever runs next, which is a folder a transcript chose. On Windows the program is
+ * `<name>.exe` and entries are split on `;`; a `.cmd` or `.bat` would need a shell to run.
+ */
+export function resolveProgram(
+  name: string,
+  env: Readonly<Record<string, string | undefined>>,
+  platform: string,
+  isExecutable: (path: string) => boolean,
+): string | undefined {
+  const paths = platform === "win32" ? win32 : posix;
+  const file = platform === "win32" ? `${name}.exe` : name;
+  for (const entry of (env.PATH ?? env.Path ?? "").split(paths.delimiter)) {
+    if (entry === "" || !paths.isAbsolute(entry) || isNetworkPath(entry)) continue;
+    const candidate = paths.join(entry, file);
+    if (isExecutable(candidate)) return candidate;
+  }
+  return undefined;
 }
 
 /** What `createRealVerifyIO` may be given. Production passes nothing. */
@@ -192,13 +261,27 @@ export interface VerifyIOOptions {
   readonly now?: () => number;
   readonly callTimeoutMs?: number;
   readonly totalBudgetMs?: number;
+  /** Whether a path is a program that may be run. For tests that place their own `PATH`. */
+  readonly isExecutable?: (path: string) => boolean;
 }
 
 /** The real `VerifyIO`. Created only when `scan --verify` runs. */
 export function createRealVerifyIO(options: VerifyIOOptions = {}): VerifyIO {
   const exec = options.exec ?? realExec;
-  const env = gitEnvironment(options.env ?? process.env);
+  const callerEnv = options.env ?? process.env;
+  const env = gitEnvironment(callerEnv);
   const platform = options.platform ?? process.platform;
+  const isExecutable = options.isExecutable ?? defaultIsExecutable(platform);
+  // Each program's absolute path, found once. `null` when it is not on `PATH`.
+  const programs = new Map<string, string | null>();
+  const programPath = (name: string): string | undefined => {
+    if (!programs.has(name)) {
+      programs.set(name, resolveProgram(name, callerEnv, platform, isExecutable) ?? null);
+    }
+    return programs.get(name) ?? undefined;
+  };
+  // One buffer for every file read: reads are synchronous, so it is never shared.
+  let scratch: Buffer | undefined;
   const now = options.now ?? (() => Date.now());
   const callTimeout = options.callTimeoutMs ?? CALL_TIMEOUT_MS;
   const budget = options.totalBudgetMs ?? TOTAL_BUDGET_MS;
@@ -249,8 +332,16 @@ export function createRealVerifyIO(options: VerifyIOOptions = {}): VerifyIO {
 
   return {
     async git(cwd: string, args: readonly string[]): Promise<GitOutcome> {
-      if (!isAllowedGitCall(args)) return { ok: false, reason: "refused" };
-      const result = await run("git", [...GIT_SAFETY_ARGS, ...args], cwd);
+      if (!isAllowedGitCall(args) || isNetworkPath(cwd)) return { ok: false, reason: "refused" };
+      const git = programPath("git");
+      if (git === undefined) return { ok: false, reason: "missing" };
+      // A `git` that sits inside the folder it would run in could be the repository's own.
+      const paths = platform === "win32" ? win32 : posix;
+      const from = paths.resolve(cwd);
+      if (paths.resolve(git) === from || isInside(from, paths.resolve(git), paths)) {
+        return { ok: false, reason: "refused" };
+      }
+      const result = await run(git, [...GIT_SAFETY_ARGS, ...args], cwd);
       if (typeof result === "string") return { ok: false, reason: result };
       if (result.kind !== "ok") return { ok: false, reason: failureOf(result) };
       if (args[0] === "rev-parse") {
@@ -264,6 +355,7 @@ export function createRealVerifyIO(options: VerifyIOOptions = {}): VerifyIO {
     },
 
     isDirectory(path: string): boolean | undefined {
+      if (isNetworkPath(path)) return undefined;
       try {
         return statSync(path).isDirectory();
       } catch {
@@ -273,7 +365,9 @@ export function createRealVerifyIO(options: VerifyIOOptions = {}): VerifyIO {
 
     readFile(path: string): Promise<FileOutcome> {
       if (spent >= budget) return Promise.resolve({ ok: false, reason: "budget" });
+      if (isNetworkPath(path)) return Promise.resolve({ ok: false, reason: "refused" });
       const started = now();
+      let fd: number | undefined;
       try {
         // The REAL path is what is checked, so a link inside a repo that points out of it is
         // refused rather than followed.
@@ -281,22 +375,41 @@ export function createRealVerifyIO(options: VerifyIOOptions = {}): VerifyIO {
         if (![...roots].some((root) => isInside(root, real))) {
           return Promise.resolve({ ok: false, reason: "refused" });
         }
-        const stat = statSync(real);
+        // Opened once, then checked through the descriptor: what was swapped in after the
+        // path was resolved is what gets checked, a final link is not followed, and a pipe
+        // does not block the open.
+        fd = openSync(
+          real,
+          constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0),
+        );
+        const stat = fstatSync(fd);
         if (!stat.isFile()) return Promise.resolve({ ok: false, reason: "failed" });
         if (stat.size > MAX_FILE_BYTES) return Promise.resolve({ ok: false, reason: "too-large" });
-        return Promise.resolve({ ok: true, text: readFileSync(real, "utf8") });
+        scratch ??= Buffer.allocUnsafe(MAX_FILE_BYTES + 1);
+        let total = 0;
+        for (;;) {
+          const read = readSync(fd, scratch, total, scratch.length - total, null);
+          if (read === 0) break;
+          total += read;
+          if (total === scratch.length) break;
+        }
+        if (total > MAX_FILE_BYTES) return Promise.resolve({ ok: false, reason: "too-large" });
+        return Promise.resolve({ ok: true, text: scratch.toString("utf8", 0, total) });
       } catch {
         return Promise.resolve({ ok: false, reason: "missing" });
       } finally {
+        if (fd !== undefined) closeSync(fd);
         spent += Math.max(0, now() - started);
       }
     },
 
     async processNames(): Promise<ProcessOutcome> {
       const windows = platform === "win32";
+      const program = programPath(windows ? "tasklist" : "ps");
+      if (program === undefined) return { ok: false, reason: "missing" };
       const result = windows
-        ? await run("tasklist", ["/fo", "csv", "/nh"], undefined)
-        : await run("ps", ["-axo", "comm="], undefined);
+        ? await run(program, ["/fo", "csv", "/nh"], undefined)
+        : await run(program, ["-axo", "comm="], undefined);
       if (typeof result === "string") return { ok: false, reason: result };
       if (result.kind !== "ok") return { ok: false, reason: failureOf(result) };
       return {

@@ -1,4 +1,4 @@
-// cspell:words devpass Fingerprinter fingerprinters changeme IOSFODNN cret
+// cspell:words devpass Fingerprinter fingerprinters changeme IOSFODNN cret statted
 /**
  * The secrets check (`core/verify/secrets.ts`), on synthetic transcripts and a temporary git
  * repo built in the test.
@@ -285,6 +285,44 @@ describe("the fixture search through the seam", () => {
   it("a working directory that is gone is a repo that could not be checked", async () => {
     const { io: seam } = scripted({ dir: false });
     const result = await check("claude", [events], { io: seam, cwd: "/gone/repo" });
+    expect(result.facts.reposNotChecked).toBe(1);
+  });
+
+  it("a gone working directory whose parent is there but is no repo still could not be checked", async () => {
+    const calls: string[][] = [];
+    const seam: VerifyIO = {
+      ...scripted({}).io,
+      isDirectory: (path) => path === "/projects",
+      git: (cwd, args) => {
+        calls.push([cwd, ...args]);
+        return Promise.resolve({ ok: false, reason: "not-a-repo" });
+      },
+    };
+    const result = await check("claude", [events], { io: seam, cwd: "/projects/deleted-app" });
+    expect(calls).toEqual([["/projects", "rev-parse", "--show-toplevel"]]);
+    expect(result.facts.reposNotChecked).toBe(1);
+    expect(result.facts.fixtureCheck).toBe("unavailable");
+  });
+
+  it.each([
+    "//host/share/app",
+    "\\\\host\\share\\app",
+    "/net/host/app",
+  ])("a working directory on a network path %s is never statted or run in", async (cwd) => {
+    const touched: string[] = [];
+    const seam: VerifyIO = {
+      ...scripted({}).io,
+      isDirectory: (path) => {
+        touched.push(path);
+        return true;
+      },
+      git: (dir) => {
+        touched.push(dir);
+        return Promise.resolve({ ok: true, stdout: "/repo\n" });
+      },
+    };
+    const result = await check("claude", [events], { io: seam, cwd });
+    expect(touched).toEqual([]);
     expect(result.facts.reposNotChecked).toBe(1);
   });
 

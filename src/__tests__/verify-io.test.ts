@@ -1,4 +1,4 @@
-// cspell:words fsmonitor tasklist
+// cspell:words fsmonitor tasklist mkfifo statted
 /**
  * The read-only seam `scan --verify` uses (`src/verify-io.ts`).
  *
@@ -18,7 +18,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { isAbsolute, join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   createRealVerifyIO,
@@ -28,10 +28,12 @@ import {
   GIT_SAFETY_ARGS,
   gitEnvironment,
   isAllowedGitCall,
+  isNetworkPath,
   MAX_FILE_BYTES,
   parsePsNames,
   parseTasklistNames,
   realExec,
+  resolveProgram,
 } from "../verify-io.js";
 
 /** An `exec` that records every call and answers `ok`. */
@@ -78,6 +80,8 @@ describe("the git allow-list", () => {
     [["-c", "core.pager=sh", "ls-files", "-z"]],
     [["fsck", "--lost-found"]],
     [["config", "core.hooksPath", "x"]],
+    [["-z", "ls-files"]],
+    [["--show-toplevel", "rev-parse"]],
     [[]],
   ])("refuses %j without starting a process", async (args) => {
     expect(isAllowedGitCall(args)).toBe(false);
@@ -87,14 +91,41 @@ describe("the git allow-list", () => {
     expect(calls).toEqual([]);
   });
 
-  it("runs an allowed call through execFile options with no shell, and the safety flags first", async () => {
+  it("pins the safety flags, written out rather than read back from the constant", () => {
+    expect(GIT_SAFETY_ARGS).toEqual([
+      "-c",
+      "core.fsmonitor=false",
+      "-c",
+      "core.pager=cat",
+      "-c",
+      "diff.external=",
+      "--no-pager",
+    ]);
+  });
+
+  it("runs an allowed call by absolute path, with no shell and the safety flags first", async () => {
     const { exec, calls } = recorder();
-    const io = createRealVerifyIO({ exec, env: { PATH: "/bin", GIT_DIR: "/elsewhere" } });
+    const io = createRealVerifyIO({
+      exec,
+      env: { PATH: "/opt/tools/bin", GIT_DIR: "/elsewhere" },
+      isExecutable: (path) => path === "/opt/tools/bin/git",
+    });
     await io.git("/repo", ["ls-files", "-z"]);
     expect(calls).toHaveLength(1);
     const [only] = calls;
-    expect(only?.file).toBe("git");
-    expect(only?.args).toEqual([...GIT_SAFETY_ARGS, "ls-files", "-z"]);
+    expect(only?.file).toBe("/opt/tools/bin/git");
+    expect(isAbsolute(only?.file ?? "")).toBe(true);
+    expect(only?.args).toEqual([
+      "-c",
+      "core.fsmonitor=false",
+      "-c",
+      "core.pager=cat",
+      "-c",
+      "diff.external=",
+      "--no-pager",
+      "ls-files",
+      "-z",
+    ]);
     expect(only?.options.shell).toBe(false);
     expect(only?.options.cwd).toBe("/repo");
     expect(only?.options.timeout).toBeLessThanOrEqual(5_000);
@@ -180,6 +211,8 @@ describe("failures become a reason, never an answer", () => {
     [{ kind: "missing" } as const, "missing"],
     [{ kind: "failed" } as const, "failed"],
     [{ kind: "exit", code: 1, stderr: "" } as const, "failed"],
+    [{ kind: "exit", code: 1, stderr: "fatal: not a git repository" } as const, "failed"],
+    [{ kind: "exit", code: 128, stderr: "fatal: unsafe repository" } as const, "failed"],
     [{ kind: "exit", code: 128, stderr: "fatal: not a git repository" } as const, "not-a-repo"],
   ])("maps %j to %s", async (result, reason) => {
     const io = createRealVerifyIO({ exec: () => Promise.resolve(result) });
@@ -287,12 +320,163 @@ describe("against a real repository", () => {
     expect(await io.readFile(join(root, "gone.txt"))).toEqual({ ok: false, reason: "missing" });
   });
 
+  it("refuses a pipe in the repository without blocking on it", async () => {
+    const root = repo();
+    const fifo = join(root, "pipe");
+    execFileSync("mkfifo", [fifo]);
+    const io = createRealVerifyIO();
+    await io.git(root, ["rev-parse", "--show-toplevel"]);
+    const started = Date.now();
+    expect(await io.readFile(fifo)).toEqual({ ok: false, reason: "failed" });
+    expect(Date.now() - started).toBeLessThan(2_000);
+  }, 10_000);
+
+  it("reads a file of exactly the cap, and nothing past it", async () => {
+    const root = repo({ "edge.txt": "y".repeat(MAX_FILE_BYTES) });
+    const io = createRealVerifyIO();
+    await io.git(root, ["rev-parse", "--show-toplevel"]);
+    const read = await io.readFile(join(root, "edge.txt"));
+    expect(read.ok && read.text.length).toBe(MAX_FILE_BYTES);
+  });
+
   it("tells a folder from a file and from nothing", () => {
     const root = repo();
     const io = createRealVerifyIO();
     expect(io.isDirectory(root)).toBe(true);
     expect(io.isDirectory(join(root, "a.txt"))).toBe(false);
     expect(io.isDirectory(join(root, "nope"))).toBeUndefined();
+  });
+});
+
+describe("programs are run by absolute path only", () => {
+  /** A temporary folder holding an executable file called `name`. */
+  function folderWith(name: string): string {
+    const dir = mkdtempSync(join(tmpdir(), "agenttrail-verify-bin-"));
+    writeFileSync(join(dir, name), "#!/bin/sh\nexit 0\n", { mode: 0o755 });
+    return dir;
+  }
+
+  it("finds a program in an absolute PATH entry", () => {
+    const dir = folderWith("git");
+    expect(
+      resolveProgram("git", { PATH: `/nonexistent:${dir}` }, "darwin", (p) => existsSync(p)),
+    ).toBe(join(dir, "git"));
+  });
+
+  it("skips empty, relative and network entries", () => {
+    const seen: string[] = [];
+    const found = resolveProgram(
+      "git",
+      { PATH: ":bin:./tools://host/share/bin:/usr/local/bin" },
+      "linux",
+      (p) => {
+        seen.push(p);
+        return p === "/usr/local/bin/git";
+      },
+    );
+    expect(found).toBe("/usr/local/bin/git");
+    expect(seen).toEqual(["/usr/local/bin/git"]);
+  });
+
+  it("on Windows, looks for the .exe in absolute entries split on ;", () => {
+    const seen: string[] = [];
+    expect(
+      resolveProgram(
+        "git",
+        { Path: "relative;C:\\Program Files\\Git\\cmd;\\\\host\\share" },
+        "win32",
+        (p) => {
+          seen.push(p);
+          return p.endsWith("\\cmd\\git.exe");
+        },
+      ),
+    ).toBe("C:\\Program Files\\Git\\cmd\\git.exe");
+    expect(seen).toEqual(["C:\\Program Files\\Git\\cmd\\git.exe"]);
+  });
+
+  it("a git that is not on PATH is missing, and nothing runs", async () => {
+    const { exec, calls } = recorder();
+    const io = createRealVerifyIO({ exec, env: { PATH: "/none" }, isExecutable: () => false });
+    expect(await io.git("/repo", ["ls-files", "-z"])).toEqual({ ok: false, reason: "missing" });
+    expect(calls).toEqual([]);
+  });
+
+  it("a git that sits inside the folder it would run in is refused", async () => {
+    const { exec, calls } = recorder();
+    const io = createRealVerifyIO({
+      exec,
+      env: { PATH: "/work/repo/bin" },
+      isExecutable: (p) => p === "/work/repo/bin/git",
+    });
+    expect(await io.git("/work/repo", ["ls-files", "-z"])).toEqual({
+      ok: false,
+      reason: "refused",
+    });
+    expect(calls).toEqual([]);
+    // The same git, run in a folder that does not contain it, is allowed.
+    expect((await io.git("/work/other", ["ls-files", "-z"])).ok).toBe(true);
+  });
+
+  it("finds a program once, however many calls are made", async () => {
+    let lookups = 0;
+    const { exec } = recorder();
+    const io = createRealVerifyIO({
+      exec,
+      env: { PATH: "/opt/bin" },
+      isExecutable: (p) => {
+        lookups += 1;
+        return p === "/opt/bin/git";
+      },
+    });
+    await io.git("/a", ["ls-files", "-z"]);
+    await io.git("/b", ["ls-files", "-z"]);
+    expect(lookups).toBe(1);
+  });
+
+  it("the real seam runs git by an absolute path", async () => {
+    const calls: string[] = [];
+    const io = createRealVerifyIO({
+      exec: (file, args, options) => {
+        calls.push(file);
+        return realExec(file, args, options);
+      },
+    });
+    const root = repo();
+    expect((await io.git(root, ["ls-files", "-z"])).ok).toBe(true);
+    expect(calls.every((file) => isAbsolute(file))).toBe(true);
+  });
+});
+
+describe("network paths are not touched", () => {
+  it.each([
+    "\\\\host\\share\\repo",
+    "//host/share/repo",
+    "/net/host/repo",
+    "/net",
+    "/Network/Servers/host",
+  ])("%s is a network path", (path) => {
+    expect(isNetworkPath(path)).toBe(true);
+  });
+
+  it.each([
+    "/home/user/repo",
+    "C:\\Users\\me\\repo",
+    "/network-tools",
+    "/netflix",
+  ])("%s is not", (path) => {
+    expect(isNetworkPath(path)).toBe(false);
+  });
+
+  it("nothing is statted, run or read on one", async () => {
+    const { exec, calls } = recorder();
+    const io = createRealVerifyIO({ exec });
+    expect(io.isDirectory("//host/share/repo")).toBeUndefined();
+    expect(await io.git("//host/share/repo", ["ls-files", "-z"])).toEqual({
+      ok: false,
+      reason: "refused",
+    });
+    expect(await io.readFile("/net/host/repo/a.txt")).toEqual({ ok: false, reason: "refused" });
+    expect(calls).toEqual([]);
   });
 });
 
@@ -311,21 +495,42 @@ describe("process names, never arguments", () => {
     ).toEqual(["node.exe", "Code.exe"]);
   });
 
-  it("runs ps with names only, or tasklist on Windows", async () => {
+  it("runs ps with names only, or tasklist on Windows, each by absolute path", async () => {
     const unix = recorder("node\n");
     expect(
-      await createRealVerifyIO({ exec: unix.exec, platform: "darwin" }).processNames(),
+      await createRealVerifyIO({
+        exec: unix.exec,
+        platform: "darwin",
+        env: { PATH: "/bin:/usr/bin" },
+        isExecutable: (path) => path === "/bin/ps",
+      }).processNames(),
     ).toEqual({
       ok: true,
       names: ["node"],
     });
-    expect(unix.calls.map((c) => [c.file, ...c.args])).toEqual([["ps", "-axo", "comm="]]);
+    expect(unix.calls.map((c) => [c.file, ...c.args])).toEqual([["/bin/ps", "-axo", "comm="]]);
     const win = recorder('"node.exe","1"\r\n');
-    expect(await createRealVerifyIO({ exec: win.exec, platform: "win32" }).processNames()).toEqual({
+    expect(
+      await createRealVerifyIO({
+        exec: win.exec,
+        platform: "win32",
+        env: { Path: "C:\\Windows\\system32;C:\\Windows" },
+        isExecutable: (path) => path === "C:\\Windows\\system32\\tasklist.exe",
+      }).processNames(),
+    ).toEqual({
       ok: true,
       names: ["node.exe"],
     });
-    expect(win.calls.map((c) => [c.file, ...c.args])).toEqual([["tasklist", "/fo", "csv", "/nh"]]);
+    expect(win.calls.map((c) => [c.file, ...c.args])).toEqual([
+      ["C:\\Windows\\system32\\tasklist.exe", "/fo", "csv", "/nh"],
+    ]);
+  });
+
+  it("a ps that is not on PATH is missing, and nothing runs", async () => {
+    const { exec, calls } = recorder();
+    const io = createRealVerifyIO({ exec, env: { PATH: "/none" }, isExecutable: () => false });
+    expect(await io.processNames()).toEqual({ ok: false, reason: "missing" });
+    expect(calls).toEqual([]);
   });
 
   it("a process list that cannot be read is a reason", async () => {

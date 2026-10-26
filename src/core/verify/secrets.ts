@@ -1,4 +1,4 @@
-// cspell:words letmein qwerty passwd foobar Fingerprinter changeme abababab
+// cspell:words letmein qwerty passwd foobar Fingerprinter changeme abababab automount statted
 /**
  * The secrets check: every credential-shaped value in the transcripts, sorted into four
  * classes, and for each likely-real one, how it got there and how many files hold it.
@@ -41,6 +41,7 @@ import { redactSecrets } from "../redact-secrets.js";
 import { scrubText } from "../scrub.js";
 import type { AgentSource } from "../types.js";
 import type { Fingerprinter } from "./fingerprint.js";
+import { isNetworkPath } from "./paths.js";
 import { lineText } from "./sources.js";
 import {
   type FixtureCheck,
@@ -367,6 +368,11 @@ async function findRepos(
   const roots = new Set<string>();
   const gone = new Set<string>();
   for (const cwd of [...workingDirs].slice(0, MAX_WORKING_DIRS)) {
+    // A network share or automount is never statted or walked up from.
+    if (isNetworkPath(cwd)) {
+      gone.add(cwd);
+      continue;
+    }
     let dir: string | undefined = cwd;
     let steps = 0;
     while (dir !== undefined && io.isDirectory(dir) !== true && steps < MAX_PARENT_STEPS) {
