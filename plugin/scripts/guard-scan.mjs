@@ -1734,14 +1734,14 @@ var require_picomatch = __commonJS({
       if (!input || typeof input !== "string") {
         throw new TypeError("Expected a non-empty string");
       }
-      let parsed = { negated: false, fastpaths: true };
+      let parsed2 = { negated: false, fastpaths: true };
       if (options.fastpaths !== false && (input[0] === "." || input[0] === "*")) {
-        parsed.output = parse.fastpaths(input, options);
+        parsed2.output = parse.fastpaths(input, options);
       }
-      if (!parsed.output) {
-        parsed = parse(input, options);
+      if (!parsed2.output) {
+        parsed2 = parse(input, options);
       }
-      return picomatch3.compileRe(parsed, options, returnOutput, returnState);
+      return picomatch3.compileRe(parsed2, options, returnOutput, returnState);
     };
     picomatch3.toRegex = (source, options) => {
       try {
@@ -1775,7 +1775,7 @@ var require_picomatch2 = __commonJS({
 });
 
 // src/commands/scan.ts
-import { basename as basename3, dirname, join as join5, resolve } from "path";
+import { basename as basename3, dirname, join as join6, resolve } from "path";
 import { pathToFileURL } from "url";
 
 // src/core/types.ts
@@ -8354,13 +8354,13 @@ var CHIP_TONE = {
   render: ({ tone }) => TONE_LABELS[tone].toLowerCase()
 };
 function chipText(card) {
-  const counted3 = card.chip !== void 0 && (card.tone === "act" || card.tone === "review" || card.tone === "clean");
-  if (card.unconfirmed !== void 0 && (!counted3 || (card.chip?.count ?? 0) === 0)) {
+  const counted4 = card.chip !== void 0 && (card.tone === "act" || card.tone === "review" || card.tone === "clean");
+  if (card.unconfirmed !== void 0 && (!counted4 || (card.chip?.count ?? 0) === 0)) {
     return {
       label: sentence(CHIP_UNCONFIRMED, card) ?? { template: CHIP_UNCONFIRMED.id, text: "" }
     };
   }
-  if (counted3 && card.chip !== void 0) {
+  if (counted4 && card.chip !== void 0) {
     return { count: card.chip.count, label: card.chip.label };
   }
   return { label: sentence(CHIP_TONE, card) ?? { template: CHIP_TONE.id, text: "" } };
@@ -10759,7 +10759,7 @@ function redactCloudIds(text) {
     (_m, name, sep, quote) => `${name}${sep}${quote}${NAME_PLACEHOLDER}${quote}`
   ).replace(
     CLOUD_ID_FLAG,
-    (_m, flag, join7, quote) => `${flag}${join7}${quote}${NAME_PLACEHOLDER}${quote}`
+    (_m, flag, join9, quote) => `${flag}${join9}${quote}${NAME_PLACEHOLDER}${quote}`
   ).replace(AWS_ARN_ACCOUNT, NAME_PLACEHOLDER);
 }
 function sshUserOption(word) {
@@ -11167,14 +11167,14 @@ function redactJsonTextValues(text) {
 }
 function redactMcpPayload(serialized) {
   if (serialized.length === 0) return serialized;
-  let parsed;
+  let parsed2;
   try {
-    parsed = JSON.parse(serialized);
+    parsed2 = JSON.parse(serialized);
   } catch {
     return redactJsonTextValues(serialized);
   }
   try {
-    return JSON.stringify(redactNode(parsed)) ?? MCP_VALUE_PLACEHOLDER;
+    return JSON.stringify(redactNode(parsed2)) ?? MCP_VALUE_PLACEHOLDER;
   } catch {
     return redactJsonTextValues(serialized);
   }
@@ -12698,15 +12698,15 @@ function hasSelectableMatch(match) {
 }
 function parseUserRulesData(text) {
   if (text === void 0 || text.trim().length === 0) return [];
-  let parsed;
+  let parsed2;
   try {
-    parsed = JSON.parse(text);
+    parsed2 = JSON.parse(text);
   } catch {
     return [];
   }
-  if (!Array.isArray(parsed)) return [];
+  if (!Array.isArray(parsed2)) return [];
   const out = [];
-  for (const raw of parsed) {
+  for (const raw of parsed2) {
     if (raw === null || typeof raw !== "object" || Array.isArray(raw)) continue;
     const rec = raw;
     const { id, category, defaultAction, match } = rec;
@@ -13493,9 +13493,9 @@ function segmentHidingForms(segment, command, gitConfigured, writtenBefore, hook
   return forms;
 }
 function readCommand(command, trustWrites) {
-  const parsed = parseShell(command);
-  const regions = parsed.comments.map((c) => ({ ...c, kind: "doc" }));
-  const segments = parsed.segments;
+  const parsed2 = parseShell(command);
+  const regions = parsed2.comments.map((c) => ({ ...c, kind: "doc" }));
+  const segments = parsed2.segments;
   const hooksPaths = hooksPathsNamed(segments);
   const writtenBefore = (index) => segments.slice(0, index).flatMap(writtenBy);
   const laterMayRun = (index) => !trustWrites && segments.some((s, j) => j > index && !isInert(s, writtenBefore(j), hooksPaths));
@@ -13513,8 +13513,8 @@ function readCommand(command, trustWrites) {
     return true;
   };
   const forms = /* @__PURE__ */ new Set();
-  if (parsed.processSubstitution) forms.add("process-substitution");
-  if (parsed.targetRuns) forms.add("command-substitution");
+  if (parsed2.processSubstitution) forms.add("process-substitution");
+  if (parsed2.targetRuns) forms.add("command-substitution");
   let gitConfigured = false;
   segments.forEach((segment, index) => {
     const keep = segment.pipedOut && !pipesOnlyToConsumers(index) || writesAFile(segment) && laterMayRun(index);
@@ -14043,13 +14043,13 @@ async function searchFixtures(io, workingDirs, held, now) {
     }
     const tracked = listing.stdout.split("\0").filter((p) => p !== "");
     let complete = tracked.length <= MAX_TRACKED_FILES;
-    for (const relative3 of tracked.slice(0, MAX_TRACKED_FILES)) {
+    for (const relative4 of tracked.slice(0, MAX_TRACKED_FILES)) {
       if (held.size === 0) break;
       if (bytes >= MAX_FIXTURE_BYTES) {
         complete = false;
         break;
       }
-      const read = await io.readFile(`${root}/${relative3}`);
+      const read = await io.readFile(`${root}/${relative4}`);
       if (!read.ok) {
         if (read.reason === "budget") {
           exhausted = true;
@@ -14102,6 +14102,9 @@ function itemsOf(candidates) {
 }
 async function checkSecrets(input) {
   return (await classifySecrets(input, false)).check;
+}
+async function findLikelyReal(input) {
+  return await classifySecrets(input, true);
 }
 async function classifySecrets(input, keep) {
   const candidates = /* @__PURE__ */ new Map();
@@ -14289,6 +14292,615 @@ function agentChoiceMessage(command) {
 ${lines.join("")}`;
 }
 
+// src/commands/scan-scrub.ts
+import { join as join5, relative as relative2 } from "path";
+
+// src/core/scrub-transcripts.ts
+import { createHash as createHash2 } from "crypto";
+var SCRUB_MARKER = "REDACTED-BY-AGENTTRAIL";
+function scrubPlaceholder(kind) {
+  return `[${SCRUB_MARKER}:${kind}]`;
+}
+function sha256(bytes) {
+  return createHash2("sha256").update(bytes).digest("hex");
+}
+function jsonForm(text) {
+  return JSON.stringify(text).slice(1, -1);
+}
+function asciiForm(form) {
+  let out = "";
+  for (const ch of form) {
+    const code2 = ch.charCodeAt(0);
+    if (code2 <= 126) {
+      out += ch;
+      continue;
+    }
+    for (let i = 0; i < ch.length; i++) {
+      out += `\\u${ch.charCodeAt(i).toString(16).padStart(4, "0")}`;
+    }
+  }
+  return out;
+}
+function formsOf(targets) {
+  const forms = [];
+  const sorted = [...targets].sort((a, b) => b.value.length - a.value.length);
+  for (const target of sorted) {
+    if (target.value === "") continue;
+    const json = jsonForm(target.value);
+    const raws = /* @__PURE__ */ new Set([json, asciiForm(json), json.replaceAll("/", "\\/")]);
+    for (const raw of raws) {
+      forms.push({ raw, kind: target.kind, placeholder: scrubPlaceholder(target.kind) });
+    }
+  }
+  return forms;
+}
+function escapedAt(text, at) {
+  let slashes = 0;
+  for (let i = at - 1; i >= 0 && text.charCodeAt(i) === 92; i--) slashes += 1;
+  return slashes % 2 === 1;
+}
+function replaceInString(inner, forms, counts) {
+  let text = inner;
+  for (const form of forms) {
+    if (!text.includes(form.raw)) continue;
+    let out = "";
+    let from = 0;
+    for (; ; ) {
+      const at = text.indexOf(form.raw, from);
+      if (at < 0) break;
+      if (escapedAt(text, at)) {
+        out += text.slice(from, at + 1);
+        from = at + 1;
+        continue;
+      }
+      out += text.slice(from, at) + form.placeholder;
+      from = at + form.raw.length;
+      counts.set(form.kind, (counts.get(form.kind) ?? 0) + 1);
+    }
+    text = out + text.slice(from);
+  }
+  return text;
+}
+function replaceInLine(line, forms, counts) {
+  let out = "";
+  let i = 0;
+  while (i < line.length) {
+    const open = line.indexOf('"', i);
+    if (open < 0) {
+      out += line.slice(i);
+      break;
+    }
+    let end = open + 1;
+    while (end < line.length) {
+      const code2 = line.charCodeAt(end);
+      if (code2 === 92) end += 2;
+      else if (code2 === 34) break;
+      else end += 1;
+    }
+    if (end >= line.length) {
+      out += line.slice(i);
+      break;
+    }
+    out += line.slice(i, open + 1);
+    out += replaceInString(line.slice(open + 1, end), forms, counts);
+    out += '"';
+    i = end + 1;
+  }
+  return out;
+}
+var MAX_STRINGS = 1e5;
+function holdsValue(parsed2, values) {
+  const stack = [parsed2];
+  let seen = 0;
+  while (stack.length > 0 && seen < MAX_STRINGS) {
+    const item = stack.pop();
+    if (typeof item === "string") {
+      seen += 1;
+      if (values.some((v) => item.includes(v))) return true;
+    } else if (Array.isArray(item)) {
+      for (const x of item) stack.push(x);
+    } else if (item !== null && typeof item === "object") {
+      for (const [key, x] of Object.entries(item)) {
+        stack.push(key);
+        stack.push(x);
+      }
+    }
+  }
+  return false;
+}
+function parsed(line) {
+  try {
+    return { value: JSON.parse(line) };
+  } catch {
+    return void 0;
+  }
+}
+function planFileScrub(text, targets) {
+  const forms = formsOf(targets).filter((form) => text.includes(form.raw));
+  const counts = /* @__PURE__ */ new Map();
+  if (forms.length === 0) {
+    return {
+      text,
+      changed: false,
+      replaced: {},
+      total: 0,
+      linesChanged: 0,
+      linesLeft: 0,
+      linesIncomplete: 0
+    };
+  }
+  const values = [...new Set(targets.map((t) => t.value).filter((v) => v !== ""))];
+  const lines = text.split("\n");
+  let linesChanged = 0;
+  let linesLeft = 0;
+  let linesIncomplete = 0;
+  for (const [index, line] of lines.entries()) {
+    if (!forms.some((form) => line.includes(form.raw))) continue;
+    const lineCounts = /* @__PURE__ */ new Map();
+    const next = replaceInLine(line, forms, lineCounts);
+    if (next === line) continue;
+    const after = parsed(next);
+    if (parsed(line) === void 0 || after === void 0) {
+      linesLeft += 1;
+      continue;
+    }
+    lines[index] = next;
+    linesChanged += 1;
+    for (const [kind, n] of lineCounts) counts.set(kind, (counts.get(kind) ?? 0) + n);
+    if (holdsValue(after.value, values)) linesIncomplete += 1;
+  }
+  const replaced = {};
+  let total = 0;
+  for (const [kind, n] of [...counts].sort(([a], [b]) => a.localeCompare(b))) {
+    replaced[kind] = n;
+    total += n;
+  }
+  const changed = linesChanged > 0;
+  return {
+    text: changed ? lines.join("\n") : text,
+    changed,
+    replaced,
+    total,
+    linesChanged,
+    linesLeft,
+    linesIncomplete
+  };
+}
+
+// src/commands/scan-scrub.ts
+var RECENT_WRITE_WINDOW_MS = 5 * 60 * 1e3;
+var MAX_SCRUB_VALUES = 5e4;
+var MAX_RESTORE_LINES_SHOWN = 10;
+function scrubBackupsRoot(home) {
+  return join5(home, ".agenttrail", "scrub-backups");
+}
+function backupFolderName(now) {
+  return now.toISOString().replace(/[:.]/g, "-");
+}
+function watchedIdOf(agent) {
+  return agent;
+}
+async function agentProcessCheck(io, agent) {
+  const listed = await io.processNames();
+  if (!listed.ok) return { state: "could-not-check" };
+  return listed.running.includes(watchedIdOf(agent)) ? { state: "running" } : { state: "not-running" };
+}
+function isRecentlyModified(mtimeMs, nowMs) {
+  return nowMs - mtimeMs < RECENT_WRITE_WINDOW_MS;
+}
+function shellQuote(path) {
+  return `'${path.replaceAll("'", `'\\''`)}'`;
+}
+function powershellQuote(path) {
+  return `'${path.replaceAll("'", "''")}'`;
+}
+function restoreCommand(platform, backup, original) {
+  if (platform === "win32") {
+    return `Copy-Item -LiteralPath ${powershellQuote(backup)} -Destination ${powershellQuote(original)} -Force`;
+  }
+  return `cp -p ${shellQuote(backup)} ${shellQuote(original)}`;
+}
+function skipText(reason, code2) {
+  switch (reason) {
+    case "unsupported":
+      return "not a supported transcript format (JSON Lines); left alone";
+    case "unreadable":
+      return "could not be read; left alone";
+    case "too-large":
+      return "too large to scrub safely; left alone";
+    case "not-utf8":
+      return "not UTF-8 text, so it cannot be edited without changing other bytes; left alone";
+    case "recent":
+      return "changed in the last 5 minutes, so a session may still be writing it; skipped";
+    case "changed":
+      return "changed since it was read; left as it is";
+    case "write-failed":
+      return "the scrubbed copy could not be written beside it; left as it is";
+    case "rename-failed":
+      return `could not be replaced${code2 === void 0 ? "" : ` (${code2})`}, which happens when another program holds it open; left as it is`;
+    case "verify-failed":
+      return "did not read back as written; restore it from the backup";
+    default:
+      return reason;
+  }
+}
+function utf8(bytes) {
+  try {
+    return new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
+  } catch {
+    return void 0;
+  }
+}
+function planFiles(files, found, scrubIO) {
+  const planning = { changes: [], skipped: [], stuck: [] };
+  for (const path of files) {
+    if (!path.endsWith(".jsonl")) {
+      planning.skipped.push({ path, reason: "unsupported" });
+      continue;
+    }
+    const read = scrubIO.read(path);
+    if (!read.ok) {
+      planning.skipped.push({
+        path,
+        reason: read.reason === "too-large" ? "too-large" : "unreadable"
+      });
+      continue;
+    }
+    const text = utf8(read.bytes);
+    if (text === void 0) {
+      planning.skipped.push({ path, reason: "not-utf8" });
+      continue;
+    }
+    const { text: _text, ...plan } = planFileScrub(text, found.values);
+    const entry = { path, stat: read.stat, sha256: sha256(read.bytes), plan };
+    if (plan.changed) planning.changes.push(entry);
+    else if (plan.linesLeft > 0) planning.stuck.push(entry);
+  }
+  return planning;
+}
+function replacementText(plan) {
+  const kinds = Object.entries(plan.replaced);
+  const parts = kinds.map(([kind, n]) => `${formatCount(n)} ${kind}`).join(", ");
+  return `${formatCount(plan.total)} ${plan.total === 1 ? "replacement" : "replacements"}: ${parts}`;
+}
+function counted2(n, singular, plural2 = `${singular}s`) {
+  return `${formatCount(n)} ${n === 1 ? singular : plural2}`;
+}
+function sessionFilesName(agent) {
+  switch (agent) {
+    case "claude":
+      return "Claude Code transcripts";
+    case "codex":
+      return "Codex session files";
+    case "cursor":
+      return "Cursor agent transcripts";
+    default:
+      return unhandledAgent(agent);
+  }
+}
+async function runScrub(input) {
+  const { agent, io, scrubIO } = input;
+  const c = createColors(input.colors);
+  const app = agentName(agent);
+  const shown = (path) => {
+    const rel = relative2(input.root, path);
+    return rel === "" || rel.startsWith("..") ? path : rel;
+  };
+  const lines = [];
+  const flush = () => {
+    if (lines.length > 0) io.writeStdout(`${lines.join("\n")}
+`);
+    lines.length = 0;
+  };
+  lines.push(
+    c.bold(
+      `${input.apply ? "Scrub" : "Scrub, dry run"}: ${sessionFilesName(agent)} in ${input.root}`
+    )
+  );
+  if (!input.apply) lines.push("Nothing is changed without --apply.");
+  const files = [...new Set(input.corpus.files ?? [])];
+  const found = await findLikelyReal({
+    agent,
+    files: files.filter((f) => f.endsWith(".jsonl")),
+    readLines: (path) => io.readLines(path),
+    io: input.verifyIO,
+    fingerprint: createFingerprinter(),
+    maxHeldValues: MAX_SCRUB_VALUES
+  });
+  const facts = found.check.facts;
+  const planning = planFiles(files, found, scrubIO);
+  lines.push("");
+  const likely = facts.classes["likely-real"];
+  lines.push(
+    `${counted2(likely, "likely-real credential")} in ${counted2(facts.filesRead, "transcript file")}.`
+  );
+  const leftAlone = [];
+  if (facts.classes["committed-fixture"] > 0) {
+    leftAlone.push(counted2(facts.classes["committed-fixture"], "committed fixture"));
+  }
+  if (facts.classes.placeholder > 0) {
+    leftAlone.push(
+      counted2(
+        facts.classes.placeholder,
+        "placeholder or false positive",
+        "placeholders or false positives"
+      )
+    );
+  }
+  if (facts.classes["local-dev"] > 0) {
+    leftAlone.push(counted2(facts.classes["local-dev"], "local dev value"));
+  }
+  if (leftAlone.length > 0) lines.push(c.dim(`Left alone: ${leftAlone.join(", ")}.`));
+  const gaps = [];
+  const notRead = input.corpus.notRead + input.corpus.quarantined + facts.filesNotRead;
+  if (notRead > 0) gaps.push(`${counted2(notRead, "transcript file")} could not be read or checked`);
+  if (facts.unplaced > 0)
+    gaps.push(`${counted2(facts.unplaced, "redacted text")} could not be classed`);
+  if (found.notHeld > 0) {
+    gaps.push(
+      `${counted2(found.notHeld, "likely-real value")} past the limit of ${formatCount(MAX_SCRUB_VALUES)} cannot be replaced in this run`
+    );
+  }
+  if (facts.reposNotChecked > 0) {
+    lines.push(
+      c.dim(
+        `${counted2(facts.reposNotChecked, "repo")} could not be searched for committed fixtures, so a fixture there counts as likely real.`
+      )
+    );
+  } else if (likely > 0 && facts.fixtureCheck === "unavailable") {
+    lines.push(
+      c.dim(
+        "No repo was found to search for committed fixtures, so a fixture counts as likely real."
+      )
+    );
+  }
+  for (const entry of planning.stuck) {
+    gaps.push(
+      `${shown(entry.path)}: ${counted2(entry.plan.linesLeft, "line")} holding a value could not be edited and still parse`
+    );
+  }
+  if (planning.changes.length === 0) {
+    lines.push("");
+    lines.push(
+      likely === 0 ? "Nothing to scrub." : "Nothing could be replaced: no file holds these values in a form this command can edit."
+    );
+    for (const skip of planning.skipped)
+      lines.push(`  ${shown(skip.path)}: ${skipText(skip.reason)}`);
+    for (const gap of gaps) lines.push(c.yellow(`  ${gap}.`));
+    flush();
+    return likely === 0 && gaps.length === 0 ? 0 : input.apply ? 1 : 0;
+  }
+  lines.push("");
+  lines.push(input.apply ? "To scrub:" : "Would scrub:");
+  for (const entry of planning.changes) {
+    lines.push(`  ${shown(entry.path)}  ${replacementText(entry.plan)}`);
+  }
+  for (const skip of planning.skipped)
+    lines.push(`  ${shown(skip.path)}: ${skipText(skip.reason)}`);
+  for (const gap of gaps) lines.push(c.yellow(`  ${gap}.`));
+  lines.push(c.dim(`Each value becomes [${SCRUB_MARKER}:<kind>].`));
+  const advice = () => {
+    lines.push("");
+    lines.push(c.bold("Before you scrub"));
+    lines.push(
+      "  1. Rotate each credential first. Taking it out of the transcripts does not undo the exposure."
+    );
+    lines.push(
+      `  2. Close every ${app} session. A running session keeps appending to its transcript.`
+    );
+    lines.push(
+      c.dim(
+        `Not scrubbed by this command: anything ${app} keeps outside these session files (such as its prompt history and caches), your shell history, and the backup --apply makes.`
+      )
+    );
+  };
+  const running = await agentProcessCheck(input.verifyIO, agent);
+  const nowMs = input.now.getTime();
+  const recent = planning.changes.filter((f) => isRecentlyModified(f.stat.mtimeMs, nowMs));
+  if (!input.apply) {
+    lines.push("");
+    lines.push("With --apply:");
+    lines.push(
+      `  every file above is first copied to a new private folder under ${scrubBackupsRoot(io.homedir())},`
+    );
+    lines.push("  and then each one is replaced in a single step.");
+    if (running.state === "running") {
+      lines.push(c.yellow(`  It would refuse to run now: ${app} is running.`));
+    } else if (running.state === "could-not-check") {
+      lines.push(
+        c.yellow("  It would refuse to run now: the list of running programs could not be read.")
+      );
+    }
+    for (const entry of recent) {
+      lines.push(c.yellow(`  It would skip ${shown(entry.path)}: ${skipText("recent")}.`));
+    }
+    advice();
+    flush();
+    return 0;
+  }
+  if (running.state !== "not-running") {
+    lines.push("");
+    lines.push(
+      c.yellow(
+        running.state === "running" ? `Refused: ${app} is running. Nothing was changed.` : "Refused: the list of running programs could not be read, so a running session cannot be ruled out. Nothing was changed."
+      )
+    );
+    lines.push(`Close every ${app} session, then run this again.`);
+    advice();
+    flush();
+    return 1;
+  }
+  const outcomes = recent.map((f) => ({ path: f.path, reason: "recent" }));
+  const targets = planning.changes.filter((f) => !isRecentlyModified(f.stat.mtimeMs, nowMs));
+  if (targets.length === 0) {
+    lines.push("");
+    for (const o of outcomes) lines.push(c.yellow(`  ${shown(o.path)}: ${skipText(o.reason)}.`));
+    lines.push("Nothing was changed.");
+    advice();
+    flush();
+    return 1;
+  }
+  const backupDir = scrubIO.createBackupDir(
+    scrubBackupsRoot(io.homedir()),
+    backupFolderName(input.now)
+  );
+  if (backupDir === void 0) {
+    lines.push("");
+    lines.push(
+      c.yellow(
+        `Refused: a private backup folder could not be made under ${scrubBackupsRoot(io.homedir())}. Nothing was changed.`
+      )
+    );
+    flush();
+    return 1;
+  }
+  const backedUp = [];
+  const written = [];
+  const width = String(targets.length).length;
+  let backupFailed = false;
+  for (const [i, file2] of targets.entries()) {
+    const read = scrubIO.read(file2.path);
+    if (!read.ok || sha256(read.bytes) !== file2.sha256) {
+      outcomes.push({ path: file2.path, reason: "changed" });
+      continue;
+    }
+    const text = utf8(read.bytes);
+    if (text === void 0) {
+      outcomes.push({ path: file2.path, reason: "changed" });
+      continue;
+    }
+    const name = `${String(i + 1).padStart(width, "0")}-${file2.path.split(/[\\/]/).pop() ?? "file"}`;
+    const backup = join5(backupDir, name);
+    if (!scrubIO.writeBackupFile(backup, read.bytes)) {
+      backupFailed = true;
+      break;
+    }
+    written.push(backup);
+    const after = new TextEncoder().encode(planFileScrub(text, found.values).text);
+    backedUp.push({
+      file: { ...file2, stat: read.stat },
+      backup,
+      after,
+      afterSha: sha256(after)
+    });
+  }
+  const manifest = {
+    format: 1,
+    createdAt: input.now.toISOString(),
+    agent,
+    note: "These files still hold the credentials that were scrubbed. Delete this folder once you have checked the scrubbed files. sha256After is the hash each file has once scrubbed.",
+    files: backedUp.map((b) => ({
+      original: b.file.path,
+      backup: b.backup,
+      size: b.file.stat.size,
+      mtimeMs: b.file.stat.mtimeMs,
+      sha256Before: b.file.sha256,
+      sha256After: b.afterSha
+    }))
+  };
+  const restoreLines = backedUp.map((b) => restoreCommand(input.platform, b.backup, b.file.path));
+  const encoder = new TextEncoder();
+  const manifestPath = join5(backupDir, "manifest.json");
+  const restorePath = join5(backupDir, "restore.txt");
+  if (!backupFailed && backedUp.length > 0) {
+    if (scrubIO.writeBackupFile(
+      manifestPath,
+      encoder.encode(`${JSON.stringify(manifest, null, 2)}
+`)
+    )) {
+      written.push(manifestPath);
+    } else backupFailed = true;
+  }
+  if (!backupFailed && backedUp.length > 0) {
+    if (scrubIO.writeBackupFile(restorePath, encoder.encode(`${restoreLines.join("\n")}
+`))) {
+      written.push(restorePath);
+    } else backupFailed = true;
+  }
+  if (backupFailed || backedUp.length === 0) {
+    scrubIO.discardBackup(backupDir, written);
+    lines.push("");
+    for (const o of outcomes) lines.push(c.yellow(`  ${shown(o.path)}: ${skipText(o.reason)}.`));
+    lines.push(
+      c.yellow(
+        backupFailed ? "Refused: the backup could not be written in full. Nothing was changed, and the partial backup was removed." : "Nothing was changed."
+      )
+    );
+    flush();
+    return 1;
+  }
+  lines.push("");
+  lines.push(
+    `Backed up ${counted2(backedUp.length, "file")} to ${backupDir} (readable only by you).`
+  );
+  lines.push(
+    c.yellow(
+      "That backup still holds the credentials. Delete it once you have checked the scrubbed files."
+    )
+  );
+  flush();
+  const scrubbed = [];
+  for (const b of backedUp) {
+    const replaced = scrubIO.replaceFile(b.file.path, b.after, {
+      stat: b.file.stat,
+      sha256: b.file.sha256
+    });
+    if (!replaced.ok) {
+      outcomes.push({ path: b.file.path, reason: replaced.reason, code: replaced.code });
+      continue;
+    }
+    const back = scrubIO.read(b.file.path);
+    if (!back.ok || sha256(back.bytes) !== b.afterSha) {
+      outcomes.push({ path: b.file.path, reason: "verify-failed" });
+      continue;
+    }
+    scrubbed.push(b);
+  }
+  lines.push("");
+  if (scrubbed.length > 0) {
+    lines.push("Scrubbed:");
+    for (const b of scrubbed) {
+      lines.push(`  ${shown(b.file.path)}  ${replacementText(b.file.plan)}`);
+      if (b.file.plan.linesIncomplete > 0) {
+        lines.push(
+          c.yellow(
+            `    ${counted2(b.file.plan.linesIncomplete, "line")} still ${b.file.plan.linesIncomplete === 1 ? "holds" : "hold"} a value written in a form this command does not edit`
+          )
+        );
+      }
+      if (b.file.plan.linesLeft > 0) {
+        lines.push(
+          c.yellow(
+            `    ${counted2(b.file.plan.linesLeft, "line")} holding a value could not be edited and still parse, and ${b.file.plan.linesLeft === 1 ? "was" : "were"} left as ${b.file.plan.linesLeft === 1 ? "it was" : "they were"}`
+          )
+        );
+      }
+    }
+  }
+  if (outcomes.length > 0) {
+    lines.push("Not scrubbed:");
+    for (const o of outcomes)
+      lines.push(c.yellow(`  ${shown(o.path)}: ${skipText(o.reason, o.code)}.`));
+  }
+  lines.push("");
+  lines.push("To put a file back as it was:");
+  for (const line of restoreLines.slice(0, MAX_RESTORE_LINES_SHOWN)) lines.push(`  ${line}`);
+  if (restoreLines.length > MAX_RESTORE_LINES_SHOWN) {
+    lines.push(c.dim(`  and ${formatCount(restoreLines.length - MAX_RESTORE_LINES_SHOWN)} more`));
+  }
+  lines.push(c.dim(`Every restore command is in ${restorePath}.`));
+  lines.push("");
+  lines.push("Rotate each credential if you have not: scrubbing does not undo the exposure.");
+  lines.push(
+    c.dim(
+      `Not scrubbed by this command: anything ${app} keeps outside these session files (such as its prompt history and caches), your shell history, and the backup above.`
+    )
+  );
+  flush();
+  const complete = outcomes.length === 0 && gaps.length === 0 && scrubbed.every((b) => b.file.plan.linesLeft === 0 && b.file.plan.linesIncomplete === 0);
+  return complete ? 0 : 1;
+}
+
 // src/commands/scan.ts
 var TOP_REPEATS = 5;
 var TOP_FINDINGS = 5;
@@ -14298,6 +14910,7 @@ Usage:
   agenttrail-guard scan --agent <claude|cursor|codex> [--dir <root>] [--out <file>]
                         [--artifact] [--no-open] [--review] [--json] [--quiet]
                         [--verify]
+  agenttrail-guard scan --agent <claude|cursor|codex> --scrub [--apply] [--dir <root>]
 
   --agent <app>  Whose sessions to read, and it is required: claude reads Claude Code's
                  transcripts in ~/.claude/projects, cursor reads Cursor's session files
@@ -14321,6 +14934,16 @@ Usage:
                  committed fixtures, placeholders and local dev data, by kind, never
                  by value. Reads the transcripts again and the git-tracked files of
                  the repos they ran in, runs read-only git, and works offline.
+  --scrub        Replace the likely-real credentials in the app's transcripts with
+                 [REDACTED-BY-AGENTTRAIL:<kind>]. Fixtures, placeholders and local
+                 dev values are left alone. A dry run: it says what it would replace,
+                 by kind, never by value, and changes nothing without --apply.
+                 Rotate each credential first, then scrub.
+  --apply        With --scrub: make the change. Refuses while the app is running and
+                 skips files changed in the last 5 minutes. Backs up every file first
+                 to a private folder under ~/.agenttrail/scrub-backups/, which still
+                 holds the credentials until you delete it, and replaces each file in
+                 one step, leaving any file that changed since it was read.
 
 Reads transcripts already on your disk. No account, nothing uploaded, and no network
 call: the one exception anywhere in this tool is crash reporting, which is off unless
@@ -14339,6 +14962,8 @@ function parseScanFlags(argv) {
   let help = false;
   let review = false;
   let verify = false;
+  let scrub = false;
+  let apply = false;
   let unknown;
   const takeAgent = (value) => {
     const app = chosenAgent(value);
@@ -14361,6 +14986,8 @@ function parseScanFlags(argv) {
     else if (arg === "--artifact") artifact = true;
     else if (arg === "--review") review = true;
     else if (arg === "--verify") verify = true;
+    else if (arg === "--scrub") scrub = true;
+    else if (arg === "--apply") apply = true;
     else if (arg === "--out") {
       const next = argv[i + 1];
       if (next === void 0 || next === "" || next.startsWith("-")) {
@@ -14395,6 +15022,8 @@ function parseScanFlags(argv) {
     help,
     review,
     verify,
+    scrub,
+    apply,
     unknown
   };
 }
@@ -14403,10 +15032,10 @@ function shouldOpen(flags, env) {
   return (env.CI ?? "") === "";
 }
 function reportPathFor(out, filename, io) {
-  if (out === void 0) return join5(io.cwd(), filename);
+  if (out === void 0) return join6(io.cwd(), filename);
   const target = resolve(io.cwd(), out);
   try {
-    if (io.stat(target).isDirectory()) return join5(target, filename);
+    if (io.stat(target).isDirectory()) return join6(target, filename);
   } catch {
   }
   return target;
@@ -14441,7 +15070,7 @@ async function readClaudeSession(io, item) {
   }
   let opened = 1;
   const files = [item.file];
-  const subDir = join5(dirname(item.file), basename3(item.file, ".jsonl"), "subagents");
+  const subDir = join6(dirname(item.file), basename3(item.file, ".jsonl"), "subagents");
   let names;
   try {
     names = io.readdir(subDir);
@@ -14455,7 +15084,7 @@ async function readClaudeSession(io, item) {
   let skippedLines = session.skippedLines;
   for (const name of [...names].sort()) {
     if (!name.endsWith(".jsonl")) continue;
-    const subPath = join5(subDir, name);
+    const subPath = join6(subDir, name);
     try {
       if (io.stat(subPath).isDirectory()) continue;
     } catch {
@@ -14660,7 +15289,7 @@ function renderSummary(result, colorsEnabled, reportPath, fixesPath) {
   return `${out.join("\n")}
 `;
 }
-function counted2(n, singular, plural2 = `${singular}s`) {
+function counted3(n, singular, plural2 = `${singular}s`) {
   return `${formatCount(n)} ${n === 1 ? singular : plural2}`;
 }
 function verificationSummary(verification) {
@@ -14669,18 +15298,18 @@ function verificationSummary(verification) {
   const parts = [];
   if (secrets.status === "not-checked") parts.push("no transcript files to check for secrets");
   else {
-    let line = `${counted2(facts.classes["likely-real"], "likely-real credential")} in ${counted2(facts.filesRead, "transcript file")}`;
+    let line = `${counted3(facts.classes["likely-real"], "likely-real credential")} in ${counted3(facts.filesRead, "transcript file")}`;
     const also = [];
     const fixtures = facts.classes["committed-fixture"];
     const placeholders = facts.classes.placeholder;
     const local = facts.classes["local-dev"];
-    if (fixtures > 0) also.push(counted2(fixtures, "committed fixture"));
+    if (fixtures > 0) also.push(counted3(fixtures, "committed fixture"));
     if (placeholders > 0) {
       also.push(
-        counted2(placeholders, "placeholder or false positive", "placeholders or false positives")
+        counted3(placeholders, "placeholder or false positive", "placeholders or false positives")
       );
     }
-    if (local > 0) also.push(counted2(local, "local dev value"));
+    if (local > 0) also.push(counted3(local, "local dev value"));
     if (also.length > 0) line += ` (and ${also.join(", ")})`;
     parts.push(line);
     const { unnamedOutputOnly, namedNotCredentialShaped } = facts.setAside;
@@ -14693,18 +15322,18 @@ function verificationSummary(verification) {
         why.push(`${formatCount(namedNotCredentialShaped)} named but not shaped like a credential`);
       }
       parts.push(
-        `${counted2(unnamedOutputOnly + namedNotCredentialShaped, "value")} not counted as likely real: ${why.join(", ")}`
+        `${counted3(unnamedOutputOnly + namedNotCredentialShaped, "value")} not counted as likely real: ${why.join(", ")}`
       );
     }
     if (facts.filesNotRead > 0) {
-      parts.push(`${counted2(facts.filesNotRead, "transcript file")} could not be read`);
+      parts.push(`${counted3(facts.filesNotRead, "transcript file")} could not be read`);
     }
     if (facts.unplaced > 0) {
-      parts.push(`${counted2(facts.unplaced, "redacted text")} could not be classed`);
+      parts.push(`${counted3(facts.unplaced, "redacted text")} could not be classed`);
     }
     if (facts.reposNotChecked > 0) {
       parts.push(
-        `${counted2(facts.reposNotChecked, "repo")} could not be searched for committed fixtures`
+        `${counted3(facts.reposNotChecked, "repo")} could not be searched for committed fixtures`
       );
     } else if (facts.fixtureCheck === "unavailable") {
       parts.push("no repo was found to search for committed fixtures");
@@ -14713,11 +15342,11 @@ function verificationSummary(verification) {
   const calls = verification.matchedCalls;
   if (!verification.resultsRecorded) {
     parts.push(
-      "this app records no command output, so no matched call could be confirmed as run" + (calls.mentioned > 0 ? ` (${counted2(calls.mentioned, "match", "matches")} only mentioned a command)` : "")
+      "this app records no command output, so no matched call could be confirmed as run" + (calls.mentioned > 0 ? ` (${counted3(calls.mentioned, "match", "matches")} only mentioned a command)` : "")
     );
   } else {
     parts.push(
-      `${counted2(calls.ran, "matched call")} ran, ${formatCount(calls.mentioned)} only mentioned a command, ${formatCount(calls.unknown)} could not be confirmed`
+      `${counted3(calls.ran, "matched call")} ran, ${formatCount(calls.mentioned)} only mentioned a command, ${formatCount(calls.unknown)} could not be confirmed`
     );
     if (verification.ranEvidence === "output-record" && calls.ran > 0) {
       parts.push(
@@ -14801,6 +15430,16 @@ ${SCAN_USAGE}`);
     );
     return 1;
   }
+  if (flags.apply && !flags.scrub) {
+    io.writeStdout("agenttrail-guard scan: --apply only works with --scrub.\n");
+    return 1;
+  }
+  if (flags.scrub && (flags.json || flags.review || flags.verify || flags.artifact || flags.out !== void 0)) {
+    io.writeStdout(
+      "agenttrail-guard scan: --scrub writes no report, so it cannot be combined with --json, --review, --verify, --out or --artifact.\n"
+    );
+    return 1;
+  }
   if (flags.json && (flags.out !== void 0 || flags.artifact)) {
     io.writeStdout(
       "agenttrail-guard scan: --json writes no file, so it cannot be combined with --out or --artifact.\n"
@@ -14816,6 +15455,25 @@ ${SCAN_USAGE}`);
   const catalog = compileCatalog([...shipped, ...userRules], config);
   const allowlist = compileAllowlist(config.allowlist);
   const corpus = await readCorpusFor(agent, root, io);
+  if (flags.scrub) {
+    const scrubIO = deps.createScrubIO?.();
+    if (scrubIO === void 0) {
+      io.writeStdout("agenttrail-guard scan: --scrub is not available in this build.\n");
+      return 1;
+    }
+    return await runScrub({
+      agent,
+      root,
+      corpus,
+      apply: flags.apply,
+      io,
+      verifyIO: deps.createVerifyIO?.() ?? UNAVAILABLE_VERIFY_IO,
+      scrubIO,
+      now,
+      platform: deps.platform ?? process.platform,
+      colors: shouldUseColor({ env: io.env, isTTY: io.isTTY() })
+    });
+  }
   const outcome = flags.verify || VERIFY_BY_DEFAULT ? await (deps.verify ?? verifyScan)({
     corpus,
     catalog,
@@ -14836,7 +15494,7 @@ ${SCAN_USAGE}`);
   );
   const colors = createColors(shouldUseColor({ env: io.env, isTTY: io.isTTY() }));
   const fixes = outcome?.localFixes ?? [];
-  const fixesTarget = join5(dirname(reportPath), FIXES_FILENAME);
+  const fixesTarget = join6(dirname(reportPath), FIXES_FILENAME);
   const writesFixes = hasFileFixes(fixes) && fixesTarget !== reportPath;
   if (flags.review) {
     const disclosures = mcpReviewDisclosures(corpus, catalog, allowlist);
@@ -14952,7 +15610,7 @@ import {
   writeFileSync
 } from "fs";
 import { homedir as homedir2 } from "os";
-import { basename as basename4, dirname as dirname2, join as join6 } from "path";
+import { basename as basename4, dirname as dirname2, join as join7 } from "path";
 import { createInterface as createInterface2 } from "readline";
 function openCommand(platform, path) {
   if (platform === "darwin") return ["open", path];
@@ -14960,7 +15618,7 @@ function openCommand(platform, path) {
   return ["xdg-open", path];
 }
 function writePrivateFile(path, text) {
-  const temporary = join6(
+  const temporary = join7(
     dirname2(path),
     `.${basename4(path)}.${process.pid}.${randomBytes2(6).toString("hex")}.tmp`
   );
@@ -15065,19 +15723,199 @@ function createRealScanIO() {
   };
 }
 
+// src/scrub-io.ts
+import { randomBytes as randomBytes3 } from "crypto";
+import {
+  chmodSync,
+  closeSync as closeSync2,
+  fstatSync,
+  fsyncSync as fsyncSync2,
+  lstatSync,
+  mkdirSync,
+  openSync as openSync2,
+  readSync,
+  renameSync as renameSync2,
+  rmdirSync,
+  unlinkSync as unlinkSync2,
+  writeSync
+} from "fs";
+import { basename as basename5, dirname as dirname3, join as join8 } from "path";
+var MAX_SCRUB_FILE_BYTES = 256 * 1024 * 1024;
+var BACKUP_DIR_MODE = 448;
+var BACKUP_FILE_MODE = 384;
+function readAll(fd, size) {
+  const bytes = new Uint8Array(size);
+  let at = 0;
+  while (at < size) {
+    const n = readSync(fd, bytes, at, size - at, at);
+    if (n === 0) break;
+    at += n;
+  }
+  return at === size ? bytes : bytes.subarray(0, at);
+}
+function writeAll(fd, bytes) {
+  let at = 0;
+  while (at < bytes.length) at += writeSync(fd, bytes, at, bytes.length - at);
+}
+function readWithStat(path, maxBytes) {
+  let fd;
+  try {
+    fd = openSync2(path, "r");
+  } catch {
+    return { ok: false, reason: "missing" };
+  }
+  try {
+    const stat2 = fstatSync(fd);
+    if (!stat2.isFile()) return { ok: false, reason: "not-a-file" };
+    if (stat2.size > maxBytes) return { ok: false, reason: "too-large" };
+    return {
+      ok: true,
+      bytes: readAll(fd, stat2.size),
+      stat: { size: stat2.size, mtimeMs: stat2.mtimeMs, ino: stat2.ino, mode: stat2.mode & 511 }
+    };
+  } catch {
+    return { ok: false, reason: "missing" };
+  } finally {
+    closeSync2(fd);
+  }
+}
+function removeQuietly(path) {
+  try {
+    unlinkSync2(path);
+  } catch {
+  }
+}
+function syncFolder(path) {
+  try {
+    const fd = openSync2(path, "r");
+    try {
+      fsyncSync2(fd);
+    } finally {
+      closeSync2(fd);
+    }
+  } catch {
+  }
+}
+function createRealScrubIO(options = {}) {
+  const platform = options.platform ?? process.platform;
+  const rename = options.rename ?? renameSync2;
+  const maxBytes = options.maxFileBytes ?? MAX_SCRUB_FILE_BYTES;
+  return {
+    read(path) {
+      return readWithStat(path, maxBytes);
+    },
+    createBackupDir(root, name) {
+      try {
+        mkdirSync(root, { recursive: true, mode: BACKUP_DIR_MODE });
+      } catch {
+        return void 0;
+      }
+      for (let attempt = 0; attempt < 100; attempt++) {
+        const dir = join8(root, attempt === 0 ? name : `${name}-${attempt}`);
+        try {
+          mkdirSync(dir, { mode: BACKUP_DIR_MODE });
+        } catch (error) {
+          if (error.code === "EEXIST") continue;
+          return void 0;
+        }
+        try {
+          chmodSync(dir, BACKUP_DIR_MODE);
+          const stat2 = lstatSync(dir);
+          if (!stat2.isDirectory()) return void 0;
+          if (platform !== "win32" && (stat2.mode & 511) !== BACKUP_DIR_MODE) return void 0;
+          return dir;
+        } catch {
+          return void 0;
+        }
+      }
+      return void 0;
+    },
+    writeBackupFile(path, bytes) {
+      let fd;
+      try {
+        fd = openSync2(path, "wx", BACKUP_FILE_MODE);
+      } catch {
+        return false;
+      }
+      try {
+        writeAll(fd, bytes);
+        fsyncSync2(fd);
+      } catch {
+        closeSync2(fd);
+        removeQuietly(path);
+        return false;
+      }
+      closeSync2(fd);
+      try {
+        chmodSync(path, BACKUP_FILE_MODE);
+        return true;
+      } catch {
+        removeQuietly(path);
+        return false;
+      }
+    },
+    replaceFile(path, bytes, expected) {
+      const folder = dirname3(path);
+      const temp = join8(folder, `.${basename5(path)}.${randomBytes3(6).toString("hex")}.scrub-tmp`);
+      let fd;
+      try {
+        fd = openSync2(temp, "wx", expected.stat.mode);
+      } catch {
+        return { ok: false, reason: "write-failed" };
+      }
+      try {
+        writeAll(fd, bytes);
+        fsyncSync2(fd);
+      } catch {
+        closeSync2(fd);
+        removeQuietly(temp);
+        return { ok: false, reason: "write-failed" };
+      }
+      closeSync2(fd);
+      try {
+        chmodSync(temp, expected.stat.mode);
+      } catch {
+        removeQuietly(temp);
+        return { ok: false, reason: "write-failed" };
+      }
+      const now = readWithStat(path, Number.POSITIVE_INFINITY);
+      if (!now.ok || now.stat.size !== expected.stat.size || now.stat.mtimeMs !== expected.stat.mtimeMs || now.stat.ino !== expected.stat.ino || sha256(now.bytes) !== expected.sha256) {
+        removeQuietly(temp);
+        return { ok: false, reason: "changed" };
+      }
+      try {
+        rename(temp, path);
+      } catch (error) {
+        removeQuietly(temp);
+        const code2 = error.code;
+        return { ok: false, reason: "rename-failed", ...code2 === void 0 ? {} : { code: code2 } };
+      }
+      syncFolder(folder);
+      return { ok: true };
+    },
+    discardBackup(dir, files) {
+      for (const file2 of files) removeQuietly(file2);
+      try {
+        rmdirSync(dir);
+      } catch {
+      }
+    }
+  };
+}
+
 // src/verify-io.ts
 import { execFile } from "child_process";
 import {
   accessSync,
-  closeSync as closeSync2,
+  closeSync as closeSync3,
   constants as constants2,
-  fstatSync,
-  openSync as openSync2,
-  readSync,
+  fstatSync as fstatSync2,
+  openSync as openSync3,
+  readSync as readSync2,
   realpathSync,
   statSync as statSync3
 } from "fs";
-import { isAbsolute as isAbsolute2, posix, relative as relative2, win32 } from "path";
+import { isAbsolute as isAbsolute2, posix, relative as relative3, win32 } from "path";
 var GIT_ALLOW_LIST = [
   ["rev-parse", "--show-toplevel"],
   ["ls-files", "-z"]
@@ -15172,7 +16010,7 @@ function watchedInPs(stdout) {
 function watchedInTasklist(stdout) {
   return watchedIn(stdout.split(/\r?\n/), (line) => /^"([^"]*)"/.exec(line.trim())?.[1] ?? "");
 }
-function isInside(root, path, paths = { relative: relative2, isAbsolute: isAbsolute2 }) {
+function isInside(root, path, paths = { relative: relative3, isAbsolute: isAbsolute2 }) {
   const rel = paths.relative(root, path);
   return rel !== "" && !rel.startsWith("..") && !paths.isAbsolute(rel);
 }
@@ -15286,17 +16124,17 @@ function createRealVerifyIO(options = {}) {
         if (![...roots].some((root) => isInside(root, real))) {
           return Promise.resolve({ ok: false, reason: "refused" });
         }
-        fd = openSync2(
+        fd = openSync3(
           real,
           constants2.O_RDONLY | (constants2.O_NOFOLLOW ?? 0) | (constants2.O_NONBLOCK ?? 0)
         );
-        const stat2 = fstatSync(fd);
+        const stat2 = fstatSync2(fd);
         if (!stat2.isFile()) return Promise.resolve({ ok: false, reason: "failed" });
         if (stat2.size > MAX_FILE_BYTES) return Promise.resolve({ ok: false, reason: "too-large" });
         scratch ??= Buffer.allocUnsafe(MAX_FILE_BYTES + 1);
         let total = 0;
         for (; ; ) {
-          const read = readSync(fd, scratch, total, scratch.length - total, null);
+          const read = readSync2(fd, scratch, total, scratch.length - total, null);
           if (read === 0) break;
           total += read;
           if (total === scratch.length) break;
@@ -15306,7 +16144,7 @@ function createRealVerifyIO(options = {}) {
       } catch {
         return Promise.resolve({ ok: false, reason: "missing" });
       } finally {
-        if (fd !== void 0) closeSync2(fd);
+        if (fd !== void 0) closeSync3(fd);
         spent += Math.max(0, now() - started);
       }
     },
@@ -15329,7 +16167,8 @@ function createRealVerifyIO(options = {}) {
 // src/scan-entry.ts
 var code = await runScan(process.argv.slice(2), createRealScanIO(), {
   productLine: false,
-  createVerifyIO: () => createRealVerifyIO()
+  createVerifyIO: () => createRealVerifyIO(),
+  createScrubIO: () => createRealScrubIO()
 });
 if (code !== 0) {
   process.exitCode = code;

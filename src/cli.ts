@@ -55,6 +55,7 @@ import { VERSION } from "./core/version.js";
 import type { CursorFileIO } from "./cursor/cursor-io.js";
 import { createRealIO, type GuardIO } from "./io.js";
 import { createRealScanIO, type ScanIO } from "./scan-io.js";
+import { createRealScrubIO } from "./scrub-io.js";
 import { createRealSetupIO, type SetupIO } from "./setup-io.js";
 import { createRealVerifyIO } from "./verify-io.js";
 
@@ -179,6 +180,7 @@ export async function runCli(
   if (command === "scan") {
     return await runScan(argv.slice(1), scanIo ?? createRealScanIO(), {
       createVerifyIO: () => createRealVerifyIO(),
+      createScrubIO: () => createRealScrubIO(),
     });
   }
 

@@ -99,7 +99,9 @@ import {
 } from "../core/verify/verify.js";
 import { VERSION } from "../core/version.js";
 import type { ScanIO } from "../scan-io.js";
+import type { ScrubIO } from "../scrub-io.js";
 import { agentChoiceMessage, chosenAgent } from "./agent-choice.js";
+import { runScrub } from "./scan-scrub.js";
 
 /** How many repeats the terminal summary lists. The report carries the rest. */
 const TOP_REPEATS = 5;
@@ -113,6 +115,7 @@ Usage:
   agenttrail-guard scan --agent <claude|cursor|codex> [--dir <root>] [--out <file>]
                         [--artifact] [--no-open] [--review] [--json] [--quiet]
                         [--verify]
+  agenttrail-guard scan --agent <claude|cursor|codex> --scrub [--apply] [--dir <root>]
 
   --agent <app>  Whose sessions to read, and it is required: claude reads Claude Code's
                  transcripts in ~/.claude/projects, cursor reads Cursor's session files
@@ -136,6 +139,16 @@ Usage:
                  committed fixtures, placeholders and local dev data, by kind, never
                  by value. Reads the transcripts again and the git-tracked files of
                  the repos they ran in, runs read-only git, and works offline.
+  --scrub        Replace the likely-real credentials in the app's transcripts with
+                 [REDACTED-BY-AGENTTRAIL:<kind>]. Fixtures, placeholders and local
+                 dev values are left alone. A dry run: it says what it would replace,
+                 by kind, never by value, and changes nothing without --apply.
+                 Rotate each credential first, then scrub.
+  --apply        With --scrub: make the change. Refuses while the app is running and
+                 skips files changed in the last 5 minutes. Backs up every file first
+                 to a private folder under ~/.agenttrail/scrub-backups/, which still
+                 holds the credentials until you delete it, and replaces each file in
+                 one step, leaving any file that changed since it was read.
 
 Reads transcripts already on your disk. No account, nothing uploaded, and no network
 call: the one exception anywhere in this tool is crash reporting, which is off unless
@@ -166,6 +179,10 @@ export interface ScanFlags {
   readonly review: boolean;
   /** `--verify`: check the matches against this machine, read-only. Off unless asked for. */
   readonly verify: boolean;
+  /** `--scrub`: replace likely-real credentials in the transcripts. A dry run alone. */
+  readonly scrub: boolean;
+  /** `--apply`: with `--scrub`, make the change. */
+  readonly apply: boolean;
   /** The first unrecognized argument, if any. Named back to the user. */
   readonly unknown?: string | undefined;
 }
@@ -192,6 +209,8 @@ export function parseScanFlags(argv: readonly string[]): ScanFlags {
   let help = false;
   let review = false;
   let verify = false;
+  let scrub = false;
+  let apply = false;
   let unknown: string | undefined;
 
   /** One `--agent` value. Refused unless it names the same app as any earlier one. */
@@ -217,6 +236,8 @@ export function parseScanFlags(argv: readonly string[]): ScanFlags {
     else if (arg === "--artifact") artifact = true;
     else if (arg === "--review") review = true;
     else if (arg === "--verify") verify = true;
+    else if (arg === "--scrub") scrub = true;
+    else if (arg === "--apply") apply = true;
     else if (arg === "--out") {
       const next = argv[i + 1];
       // Same rule as `--dir`: a flag after it is a typo, not a file named `--json`.
@@ -255,6 +276,8 @@ export function parseScanFlags(argv: readonly string[]): ScanFlags {
     help,
     review,
     verify,
+    scrub,
+    apply,
     unknown,
   };
 }
@@ -309,6 +332,13 @@ export interface ScanDeps {
   readonly createVerifyIO?: () => VerifyIO;
   /** Runs the checks. For tests; production uses `verifyScan`. */
   readonly verify?: (input: VerifyInput) => Promise<VerifyOutcome>;
+  /**
+   * Makes the seam `--scrub` reads and writes transcripts through. The CLI entries pass the
+   * real one (`scrub-io.ts`); `scan` alone never calls it. With none, `--scrub` refuses.
+   */
+  readonly createScrubIO?: () => ScrubIO;
+  /** For tests: the platform the restore commands are written for. */
+  readonly platform?: string;
 }
 
 /** Deepest directory nesting the file tally will descend. */
@@ -894,6 +924,20 @@ export async function runScan(
     );
     return 1;
   }
+  if (flags.apply && !flags.scrub) {
+    io.writeStdout("agenttrail-guard scan: --apply only works with --scrub.\n");
+    return 1;
+  }
+  if (
+    flags.scrub &&
+    (flags.json || flags.review || flags.verify || flags.artifact || flags.out !== undefined)
+  ) {
+    // `--scrub` writes no report, so the report's flags would do nothing; refused, not ignored.
+    io.writeStdout(
+      "agenttrail-guard scan: --scrub writes no report, so it cannot be combined with --json, --review, --verify, --out or --artifact.\n",
+    );
+    return 1;
+  }
   if (flags.json && (flags.out !== undefined || flags.artifact)) {
     // Refused for the same reason: both flags describe a file, and `--json` writes none.
     io.writeStdout(
@@ -915,6 +959,25 @@ export async function runScan(
   const allowlist = compileAllowlist(config.allowlist);
 
   const corpus: ScanCorpus = await readCorpusFor(agent, root, io);
+  if (flags.scrub) {
+    const scrubIO = deps.createScrubIO?.();
+    if (scrubIO === undefined) {
+      io.writeStdout("agenttrail-guard scan: --scrub is not available in this build.\n");
+      return 1;
+    }
+    return await runScrub({
+      agent,
+      root,
+      corpus,
+      apply: flags.apply,
+      io,
+      verifyIO: deps.createVerifyIO?.() ?? UNAVAILABLE_VERIFY_IO,
+      scrubIO,
+      now,
+      platform: deps.platform ?? process.platform,
+      colors: shouldUseColor({ env: io.env, isTTY: io.isTTY() }),
+    });
+  }
   // Only when asked for, until `VERIFY_BY_DEFAULT` turns it on. The outcome's local fixes stay
   // here, beside the result, for the local fixes file; they never enter `ScanResult`.
   const outcome: VerifyOutcome | undefined =

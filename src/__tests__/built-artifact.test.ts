@@ -1298,6 +1298,61 @@ describe("scan, against the built binary", () => {
     }
   });
 
+  it("scan --scrub, from both bundles: a dry run that writes nothing, sends nothing and prints no value", () => {
+    // Only the dry run here: `--apply` depends on which programs are running on the machine
+    // that runs the tests. The token is assembled at runtime and made up.
+    const base = mkdtempSync(join(tmpdir(), "agenttrail-guard-scrub-"));
+    const token = `ghp${"_"}BUILTscrub0aB1cD2eF3gH4iJ5kL6mN7oP8qR9`;
+    const projects = join(base, "projects", "-repo");
+    mkdirSync(projects, { recursive: true });
+    const transcript = join(projects, "scrub-1.jsonl");
+    const text = `${JSON.stringify({
+      type: "user",
+      uuid: "u1",
+      sessionId: "scrub-1",
+      cwd: join(base, "gone"),
+      message: { role: "user", content: `deploy with ${token}` },
+    })}\n`;
+    writeFileSync(transcript, text);
+
+    for (const [bundle, prefix] of [
+      [CLI_BUNDLE, ["scan"]],
+      [SCAN_BUNDLE, []],
+    ] as const) {
+      const work = mkdtempSync(join(base, "work-"));
+      const home = scratchHome();
+      const log = join(work, "net.log");
+      writeFileSync(log, "");
+      const r = spawnSync(
+        "node",
+        [
+          "--import",
+          join(HERE, "preload", "net-recorder.mjs"),
+          bundle,
+          ...prefix,
+          "--agent",
+          "claude",
+          "--dir",
+          join(base, "projects"),
+          "--scrub",
+        ],
+        {
+          cwd: work,
+          encoding: "utf8",
+          env: { ...envWithHome(home), AGENTTRAIL_TEST_NET_LOG: log },
+        },
+      );
+      expect(r.status, r.stderr).toBe(0);
+      expect(readFileSync(log, "utf8")).toBe("");
+      expect(r.stdout).toContain("Nothing is changed without --apply.");
+      expect(r.stdout).toContain("scrub-1.jsonl  1 replacement: 1 github-token");
+      expect(`${r.stdout}${r.stderr}`).not.toContain("BUILTscrub");
+      expect(readFileSync(transcript, "utf8")).toBe(text);
+      expect(readdirSync(home)).toEqual([]);
+      expect(readdirSync(work)).toEqual(["net.log"]);
+    }
+  });
+
   it("the plugin's scan bundle makes no network call either", () => {
     const { projects, work } = fixture();
     const log = join(work, "net.log");
