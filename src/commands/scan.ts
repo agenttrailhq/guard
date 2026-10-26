@@ -50,7 +50,7 @@ import { createColors, hyperlink, shouldUseColor } from "../core/color.js";
 import { parseConfig } from "../core/config.js";
 import { defaultCursorProjectsRoot, readCursorCorpus } from "../core/cursor-transcript/scan.js";
 import { compileAllowlist } from "../core/evaluate.js";
-import { fixCategories, fixesFileText } from "../core/fixes-file.js";
+import { exactFixCount, fixCategories, fixesFileText } from "../core/fixes-file.js";
 import { configPath, productLineStatePath, userRulesPath } from "../core/paths.js";
 import { takeProductLine } from "../core/product-line.js";
 import {
@@ -777,6 +777,8 @@ export function renderReview(
   colorsEnabled: boolean,
   reportPath: string,
   mcpDisclosures: readonly string[] = [],
+  /** The local fixes file a yes also writes, and how many exact commands it holds. */
+  fixesFile?: { readonly path: string; readonly commands: number },
 ): string {
   const c = createColors(colorsEnabled);
   const groups = reviewStrings(result);
@@ -819,6 +821,13 @@ export function renderReview(
         `${MAX_ROWS} rows and ${MAX_EXAMPLES} shapes per row.`,
     ),
   );
+  // A yes writes the fixes file too, so the question says so before it is asked.
+  if (fixesFile !== undefined && fixesFile.commands > 0) {
+    out.push("");
+    out.push(
+      `A yes also writes ${fixesFile.path}: ${formatCount(fixesFile.commands)} exact fix ${fixesFile.commands === 1 ? "command" : "commands"} for this machine, with real names and paths, not shown here and not part of the report.`,
+    );
+  }
   out.push("");
   out.push(`Write ${reportPath}? [y/N] `);
   return out.join("\n");
@@ -922,9 +931,22 @@ export async function runScan(
   );
   const colors = createColors(shouldUseColor({ env: io.env, isTTY: io.isTTY() }));
 
+  // The exact fix commands go to their own local file, never into the report.
+  const fixes = outcome?.localFixes ?? [];
+  const fixesTarget = join(dirname(reportPath), FIXES_FILENAME);
+  const writesFixes = fixCategories(fixes).length > 0 && fixesTarget !== reportPath;
+
   if (flags.review) {
     const disclosures = mcpReviewDisclosures(corpus, catalog, allowlist);
-    io.writeStdout(renderReview(result, colors.enabled, reportPath, disclosures));
+    io.writeStdout(
+      renderReview(
+        result,
+        colors.enabled,
+        reportPath,
+        disclosures,
+        writesFixes ? { path: fixesTarget, commands: exactFixCount(fixes) } : undefined,
+      ),
+    );
     const answer = await io.readLine();
     if (answer === undefined) {
       // End of input, not a decision. An unattended `scan --review` that exited 0 having
@@ -943,12 +965,10 @@ export async function runScan(
     io.writeStdout("\n");
   }
 
-  // The exact fix commands go to their own local file, first, so the report names it only once
-  // it exists. They never reach the report: its cards carry redacted shapes.
-  const fixes = outcome?.localFixes ?? [];
-  const fixesTarget = join(dirname(reportPath), FIXES_FILENAME);
+  // The fixes file is written first, so the report names it only once it exists. The report's
+  // cards carry redacted shapes.
   let fixesPath: string | undefined;
-  if (fixCategories(fixes).length > 0 && fixesTarget !== reportPath) {
+  if (writesFixes) {
     const text = fixesFileText(fixes, {
       version: VERSION,
       generatedAt: now,

@@ -35,6 +35,11 @@ function writable(fixes: readonly LocalFix[]): LocalFix[] {
   return fixes.filter((fix) => fix.command.trim() !== "" && !CONTROL.test(fix.command));
 }
 
+/** How many exact commands the file would hold. */
+export function exactFixCount(fixes: readonly LocalFix[]): number {
+  return writable(fixes).length;
+}
+
 /** The categories the file has commands for, in card order. */
 export function fixCategories(fixes: readonly LocalFix[]): VerifyCategory[] {
   const kept = writable(fixes);

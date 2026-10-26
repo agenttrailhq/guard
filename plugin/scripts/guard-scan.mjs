@@ -9911,6 +9911,9 @@ var CONTROL = /[\u0000-\u0008\u000a-\u001f\u007f]/;
 function writable(fixes) {
   return fixes.filter((fix) => fix.command.trim() !== "" && !CONTROL.test(fix.command));
 }
+function exactFixCount(fixes) {
+  return writable(fixes).length;
+}
 function fixCategories(fixes) {
   const kept = writable(fixes);
   return VERIFY_CATEGORIES.filter((category) => kept.some((fix) => fix.category === category));
@@ -14689,7 +14692,7 @@ function verificationSummary(verification) {
   }
   return `Checked on this machine (read-only, offline): ${parts.join("; ")}.`;
 }
-function renderReview(result, colorsEnabled, reportPath, mcpDisclosures = []) {
+function renderReview(result, colorsEnabled, reportPath, mcpDisclosures = [], fixesFile) {
   const c = createColors(colorsEnabled);
   const groups = reviewStrings(result);
   const out = [];
@@ -14720,6 +14723,12 @@ function renderReview(result, colorsEnabled, reportPath, mcpDisclosures = []) {
       `That is the whole file, not a sample: the report lists at most ${MAX_ROWS} rows and ${MAX_EXAMPLES} shapes per row.`
     )
   );
+  if (fixesFile !== void 0 && fixesFile.commands > 0) {
+    out.push("");
+    out.push(
+      `A yes also writes ${fixesFile.path}: ${formatCount(fixesFile.commands)} exact fix ${fixesFile.commands === 1 ? "command" : "commands"} for this machine, with real names and paths, not shown here and not part of the report.`
+    );
+  }
   out.push("");
   out.push(`Write ${reportPath}? [y/N] `);
   return out.join("\n");
@@ -14785,9 +14794,20 @@ ${SCAN_USAGE}`);
     io
   );
   const colors = createColors(shouldUseColor({ env: io.env, isTTY: io.isTTY() }));
+  const fixes = outcome?.localFixes ?? [];
+  const fixesTarget = join5(dirname(reportPath), FIXES_FILENAME);
+  const writesFixes = fixCategories(fixes).length > 0 && fixesTarget !== reportPath;
   if (flags.review) {
     const disclosures = mcpReviewDisclosures(corpus, catalog, allowlist);
-    io.writeStdout(renderReview(result, colors.enabled, reportPath, disclosures));
+    io.writeStdout(
+      renderReview(
+        result,
+        colors.enabled,
+        reportPath,
+        disclosures,
+        writesFixes ? { path: fixesTarget, commands: exactFixCount(fixes) } : void 0
+      )
+    );
     const answer = await io.readLine();
     if (answer === void 0) {
       io.writeStdout(
@@ -14801,10 +14821,8 @@ ${SCAN_USAGE}`);
     }
     io.writeStdout("\n");
   }
-  const fixes = outcome?.localFixes ?? [];
-  const fixesTarget = join5(dirname(reportPath), FIXES_FILENAME);
   let fixesPath;
-  if (fixCategories(fixes).length > 0 && fixesTarget !== reportPath) {
+  if (writesFixes) {
     const text = fixesFileText(fixes, {
       version: VERSION,
       generatedAt: now,

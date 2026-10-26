@@ -248,3 +248,19 @@ describe("a link planted where the files go cannot redirect them", () => {
     expect(statSync(path).mode & 0o777).toBe(0o600);
   });
 });
+
+describe("--review says a yes also writes the fixes file", () => {
+  it("names the file and how many exact commands it holds, before the question", async () => {
+    const run = await scan(["--verify", "--review"], { answer: "n" });
+    const line = run.stdout.split("\n").find((l) => l.startsWith("A yes also writes "));
+    expect(line).toBe(
+      `A yes also writes ${join(run.work, FIXES_FILENAME)}: 4 exact fix commands for this machine, with real names and paths, not shown here and not part of the report.`,
+    );
+    expect(run.stdout.indexOf("A yes also writes")).toBeLessThan(run.stdout.indexOf("? [y/N]"));
+  });
+
+  it("says nothing of it when there is no exact command", async () => {
+    const run = await scan(["--verify", "--review"], { answer: "n", fixes: false });
+    expect(run.stdout).not.toContain("A yes also writes");
+  });
+});
