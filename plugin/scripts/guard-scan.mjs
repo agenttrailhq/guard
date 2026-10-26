@@ -13895,6 +13895,8 @@ var GIT_SAFETY_ARGS = [
   "core.pager=cat",
   "-c",
   "diff.external=",
+  "-c",
+  "log.showSignature=false",
   "--no-pager"
 ];
 var CALL_TIMEOUT_MS = 5e3;

@@ -1,4 +1,4 @@
-// cspell:words fsmonitor tasklist mkfifo statted secretdb cursorless
+// cspell:words fsmonitor tasklist mkfifo statted secretdb cursorless gpgsig lnbm
 /**
  * The read-only seam `scan --verify` uses (`src/verify-io.ts`).
  *
@@ -100,6 +100,8 @@ describe("the git allow-list", () => {
       "core.pager=cat",
       "-c",
       "diff.external=",
+      "-c",
+      "log.showSignature=false",
       "--no-pager",
     ]);
   });
@@ -123,6 +125,8 @@ describe("the git allow-list", () => {
       "core.pager=cat",
       "-c",
       "diff.external=",
+      "-c",
+      "log.showSignature=false",
       "--no-pager",
       "ls-files",
       "-z",
@@ -287,6 +291,57 @@ describe("against a real repository", () => {
     // Negative control: the same listing WITHOUT the safety flags does start the planted
     // file-system monitor, so the assertion above is a fence that bites.
     execFileSync("git", ["ls-files", "-z"], { cwd: root, stdio: "pipe" });
+    expect(existsSync(marker)).toBe(true);
+  });
+
+  it("starts no signature program for a signed commit, through log or stash list", () => {
+    // A repository asking for signatures to be shown, a gpg program that leaves a marker, and
+    // a commit object carrying a signature header (any bytes will do). Built here, in test code.
+    const root = repo();
+    const marker = join(root, "..", `gpg-marker-${Date.now()}`);
+    const script = join(root, "..", `gpg-${Date.now()}.sh`);
+    writeFileSync(script, `#!/bin/sh\ntouch "${marker}"\nexit 1\n`, { mode: 0o755 });
+    execFileSync("git", ["config", "log.showSignature", "true"], { cwd: root });
+    execFileSync("git", ["config", "gpg.program", script], { cwd: root });
+    const tree = execFileSync("git", ["hash-object", "-t", "tree", "--stdin", "-w"], {
+      cwd: root,
+      input: "",
+      encoding: "utf8",
+    }).trim();
+    const commit = [
+      `tree ${tree}`,
+      "author A <a@example.invalid> 1700000000 +0000",
+      "committer A <a@example.invalid> 1700000000 +0000",
+      "gpgsig -----BEGIN PGP SIGNATURE-----",
+      " ",
+      " c2lnbmF0dXJl",
+      " -----END PGP SIGNATURE-----",
+      "",
+      "signed",
+      "",
+    ].join("\n");
+    const sha = execFileSync("git", ["hash-object", "-t", "commit", "--stdin", "-w"], {
+      cwd: root,
+      input: commit,
+      encoding: "utf8",
+    }).trim();
+    execFileSync("git", ["update-ref", "--create-reflog", "-m", "stash", "refs/stash", sha], {
+      cwd: root,
+    });
+
+    const run = (args: readonly string[]): void => {
+      try {
+        execFileSync("git", [...args], { cwd: root, stdio: "pipe" });
+      } catch {
+        // A failed signature check exits non-zero; only whether the script ran matters here.
+      }
+    };
+    run([...GIT_SAFETY_ARGS, "log", "-1", "--format=%H", sha]);
+    run([...GIT_SAFETY_ARGS, "stash", "list", "--format=%H"]);
+    expect(existsSync(marker)).toBe(false);
+
+    // Negative control: the same log without the safety flags does start the planted program.
+    run(["log", "-1", "--format=%H", sha]);
     expect(existsSync(marker)).toBe(true);
   });
 

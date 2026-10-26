@@ -1,4 +1,4 @@
-// cspell:words fsmonitor tasklist SYSTEMROOT automount Statting
+// cspell:words fsmonitor tasklist SYSTEMROOT automount Statting textconv
 /**
  * `VerifyIO` — the read-only seam `scan --verify` checks this machine through.
  *
@@ -74,7 +74,20 @@ export const GIT_ALLOW_LIST: readonly (readonly string[])[] = [
   ["ls-files", "-z"],
 ];
 
-/** Put before every allow-listed call, so a repository's config cannot start a program. */
+/**
+ * Put before every allow-listed call, so a repository's config, or the user's own, cannot
+ * start a program through a read-only command:
+ *  - `core.fsmonitor=false`: no file-system monitor, which even `ls-files` starts;
+ *  - `core.pager=cat` and `--no-pager`: no pager;
+ *  - `diff.external=`: no external diff program;
+ *  - `log.showSignature=false`: no `gpg.program` (or `gpg.ssh.program`) run to check a signed
+ *    commit, which `log` and `stash list` would otherwise do for any commit carrying a
+ *    signature header.
+ * Reviewed and not needed for a read-only form: `core.sshCommand`, `core.askPass` and
+ * `credential.helper` run only to reach a remote; `diff.<driver>.textconv` and
+ * `filter.<driver>.*` run only when file content is diffed, checked out or added; hooks run
+ * only for commands that change the repository. None of the allow-listed forms does those.
+ */
 export const GIT_SAFETY_ARGS: readonly string[] = [
   "-c",
   "core.fsmonitor=false",
@@ -82,6 +95,8 @@ export const GIT_SAFETY_ARGS: readonly string[] = [
   "core.pager=cat",
   "-c",
   "diff.external=",
+  "-c",
+  "log.showSignature=false",
   "--no-pager",
 ];
 
