@@ -527,7 +527,9 @@ export async function runScrub(input: ScrubRunInput): Promise<number> {
       lines.push(c.yellow(`  It would refuse to run now: ${app} is running.`));
     } else if (running.state === "could-not-check") {
       lines.push(
-        c.yellow("  It would refuse to run now: the list of running programs could not be read."),
+        c.yellow(
+          "  It would refuse to run now: the list of running programs could not be read in full.",
+        ),
       );
     }
     for (const entry of recent) {
@@ -545,7 +547,7 @@ export async function runScrub(input: ScrubRunInput): Promise<number> {
       c.yellow(
         running.state === "running"
           ? `Refused: ${app} is running. Nothing was changed.`
-          : "Refused: the list of running programs could not be read, so a running session cannot be ruled out. Nothing was changed.",
+          : "Refused: the list of running programs could not be read in full, so a running session cannot be ruled out. Nothing was changed.",
       ),
     );
     lines.push(`Close every ${app} session, then run this again.`);

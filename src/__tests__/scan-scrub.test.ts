@@ -1100,7 +1100,7 @@ describe("what the run reports", () => {
     const run = await direct(s, { apply: false, verifyIO: processes("unreadable") });
     expect(run.code).toBe(0);
     expect(run.stdout).toContain(
-      "It would refuse to run now: the list of running programs could not be read.",
+      "It would refuse to run now: the list of running programs could not be read in full.",
     );
   });
 
@@ -1406,6 +1406,24 @@ describe("what the process check cannot see", () => {
 });
 
 describe("the two checks, on their own", () => {
+  it("a list too long to read in full cannot rule an app out", async () => {
+    // The seam gives up on a list longer than it reads, rather than read part of it.
+    const tooLong: VerifyIO = {
+      ...createRealVerifyIO(),
+      processNames: () => Promise.resolve({ ok: false, reason: "too-large" }),
+    };
+    expect(await agentProcessCheck(tooLong, "claude")).toEqual({ state: "could-not-check" });
+
+    const s = await setup("claude");
+    const before = snapshot(s.root);
+    const run = await scan(s, "claude", ["--scrub", "--apply"], { verify: tooLong });
+    expect(run.code).toBe(1);
+    expect(run.stdout).toContain(
+      "Refused: the list of running programs could not be read in full, so a running session cannot be ruled out.",
+    );
+    expect(snapshot(s.root)).toEqual(before);
+  });
+
   it("refuses on the app's own id only, and when the list cannot be read", async () => {
     /** The seam answering with `running` ids. */
     const ids = (running: WatchedProcess[]): VerifyIO => ({
