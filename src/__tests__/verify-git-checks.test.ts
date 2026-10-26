@@ -1,4 +1,4 @@
-// cspell:words fsmonitor
+// cspell:words fsmonitor gpgsig lnbm
 /**
  * The git-backed checks together (`core/verify/git-checks.ts`): every `git` call they make is on
  * the allow-list and none is refused; a repository's own config starts no program; they write
@@ -125,6 +125,76 @@ describe("a repository's own config starts no program", () => {
 
     // Negative control: the same listing without the safety flags does start the monitor.
     execFileSync("git", ["ls-files", "--deleted", "-z"], { cwd: root, stdio: "pipe" });
+    expect(existsSync(marker)).toBe(true);
+  });
+});
+
+describe("a signed commit starts no signature program", () => {
+  it("through the lost-work lookups: log for a deleted branch, stash list for a dropped stash", async () => {
+    const home = tempFolder("home");
+    const root = makeRepo("signed");
+    const marker = join(tempFolder("gpg-marker"), "ran");
+    const script = join(tempFolder("gpg-script"), "gpg.sh");
+    writeFileSync(script, `#!/bin/sh\ntouch "${marker}"\nexit 1\n`, { mode: 0o755 });
+    // A commit object carrying a signature header (any bytes will do), built in test code,
+    // made the tip of a deleted branch and the newest entry of the stash list.
+    const tree = rev(root, "HEAD^{tree}");
+    const signed = execFileSync("git", ["hash-object", "-t", "commit", "--stdin", "-w"], {
+      cwd: root,
+      input: [
+        `tree ${tree}`,
+        `parent ${rev(root, "HEAD")}`,
+        "author A <a@example.invalid> 1700000000 +0000",
+        "committer A <a@example.invalid> 1700000000 +0000",
+        "gpgsig -----BEGIN PGP SIGNATURE-----",
+        " ",
+        " c2lnbmF0dXJl",
+        " -----END PGP SIGNATURE-----",
+        "",
+        "signed",
+        "",
+      ].join("\n"),
+      encoding: "utf8",
+    }).trim();
+    git(root, "update-ref", "--create-reflog", "-m", "stash", "refs/stash", signed);
+    git(root, "config", "log.showSignature", "true");
+    git(root, "config", "gpg.program", script);
+    const outcome = await runChecks(
+      "claude",
+      [
+        {
+          cwd: root,
+          events: [
+            {
+              kind: "bash",
+              command: "git branch -D topic",
+              output: `Deleted branch topic (was ${signed.slice(0, 7)}).\n`,
+            },
+            {
+              kind: "bash",
+              command: "git stash drop",
+              output: `Dropped refs/stash@{1} (${rev(root, "HEAD")})\n`,
+            },
+          ],
+        },
+      ],
+      home,
+    );
+    // Both lookups ran: the branch's commit was found, and the stash list was read.
+    expect(outcome["lost-work"].facts.branches.recoverable).toBe(1);
+    expect(outcome["lost-work"].facts.stashes.dropped).toBe(1);
+    expect(outcome["lost-work"].facts.stashes.couldNotCheck).toBe(0);
+    expect(existsSync(marker)).toBe(false);
+
+    // Negative control: the same lookup without the safety flags does run the program.
+    try {
+      execFileSync("git", ["log", "--no-walk", "--ignore-missing", "--format=%H", signed], {
+        cwd: root,
+        stdio: "pipe",
+      });
+    } catch {
+      // A failed signature check may exit non-zero; only whether the program ran matters.
+    }
     expect(existsSync(marker)).toBe(true);
   });
 });
