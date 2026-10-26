@@ -417,15 +417,230 @@ describe("only the scrub path can write a transcript", () => {
     expect(writers.sort()).toEqual(["scan-io.ts", "scrub-io.ts", "verify-io.ts"]);
   });
 
-  it("verify-io.ts imports openSync and nothing else that writes, and opens read-only", () => {
-    const verifyIo = join(SRC, "verify-io.ts");
-    expect(fsWriters(verifyIo)).toEqual(["openSync"]);
-    const calls = readFileSync(verifyIo, "utf8").match(/\bopenSync\(\s*[^,]+,\s*([^)]*)\)/g) ?? [];
-    expect(calls.length).toBeGreaterThan(0);
-    for (const call of calls) {
-      expect(call).toContain("constants.O_RDONLY");
-      expect(call).not.toMatch(/O_WRONLY|O_RDWR|O_CREAT|O_APPEND|O_TRUNC|"[wa]/);
+  describe("verify-io.ts opens files read-only and writes nothing", () => {
+    const VERIFY_IO = join(SRC, "verify-io.ts");
+
+    /**
+     * The only flag expressions an `openSync` call in `verify-io.ts` may pass, written out, with
+     * whitespace removed before comparing. `constants.O_RDONLY`, optionally OR'ed with the
+     * read-safe `O_NOFOLLOW` and `O_NONBLOCK`, each guarded for platforms that lack it. Nothing
+     * computed, no variable and no string mode is accepted.
+     */
+    const ACCEPTED_OPEN_FLAGS = [
+      "constants.O_RDONLY",
+      "constants.O_RDONLY|(constants.O_NOFOLLOW??0)",
+      "constants.O_RDONLY|(constants.O_NONBLOCK??0)",
+      "constants.O_RDONLY|(constants.O_NOFOLLOW??0)|(constants.O_NONBLOCK??0)",
+    ];
+
+    /** What `verify-io.ts` may import from `node:fs`: reading, stat and descriptor handling. */
+    const READ_ONLY_FS_IMPORTS = new Set([
+      "accessSync",
+      "closeSync",
+      "constants",
+      "fstatSync",
+      "openSync",
+      "readSync",
+      "realpathSync",
+      "statSync",
+    ]);
+
+    /** Names of functions that write, in `node:fs`, its callback form and `fs/promises`. */
+    const WRITING_NAMES = [
+      "writeFileSync",
+      "writeFile",
+      "appendFileSync",
+      "appendFile",
+      "createWriteStream",
+      "writeSync",
+      "write",
+      "writev",
+      "ftruncateSync",
+      "ftruncate",
+      "truncateSync",
+      "truncate",
+      "renameSync",
+      "rename",
+      "copyFileSync",
+      "copyFile",
+      "cpSync",
+      "cp",
+      "mkdirSync",
+      "mkdir",
+      "mkdtempSync",
+      "mkdtemp",
+      "rmSync",
+      "rm",
+      "rmdirSync",
+      "rmdir",
+      "unlinkSync",
+      "unlink",
+      "chmodSync",
+      "chmod",
+      "fchmodSync",
+      "fchmod",
+      "lchmod",
+      "chownSync",
+      "chown",
+      "symlinkSync",
+      "symlink",
+      "linkSync",
+      "link",
+      "utimesSync",
+      "utimes",
+      "futimesSync",
+      "futimes",
+      "lutimes",
+    ];
+
+    /** Every reason `source` is not read-only, per the rules above. Empty when it is. */
+    function readOnlyProblems(source: string): string[] {
+      const file = ts.createSourceFile("verify-io.ts", source, ts.ScriptTarget.Latest, true);
+      const problems: string[] = [];
+      let openCalls = 0;
+      const visit = (node: ts.Node): void => {
+        if (ts.isImportDeclaration(node) && ts.isStringLiteral(node.moduleSpecifier)) {
+          const from = node.moduleSpecifier.text;
+          if (/^(node:)?fs\/promises$/.test(from)) problems.push(`imports ${from}`);
+          else if (/^(node:)?fs$/.test(from)) {
+            const bindings = node.importClause?.namedBindings;
+            if (node.importClause?.name !== undefined || bindings === undefined) {
+              problems.push(`imports ${from} whole`);
+            } else if (ts.isNamespaceImport(bindings)) {
+              problems.push(`imports ${from} as a namespace`);
+            } else {
+              for (const element of bindings.elements) {
+                const name = (element.propertyName ?? element.name).text;
+                if (element.propertyName !== undefined) problems.push(`renames ${name}`);
+                if (!READ_ONLY_FS_IMPORTS.has(name)) problems.push(`imports ${name}`);
+              }
+            }
+          }
+        }
+        if (ts.isCallExpression(node)) {
+          const callee = node.expression;
+          const name = ts.isIdentifier(callee)
+            ? callee.text
+            : ts.isPropertyAccessExpression(callee)
+              ? callee.name.text
+              : undefined;
+          if (name !== undefined && WRITING_NAMES.includes(name)) problems.push(`calls ${name}`);
+          if (ts.isIdentifier(callee) && callee.text === "require") problems.push("calls require");
+          if (name === "openSync") {
+            openCalls += 1;
+            const [, flags, mode] = node.arguments;
+            const text = flags === undefined ? "" : flags.getText(file).replace(/\s+/g, "");
+            if (!ACCEPTED_OPEN_FLAGS.includes(text))
+              problems.push(`opens with ${text || "no flags"}`);
+            if (mode !== undefined || node.arguments.length !== 2) {
+              problems.push("passes openSync other than a path and flags");
+            }
+          }
+        } else if (
+          ts.isIdentifier(node) &&
+          node.text === "openSync" &&
+          !ts.isImportSpecifier(node.parent) &&
+          !(ts.isCallExpression(node.parent) && node.parent.expression === node)
+        ) {
+          problems.push("uses openSync other than by calling it");
+        }
+        ts.forEachChild(node, visit);
+      };
+      visit(file);
+      if (openCalls === 0) problems.push("never calls openSync");
+      return problems;
     }
+
+    /** The real source with its one `openSync` call's flags replaced by `flags`. */
+    function withOpenFlags(source: string, flags: string): string {
+      const file = ts.createSourceFile("verify-io.ts", source, ts.ScriptTarget.Latest, true);
+      let span: [number, number] | undefined;
+      const find = (node: ts.Node): void => {
+        if (
+          ts.isCallExpression(node) &&
+          ts.isIdentifier(node.expression) &&
+          node.expression.text === "openSync"
+        ) {
+          const arg = node.arguments[1] as ts.Expression;
+          span = [arg.getStart(file), arg.getEnd()];
+        }
+        ts.forEachChild(node, find);
+      };
+      find(file);
+      if (span === undefined) throw new Error("no openSync call");
+      return source.slice(0, span[0]) + flags + source.slice(span[1]);
+    }
+
+    const real = readFileSync(VERIFY_IO, "utf8");
+
+    it("the real file passes: read-only flags only, and no writing import or call", () => {
+      expect(readOnlyProblems(real)).toEqual([]);
+      // Its only import the bundle fence flags is openSync, which the rules above allow.
+      expect(fsWriters(VERIFY_IO)).toEqual(["openSync"]);
+    });
+
+    it.each(ACCEPTED_OPEN_FLAGS)("accepts exactly %s, with any spacing", (flags) => {
+      expect(readOnlyProblems(withOpenFlags(real, flags.replaceAll("|", " | ")))).toEqual([]);
+    });
+
+    it.each([
+      "constants.O_WRONLY",
+      "constants.O_RDWR",
+      "constants.O_RDONLY | constants.O_CREAT",
+      "constants.O_RDONLY | constants.O_APPEND",
+      "constants.O_RDONLY | constants.O_TRUNC",
+      "constants.O_RDONLY | constants.O_WRONLY",
+      "constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | constants.O_RDWR",
+      "flags",
+      "READ_FLAGS",
+      "readFlags()",
+      "constants.O_RDONLY | flags",
+      "constants.O_RDONLY | (constants.O_NOFOLLOW ?? constants.O_WRONLY)",
+      "0",
+      '"r"',
+      '"w"',
+      '"r+"',
+      '"a"',
+    ])("negative control: fails on openSync flags %s", (flags) => {
+      expect(readOnlyProblems(withOpenFlags(real, flags))).not.toEqual([]);
+    });
+
+    it("negative control: fails on a mode argument, or openSync used as a value", () => {
+      const withMode = withOpenFlags(real, "constants.O_RDONLY, 0o600");
+      expect(readOnlyProblems(withMode)).not.toEqual([]);
+      expect(readOnlyProblems(`${real}\nexport const opener = openSync;\n`)).not.toEqual([]);
+      const renamed = real.replace("  openSync,\n", "  openSync as open,\n");
+      expect(renamed).not.toBe(real);
+      expect(readOnlyProblems(renamed)).not.toEqual([]);
+    });
+
+    it.each(WRITING_NAMES)("negative control: fails when it imports or calls %s", (name) => {
+      const imported = `import { ${name} } from "node:fs";\n${real}`;
+      expect(readOnlyProblems(imported)).toContain(`imports ${name}`);
+      const called = `${real}\nexport function probe(): void {\n  ${name}("x");\n}\n`;
+      expect(readOnlyProblems(called)).toContain(`calls ${name}`);
+      const viaPromises = `${real}\nexport async function probe(): Promise<void> {\n  await promises.${name}("x");\n}\n`;
+      expect(readOnlyProblems(viaPromises)).toContain(`calls ${name}`);
+    });
+
+    it.each([
+      'import { writeFile } from "node:fs/promises";',
+      'import { readFile } from "fs/promises";',
+      'import * as fs from "node:fs";',
+      'import fs from "fs";',
+      'import { promises } from "node:fs";',
+    ])("negative control: fails on %s", (line) => {
+      expect(readOnlyProblems(`${line}\n${real}`)).not.toEqual([]);
+    });
+
+    it("negative control: fails on require, and on a file that never opens", () => {
+      expect(readOnlyProblems(`${real}\nconst fs = require("node:fs");\n`)).toContain(
+        "calls require",
+      );
+      expect(readOnlyProblems('import { statSync } from "node:fs";\nstatSync("x");\n')).toEqual([
+        "never calls openSync",
+      ]);
+    });
   });
 
   it("the scrub command's own modules change no file", () => {
