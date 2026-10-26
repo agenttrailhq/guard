@@ -23,7 +23,7 @@ import {
   type HeadlineBasis,
   isLocalFix,
   LOCAL_FIX_SERIALIZED,
-  localFix,
+  type LocalFix,
   localFixCommand,
   NOT_CHECKED_SENTENCE,
   notCheckedCard,
@@ -338,8 +338,8 @@ describe("exact fix commands are built from quoted parts, and an unsafe ref is r
     const fix = localFixCommand("lost-work", [
       "git",
       "branch",
-      { ref: "recovered/feature-1.2" },
-      { ref: "0123abcd" },
+      { branch: "recovered/feature-1.2" },
+      { sha: "0123abcd" },
     ]);
     expect(isLocalFix(fix)).toBe(true);
     expect(isLocalFix(fix) && fix.command).toBe(
@@ -366,7 +366,7 @@ describe("exact fix commands are built from quoted parts, and an unsafe ref is r
     [""],
     ["line\nbreak"],
   ])("refuses the ref %j, and keeps no command text", (ref) => {
-    const fix = localFixCommand("lost-work", ["git", "branch", { ref }, { ref: "0123abcd" }]);
+    const fix = localFixCommand("lost-work", ["git", "branch", { ref }, { sha: "0123abcd" }]);
     expect(fix).toEqual({
       category: "lost-work",
       unsafe: true,
@@ -375,15 +375,97 @@ describe("exact fix commands are built from quoted parts, and an unsafe ref is r
     expect(isLocalFix(fix)).toBe(false);
     expect(JSON.stringify(fix)).not.toContain("curl");
   });
+
+  /** The fix for one data part, or "unsafe". */
+  const built = (part: Parameters<typeof localFixCommand>[1][number]): string => {
+    const fix = localFixCommand("lost-work", ["git", "show", part]);
+    return isLocalFix(fix) ? fix.command : "unsafe";
+  };
+
+  it.each([
+    "0123abc",
+    "0123456789abcdef0123456789abcdef01234567",
+    "ABCDEF0",
+  ])("takes the sha %j", (sha) => {
+    expect(built({ sha })).toBe(`'git' 'show' '${sha}'`);
+  });
+
+  it.each([
+    ["too short", "0123ab"],
+    ["too long", "0123456789abcdef0123456789abcdef012345678"],
+    ["not hex", "0123abg"],
+    ["a branch", "main"],
+    ["an option", "-0123abc"],
+    ["a range", "0123abc..4567def"],
+    ["empty", ""],
+  ])("refuses a sha that is %s", (_label, sha) => {
+    expect(built({ sha })).toBe("unsafe");
+  });
+
+  it.each(["main", "feature/x-1.2", "release/2026.10", "user@host"])("takes the branch %j", (b) => {
+    expect(built({ branch: b })).toBe(`'git' 'show' '${b}'`);
+  });
+
+  it.each([
+    ["two dots", "a..b"],
+    ["a reflog form", "main@{1}"],
+    ["the at sign alone", "@"],
+    ["HEAD", "HEAD"],
+    ["a colon", "a:b"],
+    ["a leading slash", "/main"],
+    ["a trailing slash", "main/"],
+    ["a double slash", "a//b"],
+    ["a component starting with a dot", "a/.hidden"],
+    ["a leading dot", ".main"],
+    ["a lock component", "a/b.lock"],
+    ["a trailing dot", "main."],
+    ["an option", "--upload-pack=x"],
+    ["a space", "a b"],
+    ["a tilde", "main~1"],
+    ["a caret", "main^"],
+    ["a glob", "ma*n"],
+    ["a backslash", "a\\b"],
+    ["a substitution", ["$", "(id)"].join("")],
+    ["empty", ""],
+  ])("refuses a branch with %s", (_label, branch) => {
+    expect(built({ branch })).toBe("unsafe");
+  });
+
+  it.each(["src/a.ts", "a.ts", "docs/notes-1.md", "./a.ts"])("takes the repo path %j", (path) => {
+    expect(built({ repoPath: path })).toBe(`'git' 'show' '${path}'`);
+  });
+
+  it.each([
+    ["absolute", "/etc/hosts"],
+    ["climbing out", "../secret"],
+    ["climbing out midway", "a/../../b"],
+    ["a drive", "C:/x"],
+    ["an option", "-rf"],
+    ["a space", "a b"],
+    ["a home form", "~/x"],
+    ["empty", ""],
+  ])("refuses a repo path that is %s", (_label, repoPath) => {
+    expect(built({ repoPath })).toBe("unsafe");
+  });
 });
 
 describe("exact fix commands stay in the local channel", () => {
-  const CANARY = "git branch recovered/LOCALFIXCANARY 0123abc";
+  /** A fix holding the canary, built the only way a fix can be. */
+  const canaryFix = (): LocalFix => {
+    const fix = localFixCommand("lost-work", [
+      "git",
+      "branch",
+      { branch: "recovered/LOCALFIXCANARY" },
+      { sha: "0123abc" },
+    ]);
+    if (!isLocalFix(fix)) throw new Error("the canary fix was refused");
+    return fix;
+  };
 
   it("a local fix refuses to become JSON", () => {
-    const fix = localFix("lost-work", CANARY);
+    const fix = canaryFix();
     expect(isLocalFix(fix)).toBe(true);
-    expect(isLocalFix({ category: "lost-work", command: CANARY })).toBe(false);
+    expect(isLocalFix({ category: "lost-work", command: fix.command })).toBe(false);
     expect(Object.isFrozen(fix)).toBe(true);
     expect(() => JSON.stringify(fix)).toThrow(LOCAL_FIX_SERIALIZED);
     expect(() => JSON.stringify({ nested: [fix] })).toThrow(LOCAL_FIX_SERIALIZED);
@@ -397,7 +479,7 @@ describe("exact fix commands stay in the local channel", () => {
         "lost-work": {
           status: "act",
           matches: 1,
-          facts: { items: [localFix("lost-work", CANARY)] },
+          facts: { items: [canaryFix()] },
         },
       },
     } as unknown as Verification;
@@ -422,7 +504,7 @@ describe("exact fix commands stay in the local channel", () => {
         "lost-work": {
           status: "act",
           matches: 1,
-          facts: { fixes: [localFix("lost-work", CANARY)] },
+          facts: { fixes: [canaryFix()] },
         },
       },
     } as unknown as Verification;
@@ -436,6 +518,12 @@ describe("exact fix commands stay in the local channel", () => {
     const meta = { version: "0.0.0", generatedAt: new Date(0) };
     expect(renderReport(result, meta)).not.toContain("LOCALFIXCANARY");
     expect(renderJson(result, meta)).not.toContain("LOCALFIXCANARY");
+  });
+
+  it("the raw builder is internal: the module exports only the quoting one", async () => {
+    const cards = await import("../core/verify/cards.js");
+    expect(Object.keys(cards)).not.toContain("localFix");
+    expect(Object.keys(cards)).toContain("localFixCommand");
   });
 
   it("Verification has no field for them", () => {

@@ -310,7 +310,7 @@ const LOCAL_ONLY: unique symbol = Symbol("local-only");
 /**
  * An exact fix command for this machine, with real branch names and paths. For the local
  * `0600` fixes file and nothing else: never part of `Verification`, `ScanResult`, the JSON or
- * the page. Made only by `localFix`.
+ * the page. Made only by `localFixCommand`.
  */
 export interface LocalFix {
   readonly [LOCAL_ONLY]: true;
@@ -326,11 +326,10 @@ export const LOCAL_FIX_SERIALIZED =
   "a local fix command belongs in the local fixes file only, and is never serialized";
 
 /**
- * An exact fix command for the local fixes file, as written. Only for a command with no data in
- * it; a command that holds a branch, a sha or a path is built with `localFixCommand`, which
- * quotes it and refuses an unsafe ref.
+ * A `LocalFix` holding `command` as written. Internal: every fix is built by `localFixCommand`,
+ * which quotes each part and refuses an unsafe one.
  */
-export function localFix(category: VerifyCategory, command: string): LocalFix {
+function localFix(category: VerifyCategory, command: string): LocalFix {
   return Object.freeze({
     [LOCAL_ONLY]: true as const,
     category,
@@ -342,13 +341,69 @@ export function localFix(category: VerifyCategory, command: string): LocalFix {
 }
 
 /**
- * One part of an exact command: a literal from code (`"git"`, `"branch"`), or a `ref` taken
- * from what a check read — a branch name, a sha, a path.
+ * One part of an exact command: a literal from code (`"git"`, `"branch"`), or a value taken
+ * from what a check read, by kind:
+ *
+ * - `sha`: a commit id, 7 to 40 hex digits.
+ * - `branch`: a branch name that `git check-ref-format --branch` accepts, within the safe set.
+ * - `repoPath`: a path inside a repository: relative, with no `..`, within the safe set.
+ * - `ref`: any other value from data (a resource name, an absolute path), within the safe set.
+ *
+ * The safe set is letters, digits and `_ @ % + = : , . / -`: no shell syntax, no space, no
+ * quote. No value may start with `-`, where it would read as an option.
  */
-export type CommandPart = string | { readonly ref: string };
+export type CommandPart =
+  | string
+  | { readonly sha: string }
+  | { readonly branch: string }
+  | { readonly repoPath: string }
+  | { readonly ref: string };
 
-/** The characters a ref may hold: no shell syntax, no space, no quote. */
+/** The characters a value from data may hold: no shell syntax, no space, no quote. */
 const SAFE_REF = /^[A-Za-z0-9_@%+=:,./-]+$/;
+
+/** A commit id. */
+const SHA = /^[0-9a-fA-F]{7,40}$/;
+
+/**
+ * A branch name `git check-ref-format --branch` accepts, within the safe set: no `:` (which the
+ * format refuses), no `..`, no `@{`, not `@` or `HEAD`, no `//`, no leading or trailing `/`, no
+ * component that starts with `.` or ends with `.lock`, and no trailing `.`.
+ */
+function isSafeBranch(name: string): boolean {
+  if (!SAFE_REF.test(name) || name.includes(":")) return false;
+  if (name === "@" || name === "HEAD" || name.includes("..") || name.includes("@{")) return false;
+  if (name.includes("//") || name.startsWith("/") || name.endsWith("/")) return false;
+  if (name.endsWith(".")) return false;
+  return name.split("/").every((part) => !part.startsWith(".") && !part.endsWith(".lock"));
+}
+
+/** A path inside a repository: relative, no `..`, no drive or `:`, within the safe set. */
+function isSafeRepoPath(path: string): boolean {
+  return (
+    SAFE_REF.test(path) && !path.includes(":") && !path.startsWith("/") && !path.includes("..")
+  );
+}
+
+/** The value of a data part, or `undefined` when it is not safe for its kind. */
+function safeValue(part: Exclude<CommandPart, string>): string | undefined {
+  let value: string;
+  let safe: boolean;
+  if ("sha" in part) {
+    value = part.sha;
+    safe = SHA.test(value);
+  } else if ("branch" in part) {
+    value = part.branch;
+    safe = isSafeBranch(value);
+  } else if ("repoPath" in part) {
+    value = part.repoPath;
+    safe = isSafeRepoPath(value);
+  } else {
+    value = part.ref;
+    safe = SAFE_REF.test(value);
+  }
+  return safe && !value.startsWith("-") ? value : undefined;
+}
 
 /** What a fix becomes when a ref in it could not be made safe. It carries no command text. */
 export interface UnsafeFix {
@@ -363,10 +418,10 @@ function quoteArgument(argument: string): string {
 }
 
 /**
- * An exact command for the local fixes file, built from parts, every one of them quoted. A ref
- * outside the safe set, empty, or starting with `-` (it would read as an option) makes the whole
- * fix an `UnsafeFix` instead: the command is not written at all, and the file says it could
- * not make a safe command. Every fix command built from data goes through here.
+ * An exact command for the local fixes file, built from parts, every one of them quoted. A data
+ * part that is not safe for its kind (see `CommandPart`), empty, or starting with `-` makes the
+ * whole fix an `UnsafeFix` instead: the command is not written at all, and the file says it
+ * could not make a safe command. Every fix command goes through here.
  */
 export function localFixCommand(
   category: VerifyCategory,
@@ -378,10 +433,11 @@ export function localFixCommand(
       argv.push(quoteArgument(part));
       continue;
     }
-    if (!SAFE_REF.test(part.ref) || part.ref.startsWith("-")) {
+    const value = safeValue(part);
+    if (value === undefined) {
       return { category, unsafe: true, note: "could not make a safe command" };
     }
-    argv.push(quoteArgument(part.ref));
+    argv.push(quoteArgument(value));
   }
   return localFix(category, argv.join(" "));
 }
