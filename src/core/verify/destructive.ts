@@ -311,7 +311,7 @@ async function classify(context: GitCheckContext, target: RmTarget): Promise<Cla
     missing: state.missing > 0,
     folder,
     path,
-    absent: !context.probe.exists(path),
+    absent: context.probe.exists(path) === false,
   };
 }
 

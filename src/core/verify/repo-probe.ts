@@ -76,9 +76,13 @@ export class RepoProbe {
     this.#io = io;
   }
 
-  /** Does `path` exist, as a file or a folder? A path that cannot be read counts as missing. */
-  exists(path: string): boolean {
-    return this.#io.isDirectory(path) !== undefined;
+  /**
+   * Is anything at `path`? `false` only when the seam says nothing is there; `undefined` when
+   * it cannot be told, which no caller reads as missing.
+   */
+  exists(path: string): boolean | undefined {
+    if (this.#io.pathExists !== undefined) return this.#io.pathExists(path);
+    return this.#io.isDirectory(path) === undefined ? undefined : true;
   }
 
   /** Is `path` a folder: `undefined` when it cannot be read. */
@@ -86,12 +90,19 @@ export class RepoProbe {
     return this.#io.isDirectory(path);
   }
 
-  /** The top folder of the repository `folder` is in. */
+  /**
+   * The top folder of the repository `folder` is in. `missing` only when the folder is not
+   * there; a folder that cannot be told about is `failed`.
+   */
   toplevel(folder: string): Promise<string | Failure> {
     let answer = this.#toplevels.get(folder);
     if (answer === undefined) {
       answer = (async (): Promise<string | Failure> => {
-        if (this.#io.isDirectory(folder) !== true) return { failed: "missing" };
+        const isFolder = this.#io.isDirectory(folder);
+        if (isFolder === false) return { failed: "missing" };
+        if (isFolder === undefined) {
+          return { failed: this.exists(folder) === false ? "missing" : "failed" };
+        }
         const top = await this.#io.git(folder, ["rev-parse", "--show-toplevel"]);
         if (!top.ok) return { failed: top.reason };
         const root = top.stdout.trim();
@@ -122,7 +133,7 @@ export class RepoProbe {
   async hasHooks(root: string, names: readonly string[]): Promise<boolean | Failure> {
     const folder = await this.hooksFolder(root);
     if (isFailure(folder)) return folder;
-    return names.some((name) => this.exists(join(folder, name)));
+    return names.some((name) => this.exists(join(folder, name)) === true);
   }
 
   /**
@@ -133,7 +144,7 @@ export class RepoProbe {
   async hooksState(root: string, names: readonly string[]): Promise<HooksState | Failure> {
     const folder = await this.hooksFolder(root);
     if (isFailure(folder)) return folder;
-    if (names.some((name) => this.exists(join(folder, name)))) return "on";
+    if (names.some((name) => this.exists(join(folder, name)) === true)) return "on";
     const common = await this.#io.git(root, ["rev-parse", "--git-common-dir"]);
     if (!common.ok) return { failed: common.reason };
     const dir = common.stdout.trim();

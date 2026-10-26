@@ -478,7 +478,16 @@ export interface VerifyIO {
   git(cwd: string, args: readonly string[]): Promise<GitOutcome>;
   /** Whether `path` is a folder: `undefined` when it cannot be read. */
   isDirectory(path: string): boolean | undefined;
-  /** Read a file of at most the size cap, under a root a `git rev-parse` call has returned. */
+  /**
+   * Whether anything is at `path`: `false` only when nothing is there, `undefined` when it
+   * cannot be told (a permission error, a network path). Optional: a seam without it can never
+   * say a path is missing, so whatever depends on that reads as could-not-check.
+   */
+  pathExists?(path: string): boolean | undefined;
+  /**
+   * Read a file of at most the size cap, inside a repo a `git rev-parse --show-toplevel` call
+   * has returned, or a Markdown instruction or memory file inside an agent's own folder.
+   */
   readFile(path: string): Promise<FileOutcome>;
   /** Which watched processes are running. Ids only; see `WATCHED_PROCESSES`. */
   processNames(): Promise<ProcessOutcome>;

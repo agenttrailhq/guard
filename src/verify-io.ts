@@ -524,6 +524,17 @@ export function createRealVerifyIO(options: VerifyIOOptions = {}): VerifyIO {
       }
     },
 
+    pathExists(path: string): boolean | undefined {
+      if (isNetworkPath(path)) return undefined;
+      try {
+        statSync(path);
+        return true;
+      } catch (error) {
+        const code = (error as NodeJS.ErrnoException).code;
+        return code === "ENOENT" || code === "ENOTDIR" ? false : undefined;
+      }
+    },
+
     readFile(path: string): Promise<FileOutcome> {
       if (spent >= budget) return Promise.resolve({ ok: false, reason: "budget" });
       if (isNetworkPath(path)) return Promise.resolve({ ok: false, reason: "refused" });

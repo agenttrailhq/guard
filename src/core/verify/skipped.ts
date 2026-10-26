@@ -606,9 +606,19 @@ async function checkInstructions(
     if (write.texts.some(tellsToSkip)) file.agentWrote = true;
     files.set(write.path, file);
   }
+  // A session folder that is gone, or not in a repository, has no repository files to read. One
+  // whose repository could not be asked might hold a file that says to skip checks.
+  let rootsNotAsked = 0;
   for (const folder of context.log.folders.slice(0, MAX_PROBED_ITEMS)) {
     const root = await context.probe.toplevel(folder);
-    if (isFailure(root)) continue;
+    if (isFailure(root)) {
+      const gone =
+        root.failed === "missing" &&
+        context.probe.isFolder(folder) !== true &&
+        context.probe.exists(folder) !== undefined;
+      if (root.failed !== "not-a-repo" && !gone) rootsNotAsked += 1;
+      continue;
+    }
     for (const name of REPO_INSTRUCTION_FILES) {
       const path = join(root, name);
       if (!files.has(path)) files.set(path, { agentWrote: false, lookedFor: true });
@@ -623,7 +633,7 @@ async function checkInstructions(
   let agentWrote = 0;
   let agentWroteStill = 0;
   let agentWroteRemoved = 0;
-  let couldNotRead = 0;
+  let couldNotRead = rootsNotAsked;
   for (const [index, [path, file]] of [...files].entries()) {
     if (file.agentWrote) agentWrote += 1;
     if (index >= MAX_PROBED_ITEMS) {
@@ -631,8 +641,13 @@ async function checkInstructions(
       continue;
     }
     // A file that is not there says nothing now. One the agent wrote an instruction into has
-    // had it removed with the file.
-    if (!context.probe.exists(path)) {
+    // had it removed with the file. A file that cannot be told about is never read as absent.
+    const there = context.probe.exists(path);
+    if (there === undefined) {
+      couldNotRead += 1;
+      continue;
+    }
+    if (!there) {
       if (file.agentWrote) agentWroteRemoved += 1;
       continue;
     }

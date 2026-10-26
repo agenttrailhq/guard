@@ -98,14 +98,20 @@ describe("the --verify flag", () => {
       "unreviewed",
       "egress",
     ]);
-    // The git-backed checks ran over a session with no commands: clean, with counts.
+    // The git-backed checks ran over a session with no commands: clean, with counts. With no
+    // way to reach the machine, the instruction files could not be read, so skipped checks can
+    // never be clean.
     const git = ["skipped-checks", "lost-work", "destructive"];
     for (const [name, value] of Object.entries(categories)) {
       if (name !== "secrets" && !git.includes(name)) {
         expect(value).toEqual({ status: "not-checked" });
       }
     }
-    for (const name of git) expect(categories[name].status).toBe("clean");
+    expect(categories["skipped-checks"].status).toBe("could-not-check");
+    expect(categories["skipped-checks"].facts.instructions.couldNotRead).toBeGreaterThan(0);
+    for (const name of ["lost-work", "destructive"]) {
+      expect(categories[name].status).toBe("clean");
+    }
     expect(categories.secrets.status).toBe("clean");
   });
 });

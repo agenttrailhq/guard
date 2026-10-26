@@ -8515,20 +8515,31 @@ var RepoProbe = class {
   constructor(io) {
     this.#io = io;
   }
-  /** Does `path` exist, as a file or a folder? A path that cannot be read counts as missing. */
+  /**
+   * Is anything at `path`? `false` only when the seam says nothing is there; `undefined` when
+   * it cannot be told, which no caller reads as missing.
+   */
   exists(path) {
-    return this.#io.isDirectory(path) !== void 0;
+    if (this.#io.pathExists !== void 0) return this.#io.pathExists(path);
+    return this.#io.isDirectory(path) === void 0 ? void 0 : true;
   }
   /** Is `path` a folder: `undefined` when it cannot be read. */
   isFolder(path) {
     return this.#io.isDirectory(path);
   }
-  /** The top folder of the repository `folder` is in. */
+  /**
+   * The top folder of the repository `folder` is in. `missing` only when the folder is not
+   * there; a folder that cannot be told about is `failed`.
+   */
   toplevel(folder) {
     let answer = this.#toplevels.get(folder);
     if (answer === void 0) {
       answer = (async () => {
-        if (this.#io.isDirectory(folder) !== true) return { failed: "missing" };
+        const isFolder3 = this.#io.isDirectory(folder);
+        if (isFolder3 === false) return { failed: "missing" };
+        if (isFolder3 === void 0) {
+          return { failed: this.exists(folder) === false ? "missing" : "failed" };
+        }
         const top = await this.#io.git(folder, ["rev-parse", "--show-toplevel"]);
         if (!top.ok) return { failed: top.reason };
         const root = top.stdout.trim();
@@ -8557,7 +8568,7 @@ var RepoProbe = class {
   async hasHooks(root, names) {
     const folder = await this.hooksFolder(root);
     if (isFailure(folder)) return folder;
-    return names.some((name) => this.exists(join3(folder, name)));
+    return names.some((name) => this.exists(join3(folder, name)) === true);
   }
   /**
    * The repository's hooks now: `on` when the folder in effect holds one of `names`; `off` when
@@ -8567,7 +8578,7 @@ var RepoProbe = class {
   async hooksState(root, names) {
     const folder = await this.hooksFolder(root);
     if (isFailure(folder)) return folder;
-    if (names.some((name) => this.exists(join3(folder, name)))) return "on";
+    if (names.some((name) => this.exists(join3(folder, name)) === true)) return "on";
     const common = await this.#io.git(root, ["rev-parse", "--git-common-dir"]);
     if (!common.ok) return { failed: common.reason };
     const dir = common.stdout.trim();
@@ -12309,7 +12320,7 @@ async function classify2(context, target) {
     missing: state.missing > 0,
     folder,
     path,
-    absent: !context.probe.exists(path)
+    absent: context.probe.exists(path) === false
   };
 }
 function restoreParts(folder, path) {
@@ -13967,9 +13978,14 @@ async function checkInstructions(context, fixes) {
     if (write.texts.some(tellsToSkip)) file2.agentWrote = true;
     files.set(write.path, file2);
   }
+  let rootsNotAsked = 0;
   for (const folder of context.log.folders.slice(0, MAX_PROBED_ITEMS)) {
     const root = await context.probe.toplevel(folder);
-    if (isFailure(root)) continue;
+    if (isFailure(root)) {
+      const gone = root.failed === "missing" && context.probe.isFolder(folder) !== true && context.probe.exists(folder) !== void 0;
+      if (root.failed !== "not-a-repo" && !gone) rootsNotAsked += 1;
+      continue;
+    }
     for (const name of REPO_INSTRUCTION_FILES) {
       const path = join5(root, name);
       if (!files.has(path)) files.set(path, { agentWrote: false, lookedFor: true });
@@ -13983,14 +13999,19 @@ async function checkInstructions(context, fixes) {
   let agentWrote = 0;
   let agentWroteStill = 0;
   let agentWroteRemoved = 0;
-  let couldNotRead = 0;
+  let couldNotRead = rootsNotAsked;
   for (const [index, [path, file2]] of [...files].entries()) {
     if (file2.agentWrote) agentWrote += 1;
     if (index >= MAX_PROBED_ITEMS) {
       couldNotRead += 1;
       continue;
     }
-    if (!context.probe.exists(path)) {
+    const there = context.probe.exists(path);
+    if (there === void 0) {
+      couldNotRead += 1;
+      continue;
+    }
+    if (!there) {
       if (file2.agentWrote) agentWroteRemoved += 1;
       continue;
     }
@@ -19117,6 +19138,16 @@ function createRealVerifyIO(options = {}) {
         return statSync3(path).isDirectory();
       } catch {
         return void 0;
+      }
+    },
+    pathExists(path) {
+      if (isNetworkPath(path)) return void 0;
+      try {
+        statSync3(path);
+        return true;
+      } catch (error) {
+        const code2 = error.code;
+        return code2 === "ENOENT" || code2 === "ENOTDIR" ? false : void 0;
       }
     },
     readFile(path) {
