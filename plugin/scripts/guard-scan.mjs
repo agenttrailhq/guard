@@ -17191,7 +17191,8 @@ async function verifyScan(input) {
   const git = await checkGitBacked({
     corpus: input.corpus,
     io: input.io,
-    home: input.home ?? homedir2()
+    home: input.home ?? homedir2(),
+    ...input.scratchRoots === void 0 ? {} : { scratchRoots: input.scratchRoots }
   });
   const verification = {
     matchedCalls: matched.tally,

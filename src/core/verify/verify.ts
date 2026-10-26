@@ -36,6 +36,8 @@ export interface VerifyInput {
   readonly fingerprint?: Fingerprinter;
   /** The home folder, for `~` in commands. Production uses the user's. */
   readonly home?: string;
+  /** For tests: folders whose contents are scratch. Production uses `TEMP_ROOTS`. */
+  readonly scratchRoots?: readonly string[];
 }
 
 /**
@@ -87,6 +89,7 @@ export async function verifyScan(input: VerifyInput): Promise<VerifyOutcome> {
     corpus: input.corpus,
     io: input.io,
     home: input.home ?? homedir(),
+    ...(input.scratchRoots === undefined ? {} : { scratchRoots: input.scratchRoots }),
   });
   const verification: Verification = {
     matchedCalls: matched.tally,
