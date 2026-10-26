@@ -210,13 +210,32 @@ export function chipText(card: CardView): {
   readonly count?: number;
   readonly label: CardSentence;
 } {
-  if (
+  const counted =
     card.chip !== undefined &&
-    (card.tone === "act" || card.tone === "review" || card.tone === "clean")
-  ) {
+    (card.tone === "act" || card.tone === "review" || card.tone === "clean");
+  // A card that could not confirm never shows a zero: only a count it did find stands.
+  if (card.unconfirmed !== undefined && (!counted || (card.chip?.count ?? 0) === 0)) {
+    return {
+      label: sentence(CHIP_UNCONFIRMED, card) ?? { template: CHIP_UNCONFIRMED.id, text: "" },
+    };
+  }
+  if (counted && card.chip !== undefined) {
     return { count: card.chip.count, label: card.chip.label };
   }
   return { label: sentence(CHIP_TONE, card) ?? { template: CHIP_TONE.id, text: "" } };
+}
+
+/** A chip whose card could not confirm what it reports. */
+export const CHIP_UNCONFIRMED: SentenceTemplate<Pick<CardView, "unconfirmed">> = {
+  id: "chip.could-not-confirm",
+  render: ({ unconfirmed }) => (unconfirmed === undefined ? undefined : "could not confirm"),
+};
+
+/** A card's tone label: "Could not confirm" for a card that could not, else its tone's. */
+export function toneLabel(card: Pick<CardView, "tone" | "unconfirmed">): string {
+  return card.unconfirmed !== undefined && card.tone === "could-not-check"
+    ? "Could not confirm"
+    : TONE_LABELS[card.tone];
 }
 
 // ── Card lines that are the same for every category ──────────────────────────

@@ -544,3 +544,25 @@ export const CODEX_ONLY_RESULT: ScanResult = {
 
 /** The categories the main corpus writes exact fix commands for. */
 export const LOCAL_FIX_CATEGORIES: readonly VerifyCategory[] = ["skipped-checks", "lost-work"];
+
+/**
+ * Calls that ran held forms this reading does not take apart: a clean destructive check
+ * becomes could-not-confirm, and a lost-work check to act on keeps its tone and says it too.
+ */
+export const HIDING_RESULT: ScanResult = baseResult(
+  verification({
+    ...verifiedCategories(),
+    destructive: checked("destructive", "clean", 7, { ran: 7 }, ["shell-string", "xargs"]),
+    "lost-work": checked("lost-work", "act", 3, { branches: 2, stashes: 1, recoverable: 3 }, [
+      "eval",
+    ]),
+  } as unknown as Verification["categories"]),
+);
+
+/** A Cursor scan: its sessions record no command output, so no command is confirmed as run. */
+export const CURSOR_RESULT: ScanResult = {
+  ...baseResult(
+    verification(verifiedCategories(), { resultsRecorded: false, ranEvidence: "none" }),
+  ),
+  agent: "cursor",
+};

@@ -8105,6 +8105,24 @@ var COULD_NOT_CHECK_SENTENCE = {
   id: "could-not-check",
   render: () => "Could not be checked on this machine, so this is not a clean result."
 };
+var HIDING_FORM_LABELS = {
+  "shell-string": "a shell given a string to run",
+  "find-exec": "find -exec",
+  xargs: "xargs",
+  "process-substitution": "process substitution",
+  "command-substitution": "a command substitution",
+  eval: "eval",
+  "git-config": "git with config set on its command line or by an earlier command",
+  "git-exec": "git with --exec or an external diff",
+  "git-hook": "git after a hook was written",
+  "unread-shell": "a shell this reading does not parse",
+  "inline-code": "code run inline by an interpreter",
+  "piped-script": "a script piped into a shell"
+};
+var UNCONFIRMED_SENTENCE = {
+  id: "could-not-confirm",
+  render: (u) => u.reason === "no-output" ? "Could not confirm: these sessions record no command output, so a count of commands that ran is zero because nothing could be confirmed, not because nothing ran." : `Could not confirm: commands that ran here used ${u.forms.map((form) => HIDING_FORM_LABELS[form]).join(", ")}, which can run commands this reading does not take apart, so this is not a clean result.`
+};
 function notCheckedCard(category) {
   return {
     category,
@@ -8139,19 +8157,45 @@ function orderCards(cards) {
     (a, b) => TONE_ORDER.indexOf(a.tone) - TONE_ORDER.indexOf(b.tone) || VERIFY_CATEGORIES.indexOf(a.category) - VERIFY_CATEGORIES.indexOf(b.category)
   );
 }
+var KNOWN_TONES = new Set(VERIFY_STATUSES);
+function hidingFormsIn(facts) {
+  if (facts === null || typeof facts !== "object") return [];
+  const named = facts.hidingForms;
+  if (!Array.isArray(named)) return [];
+  return HIDING_FORMS.filter((form) => named.includes(form));
+}
+var READS_TEXT = /* @__PURE__ */ new Set(["secrets"]);
+function confirmedCard(built, facts, verification) {
+  const tone = KNOWN_TONES.has(built.tone) ? built.tone : "could-not-check";
+  const forms = hidingFormsIn(facts);
+  let unconfirmed;
+  if (forms.length > 0) unconfirmed = { reason: "hiding-forms", forms };
+  else if (!verification.resultsRecorded && !READS_TEXT.has(built.category) && tone === "clean") {
+    unconfirmed = { reason: "no-output", forms: [] };
+  }
+  const finalTone = unconfirmed !== void 0 && tone === "clean" ? "could-not-check" : tone;
+  const lead = unconfirmed !== void 0 ? sentences([UNCONFIRMED_SENTENCE], unconfirmed) : finalTone === "could-not-check" ? sentences([COULD_NOT_CHECK_SENTENCE], void 0) : [];
+  return {
+    ...built,
+    tone: finalTone,
+    found: [
+      ...lead,
+      ...built.found.filter((line) => line.template !== COULD_NOT_CHECK_SENTENCE.id)
+    ],
+    ...unconfirmed === void 0 ? {} : { unconfirmed }
+  };
+}
 function cardsFor(verification, builders) {
   const context = { ranEvidence: verification.ranEvidence };
   const cards = VERIFY_CATEGORIES.map((category) => {
     const result = verification.categories[category];
     if (result.status === "not-checked") return notCheckedCard(category);
-    if (result.status === "could-not-check") {
-      return couldNotCheckCard(category, result.matches ?? 0);
-    }
     const build = builders[category];
     if (build === void 0 || result.facts === void 0) {
       return couldNotCheckCard(category, result.matches ?? 0);
     }
-    return build(result, context);
+    const built = build(result, context);
+    return confirmedCard(built, result.facts, verification);
   });
   return orderCards(cards);
 }
@@ -8305,10 +8349,23 @@ var CHIP_TONE = {
   render: ({ tone }) => TONE_LABELS[tone].toLowerCase()
 };
 function chipText(card) {
-  if (card.chip !== void 0 && (card.tone === "act" || card.tone === "review" || card.tone === "clean")) {
+  const counted3 = card.chip !== void 0 && (card.tone === "act" || card.tone === "review" || card.tone === "clean");
+  if (card.unconfirmed !== void 0 && (!counted3 || (card.chip?.count ?? 0) === 0)) {
+    return {
+      label: sentence(CHIP_UNCONFIRMED, card) ?? { template: CHIP_UNCONFIRMED.id, text: "" }
+    };
+  }
+  if (counted3 && card.chip !== void 0) {
     return { count: card.chip.count, label: card.chip.label };
   }
   return { label: sentence(CHIP_TONE, card) ?? { template: CHIP_TONE.id, text: "" } };
+}
+var CHIP_UNCONFIRMED = {
+  id: "chip.could-not-confirm",
+  render: ({ unconfirmed }) => unconfirmed === void 0 ? void 0 : "could not confirm"
+};
+function toneLabel(card) {
+  return card.unconfirmed !== void 0 && card.tone === "could-not-check" ? "Could not confirm" : TONE_LABELS[card.tone];
 }
 var CODEX_CAVEAT = {
   id: "card.codex-caveat",
@@ -9174,7 +9231,7 @@ ${parts.join("\n")}
   }
   const caveat = sentence(CODEX_CAVEAT, card);
   return `<article class="card verified v-${card.tone}" id="${id}" aria-labelledby="${id}-title">
-<div class="card-head"><span class="tone tone-${card.tone}">${escapeHtml(TONE_LABELS[card.tone])}</span>${count2 === void 0 ? "" : `<span class="times" data-template="${escapeHtml(count2.template)}">${escapeHtml(count2.text)}</span>`}</div>
+<div class="card-head"><span class="tone tone-${card.tone}">${escapeHtml(toneLabel(card))}</span>${count2 === void 0 ? "" : `<span class="times" data-template="${escapeHtml(count2.template)}">${escapeHtml(count2.text)}</span>`}</div>
 <h3 id="${id}-title">${escapeHtml(title)}</h3>
 <dl class="verified-facts">
 ${fields.join("\n")}

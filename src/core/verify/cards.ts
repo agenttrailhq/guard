@@ -29,7 +29,10 @@ import {
   type CategoryFactsMap,
   type CheckedCategory,
   type CheckedCategoryName,
+  HIDING_FORMS,
+  type HidingForm,
   VERIFY_CATEGORIES,
+  VERIFY_STATUSES,
 } from "./types.js";
 
 // ── Sentences ─────────────────────────────────────────────────────────────────
@@ -142,6 +145,21 @@ export interface CardView {
   readonly chip?: ChipClaim;
   /** What its check read on this machine, from the check's own counts. */
   readonly read?: CardSentence;
+  /** Why the card could not confirm what it reports, when it could not. Set by `cardsFor`. */
+  readonly unconfirmed?: Unconfirmed;
+}
+
+/**
+ * Why a card could not confirm what it reports, so it never reads clean or "none":
+ *
+ * - `hiding-forms`: calls that ran hold forms that run something this reading does not take
+ *   apart (`HIDING_FORMS`), named by the check's shared `hidingForms` fact;
+ * - `no-output`: the app records no command output, so no command could be confirmed as run,
+ *   and a check of commands that ran found none for that reason only.
+ */
+export interface Unconfirmed {
+  readonly reason: "hiding-forms" | "no-output";
+  readonly forms: readonly HidingForm[];
 }
 
 /** What a card builder may know beyond its own category's result. */
@@ -171,6 +189,31 @@ export const NOT_CHECKED_SENTENCE: SentenceTemplate<unknown> = {
 export const COULD_NOT_CHECK_SENTENCE: SentenceTemplate<unknown> = {
   id: "could-not-check",
   render: () => "Could not be checked on this machine, so this is not a clean result.",
+};
+
+/** How the page names each hiding form. */
+export const HIDING_FORM_LABELS: Readonly<Record<HidingForm, string>> = {
+  "shell-string": "a shell given a string to run",
+  "find-exec": "find -exec",
+  xargs: "xargs",
+  "process-substitution": "process substitution",
+  "command-substitution": "a command substitution",
+  eval: "eval",
+  "git-config": "git with config set on its command line or by an earlier command",
+  "git-exec": "git with --exec or an external diff",
+  "git-hook": "git after a hook was written",
+  "unread-shell": "a shell this reading does not parse",
+  "inline-code": "code run inline by an interpreter",
+  "piped-script": "a script piped into a shell",
+};
+
+/** The first line of a card that could not confirm what it reports. */
+export const UNCONFIRMED_SENTENCE: SentenceTemplate<Unconfirmed> = {
+  id: "could-not-confirm",
+  render: (u) =>
+    u.reason === "no-output"
+      ? "Could not confirm: these sessions record no command output, so a count of commands that ran is zero because nothing could be confirmed, not because nothing ran."
+      : `Could not confirm: commands that ran here used ${u.forms.map((form) => HIDING_FORM_LABELS[form]).join(", ")}, which can run commands this reading does not take apart, so this is not a clean result.`,
 };
 
 /** The card for a category with no check yet. */
@@ -224,24 +267,75 @@ type AnyResult = {
   readonly facts?: unknown;
 };
 
+/** The registered statuses, so a builder's stray tone never reaches the page. */
+const KNOWN_TONES: ReadonlySet<string> = new Set(VERIFY_STATUSES);
+
+/** The hiding forms a check's facts name under the shared `hidingForms` key. */
+function hidingFormsIn(facts: unknown): HidingForm[] {
+  if (facts === null || typeof facts !== "object") return [];
+  const named = (facts as { readonly hidingForms?: unknown }).hidingForms;
+  if (!Array.isArray(named)) return [];
+  return HIDING_FORMS.filter((form) => named.includes(form));
+}
+
+/** Categories whose check reads text, not commands that ran: no-output does not touch them. */
+const READS_TEXT: ReadonlySet<VerifyCategory> = new Set(["secrets"]);
+
 /**
- * Every category's card, in page order. A not-checked or could-not-check category gets its
- * default card; every other category goes to its builder.
+ * A built card, made honest about what it could confirm:
+ * - a tone that is not a known status becomes could-not-check;
+ * - a check whose facts name hiding forms could not confirm, and never reads clean;
+ * - on an app that records no command output, a check of commands that ran that would read
+ *   clean could not confirm instead;
+ * - a could-not-check card leads with why: could not confirm, or could not be checked.
+ */
+function confirmedCard(built: CardView, facts: unknown, verification: Verification): CardView {
+  const tone: VerifyStatus = KNOWN_TONES.has(built.tone) ? built.tone : "could-not-check";
+  const forms = hidingFormsIn(facts);
+  let unconfirmed: Unconfirmed | undefined;
+  if (forms.length > 0) unconfirmed = { reason: "hiding-forms", forms };
+  else if (!verification.resultsRecorded && !READS_TEXT.has(built.category) && tone === "clean") {
+    unconfirmed = { reason: "no-output", forms: [] };
+  }
+  const finalTone: VerifyStatus =
+    unconfirmed !== undefined && tone === "clean" ? "could-not-check" : tone;
+  const lead =
+    unconfirmed !== undefined
+      ? sentences([UNCONFIRMED_SENTENCE], unconfirmed)
+      : finalTone === "could-not-check"
+        ? sentences([COULD_NOT_CHECK_SENTENCE], undefined)
+        : [];
+  return {
+    ...built,
+    tone: finalTone,
+    found: [
+      ...lead,
+      ...built.found.filter((line) => line.template !== COULD_NOT_CHECK_SENTENCE.id),
+    ],
+    ...(unconfirmed === undefined ? {} : { unconfirmed }),
+  };
+}
+
+/**
+ * Every category's card, in page order. A not-checked category gets its default card. A
+ * checked category goes to its builder, a could-not-check one too when it carries facts, so
+ * the card can say what did and did not finish; with no facts, or no builder, it gets the
+ * default could-not-check card, never a clean one. Every built card then passes through
+ * `confirmedCard`.
  */
 export function cardsFor(verification: Verification, builders: CardBuilders): CardView[] {
   const context: CardContext = { ranEvidence: verification.ranEvidence };
   const cards = VERIFY_CATEGORIES.map((category): CardView => {
     const result = verification.categories[category] as AnyResult;
     if (result.status === "not-checked") return notCheckedCard(category);
-    if (result.status === "could-not-check") {
-      return couldNotCheckCard(category, result.matches ?? 0);
-    }
     const build = (builders as Readonly<Record<string, ToCard<CheckedCategoryName>>>)[category];
     if (build === undefined || result.facts === undefined) {
-      // A result with facts and no builder cannot be shown truthfully, and is not clean.
+      // A result with no facts, or with facts and no builder, cannot be shown truthfully, and
+      // is not clean.
       return couldNotCheckCard(category, result.matches ?? 0);
     }
-    return build(result as CheckedCategory<CategoryFactsMap[CheckedCategoryName]>, context);
+    const built = build(result as CheckedCategory<CategoryFactsMap[CheckedCategoryName]>, context);
+    return confirmedCard(built, result.facts, verification);
   });
   return orderCards(cards);
 }

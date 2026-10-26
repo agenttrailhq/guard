@@ -28,10 +28,12 @@ import {
   NOT_CHECKED_SENTENCE,
   type SentenceTemplate,
   sentences,
+  UNCONFIRMED_SENTENCE,
 } from "../core/verify/cards.js";
 import {
   CARD_COUNT,
   CHIP_TONE,
+  CHIP_UNCONFIRMED,
   CODEX_CAVEAT,
   FIXES_FILE_NOTE,
   LEAD_NOTES,
@@ -362,9 +364,18 @@ describe("every verified line comes from a template whose facts are present", ()
     [TONE_TALLY, [cards]],
     [FIXES_FILE_NOTE, [{ variant: "document" }]],
     [SECRETS_COUNT, [{ matches: verification.categories.secrets.matches }]],
-    ...[CARD_COUNT, CHIP_TONE, CODEX_CAVEAT, NOT_CHECKED_SENTENCE, COULD_NOT_CHECK_SENTENCE].map(
-      (t) => [t, cards] as [SentenceTemplate<never>, readonly unknown[]],
-    ),
+    [
+      UNCONFIRMED_SENTENCE,
+      cards.flatMap((c) => (c.unconfirmed === undefined ? [] : [c.unconfirmed])),
+    ],
+    ...[
+      CARD_COUNT,
+      CHIP_TONE,
+      CHIP_UNCONFIRMED,
+      CODEX_CAVEAT,
+      NOT_CHECKED_SENTENCE,
+      COULD_NOT_CHECK_SENTENCE,
+    ].map((t) => [t, cards] as [SentenceTemplate<never>, readonly unknown[]]),
   ];
   const byId = new Map(SHIPPED.map(([t, facts]) => [t.id, { t, facts }]));
 

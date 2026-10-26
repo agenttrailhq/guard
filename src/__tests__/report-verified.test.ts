@@ -38,6 +38,8 @@ import { decodeEntities } from "./html-text.js";
 import {
   baseResult,
   CLOUD_LEAD_RESULT,
+  CURSOR_RESULT,
+  HIDING_RESULT,
   LOCAL_FIX_CATEGORIES,
   SECRETS_ACT,
   TEST_ONLY_BUILDERS,
@@ -564,5 +566,82 @@ describe("every Codex page says its reading is limited and unverified", () => {
       const html = renderReport({ ...VERIFIED_RESULT, agent }, VERIFIED_META, OPTIONS);
       expect(html).not.toContain("Codex reading");
     }
+  });
+});
+
+describe("a card never reads clean, or shows a zero, where nothing could be confirmed", () => {
+  const chip = (html: string, category: VerifyCategory) =>
+    chipsOf(html).find((c) => c.href === `#check-${category}`)?.text;
+
+  it("a clean check whose calls held hiding forms could not confirm, and names them", () => {
+    const html = renderReport(HIDING_RESULT, VERIFIED_META, OPTIONS);
+    const destructive = card(html, "destructive");
+    expect(destructive).toContain(
+      '<span class="tone tone-could-not-check">Could not confirm</span>',
+    );
+    expect(destructive).toContain(
+      "Could not confirm: commands that ran here used a shell given a string to run, xargs, which can run commands this reading does not take apart, so this is not a clean result.",
+    );
+    expect(destructive).not.toContain("tone-clean");
+    expect(chip(html, "destructive")).toBe("could not confirm");
+  });
+
+  it("a check that found something keeps its tone and count, and still says it", () => {
+    const html = renderReport(HIDING_RESULT, VERIFIED_META, OPTIONS);
+    const lost = card(html, "lost-work");
+    expect(lost).toContain('<span class="tone tone-act">Act on this</span>');
+    expect(lost).toContain("used eval, which can run commands");
+    expect(chip(html, "lost-work")).toBe("3 deleted branches and stashes still recoverable");
+  });
+
+  it("on an app that records no output, a check of commands that ran never reads clean", () => {
+    const html = renderReport(CURSOR_RESULT, VERIFIED_META, OPTIONS);
+    for (const category of ["prod-infra", "destructive", "egress"] as const) {
+      expect(card(html, category), category).toContain("Could not confirm</span>");
+      expect(card(html, category), category).toContain("these sessions record no command output");
+      expect(chip(html, category), category).toBe("could not confirm");
+    }
+    expect(html).not.toContain("0 production databases touched");
+    expect(html).not.toContain("0 files sent off this machine");
+    // The secrets check reads text, and the checks that found something keep their tone.
+    expect(card(html, "secrets")).toContain("tone-act");
+    expect(card(html, "cloud")).toContain("tone-review");
+    // The same corpus with output recorded keeps its clean zeros.
+    expect(chip(HTML, "prod-infra")).toBe("0 production databases touched");
+  });
+
+  it("a builder's tone that is not a known status becomes could-not-check", () => {
+    const builders = {
+      ...TEST_ONLY_BUILDERS,
+      egress: (r: unknown) => ({
+        ...(
+          TEST_ONLY_BUILDERS as unknown as Record<string, (r: unknown, c: unknown) => object>
+        ).egress?.(r, { ranEvidence: "tool-result" }),
+        tone: 'clean" onclick="x',
+      }),
+    } as unknown as typeof TEST_ONLY_BUILDERS;
+    const html = renderReport(VERIFIED_RESULT, VERIFIED_META, { cardBuilders: builders });
+    expect(card(html, "egress")).toContain("tone-could-not-check");
+    expect(html).not.toContain("onclick");
+  });
+
+  it("a check that could not finish but has facts shows them, after saying so", () => {
+    const v = verification({
+      ...verifiedCategories(),
+      secrets: {
+        status: "could-not-check",
+        matches: 4,
+        facts: {
+          ...SECRETS_ACT,
+          classes: { ...SECRETS_ACT.classes, "likely-real": 0 },
+          items: [],
+          filesNotRead: 2,
+        },
+      },
+    });
+    const secrets = card(renderReport(baseResult(v), VERIFIED_META, OPTIONS), "secrets");
+    const lines = [...secrets.matchAll(/data-template="([^"]+)"/g)].map((m) => m[1]);
+    expect(lines[1]).toBe("could-not-check");
+    expect(secrets).toContain("2 transcript files could not be read.");
   });
 });

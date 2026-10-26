@@ -112,8 +112,8 @@ import {
   FIXES_FILE_NOTE,
   leadNotes,
   MORE_EVIDENCE,
-  TONE_LABELS,
   TONE_TALLY,
+  toneLabel,
 } from "./verify/copy.js";
 import {
   FACT_KEYS,
@@ -1210,7 +1210,7 @@ function verifiedCard(card: CardView, variant: ReportVariant, localFixes: boolea
   }
   const caveat = sentence(CODEX_CAVEAT, card);
   return `<article class="card verified v-${card.tone}" id="${id}" aria-labelledby="${id}-title">
-<div class="card-head"><span class="tone tone-${card.tone}">${escapeHtml(TONE_LABELS[card.tone])}</span>${count === undefined ? "" : `<span class="times" data-template="${escapeHtml(count.template)}">${escapeHtml(count.text)}</span>`}</div>
+<div class="card-head"><span class="tone tone-${card.tone}">${escapeHtml(toneLabel(card))}</span>${count === undefined ? "" : `<span class="times" data-template="${escapeHtml(count.template)}">${escapeHtml(count.text)}</span>`}</div>
 <h3 id="${id}-title">${escapeHtml(title)}</h3>
 <dl class="verified-facts">
 ${fields.join("\n")}
