@@ -1,0 +1,878 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-(hash)'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; require-trusted-types-for 'script'">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>AgentTrail Guard scan report · Claude Code · 2026-10-01</title>
+<style>(stylesheet)</style>
+</head>
+<body>
+<main class="page" lang="en">
+<header class="masthead">
+<div class="brand" role="img" aria-label="AgentTrail"><svg class="lockup">(logo)</svg></div>
+<span class="product-tag">Guard</span>
+<nav class="sections" aria-label="Report sections"><ul>
+<li><a href="#overview">Overview</a></li>
+<li><a href="#what-happened">What happened</a></li>
+<li><a href="#fix-first">Fix first</a></li>
+<li><a href="#findings">All findings</a></li>
+<li><a href="#next-steps">Next steps</a></li>
+<li><a href="#share">Share</a></li>
+<li><a href="#privacy">Privacy</a></li>
+</ul></nav>
+<div class="toolbar">
+<button type="button" id="print-button" class="tool js-only" hidden>PDF</button>
+<button type="button" id="export-button" class="tool js-only" hidden>JSON</button>
+<button type="button" id="theme-toggle" class="tool js-only" hidden>Theme</button>
+</div>
+</header>
+<section class="intro" id="overview">
+<p class="origin">Scanned locally &middot; nothing uploaded</p>
+<p class="agent">Agent: Claude Code</p>
+<h1>AgentTrail Guard would have stopped 1 action and asked you about 6 more</h1>
+<p class="lead">What your coding agent actually did, and which guardrails would have fired.</p>
+<p class="provenance">Generated <time datetime="2026-10-01T09:00:00.000Z">1 Oct 2026, 09:00 UTC</time> by agenttrail-guard 9.9.9. Produced entirely on this machine from transcripts already on disk &mdash; no account, nothing uploaded, and no network call: the one exception anywhere in this tool is crash reporting, which is off unless you turn it on and which a scan never uses.</p>
+<p class="top-match">Most serious match: <span class="badge sev-high">high</span> <span class="top-title">Deleting an absolute path</span></p>
+<div class="actions">
+<a class="button" href="#fix-first">See what to fix first</a>
+<a class="button secondary" href="https://x.com/intent/post?text=I%20scanned%208%20tool%20calls%20from%20Claude%20Code%20with%20AgentTrail%20Guard%3A%201%20would%20block%20(1%20of%20those%3A%20Deleting%20an%20absolute%20path)%20%C2%B7%206%20would%20ask%20%C2%B7%201%20would%20warn.%20Checked%20locally%2C%20nothing%20uploaded.&amp;url=https%3A%2F%2Fwww.agenttrail.sh%2Fagenttrail-guard%3Futm_source%3Dguard%26utm_medium%3Dscan-report%26utm_campaign%3Dclaude%26utm_content%3Dshare&amp;hashtags=agenttrail" target="_blank" rel="noopener noreferrer">Share on X</a>
+</div>
+<div class="command"><code id="cmd-init-hero">agenttrail-guard init --agent claude</code><button type="button" class="copy js-only" data-copy="cmd-init-hero" data-label="Copy" aria-label="Copy the init command" hidden>Copy</button></div>
+</section>
+<section class="evidence" id="found" aria-labelledby="found-heading">
+<h2 id="found-heading">What it found, never the values</h2>
+<p class="note">Each credential that looks real, by its kind and how it got into the transcripts. Never the value, and never the name it was given.</p>
+<ul class="evidence-list">
+<li><span class="evidence-kind">GitHub token</span><span class="evidence-how">you pasted it into a prompt</span><span class="times">in 4 transcript files</span></li>
+<li><span class="evidence-kind">AWS access key</span><span class="evidence-how">printed by a command</span><span class="times">in 2 transcript files</span></li>
+<li><span class="evidence-kind">A named secret</span><span class="evidence-how">typed into a command, in an agent reply</span><span class="times">in 1 transcript file</span></li>
+</ul>
+<p class="note"><a href="#check-secrets">What checking found, and how to fix it</a></p>
+</section>
+<section class="also-checked" id="also-checked" aria-labelledby="also-checked-heading">
+<h2 id="also-checked-heading">Also checked on this machine</h2>
+<p class="note" data-template="lead.ran-basis">Checked against command output: a match counts only when the transcript records that its command ran.</p>
+<p class="note" data-template="lead.mentioned">2 matches only mentioned a command, in a search, a message or a file, and are left out.</p>
+<ul class="check-chips">
+<li><a class="check-chip v-act" href="#check-secrets"><span class="chip-title">Secrets in transcripts</span><span class="chip-text" data-template="chip.tone">act on this</span></a></li>
+<li><a class="check-chip v-act" href="#check-skipped-checks"><span class="chip-title">Skipped safety checks</span><span class="chip-text" data-template="chip.tone">act on this</span></a></li>
+<li><a class="check-chip v-could-not-check" href="#check-lost-work"><span class="chip-title">Lost work</span><span class="chip-text" data-template="chip.tone">could not check</span></a></li>
+<li><a class="check-chip v-review" href="#check-cloud"><span class="chip-title">Cloud and permissions</span><span class="chip-text" data-template="chip.tone">review</span></a></li>
+<li><a class="check-chip v-review" href="#check-prod-infra"><span class="chip-title">Production infrastructure</span><span class="chip-text" data-template="chip.tone">review</span></a></li>
+<li><a class="check-chip v-clean" href="#check-destructive"><span class="chip-title">Destructive commands</span><span class="chip-text" data-template="chip.tone">clean</span></a></li>
+</ul>
+</section>
+<section class="stats" aria-label="Summary">
+<div class="stat"><div class="stat-value">1</div><div class="stat-label">session</div></div>
+<div class="stat"><div class="stat-value">8</div><div class="stat-label">tool calls</div></div>
+<div class="stat"><div class="stat-value">8</div><div class="stat-label">risky actions</div></div>
+<div class="stat"><div class="stat-value">0</div><div class="stat-label">repeated command shapes</div></div>
+<div class="stat"><div class="stat-value">0%</div><div class="stat-label">matched no guardrail</div></div>
+<div class="stat"><div class="stat-value">0</div><div class="stat-label">tokens</div><div class="stat-note">0 cache reads (cumulative)</div></div>
+</section>
+<section id="what-happened" class="what-happened">
+<div class="section-head"><h2>What actually happened</h2><p class="section-meta" data-template="cards.tally">3 to act on · 2 to review · 2 clean · 1 could not check · 1 not checked</p></div>
+<p class="note">A match means a guardrail fired on a command. Each card says what checking that on this machine found, how things stand now, and how to fix it. The checks only read: they changed nothing on this machine.</p>
+<div class="verified-cards">
+<article class="card verified v-act" id="check-secrets" aria-labelledby="check-secrets-title">
+<div class="card-head"><span class="tone tone-act">Act on this</span><span class="times" data-template="card.count">3 matches</span></div>
+<h3 id="check-secrets-title">Secrets in transcripts</h3>
+<dl class="verified-facts">
+
+</dl>
+</article>
+<article class="card verified v-act" id="check-skipped-checks" aria-labelledby="check-skipped-checks-title">
+<div class="card-head"><span class="tone tone-act">Act on this</span><span class="times" data-template="card.count">3 matches</span></div>
+<h3 id="check-skipped-checks-title">Skipped safety checks</h3>
+<dl class="verified-facts">
+
+</dl>
+</article>
+<article class="card verified v-act" id="check-tests" aria-labelledby="check-tests-title">
+<div class="card-head"><span class="tone tone-act">Act on this</span><span class="times" data-template="card.count">3 matches</span></div>
+<h3 id="check-tests-title">Gaming tests</h3>
+<dl class="verified-facts">
+<div><dt>What checking found</dt><dd>
+<p data-template="could-not-confirm">Could not confirm: commands that ran here used xargs, which can run commands this reading does not take apart, so this is not a clean result.</p>
+</dd></div>
+</dl>
+</article>
+<article class="card verified v-review" id="check-cloud" aria-labelledby="check-cloud-title">
+<div class="card-head"><span class="tone tone-review">Review</span><span class="times" data-template="card.count">3 matches</span></div>
+<h3 id="check-cloud-title">Cloud and permissions</h3>
+<dl class="verified-facts">
+
+</dl>
+</article>
+<article class="card verified v-review" id="check-prod-infra" aria-labelledby="check-prod-infra-title">
+<div class="card-head"><span class="tone tone-review">Review</span><span class="times" data-template="card.count">3 matches</span></div>
+<h3 id="check-prod-infra-title">Production infrastructure</h3>
+<dl class="verified-facts">
+
+</dl>
+</article>
+<article class="card verified v-clean" id="check-destructive" aria-labelledby="check-destructive-title">
+<div class="card-head"><span class="tone tone-clean">Clean</span><span class="times" data-template="card.count">3 matches</span></div>
+<h3 id="check-destructive-title">Destructive commands</h3>
+<dl class="verified-facts">
+
+</dl>
+</article>
+<article class="card verified v-clean" id="check-egress" aria-labelledby="check-egress-title">
+<div class="card-head"><span class="tone tone-clean">Clean</span><span class="times" data-template="card.count">3 matches</span></div>
+<h3 id="check-egress-title">Data leaving the machine</h3>
+<dl class="verified-facts">
+
+</dl>
+</article>
+<article class="card verified v-could-not-check" id="check-lost-work" aria-labelledby="check-lost-work-title">
+<div class="card-head"><span class="tone tone-could-not-check">Could not check</span><span class="times" data-template="card.count">1 match</span></div>
+<h3 id="check-lost-work-title">Lost work</h3>
+<dl class="verified-facts">
+<div><dt>What checking found</dt><dd>
+<p data-template="could-not-check">Could not be checked on this machine, so this is not a clean result.</p>
+</dd></div>
+</dl>
+</article>
+<article class="card verified v-not-checked" id="check-unreviewed" aria-labelledby="check-unreviewed-title">
+<div class="card-head"><span class="tone tone-not-checked">Not checked</span></div>
+<h3 id="check-unreviewed-title">Unreviewed code</h3>
+<dl class="verified-facts">
+<div><dt>What checking found</dt><dd>
+<p data-template="not-checked">Not checked yet.</p>
+</dd></div>
+</dl>
+</article>
+</div>
+</section>
+<section id="would-do">
+<h2>What AgentTrail Guard would have done</h2>
+<p class="note">Tool calls, each counted once under the strictest guardrail it matched.</p>
+<div class="columns">
+<div class="col act-block-col">
+<p class="col-label">Blocked</p>
+<p class="col-count">1</p>
+<p class="note">The command does not run, and the agent is told which guardrail stopped it.</p>
+<ul class="col-list">
+<li><span class="col-title">Deleting an absolute path</span><span class="times">1&times;</span></li>
+</ul>
+</div>
+<div class="col act-ask-col">
+<p class="col-label">Asked you first</p>
+<p class="col-count">6</p>
+<p class="note">The command waits until you allow or deny it.</p>
+<ul class="col-list">
+<li><span class="col-title">Uploading a file</span><span class="times">1&times;</span></li>
+<li><span class="col-title">A new dependency</span><span class="times">1&times;</span></li>
+<li><span class="col-title">Running again later</span><span class="times">1&times;</span></li>
+</ul>
+</div>
+<div class="col act-warn-col">
+<p class="col-label">Warned</p>
+<p class="col-count">1</p>
+<p class="note">The command runs, and the agent is shown which guardrail it matched.</p>
+<ul class="col-list">
+<li><span class="col-title">Printing the environment</span><span class="times">1&times;</span></li>
+</ul>
+</div>
+</div>
+
+<div class="tally" role="group" aria-label="Guardrail matches">
+<div class="tally-group"><p class="tally-label">Matches by severity</p><ul class="pills">
+<li><span class="badge sev-high">high</span><span class="tally-count">8</span></li>
+</ul></div>
+<div class="tally-group"><p class="tally-label">Matches by action</p><ul class="pills">
+<li><span class="chip act-block">would block</span><span class="tally-count">1</span></li>
+<li><span class="chip act-ask">would ask</span><span class="tally-count">6</span></li>
+<li><span class="chip act-warn">would warn</span><span class="tally-count">1</span></li>
+</ul></div>
+<p class="note">Each guardrail counts its own matches, so a tool call that matched two guardrails is counted under both, and these totals can be larger than the number of risky actions.</p>
+</div>
+</section>
+<section id="fix-first">
+<h2>Fix these first</h2>
+<p class="note">The guardrails that would have stopped a command outright, most serious first.</p>
+<div class="cards">
+<article class="card">
+<div class="card-head"><span class="badge sev-high">high</span> <span class="chip act-block">would block</span><span class="times">1&times;</span></div>
+<h3><a href="#finding-0">Deleting an absolute path</a></h3>
+<p class="library-text note">A synthetic rule with a shipped id, for the notes corpus.</p>
+<p class="example"><code>rm -rf &lt;path&gt;</code></p>
+<p class="card-meta">Destructive data &middot; <code>dd.rm-rf-absolute</code></p>
+<p><a href="https://www.agenttrail.sh/guardrails/destructive-data/dd-rm-rf-absolute?utm_source=guard&amp;utm_medium=scan-report&amp;utm_campaign=claude&amp;utm_content=guardrail" target="_blank" rel="noopener noreferrer">How this guardrail works</a></p>
+</article>
+</div>
+</section>
+<section id="findings" class="findings-section">
+<div class="section-head"><h2>All findings</h2><p class="section-meta" id="findings-count">8 guardrails matched</p></div>
+<div class="controls js-only" hidden>
+<div class="filters" role="group" aria-label="Show findings">
+<button type="button" class="filter" data-filter="all" aria-pressed="true">All</button>
+<button type="button" class="filter" data-filter="block" aria-pressed="false">Would block</button>
+<button type="button" class="filter" data-filter="require_approval" aria-pressed="false">Would ask</button>
+<button type="button" class="filter" data-filter="warn" aria-pressed="false">Would warn</button>
+</div>
+<label class="sort">Sort <select id="sort">
+<option value="serious">Most serious</option>
+<option value="category">Category</option>
+<option value="count">Most matches</option>
+<option value="name">Name</option>
+</select></label>
+</div>
+<p id="findings-status" class="sr-only" role="status" aria-live="polite"></p>
+<ol class="finding-list">
+<li class="finding" id="finding-0" data-action="block" data-rank-serious="0" data-rank-category="1" data-rank-count="0" data-rank-name="3">
+<div class="finding-head">
+<div class="guardrail-title">Deleting an absolute path</div>
+<div class="finding-meta"><span class="badge sev-high">high</span> <span class="chip act-block">would block</span><span class="num" data-label="Matches">1&times;</span></div>
+</div>
+<div class="guardrail-id"><code>dd.rm-rf-absolute</code> &middot; <span class="group">Destructive data</span></div>
+<details class="commands"><summary>The command shape behind it</summary>
+<ul class="shapes">
+<li><code>rm -rf &lt;path&gt;</code><span class="times">1&times;</span></li>
+</ul>
+</details>
+<details class="how"><summary>How this guardrail decides, and what it misses</summary>
+<p class="library-text">A synthetic rule with a shipped id, for the notes corpus.</p>
+<p><a href="https://www.agenttrail.sh/guardrails/destructive-data/dd-rm-rf-absolute?utm_source=guard&amp;utm_medium=scan-report&amp;utm_campaign=claude&amp;utm_content=guardrail" target="_blank" rel="noopener noreferrer">Open it in the guardrail library</a></p>
+</details>
+</li>
+<li class="finding" id="finding-1" data-action="require_approval" data-rank-serious="1" data-rank-category="0" data-rank-count="1" data-rank-name="7">
+<div class="finding-head">
+<div class="guardrail-title">Uploading a file</div>
+<div class="finding-meta"><span class="badge sev-high">high</span> <span class="chip act-ask">would ask</span><span class="num" data-label="Matches">1&times;</span></div>
+</div>
+<div class="guardrail-id"><code>ex.file-upload</code> &middot; <span class="group">Data leaving the machine</span></div>
+<details class="commands"><summary>The command shape behind it</summary>
+<ul class="shapes">
+<li><code>curl -T report.txt &lt;path&gt;</code><span class="times">1&times;</span></li>
+</ul>
+</details>
+<details class="how"><summary>How this guardrail decides, and what it misses</summary>
+<p class="library-text">A synthetic rule with a shipped id, for the notes corpus.</p>
+<p><a href="https://www.agenttrail.sh/guardrails/exfiltration/ex-file-upload?utm_source=guard&amp;utm_medium=scan-report&amp;utm_campaign=claude&amp;utm_content=guardrail" target="_blank" rel="noopener noreferrer">Open it in the guardrail library</a></p>
+</details>
+</li>
+<li class="finding" id="finding-2" data-action="require_approval" data-rank-serious="2" data-rank-category="2" data-rank-count="2" data-rank-name="0">
+<div class="finding-head">
+<div class="guardrail-title">A new dependency</div>
+<div class="finding-meta"><span class="badge sev-high">high</span> <span class="chip act-ask">would ask</span><span class="num" data-label="Matches">1&times;</span></div>
+</div>
+<div class="guardrail-id"><code>flag-dependency-install</code> &middot; <span class="group">Privileges and supply chain</span></div>
+<details class="commands"><summary>The command shape behind it</summary>
+<ul class="shapes">
+<li><code>npm install left-pad</code><span class="times">1&times;</span></li>
+</ul>
+</details>
+<details class="how"><summary>How this guardrail decides, and what it misses</summary>
+<p class="library-text">A synthetic rule with a shipped id, for the notes corpus.</p>
+<p><a href="https://www.agenttrail.sh/guardrails/privilege-supply-chain/flag-dependency-install?utm_source=guard&amp;utm_medium=scan-report&amp;utm_campaign=claude&amp;utm_content=guardrail" target="_blank" rel="noopener noreferrer">Open it in the guardrail library</a></p>
+</details>
+</li>
+<li class="finding" id="finding-3" data-action="require_approval" data-rank-serious="3" data-rank-category="3" data-rank-count="3" data-rank-name="6">
+<div class="finding-head">
+<div class="guardrail-title">Running again later</div>
+<div class="finding-meta"><span class="badge sev-high">high</span> <span class="chip act-ask">would ask</span><span class="num" data-label="Matches">1&times;</span></div>
+</div>
+<div class="guardrail-id"><code>ps.persistence</code> &middot; <span class="group">Privileges and supply chain</span></div>
+<details class="commands"><summary>The command shape behind it</summary>
+<ul class="shapes">
+<li><code>crontab -l</code><span class="times">1&times;</span></li>
+</ul>
+</details>
+<details class="how"><summary>How this guardrail decides, and what it misses</summary>
+<p class="library-text">A synthetic rule with a shipped id, for the notes corpus.</p>
+<p><a href="https://www.agenttrail.sh/guardrails/privilege-supply-chain/ps-persistence?utm_source=guard&amp;utm_medium=scan-report&amp;utm_campaign=claude&amp;utm_content=guardrail" target="_blank" rel="noopener noreferrer">Open it in the guardrail library</a></p>
+</details>
+</li>
+<li class="finding" id="finding-4" data-action="warn" data-rank-serious="4" data-rank-category="4" data-rank-count="4" data-rank-name="5">
+<div class="finding-head">
+<div class="guardrail-title">Printing the environment</div>
+<div class="finding-meta"><span class="badge sev-high">high</span> <span class="chip act-warn">would warn</span><span class="num" data-label="Matches">1&times;</span></div>
+</div>
+<div class="guardrail-id"><code>se.env-print</code> &middot; <span class="group">Secret exposure</span></div>
+<details class="commands"><summary>The command shape behind it, and what checking found</summary>
+<div class="verified-note v-act"><p class="verified-note-label">What checking found on this machine</p>
+<p data-template="note.secrets-printed">Likely-real credentials printed by a command: 1.</p></div>
+<ul class="shapes">
+<li><code>printenv</code><span class="times">1&times;</span></li>
+</ul>
+</details>
+<details class="how"><summary>How this guardrail decides, and what it misses</summary>
+<p class="library-text">A synthetic rule with a shipped id, for the notes corpus.</p>
+<p><a href="https://www.agenttrail.sh/guardrails/secret-exposure/se-env-print?utm_source=guard&amp;utm_medium=scan-report&amp;utm_campaign=claude&amp;utm_content=guardrail" target="_blank" rel="noopener noreferrer">Open it in the guardrail library</a></p>
+</details>
+</li>
+<li class="finding" id="finding-5" data-action="require_approval" data-rank-serious="5" data-rank-category="5" data-rank-count="5" data-rank-name="2">
+<div class="finding-head">
+<div class="guardrail-title">Deleting a test file</div>
+<div class="finding-meta"><span class="badge sev-high">high</span> <span class="chip act-ask">would ask</span><span class="num" data-label="Matches">1&times;</span></div>
+</div>
+<div class="guardrail-id"><code>ti.test-file-delete</code> &middot; <span class="group">Test integrity</span></div>
+<details class="commands"><summary>The command shape behind it, and what checking found</summary>
+<div class="verified-note v-could-not-check"><p class="verified-note-label">What checking found on this machine</p>
+<p data-template="could-not-confirm">Could not confirm: commands that ran here used xargs, which can run commands this reading does not take apart, so this is not a clean result.</p></div>
+<ul class="shapes">
+<li><code>rm &lt;path&gt;</code><span class="times">1&times;</span></li>
+</ul>
+</details>
+<details class="how"><summary>How this guardrail decides, and what it misses</summary>
+<p class="library-text">A synthetic rule with a shipped id, for the notes corpus.</p>
+<p><a href="https://www.agenttrail.sh/guardrails/test-integrity/ti-test-file-delete?utm_source=guard&amp;utm_medium=scan-report&amp;utm_campaign=claude&amp;utm_content=guardrail" target="_blank" rel="noopener noreferrer">Open it in the guardrail library</a></p>
+</details>
+</li>
+<li class="finding" id="finding-6" data-action="require_approval" data-rank-serious="6" data-rank-category="7" data-rank-count="6" data-rank-name="1">
+<div class="finding-head">
+<div class="guardrail-title">Ask before a hard reset</div>
+<div class="finding-meta"><span class="badge sev-high">high</span> <span class="chip act-ask">would ask</span><span class="num" data-label="Matches">1&times;</span></div>
+</div>
+<div class="guardrail-id"><code>wt.reset-hard</code> &middot; <span class="group">Your guardrails</span></div>
+<details class="commands"><summary>The command shape behind it</summary>
+<ul class="shapes">
+<li><code>git reset --hard</code><span class="times">1&times;</span></li>
+</ul>
+</details>
+</li>
+<li class="finding" id="finding-7" data-action="require_approval" data-rank-serious="7" data-rank-category="6" data-rank-count="7" data-rank-name="4">
+<div class="finding-head">
+<div class="guardrail-title">Dropping a stash</div>
+<div class="finding-meta"><span class="badge sev-high">high</span> <span class="chip act-ask">would ask</span><span class="num" data-label="Matches">1&times;</span></div>
+</div>
+<div class="guardrail-id"><code>wt.stash-drop</code> &middot; <span class="group">Working tree</span></div>
+<details class="commands"><summary>The command shape behind it, and what checking found</summary>
+<div class="verified-note v-could-not-check"><p class="verified-note-label">What checking found on this machine</p>
+<p data-template="note.could-not-check">Could not confirm: the check behind this could not finish on this machine.</p></div>
+<ul class="shapes">
+<li><code>git stash drop</code><span class="times">1&times;</span></li>
+</ul>
+</details>
+<details class="how"><summary>How this guardrail decides, and what it misses</summary>
+<p class="library-text">A synthetic rule with a shipped id, for the notes corpus.</p>
+<p><a href="https://www.agenttrail.sh/guardrails/working-tree/wt-stash-drop?utm_source=guard&amp;utm_medium=scan-report&amp;utm_campaign=claude&amp;utm_content=guardrail" target="_blank" rel="noopener noreferrer">Open it in the guardrail library</a></p>
+</details>
+</li>
+</ol>
+<div class="filter-empty" id="findings-empty" hidden><p>No findings match these filters.</p><button type="button" class="tool" id="clear-filters">Show all findings</button></div>
+</section>
+<section id="repeats"><h2>Repeat offenders</h2><p class="empty">Nothing matched more than once.</p></section>
+<section id="next-steps">
+<h2>Next steps</h2>
+<ol class="steps">
+<li><p><strong>Turn on AgentTrail Guard</strong> so these guardrails run before each command.</p>
+<div class="command"><code id="cmd-init">agenttrail-guard init --agent claude</code><button type="button" class="copy js-only" data-copy="cmd-init" data-label="Copy" aria-label="Copy the step 1 command" hidden>Copy</button></div></li>
+<li><p><strong>See what it is doing</strong>: whether it is on, and what it decided recently.</p>
+<div class="command"><code id="cmd-status">agenttrail-guard status</code><button type="button" class="copy js-only" data-copy="cmd-status" data-label="Copy" aria-label="Copy the step 2 command" hidden>Copy</button></div></li>
+<li><p><strong>Scan again next week</strong>, and read every line before the report is written.</p>
+<div class="command"><code id="cmd-scan-again">agenttrail-guard scan --agent claude --review</code><button type="button" class="copy js-only" data-copy="cmd-scan-again" data-label="Copy" aria-label="Copy the step 3 command" hidden>Copy</button></div></li>
+</ol>
+<ul class="links">
+<li><a href="https://www.agenttrail.sh/get-started/guard?utm_source=guard&amp;utm_medium=scan-report&amp;utm_campaign=claude&amp;utm_content=next-commands" target="_blank" rel="noopener noreferrer">Every command</a></li>
+<li><a href="https://www.agenttrail.sh/guardrails?utm_source=guard&amp;utm_medium=scan-report&amp;utm_campaign=claude&amp;utm_content=next-library" target="_blank" rel="noopener noreferrer">The guardrail library</a></li>
+<li><a href="https://www.agenttrail.sh/get-started/guard?utm_source=guard&amp;utm_medium=scan-report&amp;utm_campaign=claude&amp;utm_content=next-agents" target="_blank" rel="noopener noreferrer">Set up Cursor or Codex</a></li>
+</ul>
+</section>
+<section id="share" class="share">
+<h2>Share your result</h2>
+<p class="note share-note">Totals and at most one library guardrail&#39;s name: no commands, paths, project names or guardrails you wrote. Edit it before posting.</p>
+<label class="share-label" for="share-text">Post preview</label>
+<textarea id="share-text" rows="4">I scanned 8 tool calls from Claude Code with AgentTrail Guard: 1 would block (1 of those: Deleting an absolute path) · 6 would ask · 1 would warn. Checked locally, nothing uploaded.</textarea>
+<p class="share-actions"><span id="share-count" class="share-count" data-over="false">217 / 280</span>
+<a id="share-link" class="button" href="https://x.com/intent/post?text=I%20scanned%208%20tool%20calls%20from%20Claude%20Code%20with%20AgentTrail%20Guard%3A%201%20would%20block%20(1%20of%20those%3A%20Deleting%20an%20absolute%20path)%20%C2%B7%206%20would%20ask%20%C2%B7%201%20would%20warn.%20Checked%20locally%2C%20nothing%20uploaded.&amp;url=https%3A%2F%2Fwww.agenttrail.sh%2Fagenttrail-guard%3Futm_source%3Dguard%26utm_medium%3Dscan-report%26utm_campaign%3Dclaude%26utm_content%3Dshare&amp;hashtags=agenttrail" target="_blank" rel="noopener noreferrer">Post on X</a>
+<button type="button" class="copy js-only" data-copy="share-text" data-label="Copy text" aria-label="Copy text of the post" hidden>Copy text</button></p>
+</section>
+<section class="callout" id="privacy">
+<h2>Before you share this</h2>
+<p class="note">This report was made on one machine from transcripts already on its disk, and the scan sent nothing anywhere.</p>
+<p class="note">Every command in this report has been through a secret scrubber, a path redactor, a pass for secret-named values and long random-looking strings, and an identifier redactor, and every MCP tool call has had its payload values structurally redacted. Redaction runs before anything is written, so this file has never held the original text.</p>
+<dl class="legend">
+<div><dt><code>&lt;path&gt;</code></dt><dd>stands for a redacted filesystem path or URL</dd></div>
+<div><dt><code>&lt;name&gt;</code> <code>&lt;host&gt;</code> <code>&lt;user&gt;</code> <code>&lt;message&gt;</code> <code>&lt;comment&gt;</code></dt><dd>stand for an identifying operand of a command &mdash; a container, a namespace, a machine, a login, a commit message or heredoc body, a shell comment</dd></div>
+<div><dt><code>&lt;value&gt;</code></dt><dd>stands for a redacted MCP payload value</dd></div>
+<div><dt><code>[REDACTED:&hellip;]</code></dt><dd>stands for a redacted secret; <code>[REDACTED:secret:generic]</code> marks a long random-looking string masked on a best guess</dd></div>
+<div><dt><code>&hellip;</code></dt><dd>marks where a long command was shortened for display</dd></div>
+</dl>
+<p class="warning">Redaction is thorough but not a guarantee. Read the findings before posting this anywhere public, and run <code>agenttrail-guard scan --agent claude --review</code> to see every line before the file is written.</p>
+<p class="note pdf-tip"><strong>Saving as PDF?</strong> Turn off headers and footers in the print dialog, so the file&rsquo;s location on your disk is not printed on every page.</p>
+</section>
+<section id="redaction"><h2>How redaction works and where it can miss</h2>
+<p class="note">Working directories and file paths appear nowhere in this file, and the projects these sessions came from are carried as a count and never as names.</p>
+<p class="note"><strong>Identifying names are a weaker claim than paths, and the difference is worth knowing.</strong> Shell commands go through an identifier redactor keyed to a fixed list of tools &mdash; container runtimes, <code>kubectl</code> (including resource names), the database clients (host, database, and the SQL handed to <code>-c</code> / <code>-e</code>), <code>ssh</code>, <code>git</code> commit messages and identity settings, 1Password&#39;s <code>op</code> (item and vault names), and <code>gh</code> titles and bodies &mdash; plus, in any command, a secret passed as a flag value (<code>--token</code>, <code>--password</code>, <code>--key</code>), a UUID, the body of a heredoc, and the text of a <code>#</code> comment. That list is a deny-list and will miss the tool nobody thought of, so a bare operand naming a resource for a tool not on it can survive.</p>
+<p class="note">Cloud account identifiers are redacted where a name or flag gives them away: <code>CLOUDFLARE_ACCOUNT_ID</code> and <code>--account-id</code>, <code>wrangler</code> commands, AWS account numbers after <code>--account</code> or inside an ARN, and <code>--project</code> for <code>gcloud</code>, <code>gsutil</code>, <code>bq</code> and <code>firebase</code>.</p>
+<p class="note"><strong>Secrets without a known format are caught by name and by shape, and both are guesses.</strong> A value after a name ending in <code>_KEY</code> or <code>-key</code>, an <code>Authorization</code> header, and any long random-looking string of 32 or more characters is masked. A secret that is shorter, that is only hexadecimal and has no revealing name, that is split by punctuation, or that has no name and is followed by a <code>.</code>, ends in <code>=</code> or is written as short dashed groups can survive. Branch names, folder names and git branch operands are kept readable and are not redacted.</p>
+<p class="note"><strong>MCP tool calls are handled the other way round:</strong> a call to an MCP server arrives as a structured payload, and rather than deny-listing known-sensitive fields, every value in it is redacted to <code>&lt;value&gt;</code> by default and only the field names and the shape are kept.</p>
+<p class="note">Guardrail ids and titles are shown as their author wrote them &mdash; which for any guardrail you added yourself means your own words, unredacted. Redaction is thorough but not a guarantee. Read the commands and guardrail names above before posting this anywhere public.</p>
+</section>
+<section id="scanned"><h2>What was scanned</h2>
+<p class="note">Read 1 session across 1 project.</p>
+</section>
+<section id="tokens"><h2>Tokens</h2>
+<p class="note">Read straight from the transcripts, so these are exact counts and not estimates.</p>
+<div class="table-wrap"><table class="kv">
+<tr><th scope="row">Input</th><td class="num">0</td></tr>
+<tr><th scope="row">Output</th><td class="num">0</td></tr>
+<tr><th scope="row">Read from cache (cumulative)</th><td class="num">0</td></tr>
+<tr><th scope="row">Written to cache</th><td class="num">0</td></tr>
+</table></div>
+<p class="note">None of these sessions reported a 5-minute / 1-hour cache-write split, so that row is omitted rather than shown as zero.</p></section>
+<aside class="product-note" id="os" aria-label="About AgentTrail OS">
+<p class="eyebrow">AgentTrail OS</p>
+<h2>AgentTrail Guard stops the mistake. AgentTrail OS remembers it and turns it into a rule.</h2>
+<p>This report is one look at the transcripts on one machine. AgentTrail OS watches every agent session, turns each repeated mistake into a guardrail, and proves the fix on your own history. It is a separate product, and nothing in this report was sent to it.</p>
+<p class="product-note-action"><a class="button" href="https://www.agenttrail.sh/agenttrail-os?utm_source=guard&amp;utm_medium=scan-report&amp;utm_campaign=claude&amp;utm_content=os-demo" target="_blank" rel="noopener noreferrer">Book a team demo</a>
+<a class="text-link" href="https://www.agenttrail.sh/guard-vs-os?utm_source=guard&amp;utm_medium=scan-report&amp;utm_campaign=claude&amp;utm_content=os-compare" target="_blank" rel="noopener noreferrer">Guard vs OS</a></p>
+</aside>
+<footer>
+<p class="footer-brand"><svg class="mark">(mark)</svg><span>agenttrail-guard 9.9.9 &middot; guardrail library vX.Y.Z</span></p>
+<p>Source: https://github.com/agenttrailhq/guard</p>
+<p>A finding is a guardrail that matched. It is not proof that anything went wrong, and the guardrails state their own coverage limits.</p>
+<ul class="footer-links">
+<li><a href="https://www.agenttrail.sh/agenttrail-guard?utm_source=guard&amp;utm_medium=scan-report&amp;utm_campaign=claude&amp;utm_content=footer-guard" target="_blank" rel="noopener noreferrer">AgentTrail Guard</a></li>
+<li><a href="https://www.agenttrail.sh/guardrails?utm_source=guard&amp;utm_medium=scan-report&amp;utm_campaign=claude&amp;utm_content=footer-library" target="_blank" rel="noopener noreferrer">Guardrail library</a></li>
+<li><a href="https://www.agenttrail.sh/security?utm_source=guard&amp;utm_medium=scan-report&amp;utm_campaign=claude&amp;utm_content=footer-security" target="_blank" rel="noopener noreferrer">Security</a></li>
+</ul>
+</footer>
+<p id="page-status" class="sr-only" role="status" aria-live="polite"></p>
+<textarea id="copy-buffer" class="sr-only" tabindex="-1" aria-hidden="true" readonly></textarea>
+</main>
+<script type="application/json" id="report-data">
+{
+ "tool": "agenttrail-guard",
+ "version": "9.9.9",
+ "generatedAt": "2026-10-01T09:00:00.000Z",
+ "catalog": "guardrail library vX.Y.Z",
+ "agent": "claude",
+ "sessions": 1,
+ "projects": 1,
+ "quarantined": 0,
+ "notRead": 0,
+ "skippedLines": 0,
+ "toolCalls": 8,
+ "riskyActions": 8,
+ "riskyByAction": {
+  "block": 1,
+  "require_approval": 6,
+  "warn": 1
+ },
+ "findings": [
+  {
+   "ruleId": "dd.rm-rf-absolute",
+   "title": "Deleting an absolute path",
+   "severity": "high",
+   "action": "block",
+   "count": 1,
+   "examples": [
+    {
+     "text": "rm -rf \u003cpath>",
+     "count": 1
+    }
+   ],
+   "moreShapes": 0,
+   "owasp": [],
+   "source": "library",
+   "category": "destructive-data",
+   "descriptionLines": [
+    "A synthetic rule with a shipped id, for the notes corpus."
+   ]
+  },
+  {
+   "ruleId": "ex.file-upload",
+   "title": "Uploading a file",
+   "severity": "high",
+   "action": "require_approval",
+   "count": 1,
+   "examples": [
+    {
+     "text": "curl -T report.txt \u003cpath>",
+     "count": 1
+    }
+   ],
+   "moreShapes": 0,
+   "owasp": [],
+   "source": "library",
+   "category": "exfiltration",
+   "descriptionLines": [
+    "A synthetic rule with a shipped id, for the notes corpus."
+   ]
+  },
+  {
+   "ruleId": "flag-dependency-install",
+   "title": "A new dependency",
+   "severity": "high",
+   "action": "require_approval",
+   "count": 1,
+   "examples": [
+    {
+     "text": "npm install left-pad",
+     "count": 1
+    }
+   ],
+   "moreShapes": 0,
+   "owasp": [],
+   "source": "library",
+   "category": "privilege-supply-chain",
+   "descriptionLines": [
+    "A synthetic rule with a shipped id, for the notes corpus."
+   ]
+  },
+  {
+   "ruleId": "ps.persistence",
+   "title": "Running again later",
+   "severity": "high",
+   "action": "require_approval",
+   "count": 1,
+   "examples": [
+    {
+     "text": "crontab -l",
+     "count": 1
+    }
+   ],
+   "moreShapes": 0,
+   "owasp": [],
+   "source": "library",
+   "category": "privilege-supply-chain",
+   "descriptionLines": [
+    "A synthetic rule with a shipped id, for the notes corpus."
+   ]
+  },
+  {
+   "ruleId": "se.env-print",
+   "title": "Printing the environment",
+   "severity": "high",
+   "action": "warn",
+   "count": 1,
+   "examples": [
+    {
+     "text": "printenv",
+     "count": 1
+    }
+   ],
+   "moreShapes": 0,
+   "owasp": [],
+   "source": "library",
+   "category": "secret-exposure",
+   "descriptionLines": [
+    "A synthetic rule with a shipped id, for the notes corpus."
+   ]
+  },
+  {
+   "ruleId": "ti.test-file-delete",
+   "title": "Deleting a test file",
+   "severity": "high",
+   "action": "require_approval",
+   "count": 1,
+   "examples": [
+    {
+     "text": "rm \u003cpath>",
+     "count": 1
+    }
+   ],
+   "moreShapes": 0,
+   "owasp": [],
+   "source": "library",
+   "category": "test-integrity",
+   "descriptionLines": [
+    "A synthetic rule with a shipped id, for the notes corpus."
+   ]
+  },
+  {
+   "ruleId": "wt.reset-hard",
+   "title": "Ask before a hard reset",
+   "severity": "high",
+   "action": "require_approval",
+   "count": 1,
+   "examples": [
+    {
+     "text": "git reset --hard",
+     "count": 1
+    }
+   ],
+   "moreShapes": 0,
+   "owasp": [],
+   "source": "yours"
+  },
+  {
+   "ruleId": "wt.stash-drop",
+   "title": "Dropping a stash",
+   "severity": "high",
+   "action": "require_approval",
+   "count": 1,
+   "examples": [
+    {
+     "text": "git stash drop",
+     "count": 1
+    }
+   ],
+   "moreShapes": 0,
+   "owasp": [],
+   "source": "library",
+   "category": "working-tree",
+   "descriptionLines": [
+    "A synthetic rule with a shipped id, for the notes corpus."
+   ]
+  }
+ ],
+ "moreFindings": 0,
+ "recurring": [],
+ "moreRecurring": 0,
+ "tokens": {
+  "input": 0,
+  "output": 0,
+  "cacheRead": 0,
+  "cacheCreation": 0,
+  "cacheCreation5m": 0,
+  "cacheCreation1h": 0,
+  "turnsWithSplit": 0,
+  "turns": 1
+ },
+ "shareText": "I scanned 8 tool calls from Claude Code with AgentTrail Guard: 1 would block (1 of those: Deleting an absolute path) · 6 would ask · 1 would warn. Checked locally, nothing uploaded.",
+ "owasp": [],
+ "verification": {
+  "matchedCalls": {
+   "ran": 21,
+   "mentioned": 2,
+   "unknown": 0
+  },
+  "resultsRecorded": true,
+  "ranEvidence": "tool-result",
+  "categories": {
+   "secrets": {
+    "status": "act",
+    "matches": 3,
+    "facts": {
+     "classes": {
+      "likely-real": 3,
+      "committed-fixture": 1,
+      "placeholder": 5,
+      "local-dev": 2
+     },
+     "items": [
+      {
+       "kind": "github-token",
+       "via": [
+        "pasted-into-prompt"
+       ],
+       "files": 4
+      },
+      {
+       "kind": "aws-access-key",
+       "via": [
+        "printed-by-command"
+       ],
+       "files": 2
+      },
+      {
+       "kind": "named-secret",
+       "via": [
+        "typed-into-command",
+        "in-agent-reply"
+       ],
+       "files": 1
+      }
+     ],
+     "moreItems": 0,
+     "filesRead": 18,
+     "filesNotRead": 0,
+     "unplaced": 0,
+     "setAside": {
+      "unnamedOutputOnly": 2,
+      "namedNotCredentialShaped": 1
+     },
+     "fixtureCheck": "complete",
+     "reposChecked": 2,
+     "reposNotChecked": 0
+    }
+   },
+   "skipped-checks": {
+    "status": "act",
+    "matches": 3,
+    "facts": {
+     "hidingForms": []
+    }
+   },
+   "lost-work": {
+    "status": "could-not-check",
+    "matches": 1
+   },
+   "cloud": {
+    "status": "review",
+    "matches": 3,
+    "facts": {
+     "mentioned": 0,
+     "hidingForms": []
+    }
+   },
+   "prod-infra": {
+    "status": "review",
+    "matches": 3,
+    "facts": {
+     "mentioned": 0,
+     "hidingForms": []
+    }
+   },
+   "tests": {
+    "status": "act",
+    "matches": 3,
+    "facts": {
+     "mentioned": 0,
+     "hidingForms": [
+      "xargs"
+     ]
+    }
+   },
+   "destructive": {
+    "status": "clean",
+    "matches": 3,
+    "facts": {
+     "hidingForms": []
+    }
+   },
+   "unreviewed": {
+    "status": "not-checked"
+   },
+   "egress": {
+    "status": "clean",
+    "matches": 3,
+    "facts": {
+     "mentioned": 0,
+     "hidingForms": []
+    }
+   }
+  }
+ },
+ "cards": [
+  {
+   "category": "secrets",
+   "tone": "act",
+   "count": 3,
+   "found": [],
+   "now": [],
+   "fixes": [],
+   "codexCaveat": false
+  },
+  {
+   "category": "skipped-checks",
+   "tone": "act",
+   "count": 3,
+   "found": [],
+   "now": [],
+   "fixes": [],
+   "codexCaveat": false
+  },
+  {
+   "category": "tests",
+   "tone": "act",
+   "count": 3,
+   "found": [
+    {
+     "template": "could-not-confirm",
+     "text": "Could not confirm: commands that ran here used xargs, which can run commands this reading does not take apart, so this is not a clean result."
+    }
+   ],
+   "now": [],
+   "fixes": [],
+   "codexCaveat": false,
+   "unconfirmed": {
+    "reason": "hiding-forms",
+    "forms": [
+     "xargs"
+    ]
+   }
+  },
+  {
+   "category": "cloud",
+   "tone": "review",
+   "count": 3,
+   "found": [],
+   "now": [],
+   "fixes": [],
+   "codexCaveat": false
+  },
+  {
+   "category": "prod-infra",
+   "tone": "review",
+   "count": 3,
+   "found": [],
+   "now": [],
+   "fixes": [],
+   "codexCaveat": false
+  },
+  {
+   "category": "destructive",
+   "tone": "clean",
+   "count": 3,
+   "found": [],
+   "now": [],
+   "fixes": [],
+   "codexCaveat": false
+  },
+  {
+   "category": "egress",
+   "tone": "clean",
+   "count": 3,
+   "found": [],
+   "now": [],
+   "fixes": [],
+   "codexCaveat": false
+  },
+  {
+   "category": "lost-work",
+   "tone": "could-not-check",
+   "count": 1,
+   "found": [
+    {
+     "template": "could-not-check",
+     "text": "Could not be checked on this machine, so this is not a clean result."
+    }
+   ],
+   "now": [],
+   "fixes": [],
+   "codexCaveat": false
+  },
+  {
+   "category": "unreviewed",
+   "tone": "not-checked",
+   "count": 0,
+   "found": [
+    {
+     "template": "not-checked",
+     "text": "Not checked yet."
+    }
+   ],
+   "now": [],
+   "fixes": [],
+   "codexCaveat": false
+  }
+ ],
+ "notes": [
+  {
+   "ruleId": "se.env-print",
+   "category": "secrets",
+   "sentence": {
+    "template": "note.secrets-printed",
+    "text": "Likely-real credentials printed by a command: 1."
+   }
+  },
+  {
+   "ruleId": "ti.test-file-delete",
+   "category": "tests",
+   "sentence": {
+    "template": "could-not-confirm",
+    "text": "Could not confirm: commands that ran here used xargs, which can run commands this reading does not take apart, so this is not a clean result."
+   }
+  },
+  {
+   "ruleId": "wt.stash-drop",
+   "category": "lost-work",
+   "sentence": {
+    "template": "note.could-not-check",
+    "text": "Could not confirm: the check behind this could not finish on this machine."
+   }
+  }
+ ]
+}
+</script>
+<script>(script)</script>
+</body>
+</html>

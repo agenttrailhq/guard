@@ -20,6 +20,7 @@ import { compileCatalog } from "../core/rules.js";
 import { aggregateScan, type ScanResult } from "../core/scan-report.js";
 import type { GuardRule } from "../core/types.js";
 import { LEAKS, scanned } from "./fixture-hygiene.js";
+import { notesResult, pageVerification, TONE_BUILDERS } from "./notes-corpus.js";
 import {
   bash,
   RULE_ENV_FILE,
@@ -244,5 +245,45 @@ describe("the golden verified report", () => {
   it.each(LEAKS)("the verified golden pages carry no $name", ({ pattern }) => {
     expect(scanned(verified("document"))).not.toMatch(pattern);
     expect(scanned(verified("artifact"))).not.toMatch(pattern);
+  });
+});
+
+/**
+ * The verified notes in All findings, from the notes corpus: guardrails with shipped ids, a note
+ * from the secrets check, one from a check that could not finish and one from a check that could
+ * not confirm. The cards state only their tone here; the notes are what this page pins.
+ */
+describe("the golden notes report", () => {
+  const OPTIONS: RenderOptions = { cardBuilders: TONE_BUILDERS };
+  const RESULT_WITH_NOTES = notesResult(pageVerification());
+  const page = (variant: "document" | "artifact"): string =>
+    render(variant, RESULT_WITH_NOTES, OPTIONS);
+
+  it("the corpus reaches a note of each sort", () => {
+    const html = page("document");
+    for (const part of [
+      'data-template="note.secrets-printed"',
+      'data-template="note.could-not-check"',
+      'data-template="could-not-confirm"',
+      'class="verified-note v-act"',
+      'class="verified-note v-could-not-check"',
+    ]) {
+      expect(html, part).toContain(part);
+    }
+  });
+
+  it("the standalone page matches the golden file", async () => {
+    await expect(page("document")).toMatchFileSnapshot("__snapshots__/report-notes.golden.html");
+  });
+
+  it("the artifact matches its golden file", async () => {
+    await expect(page("artifact")).toMatchFileSnapshot(
+      "__snapshots__/report-notes-artifact.golden.html",
+    );
+  });
+
+  it.each(LEAKS)("the notes golden pages carry no $name", ({ pattern }) => {
+    expect(scanned(page("document"))).not.toMatch(pattern);
+    expect(scanned(page("artifact"))).not.toMatch(pattern);
   });
 });
