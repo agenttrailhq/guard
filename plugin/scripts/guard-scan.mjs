@@ -14101,6 +14101,9 @@ function itemsOf(candidates) {
   );
 }
 async function checkSecrets(input) {
+  return (await classifySecrets(input, false)).check;
+}
+async function classifySecrets(input, keep) {
   const candidates = /* @__PURE__ */ new Map();
   const workingDirs = /* @__PURE__ */ new Set();
   let filesRead = 0;
@@ -14128,15 +14131,15 @@ async function checkSecrets(input) {
             if (candidate === void 0) {
               const reason = placeholderReason(found);
               const decided = reason !== void 0 ? "placeholder" : isLocalDev(found) ? "local-dev" : void 0;
-              const keep = decided === void 0 && held < (input.maxHeldValues ?? MAX_HELD_VALUES);
-              if (keep) held += 1;
+              const keep2 = decided === void 0 && held < (input.maxHeldValues ?? MAX_HELD_VALUES);
+              if (keep2) held += 1;
               candidate = {
                 kind: found.kind,
                 via: /* @__PURE__ */ new Set(),
                 files: /* @__PURE__ */ new Set(),
                 decided,
                 // Past the cap a value is not held, so it cannot be searched for in the repos.
-                value: keep ? found.value : void 0,
+                value: keep2 ? found.value : void 0,
                 setAside: reason === "named-not-credential-shaped" ? reason : void 0
               };
               candidates.set(key, candidate);
@@ -14175,8 +14178,14 @@ async function checkSecrets(input) {
     ...searched,
     check: searched.check === "complete" ? "partial" : searched.check === "not-needed" ? "unavailable" : searched.check
   };
+  const kept = [];
+  let notHeld = 0;
   for (const candidate of candidates.values()) {
     candidate.decided ??= "likely-real";
+    if (keep && candidate.decided === "likely-real") {
+      if (candidate.value === void 0) notHeld += 1;
+      else kept.push({ value: candidate.value, kind: candidate.kind });
+    }
     candidate.value = void 0;
   }
   const classes = {
@@ -14198,7 +14207,7 @@ async function checkSecrets(input) {
   else if (classes["likely-real"] > 0) status = "act";
   else if (filesNotRead > 0 || unplaced > 0) status = "could-not-check";
   else status = "clean";
-  return {
+  const check = {
     status,
     matches: candidates.size,
     facts: {
@@ -14214,6 +14223,8 @@ async function checkSecrets(input) {
       reposNotChecked: fixtures.reposNotChecked
     }
   };
+  kept.sort((a, b) => b.value.length - a.value.length);
+  return { check, values: kept, notHeld };
 }
 
 // src/core/verify/verify.ts

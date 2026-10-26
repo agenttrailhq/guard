@@ -36,7 +36,9 @@
  * ── Never the value ──────────────────────────────────────────────────────────
  * A value is held in memory only while the fixture test may still need it, under a keyed
  * fingerprint (`fingerprint.ts`) that is itself never written. What leaves this module is
- * counts and fixed enums: the kind of credential, how it got there, how many files.
+ * counts and fixed enums: the kind of credential, how it got there, how many files. The one
+ * exception is `findLikelyReal`, which hands `scan --scrub` the likely-real values it is
+ * asked to replace in the transcripts.
  */
 
 import { redactSecrets } from "../redact-secrets.js";
@@ -576,6 +578,41 @@ function itemsOf(candidates: Iterable<Candidate>): SecretItem[] {
  * counted. Either keeps the result from reading as clean.
  */
 export async function checkSecrets(input: SecretsInput): Promise<SecretsCheck> {
+  return (await classifySecrets(input, false)).check;
+}
+
+/** One likely-real value, for `scan --scrub` to replace. */
+export interface LikelyRealValue {
+  readonly value: string;
+  readonly kind: SecretKind;
+}
+
+/** What `findLikelyReal` returns. */
+export interface LikelyRealValues {
+  /** The secrets check, exactly as `checkSecrets` gives it. */
+  readonly check: SecretsCheck;
+  /** The likely-real values, longest first. Held in memory only; never written out. */
+  readonly values: readonly LikelyRealValue[];
+  /**
+   * Likely-real values past the held-values cap. They were classed, but their text was not
+   * kept, so they cannot be replaced.
+   */
+  readonly notHeld: number;
+}
+
+/**
+ * The secrets check, keeping the text of each likely-real value.
+ *
+ * Only `scan --scrub` calls this, to replace those values in the transcripts. Fixtures,
+ * placeholders and local dev data are not returned. The caller holds the values for the run
+ * and writes them nowhere but the transcript backup.
+ */
+export async function findLikelyReal(input: SecretsInput): Promise<LikelyRealValues> {
+  return await classifySecrets(input, true);
+}
+
+/** The secrets check; with `keep`, also the likely-real values themselves. */
+async function classifySecrets(input: SecretsInput, keep: boolean): Promise<LikelyRealValues> {
   const candidates = new Map<string, Candidate>();
   const workingDirs = new Set<string>();
   let filesRead = 0;
@@ -676,8 +713,14 @@ export async function checkSecrets(input: SecretsInput): Promise<SecretsCheck> {
                 ? "unavailable"
                 : searched.check,
         };
+  const kept: LikelyRealValue[] = [];
+  let notHeld = 0;
   for (const candidate of candidates.values()) {
     candidate.decided ??= "likely-real";
+    if (keep && candidate.decided === "likely-real") {
+      if (candidate.value === undefined) notHeld += 1;
+      else kept.push({ value: candidate.value, kind: candidate.kind });
+    }
     candidate.value = undefined;
   }
 
@@ -702,7 +745,7 @@ export async function checkSecrets(input: SecretsInput): Promise<SecretsCheck> {
   else if (filesNotRead > 0 || unplaced > 0) status = "could-not-check";
   else status = "clean";
 
-  return {
+  const check: SecretsCheck = {
     status,
     matches: candidates.size,
     facts: {
@@ -718,4 +761,7 @@ export async function checkSecrets(input: SecretsInput): Promise<SecretsCheck> {
       reposNotChecked: fixtures.reposNotChecked,
     },
   };
+  // Longest first, so a value that contains another is replaced whole.
+  kept.sort((a, b) => b.value.length - a.value.length);
+  return { check, values: kept, notHeld };
 }
