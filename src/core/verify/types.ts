@@ -1,0 +1,314 @@
+// cspell:words reclassed
+/**
+ * The verification data: what `scan --verify` found when it checked a scan's matches against
+ * this machine, read-only.
+ *
+ * ── Value-free by construction ───────────────────────────────────────────────
+ * Every field below is a count, a fixed enum or a list of those. There is no string a check
+ * fills from what it read: no credential value, no fingerprint, no environment-variable name,
+ * no path and no command. A report, the `--json` output and the terminal summary can all carry
+ * this object as it is, and `verify-no-value.test.ts` plants a canary in every place a value
+ * could come from to keep it that way.
+ *
+ * ── Five states, and only two of them are claims ─────────────────────────────
+ * `act` and `review` say a check found something. `clean` says a check ran to the end and
+ * found nothing. `not-checked` says no check exists for the category yet, and
+ * `could-not-check` says one exists and failed: a timeout, a missing repo, an unreadable file.
+ * A failure is never reported as `clean`.
+ *
+ * ── The checks count commands that RAN ───────────────────────────────────────
+ * A tool call is `ran` only when its transcript records a result for it. A match whose text
+ * only sits in a search, a printed string, a message or a heredoc is `mentioned`. A call with
+ * no result to judge by is `unknown`, and is never counted as `ran`. See `ran.ts`.
+ */
+
+/** The nine categories the report shows a card for, in the order the report lists them. */
+export const VERIFY_CATEGORIES = [
+  "secrets",
+  "skipped-checks",
+  "lost-work",
+  "cloud",
+  "prod-infra",
+  "tests",
+  "destructive",
+  "unreviewed",
+  "egress",
+] as const;
+
+/** One category of checks. */
+export type VerifyCategory = (typeof VERIFY_CATEGORIES)[number];
+
+/**
+ * What a category's check concluded.
+ *
+ * - `act`: it found something to fix.
+ * - `review`: it found something only a person can judge, such as a cloud change.
+ * - `clean`: it ran to the end and found nothing.
+ * - `not-checked`: there is no check for the category yet.
+ * - `could-not-check`: a check exists and could not finish.
+ */
+export const VERIFY_STATUSES = [
+  "act",
+  "review",
+  "clean",
+  "not-checked",
+  "could-not-check",
+] as const;
+
+/** One of `VERIFY_STATUSES`. */
+export type VerifyStatus = (typeof VERIFY_STATUSES)[number];
+
+/** Whether a tool call ran, judged from what its transcript recorded. */
+export const RUN_STATES = ["ran", "mentioned", "unknown"] as const;
+
+/** One of `RUN_STATES`. */
+export type RunState = (typeof RUN_STATES)[number];
+
+/**
+ * Why a call got its `RunState`.
+ *
+ * - `result`: the transcript records a result for it.
+ * - `exit-code`: it records an error result that reports the command's exit code, so it ran.
+ * - `error-result`: it records an error result with no exit code: refused, blocked or failed
+ *   before running.
+ * - `no-result`: the app records results, and this call has none.
+ * - `not-recorded`: the app records no results at all, as Cursor's session files do not.
+ * - `search`, `doc`, `test-string`, `heredoc`: the matched text sits only in a search pattern,
+ *   printed or message text, a test-name filter or a heredoc fed to a file.
+ * - `agent-reply`: the text is in the agent's own reply, not in a tool call.
+ */
+export type RunWhy =
+  | "result"
+  | "exit-code"
+  | "error-result"
+  | "no-result"
+  | "not-recorded"
+  | "search"
+  | "doc"
+  | "test-string"
+  | "heredoc"
+  | "agent-reply";
+
+/** A call's `RunState` and the reason for it. */
+export interface RunVerdict {
+  readonly state: RunState;
+  readonly why: RunWhy;
+}
+
+/**
+ * What a `ran` verdict rests on, for the app whose sessions were read.
+ *
+ * - `tool-result`: Claude Code's `tool_result`. An error result counts as ran only when it
+ *   reports the command's exit code.
+ * - `output-record`: Codex's `custom_tool_call_output`. Whether Codex writes one for a call a
+ *   pre-tool hook blocked is not established, so a `ran` count resting on it may include
+ *   blocked calls. Whatever reads it must not present such a count as more certain than that.
+ * - `none`: the app records no results, as Cursor's session files do not. Nothing is `ran`.
+ */
+export const RAN_EVIDENCE = ["tool-result", "output-record", "none"] as const;
+
+/** One of `RAN_EVIDENCE`. */
+export type RanEvidence = (typeof RAN_EVIDENCE)[number];
+
+/** Calls by `RunState`. */
+export interface RunTally {
+  readonly ran: number;
+  readonly mentioned: number;
+  readonly unknown: number;
+}
+
+/** How a likely-real credential reached a transcript. */
+export const SECRET_PROVENANCES = [
+  "pasted-into-prompt",
+  "typed-into-command",
+  "printed-by-command",
+  "in-agent-reply",
+] as const;
+
+/** One way a credential reached a transcript. */
+export type SecretProvenance = (typeof SECRET_PROVENANCES)[number];
+
+/**
+ * What kind of credential a value is, from the format or name that identified it. The name a
+ * value was given (`DB_PASSWORD`) is never kept: a `named-secret` is all the report says.
+ */
+export const SECRET_KINDS = [
+  "aws-access-key",
+  "aws-secret-key",
+  "private-key",
+  "github-token",
+  "slack-token",
+  "api-key",
+  "jwt",
+  "bearer-token",
+  "auth-header",
+  "database-url",
+  "url-credentials",
+  "password",
+  "named-secret",
+  "random-string",
+  "other",
+] as const;
+
+/** One kind of credential. */
+export type SecretKind = (typeof SECRET_KINDS)[number];
+
+/** The four classes every credential-shaped value is sorted into. */
+export const SECRET_CLASSES = [
+  "likely-real",
+  "committed-fixture",
+  "placeholder",
+  "local-dev",
+] as const;
+
+/**
+ * One class of credential-shaped value.
+ *
+ * - `likely-real`: none of the other three.
+ * - `committed-fixture`: the same value is in a git-tracked file in a repo the sessions ran in.
+ * - `placeholder`: a placeholder or a false positive, such as `your-api-key-here` or an id.
+ * - `local-dev`: a credential for a database or service on this machine, such as a local
+ *   database URL.
+ */
+export type SecretClass = (typeof SECRET_CLASSES)[number];
+
+/** One likely-real credential, as the report may describe it: never the value. */
+export interface SecretItem {
+  readonly kind: SecretKind;
+  /** Every way it reached the transcripts, in `SECRET_PROVENANCES` order. */
+  readonly via: readonly SecretProvenance[];
+  /** How many transcript files contain it. */
+  readonly files: number;
+}
+
+/**
+ * Whether the committed-fixture test could run.
+ *
+ * - `complete`: every repo the sessions named was searched to the end.
+ * - `partial`: some were, and some could not be (gone, too large, timed out).
+ * - `unavailable`: none could be, or no session named one. A value is then never reclassed as a
+ *   fixture, so the likely-real count can be higher than it would otherwise be, never lower.
+ * - `not-needed`: no value was left to test once placeholders and local dev data were set aside.
+ */
+export const FIXTURE_CHECKS = ["complete", "partial", "unavailable", "not-needed"] as const;
+
+/** One of `FIXTURE_CHECKS`. */
+export type FixtureCheck = (typeof FIXTURE_CHECKS)[number];
+
+/** What the secrets check found. Counts are of DISTINCT values. */
+export interface SecretsFacts {
+  readonly classes: Readonly<Record<SecretClass, number>>;
+  /** The likely-real values, most widespread first, at most `MAX_SECRET_ITEMS`. */
+  readonly items: readonly SecretItem[];
+  /** Likely-real values beyond `items`. */
+  readonly moreItems: number;
+  /** Transcript files read for the check. */
+  readonly filesRead: number;
+  /** Transcript files that could not be read. A non-zero count keeps the check from `clean`. */
+  readonly filesNotRead: number;
+  /**
+   * Texts the redaction changed whose values could not be recovered, so could not be classed.
+   * A non-zero count keeps the check from `clean`.
+   */
+  readonly unplaced: number;
+  readonly fixtureCheck: FixtureCheck;
+  /** Repos whose tracked files were searched to the end. */
+  readonly reposChecked: number;
+  /** Repos the sessions named that could not be searched. */
+  readonly reposNotChecked: number;
+}
+
+/** The secrets category. */
+export interface SecretsCheck {
+  readonly status: VerifyStatus;
+  /** Distinct credential-shaped values found, in all four classes. */
+  readonly matches: number;
+  readonly facts: SecretsFacts;
+}
+
+/** A category whose check does not exist yet. */
+export interface PendingCheck {
+  readonly status: "not-checked";
+}
+
+/** Every category but secrets, which has a check. */
+export type PendingCategory = Exclude<VerifyCategory, "secrets">;
+
+/** Each category's result. */
+export type VerifyCategories = { readonly secrets: SecretsCheck } & {
+  readonly [C in PendingCategory]: PendingCheck;
+};
+
+/** What `scan --verify` found. Value-free; see the module header. */
+export interface Verification {
+  /**
+   * The calls that matched a guardrail, by whether they ran. The checks count `ran` only.
+   */
+  readonly matchedCalls: RunTally;
+  /**
+   * `false` when the app records no tool results, so no call can be confirmed as `ran`.
+   * Cursor's session files are the case.
+   */
+  readonly resultsRecorded: boolean;
+  /** What each `ran` in `matchedCalls` rests on. See `RAN_EVIDENCE`. */
+  readonly ranEvidence: RanEvidence;
+  readonly categories: VerifyCategories;
+}
+
+/** Most likely-real items the verification carries. The report caps again at its own row cap. */
+export const MAX_SECRET_ITEMS = 200;
+
+// ── The read-only seam ──────────────────────────────────────────────────────
+
+/**
+ * Why a read-only call did not give an answer. Every one of these becomes `could-not-check`
+ * for what depended on it, and never `clean`.
+ *
+ * - `refused`: the call is not on the allow-list, or the path is outside every allowed root.
+ * - `timeout`: it ran out of its per-call time.
+ * - `too-large`: its output, or the file, is over the cap.
+ * - `budget`: the run's total time is used up.
+ * - `not-a-repo`: `git` says the folder is not in a repository.
+ * - `missing`: the folder or file is not there, or `git` is not installed.
+ * - `failed`: anything else.
+ */
+export type CheckFailure =
+  | "refused"
+  | "timeout"
+  | "too-large"
+  | "budget"
+  | "not-a-repo"
+  | "missing"
+  | "failed";
+
+/** The output of one allow-listed `git` call. */
+export type GitOutcome =
+  | { readonly ok: true; readonly stdout: string }
+  | { readonly ok: false; readonly reason: CheckFailure };
+
+/** The text of one bounded file read. */
+export type FileOutcome =
+  | { readonly ok: true; readonly text: string }
+  | { readonly ok: false; readonly reason: CheckFailure };
+
+/** The names of the running processes, never their arguments. */
+export type ProcessOutcome =
+  | { readonly ok: true; readonly names: readonly string[] }
+  | { readonly ok: false; readonly reason: CheckFailure };
+
+/**
+ * Everything verification may do outside the process. Read-only, and nothing else.
+ *
+ * The real one is `src/verify-io.ts`. It is kept out of `ScanIO` so the browser opener stays the
+ * only process `ScanIO` starts, and out of the hook's import graph entirely.
+ */
+export interface VerifyIO {
+  /** Run `git` with an allow-listed argument list in `cwd`. Never through a shell. */
+  git(cwd: string, args: readonly string[]): Promise<GitOutcome>;
+  /** Whether `path` is a folder: `undefined` when it cannot be read. */
+  isDirectory(path: string): boolean | undefined;
+  /** Read a file of at most the size cap, under a root a `git rev-parse` call has returned. */
+  readFile(path: string): Promise<FileOutcome>;
+  /** The names of the running processes. */
+  processNames(): Promise<ProcessOutcome>;
+}
