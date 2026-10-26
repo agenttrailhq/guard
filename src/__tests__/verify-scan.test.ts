@@ -52,6 +52,39 @@ describe("the --verify flag", () => {
     expect(SCAN_USAGE).toContain("works offline");
   });
 
+  it("the usage says exactly which files on this machine it reads", () => {
+    for (const name of [
+      "CLAUDE.md",
+      "CLAUDE.local.md",
+      "AGENTS.md",
+      "GEMINI.md",
+      ".cursorrules",
+      ".windsurfrules",
+      ".github/copilot-instructions.md",
+      "~/.claude/CLAUDE.md",
+      "~/.codex/AGENTS.md",
+      "~/.claude, ~/.codex and ~/.cursor",
+      "the ones the sessions wrote",
+      "only .md and .mdc files",
+      "each at most 1 MB",
+      "Only whether a file tells the agent to skip checks is",
+      "read-only git (rev-parse,",
+      "whether the paths the commands named still exist",
+      "counts only, never these paths",
+    ]) {
+      expect(SCAN_USAGE).toContain(name);
+    }
+  });
+
+  it("the summary says how many instruction files were read, keeping only yes or no", async () => {
+    const { root } = await writeCorpus("claude", [[{ kind: "prompt", text: "hello" }]]);
+    const { stdout } = await scan(["--agent", "claude", "--dir", root, "--verify"]);
+    // No way to reach the machine here: nothing read, and what could not be is said.
+    expect(stdout).toMatch(
+      /0 instruction or memory files read for an instruction to skip checks, keeping only yes or no \(\d+ could not be read\)/,
+    );
+  });
+
   it("without it, --json carries no verification and the summary has no verify line", async () => {
     const { root } = await writeCorpus("claude", [[{ kind: "prompt", text: TOKEN }]]);
     const json = await scan(["--agent", "claude", "--dir", root, "--json"]);

@@ -378,6 +378,24 @@ guarantee. Use `--review` and read the report before sharing it. The review outp
 include raw MCP values that the report itself redacts. Details:
 [Seeing what already happened](#seeing-what-already-happened).
 
+**`scan --verify` (preview) checks the matches against this machine, read-only and
+offline.** Nothing is written or sent, and no command from a session is run again. It reads
+only:
+
+- the transcripts again;
+- in each git repo a session ran in: read-only `git` (`rev-parse`, `ls-files`,
+  `for-each-ref`, `log`, `stash list`), never through a shell, and the repo's git-tracked
+  files, each at most 1 MB;
+- instruction and memory files, each at most 1 MB: `CLAUDE.md`, `CLAUDE.local.md`,
+  `AGENTS.md`, `GEMINI.md`, `.cursorrules`, `.windsurfrules` and
+  `.github/copilot-instructions.md` at the top of each repo; the agent's own
+  (`~/.claude/CLAUDE.md` or `~/.codex/AGENTS.md`); and the ones the sessions wrote. In
+  `~/.claude`, `~/.codex` and `~/.cursor` only `.md` and `.mdc` files are read. Only whether
+  a file tells the agent to skip checks is kept, never its text;
+- whether the paths the commands named still exist.
+
+The report and `--json` carry counts only, never these paths.
+
 ### Scrub credentials from transcripts
 
 A credential pasted into a prompt or printed by a command stays in the agent's transcript.

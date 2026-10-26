@@ -138,8 +138,22 @@ Usage:
                  Says which matched commands ran and which were only mentioned, and
                  sorts credentials found in the transcripts into likely real,
                  committed fixtures, placeholders and local dev data, by kind, never
-                 by value. Reads the transcripts again and the git-tracked files of
-                 the repos they ran in, runs read-only git, and works offline.
+                 by value. Nothing is written or sent, no command from a session is
+                 run again, and it works offline. It reads only:
+                   - the transcripts again;
+                   - in each git repo a session ran in: read-only git (rev-parse,
+                     ls-files, for-each-ref, log, stash list), never through a
+                     shell, and its git-tracked files, each at most 1 MB;
+                   - instruction and memory files, each at most 1 MB: CLAUDE.md,
+                     CLAUDE.local.md, AGENTS.md, GEMINI.md, .cursorrules,
+                     .windsurfrules and .github/copilot-instructions.md at the top
+                     of each repo, the agent's own (~/.claude/CLAUDE.md or
+                     ~/.codex/AGENTS.md), and the ones the sessions wrote. In
+                     ~/.claude, ~/.codex and ~/.cursor only .md and .mdc files are
+                     read. Only whether a file tells the agent to skip checks is
+                     kept, never its text;
+                   - whether the paths the commands named still exist.
+                 The report and --json carry counts only, never these paths.
   --scrub        Replace the likely-real credentials in the app's transcripts with
                  [REDACTED-BY-AGENTTRAIL:<kind>]. Fixtures, placeholders and local
                  dev values are left alone. A dry run: it says what it would replace,
@@ -789,6 +803,16 @@ export function verificationSummary(verification: Verification): string {
     } else if (facts.fixtureCheck === "unavailable") {
       parts.push("no repo was found to search for committed fixtures");
     }
+  }
+
+  // The instruction and memory files read on this machine, by count: what was read is said
+  // every time, and that only a yes or no was kept from each.
+  const skipped = verification.categories["skipped-checks"];
+  if ("facts" in skipped && skipped.facts !== undefined) {
+    const files = skipped.facts.instructions;
+    let line = `${counted(files.read, "instruction or memory file")} read for an instruction to skip checks, keeping only yes or no`;
+    if (files.couldNotRead > 0) line += ` (${formatCount(files.couldNotRead)} could not be read)`;
+    parts.push(line);
   }
 
   const calls = verification.matchedCalls;

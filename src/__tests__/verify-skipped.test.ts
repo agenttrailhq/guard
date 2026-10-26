@@ -583,6 +583,48 @@ describe("instruction files", () => {
     expect(facts.instructions.agentWrote).toBe(0);
   });
 
+  it("a file in an agent folder is read only up to 1 MB: a larger one could not be read", async () => {
+    const home = tempFolder("home");
+    const root = makeRepo("memory-big");
+    const memory = join(home, ".claude", "projects", "p", "memory", "big.md");
+    mkdirSync(join(memory, ".."), { recursive: true });
+    writeFileSync(memory, `Use --no-verify.\n${"x".repeat(1024 * 1024)}`);
+    const { facts, result } = await skipped(
+      [{ cwd: root, events: [{ kind: "write", path: memory, content: "Use --no-verify." }] }],
+      home,
+    );
+    expect(facts.instructions).toMatchObject({ read: 0, sayToSkip: 0, couldNotRead: 1 });
+    expect(result.status).toBe("could-not-check");
+  });
+
+  it("keeps no content from an agent-folder file: only a yes or no, and its path only locally", async () => {
+    const home = tempFolder("home");
+    const root = makeRepo("memory-content");
+    const memory = join(home, ".claude", "projects", "p", "memory", "CANARYfolder", "notes.md");
+    mkdirSync(join(memory, ".."), { recursive: true });
+    const text = "CANARYmemoryLINE use --no-verify when the hooks are slow.\n";
+    writeFileSync(memory, text);
+    const outcome = await runChecks(
+      "claude",
+      [{ cwd: root, events: [{ kind: "write", path: memory, content: text }] }],
+      home,
+    );
+    const result = checkedOf(outcome["skipped-checks"]);
+    expect(result.facts.instructions.sayToSkip).toBe(1);
+    const shown = JSON.stringify({
+      results: [outcome["skipped-checks"], outcome["lost-work"], outcome.destructive],
+      unsafe: outcome.unsafeFixes,
+      card: skippedChecksCard(result, TOOL_RESULT),
+    });
+    for (const value of ["CANARYmemoryLINE", "CANARYfolder", memory, home]) {
+      expect(shown).not.toContain(value);
+    }
+    // The exact path goes only into the local fixes, and never the file's text.
+    const local = outcome.localFixes.map((f) => f.command).join("\n");
+    expect(local).toContain(memory);
+    expect(local).not.toContain("CANARYmemoryLINE");
+  });
+
   it("a Cursor scan reads no Claude Code home file", async () => {
     const home = tempFolder("home");
     mkdirSync(join(home, ".claude"), { recursive: true });
