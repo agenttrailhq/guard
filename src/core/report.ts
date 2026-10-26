@@ -112,7 +112,6 @@ import {
   FIXES_FILE_NOTE,
   leadNotes,
   MORE_EVIDENCE,
-  READ_NOTE,
   TONE_LABELS,
   TONE_TALLY,
 } from "./verify/copy.js";
@@ -1226,15 +1225,24 @@ function whatHappenedSection(
   variant: ReportVariant,
   localFixCategories: readonly VerifyCategory[],
 ): string {
-  const facts = payload.verification?.categories.secrets.facts;
-  const read = facts === undefined ? undefined : sentence(READ_NOTE, facts);
   const tally = sentence(TONE_TALLY, cards);
+  // What each check read, in its own words, for every check that read something.
+  const reads = cards
+    .filter((card) => card.read !== undefined)
+    .map(
+      (card) =>
+        `<li><span class="read-title">${escapeHtml(CATEGORY_TITLES[card.category])}:</span> <span data-template="${escapeHtml(card.read?.template ?? "")}">${escapeHtml(card.read?.text ?? "")}</span></li>`,
+    );
+  const readList =
+    reads.length === 0
+      ? ""
+      : `\n<p class="note">What the checks read on this machine:</p>\n<ul class="read-list">\n${reads.join("\n")}\n</ul>`;
   const rows = cards
     .map((card) => verifiedCard(card, variant, localFixCategories.includes(card.category)))
     .join("\n");
   return `<section id="what-happened" class="what-happened">
 <div class="section-head"><h2>What actually happened</h2>${tally === undefined ? "" : `<p class="section-meta" data-template="${escapeHtml(tally.template)}">${escapeHtml(tally.text)}</p>`}</div>
-<p class="note">A match means a guardrail fired on a command. Each card says what checking that on this machine found, how things stand now, and how to fix it. The checks only read: they changed nothing on this machine.</p>${read === undefined ? "" : `\n${sentenceHtml(read, "note")}`}
+<p class="note">A match means a guardrail fired on a command. Each card says what checking that on this machine found, how things stand now, and how to fix it. The checks only read: they changed nothing on this machine.</p>${readList}
 <div class="verified-cards">
 ${rows}
 </div>
@@ -2124,8 +2132,10 @@ function verifiedLines(payload: ReportPayload): string[] {
   for (const chip of chipsFor(cards, lead)) lines.push(`${chip.title}  ${chip.text}`);
   const tally = sentence(TONE_TALLY, cards);
   if (tally !== undefined) lines.push(tally.text);
-  const read = sentence(READ_NOTE, facts);
-  if (read !== undefined) lines.push(read.text);
+  for (const card of cards) {
+    if (card.read !== undefined)
+      lines.push(`${CATEGORY_TITLES[card.category]}:  ${card.read.text}`);
+  }
   for (const card of cards) {
     const title = CATEGORY_TITLES[card.category];
     const count = cardCount(card);

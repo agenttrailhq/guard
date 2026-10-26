@@ -36,7 +36,6 @@ import {
   FIXES_FILE_NOTE,
   LEAD_NOTES,
   MORE_EVIDENCE,
-  READ_NOTE,
   TONE_TALLY,
 } from "../core/verify/copy.js";
 import {
@@ -46,6 +45,7 @@ import {
   SECRETS_FOUND,
   SECRETS_HEADLINE,
   SECRETS_NOW,
+  SECRETS_READ,
 } from "../core/verify/secrets-card.js";
 import type { SecretsFacts, Verification } from "../core/verify/types.js";
 import { decodeEntities } from "./html-text.js";
@@ -357,7 +357,7 @@ describe("every verified line comes from a template whose facts are present", ()
       (t) => [t, [secrets]] as [SentenceTemplate<never>, readonly unknown[]],
     ),
     ...LEAD_NOTES.map((t) => [t, [verification]] as [SentenceTemplate<never>, readonly unknown[]]),
-    [READ_NOTE, [secrets]],
+    [SECRETS_READ, [secrets]],
     [MORE_EVIDENCE, [{ more: secrets.moreItems }]],
     [TONE_TALLY, [cards]],
     [FIXES_FILE_NOTE, [{ variant: "document" }]],
@@ -440,7 +440,7 @@ describe("every verified line comes from a template whose facts are present", ()
     };
     expect(sentences([...SECRETS_FOUND, ...SECRETS_NOW, ...SECRETS_FIX], none)).toEqual([]);
     expect(SECRETS_HEADLINE.render(none)).toBeUndefined();
-    expect(READ_NOTE.render(none)).toBeUndefined();
+    expect(SECRETS_READ.render(none)).toBeUndefined();
     expect(MORE_EVIDENCE.render({ more: 0 })).toBeUndefined();
     const quiet = {
       matchedCalls: { ran: 3, mentioned: 0, unknown: 0 },

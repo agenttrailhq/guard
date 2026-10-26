@@ -364,10 +364,26 @@ describe("What actually happened", () => {
     );
   });
 
-  it("says what the checks read", () => {
+  it("says what each check read, from that check's own counts", () => {
     expect(section(HTML, "what-happened")).toContain(
-      "read 18 transcript files again and searched the git-tracked files of 2 repos",
+      '<li><span class="read-title">Secrets in transcripts:</span> <span data-template="secrets.read">Read 18 transcript files again and searched the git-tracked files of 2 repos the sessions ran in, with read-only git.</span></li>',
     );
+  });
+
+  it("counts only the repos it could search, and the rest apart", () => {
+    const v = verification({
+      ...verifiedCategories(),
+      secrets: {
+        status: "act",
+        matches: 11,
+        facts: { ...SECRETS_ACT, reposChecked: 1, reposNotChecked: 3, fixtureCheck: "partial" },
+      },
+    });
+    const html = renderReport(baseResult(v), VERIFIED_META, OPTIONS);
+    expect(section(html, "what-happened")).toContain(
+      "searched the git-tracked files of 1 repo the sessions ran in, with read-only git; 3 repos the sessions named could not be searched.",
+    );
+    expect(html).not.toContain("files of 4 repos");
   });
 });
 

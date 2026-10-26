@@ -232,6 +232,25 @@ export const SECRETS_HEADLINE: SentenceTemplate<SecretsFacts> = {
   },
 };
 
+/**
+ * What the check read: the transcript files again, and the git-tracked files of the repos it
+ * could search. A repo it could not search is counted apart, never as searched.
+ */
+export const SECRETS_READ: SentenceTemplate<SecretsFacts> = {
+  id: "secrets.read",
+  render: (f) => {
+    if (f.filesRead === 0) return undefined;
+    let line = `Read ${countOf(f.filesRead, "transcript file")} again`;
+    if (f.reposChecked > 0) {
+      line += ` and searched the git-tracked files of ${countOf(f.reposChecked, "repo")} the sessions ran in, with read-only git`;
+    }
+    if (f.reposNotChecked > 0) {
+      line += `; ${countOf(f.reposNotChecked, "repo")} the sessions named could not be searched`;
+    }
+    return `${line}.`;
+  },
+};
+
 /** The card's raw count: distinct credential-shaped values, of every class. */
 export const SECRETS_COUNT: SentenceTemplate<{ readonly matches: number }> = {
   id: "secrets.count",
@@ -254,6 +273,7 @@ export const secretsCard: ToCard<"secrets"> = (result): CardView => {
   const headline = sentence(SECRETS_HEADLINE, facts);
   const chip = sentence(SECRETS_CHIP, facts);
   const countLine = sentence(SECRETS_COUNT, result);
+  const read = sentence(SECRETS_READ, facts);
   return {
     category: "secrets",
     tone: result.status,
@@ -275,5 +295,6 @@ export const secretsCard: ToCard<"secrets"> = (result): CardView => {
           },
         }),
     ...(chip === undefined ? {} : { chip: { count: likely, label: chip } }),
+    ...(read === undefined ? {} : { read }),
   };
 };

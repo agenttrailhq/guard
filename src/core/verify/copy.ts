@@ -16,7 +16,6 @@ import type {
   SecretItem,
   SecretKind,
   SecretProvenance,
-  SecretsFacts,
   Verification,
   VerifyCategory,
   VerifyStatus,
@@ -244,21 +243,6 @@ export const TONE_TALLY: SentenceTemplate<readonly Pick<CardView, "tone">[]> = {
       parts.push(`${formatCount(n("could-not-check"))} could not check`);
     if (n("not-checked") > 0) parts.push(`${formatCount(n("not-checked"))} not checked`);
     return parts.length === 0 ? undefined : parts.join(" · ");
-  },
-};
-
-/** What the checks read, from the secrets check's own counts. */
-export const READ_NOTE: SentenceTemplate<
-  Pick<SecretsFacts, "filesRead" | "reposChecked" | "reposNotChecked">
-> = {
-  id: "lead.read",
-  render: (f) => {
-    if (f.filesRead === 0) return undefined;
-    const files = `read ${countOf(f.filesRead, "transcript file")} again`;
-    const repos = f.reposChecked + f.reposNotChecked;
-    return repos === 0
-      ? `To check these, AgentTrail Guard ${files}.`
-      : `To check these, AgentTrail Guard ${files} and searched the git-tracked files of ${countOf(repos, "repo")} the sessions ran in, with read-only git.`;
   },
 };
 

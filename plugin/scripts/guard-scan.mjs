@@ -8328,15 +8328,6 @@ var TONE_TALLY = {
     return parts.length === 0 ? void 0 : parts.join(" \xB7 ");
   }
 };
-var READ_NOTE = {
-  id: "lead.read",
-  render: (f) => {
-    if (f.filesRead === 0) return void 0;
-    const files = `read ${countOf(f.filesRead, "transcript file")} again`;
-    const repos = f.reposChecked + f.reposNotChecked;
-    return repos === 0 ? `To check these, AgentTrail Guard ${files}.` : `To check these, AgentTrail Guard ${files} and searched the git-tracked files of ${countOf(repos, "repo")} the sessions ran in, with read-only git.`;
-  }
-};
 var FIXES_FILE_NOTE = {
   id: "card.fixes-file",
   render: ({ variant }) => variant === "artifact" ? `The exact commands, with real names and paths, are in ${FIXES_FILE} on the machine the scan ran on. That file was not published with this page.` : `The exact commands for this machine, with real names and paths, are in ${FIXES_FILE} next to this report. That file stays on this machine and is not part of this page.`
@@ -8492,6 +8483,20 @@ var SECRETS_HEADLINE = {
     return n > 0 ? `${likelyReal(n)} ${be(n)} still in the agent's transcripts` : void 0;
   }
 };
+var SECRETS_READ = {
+  id: "secrets.read",
+  render: (f) => {
+    if (f.filesRead === 0) return void 0;
+    let line = `Read ${countOf(f.filesRead, "transcript file")} again`;
+    if (f.reposChecked > 0) {
+      line += ` and searched the git-tracked files of ${countOf(f.reposChecked, "repo")} the sessions ran in, with read-only git`;
+    }
+    if (f.reposNotChecked > 0) {
+      line += `; ${countOf(f.reposNotChecked, "repo")} the sessions named could not be searched`;
+    }
+    return `${line}.`;
+  }
+};
 var SECRETS_COUNT = {
   id: "secrets.count",
   render: ({ matches }) => countOf(matches, "credential-shaped value")
@@ -8506,6 +8511,7 @@ var secretsCard = (result) => {
   const headline2 = sentence(SECRETS_HEADLINE, facts);
   const chip = sentence(SECRETS_CHIP, facts);
   const countLine = sentence(SECRETS_COUNT, result);
+  const read = sentence(SECRETS_READ, facts);
   return {
     category: "secrets",
     tone: result.status,
@@ -8524,7 +8530,8 @@ var secretsCard = (result) => {
         sentence: headline2
       }
     },
-    ...chip === void 0 ? {} : { chip: { count: likely, label: chip } }
+    ...chip === void 0 ? {} : { chip: { count: likely, label: chip } },
+    ...read === void 0 ? {} : { read }
   };
 };
 
@@ -9176,14 +9183,19 @@ ${sentenceHtml(caveat, "note codex-caveat")}`}
 </article>`;
 }
 function whatHappenedSection(payload, cards, variant, localFixCategories) {
-  const facts = payload.verification?.categories.secrets.facts;
-  const read = facts === void 0 ? void 0 : sentence(READ_NOTE, facts);
   const tally = sentence(TONE_TALLY, cards);
+  const reads = cards.filter((card) => card.read !== void 0).map(
+    (card) => `<li><span class="read-title">${escapeHtml(CATEGORY_TITLES[card.category])}:</span> <span data-template="${escapeHtml(card.read?.template ?? "")}">${escapeHtml(card.read?.text ?? "")}</span></li>`
+  );
+  const readList = reads.length === 0 ? "" : `
+<p class="note">What the checks read on this machine:</p>
+<ul class="read-list">
+${reads.join("\n")}
+</ul>`;
   const rows = cards.map((card) => verifiedCard(card, variant, localFixCategories.includes(card.category))).join("\n");
   return `<section id="what-happened" class="what-happened">
 <div class="section-head"><h2>What actually happened</h2>${tally === void 0 ? "" : `<p class="section-meta" data-template="${escapeHtml(tally.template)}">${escapeHtml(tally.text)}</p>`}</div>
-<p class="note">A match means a guardrail fired on a command. Each card says what checking that on this machine found, how things stand now, and how to fix it. The checks only read: they changed nothing on this machine.</p>${read === void 0 ? "" : `
-${sentenceHtml(read, "note")}`}
+<p class="note">A match means a guardrail fired on a command. Each card says what checking that on this machine found, how things stand now, and how to fix it. The checks only read: they changed nothing on this machine.</p>${readList}
 <div class="verified-cards">
 ${rows}
 </div>
@@ -9801,8 +9813,10 @@ function verifiedLines(payload) {
   for (const chip of chipsFor(cards, lead)) lines.push(`${chip.title}  ${chip.text}`);
   const tally = sentence(TONE_TALLY, cards);
   if (tally !== void 0) lines.push(tally.text);
-  const read = sentence(READ_NOTE, facts);
-  if (read !== void 0) lines.push(read.text);
+  for (const card of cards) {
+    if (card.read !== void 0)
+      lines.push(`${CATEGORY_TITLES[card.category]}:  ${card.read.text}`);
+  }
   for (const card of cards) {
     const title = CATEGORY_TITLES[card.category];
     const count2 = cardCount(card);

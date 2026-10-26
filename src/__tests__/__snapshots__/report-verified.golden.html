@@ -77,7 +77,10 @@
 <section id="what-happened" class="what-happened">
 <div class="section-head"><h2>What actually happened</h2><p class="section-meta" data-template="cards.tally">3 to act on · 1 to review · 3 clean · 1 could not check · 1 not checked</p></div>
 <p class="note">A match means a guardrail fired on a command. Each card says what checking that on this machine found, how things stand now, and how to fix it. The checks only read: they changed nothing on this machine.</p>
-<p class="note" data-template="lead.read">To check these, AgentTrail Guard read 18 transcript files again and searched the git-tracked files of 2 repos the sessions ran in, with read-only git.</p>
+<p class="note">What the checks read on this machine:</p>
+<ul class="read-list">
+<li><span class="read-title">Secrets in transcripts:</span> <span data-template="secrets.read">Read 18 transcript files again and searched the git-tracked files of 2 repos the sessions ran in, with read-only git.</span></li>
+</ul>
 <div class="verified-cards">
 <article class="card verified v-act" id="check-secrets" aria-labelledby="check-secrets-title">
 <div class="card-head"><span class="tone tone-act">Act on this</span><span class="times" data-template="secrets.count">11 credential-shaped values</span></div>
@@ -814,6 +817,10 @@
      "template": "secrets.chip",
      "text": "likely-real credentials in transcripts"
     }
+   },
+   "read": {
+    "template": "secrets.read",
+    "text": "Read 18 transcript files again and searched the git-tracked files of 2 repos the sessions ran in, with read-only git."
    }
   },
   {

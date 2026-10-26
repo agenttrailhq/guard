@@ -140,6 +140,8 @@ export interface CardView {
   readonly headline?: HeadlineClaim;
   /** Its chip in "Also checked on this machine". Without one, the chip states the tone. */
   readonly chip?: ChipClaim;
+  /** What its check read on this machine, from the check's own counts. */
+  readonly read?: CardSentence;
 }
 
 /** What a card builder may know beyond its own category's result. */

@@ -12,6 +12,7 @@ import {
   SECRETS_FOUND,
   SECRETS_HEADLINE,
   SECRETS_NOW,
+  SECRETS_READ,
   secretsCard,
 } from "../core/verify/secrets-card.js";
 import type { SecretsFacts } from "../core/verify/types.js";
@@ -150,6 +151,21 @@ describe("what checking found", () => {
     expect(found(facts({ unplaced: 2 }))).toContain(
       "2 redacted texts could not be lined up with the original, so they were not classed.",
     );
+  });
+});
+
+describe("what it read", () => {
+  it("transcript files, and only the repos it could search", () => {
+    expect(SECRETS_READ.render(facts({ reposChecked: 0, reposNotChecked: 0 }))).toBe(
+      "Read 3 transcript files again.",
+    );
+    expect(SECRETS_READ.render(facts({ filesRead: 1, reposChecked: 2 }))).toBe(
+      "Read 1 transcript file again and searched the git-tracked files of 2 repos the sessions ran in, with read-only git.",
+    );
+    expect(SECRETS_READ.render(facts({ reposChecked: 0, reposNotChecked: 1 }))).toBe(
+      "Read 3 transcript files again; 1 repo the sessions named could not be searched.",
+    );
+    expect(SECRETS_READ.render(facts({ filesRead: 0 }))).toBeUndefined();
   });
 });
 
