@@ -253,6 +253,32 @@ describe("the terminal line", () => {
     expect(verificationSummary(verification())).not.toContain("blocked");
   });
 
+  it("on a Codex scan, always says the Codex reading is limited and unverified", () => {
+    const unverified =
+      "the Codex reading is limited and unverified: it is tested on synthetic sessions only";
+    for (const matchedCalls of [
+      { ran: 2, mentioned: 0, unknown: 0 },
+      { ran: 0, mentioned: 0, unknown: 0 },
+    ]) {
+      expect(
+        verificationSummary(
+          verification({}, "clean", { ranEvidence: "output-record", matchedCalls }),
+        ),
+      ).toContain(unverified);
+    }
+    for (const ranEvidence of ["tool-result", "none"] as const) {
+      expect(verificationSummary(verification({}, "clean", { ranEvidence }))).not.toContain(
+        "unverified",
+      );
+    }
+  });
+
+  it("a real Codex scan's terminal line says so", async () => {
+    const { root } = await writeCorpus("codex", [[{ kind: "prompt", text: "hello" }]]);
+    const { stdout } = await scan(["--agent", "codex", "--dir", root, "--verify"]);
+    expect(stdout).toContain("the Codex reading is limited and unverified");
+  });
+
   it("is one line", () => {
     expect(verificationSummary(verification())).not.toContain("\n");
   });

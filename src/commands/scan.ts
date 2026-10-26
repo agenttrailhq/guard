@@ -736,6 +736,12 @@ export function verificationSummary(verification: Verification): string {
       );
     }
   }
+  // A Codex scan says, every time, how far its reading can be trusted.
+  if (verification.ranEvidence === "output-record") {
+    parts.push(
+      "the Codex reading is limited and unverified: it is tested on synthetic sessions only",
+    );
+  }
 
   return `Checked on this machine (read-only, offline): ${parts.join("; ")}.`;
 }

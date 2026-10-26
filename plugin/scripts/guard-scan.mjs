@@ -13624,6 +13624,11 @@ function verificationSummary(verification) {
       );
     }
   }
+  if (verification.ranEvidence === "output-record") {
+    parts.push(
+      "the Codex reading is limited and unverified: it is tested on synthetic sessions only"
+    );
+  }
   return `Checked on this machine (read-only, offline): ${parts.join("; ")}.`;
 }
 function renderReview(result, colorsEnabled, reportPath, mcpDisclosures = []) {
