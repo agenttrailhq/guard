@@ -406,6 +406,9 @@ the exposure.
   a new folder under `~/.agenttrail/scrub-backups/` (`0700`, files `0600`), with a manifest
   and a restore command for each file. **The backup still holds the credentials:** delete
   it once you have checked the scrubbed files. If any backup fails, nothing is changed.
+  Each restore command quotes both paths. For a path holding a control character or a mark
+  that reorders text on screen, no command is made: the output names the backup file to
+  copy back by hand, and shows each such character as `?`.
 - **One step per file.** Each file is written beside the original, checked against what was
   read, and moved into place. A file that changed since it was read is left as it is.
 - **Lines stay as written.** Only the text inside JSON strings changes; every other byte of

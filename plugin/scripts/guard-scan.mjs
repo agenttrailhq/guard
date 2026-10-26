@@ -14489,13 +14489,29 @@ var PROCESS_NAME_GAP = `If an agent is running under a generic name (for example
 function isRecentlyModified(mtimeMs, nowMs) {
   return nowMs - mtimeMs < RECENT_WRITE_WINDOW_MS;
 }
+var UNSAFE_PATH_SOURCE = "[\\u0000-\\u001f\\u007f-\\u009f\\u061c\\u200e\\u200f\\u2028-\\u202e\\u2066-\\u2069]";
+var UNSAFE_PATH_CHARS = new RegExp(UNSAFE_PATH_SOURCE);
+var BACKUP_NAME_UNSAFE = /[^A-Za-z0-9._-]/g;
+var MAX_BACKUP_NAME = 100;
+function isSafePath(path) {
+  return !UNSAFE_PATH_CHARS.test(path);
+}
+function displayPath(path) {
+  return path.replace(new RegExp(UNSAFE_PATH_SOURCE, "g"), "?");
+}
+function backupFileName(index, count2, original) {
+  const base = (original.split(/[\\/]/).pop() ?? "").replace(BACKUP_NAME_UNSAFE, "_");
+  const number = String(index).padStart(String(count2).length, "0");
+  return `${number}-${(base === "" ? "file" : base).slice(-MAX_BACKUP_NAME)}`;
+}
 function shellQuote(path) {
   return `'${path.replaceAll("'", `'\\''`)}'`;
 }
 function powershellQuote(path) {
-  return `'${path.replaceAll("'", "''")}'`;
+  return `'${path.replace(/['\u2018\u2019\u201a\u201b]/g, "$&$&")}'`;
 }
 function restoreCommand(platform, backup, original) {
+  if (!isSafePath(backup) || !isSafePath(original)) return void 0;
   if (platform === "win32") {
     return `Copy-Item -LiteralPath ${powershellQuote(backup)} -Destination ${powershellQuote(original)} -Force`;
   }
@@ -14585,7 +14601,7 @@ async function runScrub(input) {
   const app = agentName(agent);
   const shown = (path) => {
     const rel = relative2(input.root, path);
-    return rel === "" || rel.startsWith("..") ? path : rel;
+    return displayPath(rel === "" || rel.startsWith("..") ? path : rel);
   };
   const lines = [];
   const flush = () => {
@@ -14595,7 +14611,7 @@ async function runScrub(input) {
   };
   lines.push(
     c.bold(
-      `${input.apply ? "Scrub" : "Scrub, dry run"}: ${sessionFilesName(agent)} in ${input.root}`
+      `${input.apply ? "Scrub" : "Scrub, dry run"}: ${sessionFilesName(agent)} in ${displayPath(input.root)}`
     )
   );
   if (!input.apply) lines.push("Nothing is changed without --apply.");
@@ -14702,7 +14718,7 @@ async function runScrub(input) {
     lines.push("");
     lines.push("With --apply:");
     lines.push(
-      `  every file above is first copied to a new private folder under ${scrubBackupsRoot(io.homedir())},`
+      `  every file above is first copied to a new private folder under ${displayPath(scrubBackupsRoot(io.homedir()))},`
     );
     lines.push("  and then each one is replaced in a single step.");
     lines.push(`  It refuses while ${app} is running, which it finds by process name.`);
@@ -14753,7 +14769,7 @@ async function runScrub(input) {
     lines.push("");
     lines.push(
       c.yellow(
-        `Refused: a private backup folder could not be made under ${scrubBackupsRoot(io.homedir())}. Nothing was changed.`
+        `Refused: a private backup folder could not be made under ${displayPath(scrubBackupsRoot(io.homedir()))}. Nothing was changed.`
       )
     );
     flush();
@@ -14761,7 +14777,6 @@ async function runScrub(input) {
   }
   const backedUp = [];
   const written = [];
-  const width = String(targets.length).length;
   let backupFailed = false;
   for (const [i, file2] of targets.entries()) {
     const read = scrubIO.read(file2.path);
@@ -14770,7 +14785,7 @@ async function runScrub(input) {
       continue;
     }
     const text = new TextDecoder("utf-8", { ignoreBOM: true }).decode(read.bytes);
-    const name = `${String(i + 1).padStart(width, "0")}-${file2.path.split(/[\\/]/).pop() ?? "file"}`;
+    const name = backupFileName(i + 1, targets.length, file2.path);
     const backup = join5(backupDir, name);
     if (!scrubIO.writeBackupFile(backup, read.bytes)) {
       backupFailed = true;
@@ -14799,7 +14814,9 @@ async function runScrub(input) {
       sha256After: b.afterSha
     }))
   };
-  const restoreLines = backedUp.map((b) => restoreCommand(input.platform, b.backup, b.file.path));
+  const restoreLines = backedUp.map(
+    (b) => restoreCommand(input.platform, b.backup, b.file.path) ?? `# could not make a safe restore command for ${displayPath(b.file.path)}; copy ${displayPath(b.backup)} back by hand`
+  );
   const encoder = new TextEncoder();
   const manifestPath = join5(backupDir, "manifest.json");
   const restorePath = join5(backupDir, "restore.txt");
@@ -14832,7 +14849,7 @@ async function runScrub(input) {
   }
   lines.push("");
   lines.push(
-    `Backed up ${counted2(backedUp.length, "file")} to ${backupDir} (readable only by you).`
+    `Backed up ${counted2(backedUp.length, "file")} to ${displayPath(backupDir)} (readable only by you).`
   );
   lines.push(
     c.yellow(
@@ -14889,7 +14906,7 @@ async function runScrub(input) {
   if (restoreLines.length > MAX_RESTORE_LINES_SHOWN) {
     lines.push(c.dim(`  and ${formatCount(restoreLines.length - MAX_RESTORE_LINES_SHOWN)} more`));
   }
-  lines.push(c.dim(`Every restore command is in ${restorePath}.`));
+  lines.push(c.dim(`Every restore command is in ${displayPath(restorePath)}.`));
   lines.push("");
   lines.push("Rotate each credential if you have not: scrubbing does not undo the exposure.");
   lines.push(

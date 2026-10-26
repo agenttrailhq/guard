@@ -122,18 +122,68 @@ export function isRecentlyModified(mtimeMs: number, nowMs: number): boolean {
   return nowMs - mtimeMs < RECENT_WRITE_WINDOW_MS;
 }
 
-/** A path quoted for a POSIX shell. */
+/**
+ * Characters a path may not carry into a printed command or onto the terminal: control
+ * characters (C0, DEL, C1), the line and paragraph separators, and the marks that reorder text
+ * on screen. A command holding one could run something other than what it shows.
+ */
+const UNSAFE_PATH_SOURCE =
+  "[\\u0000-\\u001f\\u007f-\\u009f\\u061c\\u200e\\u200f\\u2028-\\u202e\\u2066-\\u2069]";
+
+/** One unsafe character. Built from a string because a regex literal may not hold control characters. */
+const UNSAFE_PATH_CHARS = new RegExp(UNSAFE_PATH_SOURCE);
+
+/** Characters a backup file's name keeps; any other becomes `_`. */
+const BACKUP_NAME_UNSAFE = /[^A-Za-z0-9._-]/g;
+
+/** Longest backup file name, before its number. */
+const MAX_BACKUP_NAME = 100;
+
+/** Is `path` free of characters that cannot be shown or quoted safely? */
+export function isSafePath(path: string): boolean {
+  return !UNSAFE_PATH_CHARS.test(path);
+}
+
+/** A path as it may be shown on the terminal: each unsafe character becomes `?`. */
+export function displayPath(path: string): string {
+  return path.replace(new RegExp(UNSAFE_PATH_SOURCE, "g"), "?");
+}
+
+/** The backup's file name for the `index`th file (from 1) of `count`: numbered, safe characters only. */
+export function backupFileName(index: number, count: number, original: string): string {
+  const base = (original.split(/[\\/]/).pop() ?? "").replace(BACKUP_NAME_UNSAFE, "_");
+  const number = String(index).padStart(String(count).length, "0");
+  return `${number}-${(base === "" ? "file" : base).slice(-MAX_BACKUP_NAME)}`;
+}
+
+/**
+ * A path quoted for a POSIX shell. Inside single quotes every character is literal except `'`,
+ * which ends the quote, so each `'` becomes `'\''`.
+ */
 function shellQuote(path: string): string {
   return `'${path.replaceAll("'", `'\\''`)}'`;
 }
 
-/** A path quoted for PowerShell. */
+/**
+ * A path quoted for PowerShell. Inside single quotes every character is literal except the
+ * characters PowerShell reads as a single quote (`'`, `‘`, `’`, `‚`, `‛`), each of which is
+ * doubled.
+ */
 function powershellQuote(path: string): string {
-  return `'${path.replaceAll("'", "''")}'`;
+  return `'${path.replace(/['\u2018\u2019\u201a\u201b]/g, "$&$&")}'`;
 }
 
-/** The command that copies a backup over the scrubbed file. */
-export function restoreCommand(platform: string, backup: string, original: string): string {
+/**
+ * The command that copies a backup over the scrubbed file, with both paths quoted. `undefined`
+ * when either path holds a character in `UNSAFE_PATH_CHARS`: no command is made for it, and the
+ * caller says so.
+ */
+export function restoreCommand(
+  platform: string,
+  backup: string,
+  original: string,
+): string | undefined {
+  if (!isSafePath(backup) || !isSafePath(original)) return undefined;
   if (platform === "win32") {
     return `Copy-Item -LiteralPath ${powershellQuote(backup)} -Destination ${powershellQuote(original)} -Force`;
   }
@@ -286,7 +336,7 @@ export async function runScrub(input: ScrubRunInput): Promise<number> {
   const app = agentName(agent);
   const shown = (path: string): string => {
     const rel = relative(input.root, path);
-    return rel === "" || rel.startsWith("..") ? path : rel;
+    return displayPath(rel === "" || rel.startsWith("..") ? path : rel);
   };
   const lines: string[] = [];
   const flush = (): void => {
@@ -296,7 +346,7 @@ export async function runScrub(input: ScrubRunInput): Promise<number> {
 
   lines.push(
     c.bold(
-      `${input.apply ? "Scrub" : "Scrub, dry run"}: ${sessionFilesName(agent)} in ${input.root}`,
+      `${input.apply ? "Scrub" : "Scrub, dry run"}: ${sessionFilesName(agent)} in ${displayPath(input.root)}`,
     ),
   );
   if (!input.apply) lines.push("Nothing is changed without --apply.");
@@ -415,7 +465,7 @@ export async function runScrub(input: ScrubRunInput): Promise<number> {
     lines.push("");
     lines.push("With --apply:");
     lines.push(
-      `  every file above is first copied to a new private folder under ${scrubBackupsRoot(io.homedir())},`,
+      `  every file above is first copied to a new private folder under ${displayPath(scrubBackupsRoot(io.homedir()))},`,
     );
     lines.push("  and then each one is replaced in a single step.");
     lines.push(`  It refuses while ${app} is running, which it finds by process name.`);
@@ -477,7 +527,7 @@ export async function runScrub(input: ScrubRunInput): Promise<number> {
     lines.push("");
     lines.push(
       c.yellow(
-        `Refused: a private backup folder could not be made under ${scrubBackupsRoot(io.homedir())}. Nothing was changed.`,
+        `Refused: a private backup folder could not be made under ${displayPath(scrubBackupsRoot(io.homedir()))}. Nothing was changed.`,
       ),
     );
     flush();
@@ -493,7 +543,6 @@ export async function runScrub(input: ScrubRunInput): Promise<number> {
   }
   const backedUp: BackedUp[] = [];
   const written: string[] = [];
-  const width = String(targets.length).length;
   let backupFailed = false;
   for (const [i, file] of targets.entries()) {
     const read = scrubIO.read(file.path);
@@ -503,7 +552,7 @@ export async function runScrub(input: ScrubRunInput): Promise<number> {
     }
     // The same bytes as were planned, which decoded as UTF-8 then.
     const text = new TextDecoder("utf-8", { ignoreBOM: true }).decode(read.bytes);
-    const name = `${String(i + 1).padStart(width, "0")}-${file.path.split(/[\\/]/).pop() ?? "file"}`;
+    const name = backupFileName(i + 1, targets.length, file.path);
     const backup = join(backupDir, name);
     if (!scrubIO.writeBackupFile(backup, read.bytes)) {
       backupFailed = true;
@@ -533,7 +582,12 @@ export async function runScrub(input: ScrubRunInput): Promise<number> {
       sha256After: b.afterSha,
     })),
   };
-  const restoreLines = backedUp.map((b) => restoreCommand(input.platform, b.backup, b.file.path));
+  // One line per file: its restore command, or a note where no safe command can be made.
+  const restoreLines = backedUp.map(
+    (b) =>
+      restoreCommand(input.platform, b.backup, b.file.path) ??
+      `# could not make a safe restore command for ${displayPath(b.file.path)}; copy ${displayPath(b.backup)} back by hand`,
+  );
   const encoder = new TextEncoder();
   const manifestPath = join(backupDir, "manifest.json");
   const restorePath = join(backupDir, "restore.txt");
@@ -570,7 +624,7 @@ export async function runScrub(input: ScrubRunInput): Promise<number> {
 
   lines.push("");
   lines.push(
-    `Backed up ${counted(backedUp.length, "file")} to ${backupDir} (readable only by you).`,
+    `Backed up ${counted(backedUp.length, "file")} to ${displayPath(backupDir)} (readable only by you).`,
   );
   lines.push(
     c.yellow(
@@ -631,7 +685,7 @@ export async function runScrub(input: ScrubRunInput): Promise<number> {
   if (restoreLines.length > MAX_RESTORE_LINES_SHOWN) {
     lines.push(c.dim(`  and ${formatCount(restoreLines.length - MAX_RESTORE_LINES_SHOWN)} more`));
   }
-  lines.push(c.dim(`Every restore command is in ${restorePath}.`));
+  lines.push(c.dim(`Every restore command is in ${displayPath(restorePath)}.`));
   lines.push("");
   lines.push("Rotate each credential if you have not: scrubbing does not undo the exposure.");
   lines.push(
