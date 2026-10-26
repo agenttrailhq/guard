@@ -320,12 +320,13 @@ function countTranscriptFiles(io: ScanIO, dir: string, depth = 0): number {
  * as the Cursor reader folds a session's sub-agents. `opened` counts every file this
  * actually read (the main file plus each sub-agent file), so the coverage tally is honest.
  * `session` is absent when the main file could not be folded into a session (quarantined);
- * its sub-agents are then left to the not-read count.
+ * its sub-agents are then left to the not-read count. `files` lists the files that were folded
+ * into the session.
  */
 async function readClaudeSession(
   io: ScanIO,
   item: { readonly file: string; readonly sessionId: string },
-): Promise<{ session?: ParsedSession; opened: number }> {
+): Promise<{ session?: ParsedSession; opened: number; files: readonly string[] }> {
   const source = { readLines: (p: string) => io.readLines(p) };
 
   let session: ParsedSession;
@@ -334,9 +335,10 @@ async function readClaudeSession(
   } catch {
     // QuarantineError or any other read failure: the main file was attempted and yielded
     // no session. Count the one file; leave its sub-agents to the not-read count.
-    return { opened: 1 };
+    return { opened: 1, files: [] };
   }
   let opened = 1;
+  const files = [item.file];
 
   const subDir = join(dirname(item.file), basename(item.file, ".jsonl"), "subagents");
   let names: readonly string[];
@@ -368,6 +370,7 @@ async function readClaudeSession(
     } catch {
       continue; // a sub-agent file that yields no session adds nothing; it was still opened
     }
+    files.push(subPath);
     skippedLines += sub.skippedLines;
     // De-dup by message uuid so one turn's tokens and tool calls count once even if a main
     // transcript inlined the sub-agent, or a file is somehow read twice. A turn with no
@@ -384,7 +387,7 @@ async function readClaudeSession(
     }
   }
 
-  return { session: { ...session, turns, userPrompts, skippedLines }, opened };
+  return { session: { ...session, turns, userPrompts, skippedLines }, opened, files };
 }
 
 /**
@@ -439,6 +442,7 @@ async function readCorpus(
   quarantined: number;
   projects: number;
   notRead: number;
+  files: string[];
 }> {
   const inventory = await scanTranscripts(root, undefined, {
     readdir: (p) => io.readdir(p),
@@ -447,6 +451,7 @@ async function readCorpus(
   });
 
   const sessions: ParsedSession[] = [];
+  const files: string[] = [];
   let quarantined = 0;
   // Every file the reader actually opened — main transcripts and the sub-agent files folded
   // into them — so the not-read tally below is against what was read, not just the sessions.
@@ -456,6 +461,7 @@ async function readCorpus(
     for (const item of project.sessions) {
       const read = await readClaudeSession(io, item);
       opened += read.opened;
+      for (const path of read.files) files.push(path);
       if (read.session !== undefined) sessions.push(read.session);
       else quarantined++;
     }
@@ -466,7 +472,7 @@ async function readCorpus(
   // in a report.
   const notRead = Math.max(0, countTranscriptFiles(io, root) - opened);
 
-  return { sessions, quarantined, projects: inventory.projects.length, notRead };
+  return { sessions, quarantined, projects: inventory.projects.length, notRead, files };
 }
 
 /**

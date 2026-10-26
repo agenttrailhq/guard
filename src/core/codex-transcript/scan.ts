@@ -603,7 +603,7 @@ function toSession(file: SessionFile, records: CodexFileRecords): ParsedSession 
     cwd: records.cwd,
     turns,
     userPrompts,
-    toolResults: new Map(),
+    toolResults: records.toolResults,
     firstTimestamp: records.firstTimestamp === "" ? stamp : records.firstTimestamp,
     lastTimestamp: records.lastTimestamp === "" ? stamp : records.lastTimestamp,
     skippedLines: records.counts.unparseableLines + records.counts.truncatedLastLines,
@@ -622,6 +622,7 @@ function toSession(file: SessionFile, records: CodexFileRecords): ParsedSession 
  */
 export async function readCodexCorpus(root: string, io: CodexTranscriptIO): Promise<ScanCorpus> {
   const sessions: ParsedSession[] = [];
+  const files: string[] = [];
   const workingDirectories = new Set<string>();
   let quarantined = 0;
   let counts = NO_LINE_COUNTS;
@@ -642,6 +643,7 @@ export async function readCodexCorpus(root: string, io: CodexTranscriptIO): Prom
       continue;
     }
     counts = addLineCounts(counts, records.counts);
+    files.push(file.path);
     const session = toSession(file, records);
     if (session === undefined) {
       quarantined++;
@@ -663,5 +665,6 @@ export async function readCodexCorpus(root: string, io: CodexTranscriptIO): Prom
     notRead,
     projects: workingDirectories.size,
     skipped,
+    files,
   };
 }

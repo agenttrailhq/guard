@@ -5779,6 +5779,8 @@ async function readCodexFile(path, source, options) {
   let lineNumber = 0;
   let pending = [];
   let pendingStamp = "";
+  const callIds = /* @__PURE__ */ new Map();
+  const toolResults = /* @__PURE__ */ new Map();
   const closeTurn = (timestamp, usage) => {
     turns.push({
       messageUuid: "",
@@ -5836,8 +5838,11 @@ async function readCodexFile(path, source, options) {
     }
     if (payload.type === "custom_tool_call") {
       pendingStamp = timestamp;
+      const toolUseId = `${options.idPrefix}:${lineNumber}`;
+      const callId = nonEmptyString(payload.call_id);
+      if (callId !== void 0) callIds.set(callId, toolUseId);
       pending.push({
-        toolUseId: `${options.idPrefix}:${lineNumber}`,
+        toolUseId,
         // A call with no name is kept under `""`, so `scan` counts it as unrecognized
         // rather than dropping it.
         name: typeof payload.name === "string" ? payload.name : "",
@@ -5845,6 +5850,13 @@ async function readCodexFile(path, source, options) {
         // from it; nothing here interprets it.
         input: { input: payload.input }
       });
+      continue;
+    }
+    if (payload.type === "custom_tool_call_output") {
+      const toolUseId = callIds.get(nonEmptyString(payload.call_id) ?? "");
+      if (toolUseId !== void 0) {
+        toolResults.set(toolUseId, { toolUseId, isError: false, content: "", timestamp });
+      }
       continue;
     }
     if (payload.type === "message" && payload.role === "user") {
@@ -5867,6 +5879,7 @@ async function readCodexFile(path, source, options) {
     lastTimestamp,
     turns,
     userPrompts,
+    toolResults,
     counts: {
       unparseableLines,
       truncatedLastLines: pendingUnparseable ? 1 : 0,
@@ -6216,7 +6229,7 @@ function toSession(file2, records) {
     cwd: records.cwd,
     turns,
     userPrompts,
-    toolResults: /* @__PURE__ */ new Map(),
+    toolResults: records.toolResults,
     firstTimestamp: records.firstTimestamp === "" ? stamp : records.firstTimestamp,
     lastTimestamp: records.lastTimestamp === "" ? stamp : records.lastTimestamp,
     skippedLines: records.counts.unparseableLines + records.counts.truncatedLastLines
@@ -6224,6 +6237,7 @@ function toSession(file2, records) {
 }
 async function readCodexCorpus(root, io) {
   const sessions = [];
+  const files = [];
   const workingDirectories = /* @__PURE__ */ new Set();
   let quarantined = 0;
   let counts = NO_LINE_COUNTS;
@@ -6241,6 +6255,7 @@ async function readCodexCorpus(root, io) {
       continue;
     }
     counts = addLineCounts(counts, records.counts);
+    files.push(file2.path);
     const session = toSession(file2, records);
     if (session === void 0) {
       quarantined++;
@@ -6258,7 +6273,8 @@ async function readCodexCorpus(root, io) {
     quarantined,
     notRead,
     projects: workingDirectories.size,
-    skipped
+    skipped,
+    files
   };
 }
 
@@ -6636,6 +6652,7 @@ async function readSession(io, found) {
   const turns = [];
   const userPrompts = [];
   const times = [];
+  const files = [];
   let counts = NO_LINE_COUNTS2;
   let unreadableFiles = 0;
   for (const [index, file2] of found.files.entries()) {
@@ -6649,13 +6666,14 @@ async function readSession(io, found) {
       for (const prompt of records.userPrompts) userPrompts.push(prompt);
       counts = addLineCounts2(counts, records.counts);
       times.push(file2.mtimeMs);
+      files.push(file2.path);
     } catch {
       unreadableFiles++;
     }
   }
   const readable = times.length > 0;
   if (!readable || turns.length === 0 && userPrompts.length === 0) {
-    return { session: void 0, readable, unreadableFiles, counts };
+    return { session: void 0, readable, unreadableFiles, counts, files };
   }
   return {
     session: {
@@ -6672,11 +6690,13 @@ async function readSession(io, found) {
     },
     readable,
     unreadableFiles,
-    counts
+    counts,
+    files
   };
 }
 async function readCursorCorpus(root, io) {
   const sessions = [];
+  const files = [];
   let quarantined = 0;
   let projects = 0;
   let notRead = 0;
@@ -6696,6 +6716,7 @@ async function readCursorCorpus(root, io) {
       counts = addLineCounts2(counts, result.counts);
       if (result.session !== void 0) {
         sessions.push(result.session);
+        for (const path of result.files) files.push(path);
         read++;
       } else if (result.readable) {
         quarantined++;
@@ -6714,7 +6735,8 @@ async function readCursorCorpus(root, io) {
     quarantined,
     notRead,
     projects,
-    skipped
+    skipped,
+    files
   };
 }
 
@@ -11189,7 +11211,7 @@ function strictestAction(actions) {
 function byCountThenText(a, b) {
   return b.count - a.count || a.text.localeCompare(b.text);
 }
-function aggregateScan(corpus, catalog, allowlist, shipped = /* @__PURE__ */ new Set()) {
+function aggregateScan(corpus, catalog, allowlist, shipped = /* @__PURE__ */ new Set(), verification) {
   const agent = corpus.agent ?? "claude";
   const capabilities = corpus.capabilities ?? DEFAULT_CAPABILITIES;
   const sessionCalls = sessionCallsFor(agent);
@@ -11304,7 +11326,8 @@ function aggregateScan(corpus, catalog, allowlist, shipped = /* @__PURE__ */ new
     owasp: owaspTally(findings, callOwasp),
     // Withheld, not zeroed, when the records carry no counts: a total of 0 is a
     // measurement nobody made.
-    tokens: capabilities.tokens ? tokens : null
+    tokens: capabilities.tokens ? tokens : null,
+    ...verification === void 0 ? {} : { verification }
   };
   if (!capabilities.skips) return result;
   const unmappedTools = [...unmapped2].map(([name, count2]) => ({ name, count: count2 })).sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
@@ -11794,9 +11817,10 @@ async function readClaudeSession(io, item) {
   try {
     session = await parseSession(item.file, item.sessionId, source);
   } catch {
-    return { opened: 1 };
+    return { opened: 1, files: [] };
   }
   let opened = 1;
+  const files = [item.file];
   const subDir = join5(dirname(item.file), basename3(item.file, ".jsonl"), "subagents");
   let names;
   try {
@@ -11824,6 +11848,7 @@ async function readClaudeSession(io, item) {
     } catch {
       continue;
     }
+    files.push(subPath);
     skippedLines += sub.skippedLines;
     for (const turn of sub.turns) {
       if (turn.messageUuid !== "" && seenTurns.has(turn.messageUuid)) continue;
@@ -11836,7 +11861,7 @@ async function readClaudeSession(io, item) {
       userPrompts.push(prompt);
     }
   }
-  return { session: { ...session, turns, userPrompts, skippedLines }, opened };
+  return { session: { ...session, turns, userPrompts, skippedLines }, opened, files };
 }
 function sessionRootFor(agent, home) {
   switch (agent) {
@@ -11873,18 +11898,20 @@ async function readCorpus(io, root) {
     lineSource: { readLines: (p) => io.readLines(p) }
   });
   const sessions = [];
+  const files = [];
   let quarantined = 0;
   let opened = 0;
   for (const project of inventory.projects) {
     for (const item of project.sessions) {
       const read = await readClaudeSession(io, item);
       opened += read.opened;
+      for (const path of read.files) files.push(path);
       if (read.session !== void 0) sessions.push(read.session);
       else quarantined++;
     }
   }
   const notRead = Math.max(0, countTranscriptFiles(io, root) - opened);
-  return { sessions, quarantined, projects: inventory.projects.length, notRead };
+  return { sessions, quarantined, projects: inventory.projects.length, notRead, files };
 }
 var CONTROL_CHARS = new RegExp(
   `[${String.fromCharCode(0)}-${String.fromCharCode(31)}${String.fromCharCode(127)}-${String.fromCharCode(159)}]+`,

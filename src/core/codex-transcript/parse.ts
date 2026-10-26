@@ -38,6 +38,10 @@
  * only prompts counts as a session. A `message` is a prompt only when its `role` is
  * `user`: the `developer` messages are the harness's own instructions, not the person's.
  *
+ * Whether a call has a `custom_tool_call_output` is kept, matched to the call by its
+ * `call_id`, with the output's text left out: `scan --verify` counts a call as having run
+ * only when it has one.
+ *
  * ── A bad line never fails the file ──────────────────────────────────────────
  * Each line is parsed on its own, and what cannot be used is counted by kind:
  * - a line that is not JSON;
@@ -49,7 +53,13 @@
  */
 
 import type { LineSource } from "../transcript/parse.js";
-import type { ToolUse, Turn, Usage, UserPrompt } from "../transcript/transcript-types.js";
+import type {
+  ToolResult,
+  ToolUse,
+  Turn,
+  Usage,
+  UserPrompt,
+} from "../transcript/transcript-types.js";
 
 /** What one or more session files held that could not be used, by kind. */
 export interface CodexLineCounts {
@@ -100,6 +110,11 @@ export interface CodexFileRecords {
   readonly turns: readonly Turn[];
   /** One entry per `user` message. */
   readonly userPrompts: readonly UserPrompt[];
+  /**
+   * The calls that have an output, by the tool-use id given to the call here. The output's
+   * text is not kept: `content` is always empty.
+   */
+  readonly toolResults: ReadonlyMap<string, ToolResult>;
   readonly counts: CodexLineCounts;
 }
 
@@ -211,6 +226,9 @@ export async function readCodexFile(
   // it made, so the calls are held until the record that closes their turn.
   let pending: ToolUse[] = [];
   let pendingStamp = "";
+  // A call's `call_id` to the tool-use id made up for it, so its output can be matched to it.
+  const callIds = new Map<string, string>();
+  const toolResults = new Map<string, ToolResult>();
 
   /** Close one turn: the calls held so far, under this response's usage. */
   const closeTurn = (timestamp: string, usage: Usage): void => {
@@ -283,8 +301,11 @@ export async function readCodexFile(
 
     if (payload.type === "custom_tool_call") {
       pendingStamp = timestamp;
+      const toolUseId = `${options.idPrefix}:${lineNumber}`;
+      const callId = nonEmptyString(payload.call_id);
+      if (callId !== undefined) callIds.set(callId, toolUseId);
       pending.push({
-        toolUseId: `${options.idPrefix}:${lineNumber}`,
+        toolUseId,
         // A call with no name is kept under `""`, so `scan` counts it as unrecognized
         // rather than dropping it.
         name: typeof payload.name === "string" ? payload.name : "",
@@ -292,6 +313,14 @@ export async function readCodexFile(
         // from it; nothing here interprets it.
         input: { input: payload.input },
       });
+      continue;
+    }
+
+    if (payload.type === "custom_tool_call_output") {
+      const toolUseId = callIds.get(nonEmptyString(payload.call_id) ?? "");
+      if (toolUseId !== undefined) {
+        toolResults.set(toolUseId, { toolUseId, isError: false, content: "", timestamp });
+      }
       continue;
     }
 
@@ -319,6 +348,7 @@ export async function readCodexFile(
     lastTimestamp,
     turns,
     userPrompts,
+    toolResults,
     counts: {
       unparseableLines,
       truncatedLastLines: pendingUnparseable ? 1 : 0,
