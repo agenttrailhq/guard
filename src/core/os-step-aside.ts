@@ -268,8 +268,8 @@ function enabledFor(
 }
 
 /** Check 5: the registry lists the plugin, installed from the entry's marketplace source. */
-function sourceMatches(entry: RecordEntry, input: StepAsideInput): boolean {
-  const plugins = join(claudeDir(input.home, input.env), "plugins");
+function sourceMatches(entry: RecordEntry, input: StepAsideInput, configDir: string): boolean {
+  const plugins = join(configDir, "plugins");
   const installed = parseJson(input.readFile(join(plugins, "installed_plugins.json")));
   if (!isRecord(installed) || !isRecord(installed.plugins)) return false;
   const rows = installed.plugins[OS_PLUGIN_ID];
@@ -293,7 +293,7 @@ export function evaluateStepAside(input: StepAsideInput): StepAsideResult {
 
 function evaluate(input: StepAsideInput): StepAsideResult {
   const { env } = input;
-  // 0. sentinel
+  // 0. sentinel, as it reaches the hook. The full check runs below, once the folder is known.
   if (env[ENV_ENFORCE]?.trim() !== "1") return { standDown: false, failed: "sentinel" };
 
   // 1. record. `CLAUDE_PROJECT_DIR` is used only when absolute, and then the working folder must
@@ -318,6 +318,37 @@ function evaluate(input: StepAsideInput): StepAsideResult {
   ];
   if (candidates.length === 0) return { standDown: false, failed: "record" };
 
+  // 0, judged the way the AgentTrail OS hook judges it: the "1" must come from a scope a
+  // repository can't write (managed, this machine's settings.local.json, or the user settings),
+  // never only from a project's settings.json. The hook sets a committed "1" with nothing
+  // trusted behind it aside and gives no decision, so standing down on it would leave nothing
+  // deciding. A repository that sets CLAUDE_PROJECT_DIR or CLAUDE_CONFIG_DIR doesn't get to choose
+  // which local or user file counts.
+  const homeReal = safeRealpath(input.home, input.realpath) ?? input.home;
+  const scanned = projectSettingsFolders(
+    [...(projectDir !== undefined ? [projectDir] : []), ...(cwd !== undefined ? [cwd] : [])],
+    homeReal,
+  ).map((folder) => input.readFile(join(folder, ".claude", "settings.json")));
+  // A file that exists but doesn't parse counts as setting every key.
+  const repoSets = (key: string) =>
+    scanned.some((text) => {
+      if (text === undefined) return false;
+      const parsed = parseJson(text);
+      return !isRecord(parsed) || (isRecord(parsed.env) && key in parsed.env);
+    });
+  const configDir = repoSets(ENV_CONFIG_DIR)
+    ? join(input.home, ".claude")
+    : claudeDir(input.home, env);
+  const trustedFiles = [
+    ...managedSettingsFiles(input.platform ?? process.platform, input.listDir),
+    ...(repoSets(ENV_PROJECT_DIR) ? [] : [join(here, ".claude", "settings.local.json")]),
+    join(configDir, "settings.json"),
+  ];
+  const trustedSentinel = trustedFiles
+    .map((path) => envBlock(input.readFile(path))[ENV_ENFORCE])
+    .find((value) => value !== undefined);
+  if (trustedSentinel?.trim() !== "1") return { standDown: false, failed: "sentinel" };
+
   // 2. and 3., per candidate entry; the first entry that passes both is the one checked on.
   const origin = originOf(env[ENV_URL]);
   const token = env[ENV_TOKEN]?.trim();
@@ -334,7 +365,7 @@ function evaluate(input: StepAsideInput): StepAsideResult {
   const managed = managedSettingsFiles(input.platform ?? process.platform, input.listDir).map(
     (path) => enabledIn(input.readFile(path)),
   );
-  const user = enabledIn(input.readFile(join(claudeDir(input.home, env), "settings.json")));
+  const user = enabledIn(input.readFile(join(configDir, "settings.json")));
   const starts = [here, ...(cwd !== undefined && cwd !== here ? [cwd] : [])];
   const folders = projectSettingsFolders(starts, home);
   const enabled =
@@ -344,7 +375,7 @@ function evaluate(input: StepAsideInput): StepAsideResult {
   if (!enabled) return { standDown: false, failed: "enabled" };
 
   // 5. source
-  if (!sourceMatches(matched, input)) return { standDown: false, failed: "source" };
+  if (!sourceMatches(matched, input, configDir)) return { standDown: false, failed: "source" };
 
   return {
     standDown: true,

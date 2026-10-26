@@ -7421,8 +7421,8 @@ function enabledFor(folder, input, managed, user) {
   }
   return false;
 }
-function sourceMatches(entry, input) {
-  const plugins = join2(claudeDir(input.home, input.env), "plugins");
+function sourceMatches(entry, input, configDir) {
+  const plugins = join2(configDir, "plugins");
   const installed = parseJson(input.readFile(join2(plugins, "installed_plugins.json")));
   if (!isRecord3(installed) || !isRecord3(installed.plugins)) return false;
   const rows = installed.plugins[OS_PLUGIN_ID];
@@ -7454,6 +7454,24 @@ function evaluate(input) {
     ...entries.filter((e) => e.scope === "global")
   ];
   if (candidates.length === 0) return { standDown: false, failed: "record" };
+  const homeReal = safeRealpath(input.home, input.realpath) ?? input.home;
+  const scanned = projectSettingsFolders(
+    [...projectDir !== void 0 ? [projectDir] : [], ...cwd !== void 0 ? [cwd] : []],
+    homeReal
+  ).map((folder) => input.readFile(join2(folder, ".claude", "settings.json")));
+  const repoSets = (key) => scanned.some((text) => {
+    if (text === void 0) return false;
+    const parsed = parseJson(text);
+    return !isRecord3(parsed) || isRecord3(parsed.env) && key in parsed.env;
+  });
+  const configDir = repoSets(ENV_CONFIG_DIR) ? join2(input.home, ".claude") : claudeDir(input.home, env);
+  const trustedFiles = [
+    ...managedSettingsFiles(input.platform ?? process.platform, input.listDir),
+    ...repoSets(ENV_PROJECT_DIR) ? [] : [join2(here, ".claude", "settings.local.json")],
+    join2(configDir, "settings.json")
+  ];
+  const trustedSentinel = trustedFiles.map((path) => envBlock(input.readFile(path))[ENV_ENFORCE]).find((value) => value !== void 0);
+  if (trustedSentinel?.trim() !== "1") return { standDown: false, failed: "sentinel" };
   const origin = originOf(env[ENV_URL]);
   const token = env[ENV_TOKEN]?.trim();
   const fingerprint = token !== void 0 && token.length > 0 ? tokenFingerprint(token) : void 0;
@@ -7467,16 +7485,25 @@ function evaluate(input) {
   const managed = managedSettingsFiles(input.platform ?? process.platform, input.listDir).map(
     (path) => enabledIn(input.readFile(path))
   );
-  const user = enabledIn(input.readFile(join2(claudeDir(input.home, env), "settings.json")));
+  const user = enabledIn(input.readFile(join2(configDir, "settings.json")));
   const starts = [here, ...cwd !== void 0 && cwd !== here ? [cwd] : []];
   const folders = projectSettingsFolders(starts, home);
   const enabled = folders.length === 0 ? enabledFor(home, { ...input, readFile: () => void 0 }, managed, user) : folders.every((folder) => enabledFor(folder, input, managed, user));
   if (!enabled) return { standDown: false, failed: "enabled" };
-  if (!sourceMatches(matched, input)) return { standDown: false, failed: "source" };
+  if (!sourceMatches(matched, input, configDir)) return { standDown: false, failed: "source" };
   return {
     standDown: true,
     projectKey: projectKeyOf(matched.scope === "global" ? void 0 : matched.projectRoot)
   };
+}
+function envBlock(text) {
+  const parsed = parseJson(text);
+  if (!isRecord3(parsed) || !isRecord3(parsed.env)) return {};
+  const out = {};
+  for (const [key, value] of Object.entries(parsed.env)) {
+    if (typeof value === "string") out[key] = value;
+  }
+  return out;
 }
 
 // src/engine/matchers.ts

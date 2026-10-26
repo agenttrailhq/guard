@@ -46,6 +46,13 @@ function entry(over: Record<string, unknown> = {}) {
 function world(): Record<string, string> {
   return {
     [enforcedProjectsPath(HOME)]: JSON.stringify({ version: 1, entries: [entry()] }),
+    // What setup writes: this machine's sentinel, in the project's local settings.
+    [`${PROJECT}/.claude/settings.local.json`]: JSON.stringify({
+      env: { AGENTTRAIL_PEP_ENFORCE: "1" },
+    }),
+    [`${OTHER}/.claude/settings.local.json`]: JSON.stringify({
+      env: { AGENTTRAIL_PEP_ENFORCE: "1" },
+    }),
     [`${HOME}/.claude/settings.json`]: JSON.stringify({
       enabledPlugins: { [OS_PLUGIN_ID]: true, "agenttrail-guard@agenttrail-guard": true },
     }),
@@ -180,6 +187,7 @@ describe("evaluateStepAside — stands down only when every check passes", () =>
         enabledPlugins: { [OS_PLUGIN_ID]: false },
       }),
       [`${PROJECT}/.claude/settings.local.json`]: JSON.stringify({
+        env: { AGENTTRAIL_PEP_ENFORCE: "1" },
         enabledPlugins: { [OS_PLUGIN_ID]: true },
       }),
     };
@@ -194,9 +202,9 @@ describe("evaluateStepAside — stands down only when every check passes", () =>
     });
   });
 
-  it("an unparseable project settings file is not read as enabled", () => {
+  it("an unparseable project settings file: enforces (it may set anything, the sentinel included)", () => {
     const files = { ...world(), [`${PROJECT}/.claude/settings.json`]: "{ nope" };
-    expect(evaluateStepAside(input(files))).toEqual({ standDown: false, failed: "enabled" });
+    expect(evaluateStepAside(input(files)).standDown).toBe(false);
   });
 
   it("a plugin installed but never enabled: enforces", () => {
@@ -244,7 +252,11 @@ describe("evaluateStepAside — stands down only when every check passes", () =>
     ]) {
       const files = {
         ...world(),
-        [path]: JSON.stringify({ enabledPlugins: { [OS_PLUGIN_ID]: value } }),
+        [path]: JSON.stringify({
+          // This machine's sentinel stays where setup put it.
+          ...(path.endsWith("settings.local.json") ? { env: { AGENTTRAIL_PEP_ENFORCE: "1" } } : {}),
+          enabledPlugins: { [OS_PLUGIN_ID]: value },
+        }),
       };
       expect(evaluateStepAside(input(files)), path).toEqual({
         standDown: false,
@@ -258,6 +270,74 @@ describe("evaluateStepAside — stands down only when every check passes", () =>
       }),
     };
     expect(evaluateStepAside(input(user))).toEqual({ standDown: false, failed: "enabled" });
+  });
+
+  it('a recorded project, a committed "1", and the local sentinel removed: enforces', () => {
+    // The OS hook sets the committed "1" aside and gives no decision, so Guard must not stand down.
+    const files = {
+      ...world(),
+      [`${PROJECT}/.claude/settings.json`]: JSON.stringify({
+        env: { AGENTTRAIL_PEP_ENFORCE: "1" },
+      }),
+      // The URL and token stay local; only the sentinel went.
+      [`${PROJECT}/.claude/settings.local.json`]: JSON.stringify({
+        env: { AGENTTRAIL_PEP_URL: URL, AGENTTRAIL_PEP_TOKEN: TOKEN },
+      }),
+    };
+    expect(evaluateStepAside(input(files))).toEqual({ standDown: false, failed: "sentinel" });
+  });
+
+  it("the sentinel counts from managed or user settings too", () => {
+    const local = `${PROJECT}/.claude/settings.local.json`;
+    const fromUser = {
+      ...world(),
+      [local]: JSON.stringify({}),
+      [`${HOME}/.claude/settings.json`]: JSON.stringify({
+        env: { AGENTTRAIL_PEP_ENFORCE: "1" },
+        enabledPlugins: { [OS_PLUGIN_ID]: true },
+      }),
+    };
+    expect(evaluateStepAside(input(fromUser)).standDown).toBe(true);
+    const fromManaged = {
+      ...world(),
+      [local]: JSON.stringify({}),
+      [MANAGED]: JSON.stringify({ env: { AGENTTRAIL_PEP_ENFORCE: "1" } }),
+    };
+    expect(evaluateStepAside(input(fromManaged)).standDown).toBe(true);
+    // A higher scope that turns it off wins.
+    const offByManaged = {
+      ...world(),
+      [MANAGED]: JSON.stringify({ env: { AGENTTRAIL_PEP_ENFORCE: "0" } }),
+    };
+    expect(evaluateStepAside(input(offByManaged))).toEqual({
+      standDown: false,
+      failed: "sentinel",
+    });
+  });
+
+  it("a repo that sets CLAUDE_PROJECT_DIR or CLAUDE_CONFIG_DIR doesn't choose the trusted files", () => {
+    const planted = {
+      ...world(),
+      [`${PROJECT}/.claude/settings.json`]: JSON.stringify({
+        env: { CLAUDE_PROJECT_DIR: PROJECT, AGENTTRAIL_PEP_ENFORCE: "1" },
+      }),
+    };
+    // The local file can't be trusted when the repo chose the project folder.
+    expect(evaluateStepAside(input(planted))).toEqual({ standDown: false, failed: "sentinel" });
+    const cfg = "/work/app/cfg";
+    const plantedConfig = {
+      ...world(),
+      [`${PROJECT}/.claude/settings.local.json`]: JSON.stringify({}),
+      [`${PROJECT}/.claude/settings.json`]: JSON.stringify({ env: { CLAUDE_CONFIG_DIR: cfg } }),
+      [`${cfg}/settings.json`]: JSON.stringify({
+        env: { AGENTTRAIL_PEP_ENFORCE: "1" },
+        enabledPlugins: { [OS_PLUGIN_ID]: true },
+      }),
+    };
+    expect(evaluateStepAside(input(plantedConfig, { ...ENV, CLAUDE_CONFIG_DIR: cfg }))).toEqual({
+      standDown: false,
+      failed: "sentinel",
+    });
   });
 
   it("a token rotated without a record update: enforces", () => {
