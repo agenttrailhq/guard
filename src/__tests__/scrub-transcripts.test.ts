@@ -160,6 +160,33 @@ describe("lines that cannot be edited safely", () => {
     expect(plan.linesChanged).toBe(1);
   });
 
+  it("counts a line cut off inside a string, which it cannot edit, as left", () => {
+    // A last line written as the app stopped: its final string never closes.
+    const cut = `{"type":"user","message":{"content":"use ${GITHUB} and`;
+    const text = `${JSON.stringify({ a: "fine" })}\n${cut}`;
+    const plan = planFileScrub(text, targets);
+    expect(plan.changed).toBe(false);
+    expect(plan.text).toBe(text);
+    expect(plan.linesLeft).toBe(1);
+  });
+
+  it("counts a parsed line it could not edit only when it still decodes to a value", () => {
+    const rest = `8Hq2${"Lx7Vz3Kp"}`;
+    const value = `n${rest}`;
+    // The raw text `n…` appears only as the second half of `\n`: not the value, not counted.
+    const onlyInEscape = `{"a":"line\\n${rest}"}\n`;
+    const none = planFileScrub(onlyInEscape, [{ value, kind: "api-key" }]);
+    expect(none.changed).toBe(false);
+    expect(none.linesLeft).toBe(0);
+    // The same, plus the value written with its first letter as `\u006e`, which no tried form
+    // matches: the line decodes to the value, so it is counted as left.
+    const alsoEscaped = `{"a":"line\\n${rest}","b":"\\u006e${rest}"}\n`;
+    const left = planFileScrub(alsoEscaped, [{ value, kind: "api-key" }]);
+    expect(left.changed).toBe(false);
+    expect(left.text).toBe(alsoEscaped);
+    expect(left.linesLeft).toBe(1);
+  });
+
   it("counts a changed line that still holds a value in a form it does not edit", () => {
     const value = `Qm7${"Xn2Lp9Vz4"}`;
     // Upper-case hex escapes are not one of the forms tried.

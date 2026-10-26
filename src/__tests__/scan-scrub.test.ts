@@ -863,6 +863,17 @@ describe("formats it does not edit", () => {
     expect(readFileSync(join(run.root, "binary.jsonl")).equals(bytes)).toBe(true);
   });
 
+  it("names a file whose last line was cut off holding a value, and exits 1", async () => {
+    const good = JSON.stringify({ type: "user", message: { content: "fine" } });
+    const cut = `{"type":"user","message":{"content":"token ${GITHUB} and`;
+    const run = await runWith({ "cut.jsonl": `${good}\n${cut}` });
+    expect(readFileSync(join(run.root, "cut.jsonl"), "utf8")).toBe(`${good}\n${cut}`);
+    expect(run.stdout).toContain(
+      "cut.jsonl: 1 line holding a value could not be edited and still parse",
+    );
+    expect(run.code).toBe(1);
+  });
+
   it("leaves a line that is not JSON and says the file was not fully cleaned", async () => {
     const line = `{"type":"user","message":{"content":"x ${GITHUB}"}`;
     const run = await runWith({ "torn.jsonl": `${line}\n` });

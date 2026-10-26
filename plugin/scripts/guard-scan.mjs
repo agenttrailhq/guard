@@ -14438,7 +14438,11 @@ function planFileScrub(text, targets) {
     if (!forms.some((form) => line.includes(form.raw))) continue;
     const lineCounts = /* @__PURE__ */ new Map();
     const next = replaceInLine(line, forms, lineCounts);
-    if (next === line) continue;
+    if (next === line) {
+      const before = parsed(line);
+      if (before === void 0 || holdsValue(before.value, values)) linesLeft += 1;
+      continue;
+    }
     const after = parsed(next);
     if (parsed(line) === void 0 || after === void 0) {
       linesLeft += 1;

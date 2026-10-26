@@ -227,7 +227,14 @@ export function planFileScrub(text: string, targets: readonly ScrubTarget[]): Fi
     if (!forms.some((form) => line.includes(form.raw))) continue;
     const lineCounts = new Map<SecretKind, number>();
     const next = replaceInLine(line, forms, lineCounts);
-    if (next === line) continue;
+    if (next === line) {
+      // Nothing was replaced. The line still holds a value when it is not JSON (a string cut
+      // off part-way, as in a last line written as the app stopped), or when it decodes to one.
+      // An occurrence that only starts inside an escape sequence is not a value.
+      const before = parsed(line);
+      if (before === undefined || holdsValue(before.value, values)) linesLeft += 1;
+      continue;
+    }
     const after = parsed(next);
     if (parsed(line) === undefined || after === undefined) {
       linesLeft += 1;
