@@ -8,7 +8,15 @@
  * an exact command. With no exact command, `--json`, or a declined `--review`, no file is written.
  */
 
-import { mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import {
+  linkSync,
+  lstatSync,
+  mkdtempSync,
+  readFileSync,
+  statSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -112,12 +120,19 @@ describe("the file's text", () => {
 /** One real `scan --verify` over a synthetic corpus, in a fresh folder. */
 async function scan(
   argv: readonly string[],
-  options: { readonly fixes?: boolean; readonly answer?: string; readonly before?: string } = {},
+  options: {
+    readonly fixes?: boolean;
+    readonly answer?: string;
+    readonly before?: string;
+    /** Puts something in the work folder before the scan, such as a planted link. */
+    readonly plant?: (work: string) => void;
+  } = {},
 ): Promise<{ code: number; stdout: string; work: string }> {
   const { root } = await writeCorpus("claude", [
     [{ kind: "call", command: "rm -rf build", result: { text: "" } }],
   ]);
   const work = mkdtempSync(join(tmpdir(), "agenttrail-fixes-work-"));
+  options.plant?.(work);
   if (options.before !== undefined) {
     writeFileSync(join(work, FIXES_FILENAME), options.before, { mode: 0o644 });
   }
@@ -204,5 +219,32 @@ describe("scan writes the file next to the report", () => {
     expect(() => statSync(join(run.work, FIXES_FILENAME))).toThrow();
     for (const command of [...EXACT, MEMORY, SECRETS_FIX])
       expect(run.stdout).not.toContain(command);
+  });
+});
+
+describe("a link planted where the files go cannot redirect them", () => {
+  it.each([
+    ["symbolic", FIXES_FILENAME],
+    ["hard", FIXES_FILENAME],
+    ["symbolic", REPORT_FILENAME],
+    ["hard", REPORT_FILENAME],
+  ] as const)("a %s link at %s is replaced, and the file it led to is untouched", async (kind, name) => {
+    const elsewhere = mkdtempSync(join(tmpdir(), "agenttrail-fixes-elsewhere-"));
+    const other = join(elsewhere, "profile");
+    writeFileSync(other, "keep me\n", { mode: 0o644 });
+    const run = await scan(["--verify"], {
+      plant: (work) => {
+        const path = join(work, name);
+        if (kind === "symbolic") symlinkSync(other, path);
+        else linkSync(other, path);
+      },
+    });
+    expect(run.code).toBe(0);
+    expect(readFileSync(other, "utf8")).toBe("keep me\n");
+    expect(statSync(other).mode & 0o777).toBe(0o644);
+    const path = join(run.work, name);
+    expect(lstatSync(path).isSymbolicLink()).toBe(false);
+    expect(statSync(path).nlink).toBe(1);
+    expect(statSync(path).mode & 0o777).toBe(0o600);
   });
 });

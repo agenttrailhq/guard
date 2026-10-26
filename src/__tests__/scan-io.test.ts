@@ -17,11 +17,22 @@
  * `--no-open`. `commands/scan.ts` covers both outcomes of the boolean it returns.
  */
 
-import { existsSync, mkdtempSync, statSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  existsSync,
+  linkSync,
+  lstatSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  statSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { createRealScanIO, openCommand } from "../scan-io.js";
+import { createRealScanIO, openCommand, writePrivateFile } from "../scan-io.js";
 
 const io = createRealScanIO();
 
@@ -149,5 +160,62 @@ describe("openCommand — the platform decision, tested without launching anythi
       expect(argv.filter((a) => a === nasty)).toHaveLength(1);
       expect(argv[0]).not.toContain(nasty);
     }
+  });
+});
+
+describe("writing a file at 0600 through a new file renamed into place", () => {
+  const folder = (): string => mkdtempSync(join(tmpdir(), "agenttrail-private-write-"));
+
+  it("creates a new file at 0600, with the text", () => {
+    const path = join(folder(), "out.txt");
+    expect(writePrivateFile(path, "hello\n")).toBe(true);
+    expect(statSync(path).mode & 0o777).toBe(0o600);
+    expect(readFileSync(path, "utf8")).toBe("hello\n");
+  });
+
+  it("replaces a looser file already there, leaving it 0600", () => {
+    const path = join(folder(), "out.txt");
+    writeFileSync(path, "old\n", { mode: 0o644 });
+    chmodSync(path, 0o644);
+    expect(writePrivateFile(path, "new\n")).toBe(true);
+    expect(statSync(path).mode & 0o777).toBe(0o600);
+    expect(readFileSync(path, "utf8")).toBe("new\n");
+  });
+
+  it("replaces a symbolic link instead of writing through it", () => {
+    const dir = folder();
+    const other = join(dir, "profile");
+    writeFileSync(other, "keep me\n", { mode: 0o644 });
+    const path = join(dir, "out.txt");
+    symlinkSync(other, path);
+    expect(writePrivateFile(path, "new\n")).toBe(true);
+    expect(readFileSync(other, "utf8")).toBe("keep me\n");
+    expect(statSync(other).mode & 0o777).toBe(0o644);
+    expect(lstatSync(path).isSymbolicLink()).toBe(false);
+    expect(readFileSync(path, "utf8")).toBe("new\n");
+  });
+
+  it("replaces a hard link instead of writing into the file it shares", () => {
+    const dir = folder();
+    const other = join(dir, "profile");
+    writeFileSync(other, "keep me\n", { mode: 0o644 });
+    const path = join(dir, "out.txt");
+    linkSync(other, path);
+    expect(writePrivateFile(path, "new\n")).toBe(true);
+    expect(readFileSync(other, "utf8")).toBe("keep me\n");
+    expect(statSync(path).nlink).toBe(1);
+    expect(statSync(path).mode & 0o777).toBe(0o600);
+  });
+
+  it("fails cleanly, leaving no temporary file, when the folder is missing", () => {
+    const dir = folder();
+    expect(writePrivateFile(join(dir, "missing", "out.txt"), "x")).toBe(false);
+    expect(readdirSync(dir)).toEqual([]);
+  });
+
+  it("leaves no temporary file behind after a write", () => {
+    const dir = folder();
+    writePrivateFile(join(dir, "out.txt"), "x");
+    expect(readdirSync(dir)).toEqual(["out.txt"]);
   });
 });

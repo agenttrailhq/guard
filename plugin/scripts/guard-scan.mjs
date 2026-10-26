@@ -624,7 +624,7 @@ var require_scan = __commonJS({
 var require_parse = __commonJS({
   "node_modules/picomatch/lib/parse.js"(exports, module) {
     "use strict";
-    var constants2 = require_constants();
+    var constants3 = require_constants();
     var utils = require_utils();
     var {
       MAX_LENGTH,
@@ -632,7 +632,7 @@ var require_parse = __commonJS({
       REGEX_NON_SPECIAL_CHARS,
       REGEX_SPECIAL_CHARS_BACKREF,
       REPLACEMENTS
-    } = constants2;
+    } = constants3;
     var expandRange = (args2, options) => {
       if (typeof options.expandRange === "function") {
         return options.expandRange(...args2, options);
@@ -838,7 +838,7 @@ var require_parse = __commonJS({
       if (options.maxExtglobRecursion === false) {
         return { risky: false };
       }
-      const max = typeof options.maxExtglobRecursion === "number" ? options.maxExtglobRecursion : constants2.DEFAULT_MAX_EXTGLOB_RECURSION;
+      const max = typeof options.maxExtglobRecursion === "number" ? options.maxExtglobRecursion : constants3.DEFAULT_MAX_EXTGLOB_RECURSION;
       const branches = splitTopLevel(body).map((branch) => branch.trim());
       if (branches.length > 1) {
         if (branches.some((branch) => branch === "") || branches.some((branch) => /^[*?]+$/.test(branch)) || hasRepeatedCharPrefixOverlap(branches)) {
@@ -870,8 +870,8 @@ var require_parse = __commonJS({
       const bos = { type: "bos", value: "", output: opts.prepend || "" };
       const tokens = [bos];
       const capture = opts.capture ? "" : "?:";
-      const PLATFORM_CHARS = constants2.globChars(opts.windows);
-      const EXTGLOB_CHARS = constants2.extglobChars(PLATFORM_CHARS);
+      const PLATFORM_CHARS = constants3.globChars(opts.windows);
+      const EXTGLOB_CHARS = constants3.extglobChars(PLATFORM_CHARS);
       const {
         DOT_LITERAL,
         PLUS_LITERAL,
@@ -1566,7 +1566,7 @@ var require_parse = __commonJS({
         NO_DOTS_SLASH,
         STAR,
         START_ANCHOR
-      } = constants2.globChars(opts.windows);
+      } = constants3.globChars(opts.windows);
       const nodot = opts.dot ? NO_DOTS : NO_DOT;
       const slashDot = opts.dot ? NO_DOTS_SLASH : NO_DOT;
       const capture = opts.capture ? "" : "?:";
@@ -1624,7 +1624,7 @@ var require_picomatch = __commonJS({
     var scan = require_scan();
     var parse = require_parse();
     var utils = require_utils();
-    var constants2 = require_constants();
+    var constants3 = require_constants();
     var isObject = (val) => val && typeof val === "object" && !Array.isArray(val);
     var picomatch3 = (glob, options, returnState = false) => {
       if (Array.isArray(glob)) {
@@ -1752,7 +1752,7 @@ var require_picomatch = __commonJS({
         return /$^/;
       }
     };
-    picomatch3.constants = constants2;
+    picomatch3.constants = constants3;
     module.exports = picomatch3;
   }
 });
@@ -10731,7 +10731,7 @@ function redactCloudIds(text) {
     (_m, name, sep, quote) => `${name}${sep}${quote}${NAME_PLACEHOLDER}${quote}`
   ).replace(
     CLOUD_ID_FLAG,
-    (_m, flag, join6, quote) => `${flag}${join6}${quote}${NAME_PLACEHOLDER}${quote}`
+    (_m, flag, join7, quote) => `${flag}${join7}${quote}${NAME_PLACEHOLDER}${quote}`
   ).replace(AWS_ARN_ACCOUNT, NAME_PLACEHOLDER);
 }
 function sshUserOption(word) {
@@ -14861,20 +14861,61 @@ ${osLine}
 
 // src/scan-io.ts
 import { spawn } from "child_process";
+import { randomBytes as randomBytes2 } from "crypto";
 import {
-  chmodSync,
+  closeSync,
+  constants,
   createReadStream as createReadStream2,
+  fchmodSync,
+  fsyncSync,
+  openSync,
   readdirSync as readdirSync2,
   readFileSync,
+  renameSync,
   statSync as statSync2,
+  unlinkSync,
   writeFileSync
 } from "fs";
 import { homedir as homedir2 } from "os";
+import { basename as basename4, dirname as dirname2, join as join6 } from "path";
 import { createInterface as createInterface2 } from "readline";
 function openCommand(platform, path) {
   if (platform === "darwin") return ["open", path];
   if (platform === "win32") return ["cmd", "/c", "start", "", path];
   return ["xdg-open", path];
+}
+function writePrivateFile(path, text) {
+  const temporary = join6(
+    dirname2(path),
+    `.${basename4(path)}.${process.pid}.${randomBytes2(6).toString("hex")}.tmp`
+  );
+  let fd;
+  try {
+    fd = openSync(
+      temporary,
+      constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY | (constants.O_NOFOLLOW ?? 0),
+      384
+    );
+    fchmodSync(fd, 384);
+    writeFileSync(fd, text, "utf8");
+    fsyncSync(fd);
+    closeSync(fd);
+    fd = void 0;
+    renameSync(temporary, path);
+    return true;
+  } catch {
+    if (fd !== void 0) {
+      try {
+        closeSync(fd);
+      } catch {
+      }
+    }
+    try {
+      unlinkSync(temporary);
+    } catch {
+    }
+    return false;
+  }
 }
 function createRealScanIO() {
   return {
@@ -14927,13 +14968,7 @@ function createRealScanIO() {
       });
     },
     writeFile(path, text) {
-      try {
-        writeFileSync(path, text, { encoding: "utf8", mode: 384 });
-        chmodSync(path, 384);
-        return true;
-      } catch {
-        return false;
-      }
+      return writePrivateFile(path, text);
     },
     openInBrowser(path) {
       try {
@@ -14959,10 +14994,10 @@ function createRealScanIO() {
 import { execFile } from "child_process";
 import {
   accessSync,
-  closeSync,
-  constants,
+  closeSync as closeSync2,
+  constants as constants2,
   fstatSync,
-  openSync,
+  openSync as openSync2,
   readSync,
   realpathSync,
   statSync as statSync3
@@ -15070,7 +15105,7 @@ function defaultIsExecutable(platform) {
   return (path) => {
     try {
       if (!statSync3(path).isFile()) return false;
-      if (platform !== "win32") accessSync(path, constants.X_OK);
+      if (platform !== "win32") accessSync(path, constants2.X_OK);
       return true;
     } catch {
       return false;
@@ -15176,9 +15211,9 @@ function createRealVerifyIO(options = {}) {
         if (![...roots].some((root) => isInside(root, real))) {
           return Promise.resolve({ ok: false, reason: "refused" });
         }
-        fd = openSync(
+        fd = openSync2(
           real,
-          constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0)
+          constants2.O_RDONLY | (constants2.O_NOFOLLOW ?? 0) | (constants2.O_NONBLOCK ?? 0)
         );
         const stat2 = fstatSync(fd);
         if (!stat2.isFile()) return Promise.resolve({ ok: false, reason: "failed" });
@@ -15196,7 +15231,7 @@ function createRealVerifyIO(options = {}) {
       } catch {
         return Promise.resolve({ ok: false, reason: "missing" });
       } finally {
-        if (fd !== void 0) closeSync(fd);
+        if (fd !== void 0) closeSync2(fd);
         spent += Math.max(0, now() - started);
       }
     },

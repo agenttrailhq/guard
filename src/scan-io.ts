@@ -28,15 +28,23 @@
  */
 
 import { spawn } from "node:child_process";
+import { randomBytes } from "node:crypto";
 import {
-  chmodSync,
+  closeSync,
+  constants,
   createReadStream,
+  fchmodSync,
+  fsyncSync,
+  openSync,
   readdirSync,
   readFileSync,
+  renameSync,
   statSync,
+  unlinkSync,
   writeFileSync,
 } from "node:fs";
 import { homedir } from "node:os";
+import { basename, dirname, join } from "node:path";
 import { createInterface } from "node:readline";
 
 /** What `scanTranscripts` and `parseSession` need from a `stat` call. */
@@ -99,6 +107,55 @@ export function openCommand(platform: string, path: string): readonly string[] {
   // path AS the window title and opens nothing.
   if (platform === "win32") return ["cmd", "/c", "start", "", path];
   return ["xdg-open", path];
+}
+
+/**
+ * Write `text` to `path` at `0600`, replacing whatever is there. `false` on any failure.
+ *
+ * `0600`, like every other file this tool writes. The report is MEANT to be shared, but sharing
+ * it should be a thing the user does deliberately, not something the default mode does for them
+ * on a shared machine; the fixes file holds real names and paths.
+ *
+ * The text goes into a new file in the same folder, created exclusively and without following a
+ * link, set to `0600` before any text is written, then flushed and renamed over `path`. The
+ * rename replaces a symbolic or hard link at `path` instead of writing through it, so a link
+ * planted there cannot make this overwrite another file, and no reader ever sees the text under
+ * a looser mode. On failure the new file is removed and `path` is left as it was.
+ */
+export function writePrivateFile(path: string, text: string): boolean {
+  const temporary = join(
+    dirname(path),
+    `.${basename(path)}.${process.pid}.${randomBytes(6).toString("hex")}.tmp`,
+  );
+  let fd: number | undefined;
+  try {
+    fd = openSync(
+      temporary,
+      constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY | (constants.O_NOFOLLOW ?? 0),
+      0o600,
+    );
+    fchmodSync(fd, 0o600);
+    writeFileSync(fd, text, "utf8");
+    fsyncSync(fd);
+    closeSync(fd);
+    fd = undefined;
+    renameSync(temporary, path);
+    return true;
+  } catch {
+    if (fd !== undefined) {
+      try {
+        closeSync(fd);
+      } catch {
+        // already closed or never open; nothing else to do
+      }
+    }
+    try {
+      unlinkSync(temporary);
+    } catch {
+      // nothing was created, or it is already gone
+    }
+    return false;
+  }
 }
 
 /** The real scan IO. Imported only by the CLI entry, never from `core/` or the hook. */
@@ -168,17 +225,7 @@ export function createRealScanIO(): ScanIO {
     },
 
     writeFile(path: string, text: string): boolean {
-      try {
-        // `0600`, like every other file this tool writes. The report is MEANT to be
-        // shared — but sharing it should be a thing the user does deliberately, not
-        // something the default mode does for them on a shared machine.
-        writeFileSync(path, text, { encoding: "utf8", mode: 0o600 });
-        // `mode` applies only to a file this call creates, so a file already there is set too.
-        chmodSync(path, 0o600);
-        return true;
-      } catch {
-        return false;
-      }
+      return writePrivateFile(path, text);
     },
 
     openInBrowser(path: string): boolean {
