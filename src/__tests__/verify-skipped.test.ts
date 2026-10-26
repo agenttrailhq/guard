@@ -625,6 +625,14 @@ describe("instruction files", () => {
     expect(local).not.toContain("CANARYmemoryLINE");
   });
 
+  it("a Codex scan reads Codex's home AGENTS.md", async () => {
+    const home = tempFolder("home");
+    mkdirSync(join(home, ".codex"), { recursive: true });
+    writeFileSync(join(home, ".codex", "AGENTS.md"), "Commit with HUSKY=0 to skip the hooks.\n");
+    const { facts } = await skipped([{ cwd: null, events: [] }], home, "codex");
+    expect(facts.instructions).toMatchObject({ read: 1, sayToSkip: 1 });
+  });
+
   it("a Cursor scan reads no Claude Code home file", async () => {
     const home = tempFolder("home");
     mkdirSync(join(home, ".claude"), { recursive: true });

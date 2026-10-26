@@ -8424,6 +8424,13 @@ function statusOf(found) {
 function codexCaveat(context, ran) {
   return context.ranEvidence === "output-record" && ran > 0;
 }
+var CODEX_LIMITED = "The Codex reading is limited and unverified: it is tested only on synthetic sessions built from Codex's documented rollout format, a Codex call counted as ran may be one a hook blocked, and ids a Codex command printed are not identified.";
+function codexLimitedTemplate(category) {
+  return { id: `${category}.codex-limited`, render: () => CODEX_LIMITED };
+}
+function codexLines(template, context, facts) {
+  return context.ranEvidence === "output-record" ? sentences([template], facts) : [];
+}
 function cardExtras(chip, fixSteps) {
   return {
     ...chip.label === void 0 ? {} : { chip: { count: chip.count, label: chip.label } },
@@ -12644,6 +12651,7 @@ var HEADLINE = {
   id: "destructive.headline",
   render: (f) => n(f, "unguarded-variable") > 0 ? `${counted(n(f, "unguarded-variable"), "rm -rf target")} ${was(n(f, "unguarded-variable"))} built from a variable with no guard.` : void 0
 };
+var CODEX = codexLimitedTemplate("destructive");
 var CHIP = {
   id: "destructive.chip",
   render: (f) => `${counted(n(f, "unguarded-variable"), "rm -rf target")} built from an unguarded variable`
@@ -12773,7 +12781,7 @@ var destructiveCard = (result, context) => {
     category: "destructive",
     tone: result.status,
     count: result.matches,
-    found: sentences(FOUND, f),
+    found: [...sentences(FOUND, f), ...codexLines(CODEX, context, f)],
     now: sentences(NOW, f),
     fixes: fixShapes(f),
     codexCaveat: codexCaveat(context, allCalls(f).ran),
@@ -12787,7 +12795,14 @@ var destructiveCard = (result, context) => {
     }
   };
 };
-var DESTRUCTIVE_TEMPLATES = [HEADLINE, CHIP, ...FOUND, ...NOW, ...FIX_STEPS];
+var DESTRUCTIVE_TEMPLATES = [
+  HEADLINE,
+  CHIP,
+  ...FOUND,
+  CODEX,
+  ...NOW,
+  ...FIX_STEPS
+];
 
 // src/core/verify/lost-work.ts
 import { resolve as resolve3, sep as sep3 } from "path";
@@ -13271,6 +13286,7 @@ var NOW2 = [
     }
   }
 ];
+var CODEX2 = codexLimitedTemplate("lost-work");
 var CHIP2 = {
   id: "lost-work.chip",
   render: (f) => `${counted(recoverable(f), "deleted branch or stash", "deleted branches or stashes")} still recoverable`
@@ -13303,7 +13319,7 @@ var lostWorkCard = (result, context) => {
     category: "lost-work",
     tone: result.status,
     count: result.matches,
-    found: sentences(FOUND2, f),
+    found: [...sentences(FOUND2, f), ...codexLines(CODEX2, context, f)],
     now: sentences(NOW2, f),
     fixes: fixShapes2(f),
     codexCaveat: codexCaveat(context, allCalls2(f).ran),
@@ -13317,7 +13333,14 @@ var lostWorkCard = (result, context) => {
     }
   };
 };
-var LOST_WORK_TEMPLATES = [HEADLINE2, CHIP2, ...FOUND2, ...NOW2, ...FIX_STEPS2];
+var LOST_WORK_TEMPLATES = [
+  HEADLINE2,
+  CHIP2,
+  ...FOUND2,
+  CODEX2,
+  ...NOW2,
+  ...FIX_STEPS2
+];
 
 // src/core/verify/copy.ts
 function countOf(n2, one, many = `${one}s`) {
@@ -14199,6 +14222,7 @@ var NOW3 = [
     }
   }
 ];
+var CODEX3 = codexLimitedTemplate("skipped-checks");
 var CHIP3 = {
   id: "skipped-checks.chip",
   render: (f) => `${counted(f.noVerify.onMain, "commit")} reached main without ${f.noVerify.onMain === 1 ? "its" : "their"} checks`
@@ -14236,7 +14260,7 @@ var skippedChecksCard = (result, context) => {
     category: "skipped-checks",
     tone: result.status,
     count: result.matches,
-    found: sentences(FOUND3, f),
+    found: [...sentences(FOUND3, f), ...codexLines(CODEX3, context, f)],
     now: sentences(NOW3, f),
     fixes: fixShapes3(f),
     codexCaveat: codexCaveat(context, allCalls3(f).ran),
@@ -14254,6 +14278,7 @@ var SKIPPED_CHECKS_TEMPLATES = [
   HEADLINE3,
   CHIP3,
   ...FOUND3,
+  CODEX3,
   ...NOW3,
   ...FIX_STEPS3
 ];

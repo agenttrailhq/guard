@@ -50,6 +50,8 @@ import {
   addTallies,
   cardExtras,
   codexCaveat,
+  codexLimitedTemplate,
+  codexLines,
   couldNotConfirmLine,
   counted,
   FixList,
@@ -837,6 +839,8 @@ const HEADLINE: T = {
       : undefined,
 };
 
+const CODEX: T = codexLimitedTemplate("destructive");
+
 const CHIP: T = {
   id: "destructive.chip",
   render: (f) =>
@@ -1014,7 +1018,7 @@ export const destructiveCard: ToCard<"destructive"> = (result, context: CardCont
     category: "destructive",
     tone: result.status,
     count: result.matches,
-    found: sentences(FOUND, f),
+    found: [...sentences(FOUND, f), ...codexLines(CODEX, context, f)],
     now: sentences(NOW, f),
     fixes: fixShapes(f),
     codexCaveat: codexCaveat(context, allCalls(f).ran),
@@ -1032,4 +1036,11 @@ export const destructiveCard: ToCard<"destructive"> = (result, context: CardCont
 };
 
 /** The templates, for a test that every card line comes from one. */
-export const DESTRUCTIVE_TEMPLATES: readonly T[] = [HEADLINE, CHIP, ...FOUND, ...NOW, ...FIX_STEPS];
+export const DESTRUCTIVE_TEMPLATES: readonly T[] = [
+  HEADLINE,
+  CHIP,
+  ...FOUND,
+  CODEX,
+  ...NOW,
+  ...FIX_STEPS,
+];

@@ -28,6 +28,8 @@ export type SessionEvent =
       readonly command: string;
       /** Omitted: the transcript records no result for the call. */
       readonly result?: { readonly text: string; readonly isError?: boolean };
+      /** Codex only: the folder the call names. Omitted: `/w`. */
+      readonly workdir?: string;
     };
 
 /** A written corpus: what the reader made of it, and where the files are. */
@@ -109,9 +111,9 @@ function codexRecord(type: string, payload: Record<string, unknown>): string {
   return JSON.stringify({ timestamp: "2026-10-01T00:00:00.000Z", type, payload });
 }
 
-/** The shim fragment Codex writes for one shell command. */
-export function codexExec(command: string): string {
-  return `const r = await tools.exec_command({cmd:${JSON.stringify(command)},workdir:"/w"}); text(r.output);\n`;
+/** The shim fragment Codex writes for one shell command, in the folder it names. */
+export function codexExec(command: string, workdir = "/w"): string {
+  return `const r = await tools.exec_command({cmd:${JSON.stringify(command)},workdir:${JSON.stringify(workdir)}}); text(r.output);\n`;
 }
 
 /** A Codex session file for one session. */
@@ -141,7 +143,7 @@ function codexLines(events: readonly SessionEvent[], session: string, cwd: strin
           type: "custom_tool_call",
           call_id: callId,
           name: "exec",
-          input: codexExec(event.command),
+          input: codexExec(event.command, event.workdir),
         }),
       );
       if (event.result !== undefined) {

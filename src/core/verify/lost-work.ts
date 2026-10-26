@@ -36,6 +36,8 @@ import {
   addTallies,
   cardExtras,
   codexCaveat,
+  codexLimitedTemplate,
+  codexLines,
   couldNotConfirmLine,
   counted,
   FixList,
@@ -804,6 +806,8 @@ const NOW: readonly T[] = [
   },
 ];
 
+const CODEX: T = codexLimitedTemplate("lost-work");
+
 const CHIP: T = {
   id: "lost-work.chip",
   render: (f) =>
@@ -848,7 +852,7 @@ export const lostWorkCard: ToCard<"lost-work"> = (result, context: CardContext):
     category: "lost-work",
     tone: result.status,
     count: result.matches,
-    found: sentences(FOUND, f),
+    found: [...sentences(FOUND, f), ...codexLines(CODEX, context, f)],
     now: sentences(NOW, f),
     fixes: fixShapes(f),
     codexCaveat: codexCaveat(context, allCalls(f).ran),
@@ -866,4 +870,11 @@ export const lostWorkCard: ToCard<"lost-work"> = (result, context: CardContext):
 };
 
 /** The templates, for a test that every card line comes from one. */
-export const LOST_WORK_TEMPLATES: readonly T[] = [HEADLINE, CHIP, ...FOUND, ...NOW, ...FIX_STEPS];
+export const LOST_WORK_TEMPLATES: readonly T[] = [
+  HEADLINE,
+  CHIP,
+  ...FOUND,
+  CODEX,
+  ...NOW,
+  ...FIX_STEPS,
+];

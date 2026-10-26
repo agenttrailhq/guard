@@ -13,6 +13,8 @@ import {
   isLocalFix,
   type LocalFix,
   localFixCommand,
+  type SentenceTemplate,
+  sentences,
   type UnsafeFix,
 } from "./cards.js";
 import type { RepoProbe } from "./repo-probe.js";
@@ -71,6 +73,24 @@ export function statusOf(found: {
 /** Does a card state a Codex `ran` count, which may include calls a hook blocked? */
 export function codexCaveat(context: CardContext, ran: number): boolean {
   return context.ranEvidence === "output-record" && ran > 0;
+}
+
+/** How far a Codex reading goes, said on every git-backed card of a Codex scan. */
+const CODEX_LIMITED =
+  "The Codex reading is limited and unverified: it is tested only on synthetic sessions built from Codex's documented rollout format, a Codex call counted as ran may be one a hook blocked, and ids a Codex command printed are not identified.";
+
+/** The template for a category's Codex line. */
+export function codexLimitedTemplate<F>(category: VerifyCategory): SentenceTemplate<F> {
+  return { id: `${category}.codex-limited`, render: () => CODEX_LIMITED };
+}
+
+/** The Codex line, on a Codex scan only. */
+export function codexLines<F>(
+  template: SentenceTemplate<F>,
+  context: CardContext,
+  facts: F,
+): CardSentence[] {
+  return context.ranEvidence === "output-record" ? sentences([template], facts) : [];
 }
 
 /**

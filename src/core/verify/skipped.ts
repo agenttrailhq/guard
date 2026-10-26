@@ -41,6 +41,8 @@ import {
   callsIn,
   cardExtras,
   codexCaveat,
+  codexLimitedTemplate,
+  codexLines,
   couldNotConfirmLine,
   counted,
   FixList,
@@ -909,6 +911,8 @@ const NOW: readonly T[] = [
   },
 ];
 
+const CODEX: T = codexLimitedTemplate("skipped-checks");
+
 const CHIP: T = {
   id: "skipped-checks.chip",
   render: (f) =>
@@ -964,7 +968,7 @@ export const skippedChecksCard: ToCard<"skipped-checks"> = (
     category: "skipped-checks",
     tone: result.status,
     count: result.matches,
-    found: sentences(FOUND, f),
+    found: [...sentences(FOUND, f), ...codexLines(CODEX, context, f)],
     now: sentences(NOW, f),
     fixes: fixShapes(f),
     codexCaveat: codexCaveat(context, allCalls(f).ran),
@@ -986,6 +990,7 @@ export const SKIPPED_CHECKS_TEMPLATES: readonly T[] = [
   HEADLINE,
   CHIP,
   ...FOUND,
+  CODEX,
   ...NOW,
   ...FIX_STEPS,
 ];

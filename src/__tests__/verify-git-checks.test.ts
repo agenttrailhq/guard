@@ -1,4 +1,4 @@
-// cspell:words fsmonitor gpgsig lnbm
+// cspell:words fsmonitor gpgsig lnbm worktrees
 /**
  * The git-backed checks together (`core/verify/git-checks.ts`): every `git` call they make is on
  * the allow-list and none is refused; a repository's own config starts no program; they write
@@ -9,11 +9,13 @@ import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { runScan } from "../commands/scan.js";
 import { isLocalFix } from "../core/verify/cards.js";
 import { checkGitBacked, GIT_CARD_BUILDERS } from "../core/verify/git-checks.js";
 import { lostWorkCard } from "../core/verify/lost-work.js";
 import type { GitOutcome, VerifyIO } from "../core/verify/types.js";
-import { isAllowedGitCall } from "../verify-io.js";
+import { createRealScanIO, type ScanIO } from "../scan-io.js";
+import { createRealVerifyIO, isAllowedGitCall } from "../verify-io.js";
 import {
   checkedOf,
   commitLine,
@@ -27,6 +29,7 @@ import {
   tempFolder,
   verifyIO,
 } from "./git-check-fixtures.js";
+import { writeCorpus } from "./verify-fixtures.js";
 
 /** A repo, and a session that ran one command of every kind the checks look up. */
 function everything(label: string): { root: string; sessions: GitSession[] } {
@@ -447,6 +450,102 @@ describe("a hiding form in a call that ran keeps every git-backed category from 
       const found = card.found.map((s) => s.template);
       expect(found, name).toContain(`${name}.could-not-confirm`);
       expect(found, name).not.toContain(`${name}.none`);
+    }
+  });
+});
+
+describe("Codex, through its rollout reader and scan --verify", () => {
+  /** `scan --verify --json` over Codex session files, with the real seam. */
+  async function codexScan(dir: string) {
+    const real = createRealScanIO();
+    const out: string[] = [];
+    const work = tempFolder("codex-work");
+    const io: ScanIO = {
+      ...real,
+      cwd: () => work,
+      writeStdout: (text) => {
+        out.push(text);
+      },
+      writeFile: () => true,
+      openInBrowser: () => true,
+      env: { CI: "1" },
+      isTTY: () => false,
+    };
+    await runScan(["--agent", "codex", "--dir", dir, "--verify", "--json"], io, {
+      catalog: [],
+      now: new Date("2026-10-01T00:00:00.000Z"),
+      createVerifyIO: () => createRealVerifyIO(),
+    });
+    return JSON.parse(out.join("")).result.verification;
+  }
+
+  it("each check reads the call's workdir, not the session's folder, and says how far Codex goes", async () => {
+    const repo = makeRepo("codex-workdir", {
+      files: { "src/a.ts": "a\n", "README.md": "r\n" },
+      hooks: ["pre-commit"],
+    });
+    rmSync(join(repo, "src"), { recursive: true });
+    // The session starts in a folder that is no repo: only the workdir leads to the repo.
+    const session = tempFolder("codex-session");
+    // The agent's own worktree: a discard there throws away only the agent's work.
+    const own = join(tempFolder("codex-own"), ".codex", "worktrees", "w1");
+    mkdirSync(own, { recursive: true });
+    const { root, corpus } = await writeCorpus(
+      "codex",
+      [
+        [
+          { kind: "prompt", text: "tidy up" },
+          {
+            kind: "call",
+            command: `git commit --no-verify -m "wip"`,
+            result: { text: "[main 1234567] wip" },
+            workdir: repo,
+          },
+          {
+            kind: "call",
+            command: "git checkout -- README.md",
+            result: { text: "" },
+            workdir: own,
+          },
+          { kind: "call", command: "rm -rf src", result: { text: "" }, workdir: repo },
+        ],
+      ],
+      { cwd: session },
+    );
+    const v = await codexScan(root);
+    expect(v.ranEvidence).toBe("output-record");
+
+    const skipped = v.categories["skipped-checks"];
+    expect(skipped.facts.noVerify.calls.ran).toBe(1);
+    // Codex keeps that a call printed something, not what: the id is not identified.
+    expect(skipped.facts.noVerify.notIdentified).toBe(1);
+    // The hooks are in the workdir's repo: the session's folder is in none.
+    expect(skipped.facts.hooksPath.on).toBe(1);
+    // Under scan, every folder in the temp folder is scratch, so the classes are read from
+    // the same reader's corpus with no scratch folders.
+    const home = tempFolder("codex-home");
+    const outcome = await checkGitBacked({ corpus, io: verifyIO(home), home, scratchRoots: [] });
+    expect(checkedOf(outcome["lost-work"]).facts.discards).toMatchObject({
+      ownCopy: 1,
+      mainCheckout: 0,
+    });
+    expect(checkedOf(outcome.destructive).facts.rm.trackedGone).toBe(1);
+
+    const context = { ranEvidence: "output-record" } as const;
+    for (const name of ["skipped-checks", "lost-work", "destructive"] as const) {
+      const card = GIT_CARD_BUILDERS[name](v.categories[name], context);
+      const line = card.found.find((s) => s.template === `${name}.codex-limited`);
+      expect(line?.text, name).toContain("limited and unverified");
+      expect(line?.text, name).toContain("synthetic sessions");
+      expect(line?.text, name).toContain("a hook blocked");
+      expect(line?.text, name).toContain("not identified");
+      expect(card.codexCaveat, name).toBe(true);
+      // The same card on a Claude Code scan has no Codex line.
+      const claude = GIT_CARD_BUILDERS[name](v.categories[name], { ranEvidence: "tool-result" });
+      expect(
+        claude.found.map((s) => s.template),
+        name,
+      ).not.toContain(`${name}.codex-limited`);
     }
   });
 });
