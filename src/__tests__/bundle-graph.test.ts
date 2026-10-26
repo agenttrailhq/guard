@@ -7,7 +7,8 @@
  * written inside a comment" case below checks that.
  */
 
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
@@ -269,6 +270,25 @@ describe("the hook can never gain the ability to spawn a process", () => {
     expect(hookBundleGraph().filter((f) => f.startsWith(verifyDir))).toEqual([]);
   });
 
+  it("scrub-io.ts writes files, starts no process, and is outside the graph", () => {
+    // `scan --scrub --apply` backs up and replaces transcripts through it, and nothing else.
+    const scrubIo = join(PKG_ROOT, "src", "scrub-io.ts");
+    const specifiers = parseImports(readFileSync(scrubIo, "utf8")).map((i) => i.specifier);
+    expect(specifiers).toContain("node:fs");
+    expect(specifiers).not.toContain("node:child_process");
+    expect(hookBundleGraph()).not.toContain(scrubIo);
+  });
+
+  it.each([
+    "scrub-io.ts",
+    "commands/scan-scrub.ts",
+    "core/scrub-transcripts.ts",
+  ])("%s, part of scan --scrub, is not in the hook graph", (module) => {
+    const file = join(PKG_ROOT, "src", ...module.split("/"));
+    expect(existsSync(file)).toBe(true);
+    expect(hookBundleGraph()).not.toContain(file);
+  });
+
   it("the scan command is outside the hook graph, not just its IO seam", () => {
     // `commands/scan.ts` pulls the colour helper and the HTML generator, and neither
     // belongs in the file Claude Code executes before every tool call.
@@ -316,6 +336,101 @@ describe("the scan-only plugin bundle carries scan and nothing else", () => {
 
   it("reaches nothing under src/net/", () => {
     expect(graph.filter((f) => f.includes(`${join(PKG_ROOT, "src", "net")}`))).toEqual([]);
+  });
+});
+
+describe("only the scrub path can write a transcript", () => {
+  const SRC = join(PKG_ROOT, "src");
+  const SCRUB_IO = join(SRC, "scrub-io.ts");
+
+  /** The `node:fs` functions that change the file system. */
+  const FS_WRITERS = new Set([
+    "appendFileSync",
+    "chmodSync",
+    "copyFileSync",
+    "createWriteStream",
+    "fsyncSync",
+    "mkdirSync",
+    "openSync",
+    "renameSync",
+    "rmSync",
+    "rmdirSync",
+    "unlinkSync",
+    "writeFileSync",
+    "writeSync",
+  ]);
+
+  /** The names a source value-imports from `node:fs` or `fs`, plus any `fs/promises` import. */
+  function fsWriters(file: string): string[] {
+    const sourceFile = ts.createSourceFile(
+      "x.ts",
+      readFileSync(file, "utf8"),
+      ts.ScriptTarget.Latest,
+      false,
+    );
+    const found: string[] = [];
+    for (const statement of sourceFile.statements) {
+      if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier)) {
+        continue;
+      }
+      const from = statement.moduleSpecifier.text;
+      if (/^(node:)?fs\/promises$/.test(from)) found.push(from);
+      if (!/^(node:)?fs$/.test(from)) continue;
+      const bindings = statement.importClause?.namedBindings;
+      if (bindings === undefined || !ts.isNamedImports(bindings)) {
+        // A namespace or default import of `fs` can reach every writer.
+        found.push(`${from} (whole module)`);
+        continue;
+      }
+      for (const element of bindings.elements) {
+        const name = (element.propertyName ?? element.name).text;
+        if (!element.isTypeOnly && FS_WRITERS.has(name)) found.push(name);
+      }
+    }
+    return found;
+  }
+
+  it("negative control: the detector finds a writer, a renamed writer and a namespace import", () => {
+    const probe = join(mkdtempSync(join(tmpdir(), "agenttrail-fs-probe-")), "probe.ts");
+    writeFileSync(
+      probe,
+      'import { readFileSync, renameSync as mv } from "node:fs";\nimport * as fs from "fs";\n',
+    );
+    expect(fsWriters(probe)).toEqual(["renameSync", "fs (whole module)"]);
+  });
+
+  it("the scan command does not import the scrub seam; only the two CLI entries do", () => {
+    expect(hookBundleGraph(join(SRC, "commands", "scan.ts"))).not.toContain(SCRUB_IO);
+    expect(hookBundleGraph(join(SRC, "commands", "scan-scrub.ts"))).not.toContain(SCRUB_IO);
+    expect(hookBundleGraph(join(SRC, "scan-entry.ts"))).toContain(SCRUB_IO);
+    expect(hookBundleGraph(join(SRC, "cli.ts"))).toContain(SCRUB_IO);
+  });
+
+  it("in the scan bundle, only scan-io.ts and scrub-io.ts can change a file", () => {
+    // `scan-io.ts` writes the report; `scrub-io.ts` writes backups and replaces transcripts.
+    // `verify-io.ts` imports `openSync` to read files, and is checked to open read-only below.
+    // Everything else `scan` and `scan --scrub` run is read-only.
+    const writers = hookBundleGraph(join(SRC, "scan-entry.ts"))
+      .filter((f) => fsWriters(f).length > 0)
+      .map((f) => relative(SRC, f));
+    expect(writers.sort()).toEqual(["scan-io.ts", "scrub-io.ts", "verify-io.ts"]);
+  });
+
+  it("verify-io.ts imports openSync and nothing else that writes, and opens read-only", () => {
+    const verifyIo = join(SRC, "verify-io.ts");
+    expect(fsWriters(verifyIo)).toEqual(["openSync"]);
+    const calls = readFileSync(verifyIo, "utf8").match(/\bopenSync\(\s*[^,]+,\s*([^)]*)\)/g) ?? [];
+    expect(calls.length).toBeGreaterThan(0);
+    for (const call of calls) {
+      expect(call).toContain("constants.O_RDONLY");
+      expect(call).not.toMatch(/O_WRONLY|O_RDWR|O_CREAT|O_APPEND|O_TRUNC|"[wa]/);
+    }
+  });
+
+  it("the scrub command's own modules change no file", () => {
+    for (const module of ["commands/scan-scrub.ts", "core/scrub-transcripts.ts"]) {
+      expect(fsWriters(join(SRC, ...module.split("/")))).toEqual([]);
+    }
   });
 });
 

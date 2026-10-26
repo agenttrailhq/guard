@@ -232,6 +232,30 @@ describe("no network — the verify graph", () => {
   });
 });
 
+describe("no network — the scrub graph", () => {
+  // `scan --scrub` holds credential values in memory while it rewrites transcripts. None of its
+  // modules may reach the network.
+  it.each([
+    "scrub-io.ts",
+    "commands/scan-scrub.ts",
+    "core/scrub-transcripts.ts",
+  ])("%s reaches nothing under src/net/ and references no network", (module) => {
+    const entry = join(SRC, ...module.split("/"));
+    expect(existsSync(entry)).toBe(true);
+    const graph = graphFrom(entry);
+    expect(graph.filter((f) => f.startsWith(join(SRC, "net")))).toEqual([]);
+    expect(graph.filter((f) => NETWORK.test(code(f))).map((f) => f.replace(`${SRC}/`, ""))).toEqual(
+      [],
+    );
+  });
+
+  it("the scan entry reaches the scrub graph, so the scan fences above cover it too", () => {
+    const graph = graphFrom(SCAN_ENTRY);
+    expect(graph).toContain(join(SRC, "scrub-io.ts"));
+    expect(graph).toContain(join(COMMANDS, "scan-scrub.ts"));
+  });
+});
+
 describe("no network — and unreachable from every command except the sender", () => {
   // Globbing `commands/` rather than naming files means a new command is fenced the
   // day it is created, with no edit here, including a command that does not exist yet.
