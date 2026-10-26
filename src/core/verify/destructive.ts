@@ -55,6 +55,7 @@ import {
   statusOf,
   was,
 } from "./git-copy.js";
+import { DATABASE_CLASSES, RM_TARGET_CLASSES } from "./git-facts.js";
 import { isFailure } from "./repo-probe.js";
 import {
   type Detector,
@@ -73,22 +74,10 @@ import {
 } from "./shell-words.js";
 import type { CheckedCategory, PendingCheck, RunTally } from "./types.js";
 
-/** The classes of an `rm -rf` target. See the module header. */
-export const RM_TARGET_CLASSES = [
-  "unguarded-variable",
-  "guarded-variable",
-  "scratch",
-  "tracked",
-  "untracked",
-  "home",
-  "other",
-] as const;
+export { DATABASE_CLASSES, RM_TARGET_CLASSES };
 
-/** One class of `rm -rf` target. */
+/** One class of `rm -rf` target. See the module header. */
 export type RmTargetClass = (typeof RM_TARGET_CLASSES)[number];
-
-/** The classes of a database a destructive command was aimed at. See the module header. */
-export const DATABASE_CLASSES = ["local", "scratch", "other", "unresolved"] as const;
 
 /** One class of database. */
 export type DatabaseClass = (typeof DATABASE_CLASSES)[number];

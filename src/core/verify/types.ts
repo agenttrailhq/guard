@@ -22,6 +22,8 @@
  * no result to judge by is `unknown`, and is never counted as `ran`. See `ran.ts`.
  */
 
+import { GIT_FACT_ENUMS, GIT_FACT_KEYS } from "./git-facts.js";
+
 /** The nine categories the report shows a card for, in the order the report lists them. */
 export const VERIFY_CATEGORIES = [
   "secrets",
@@ -496,6 +498,7 @@ export const FACT_VALUE_ENUMS: readonly (readonly string[])[] = [
   SECRET_CLASSES,
   FIXTURE_CHECKS,
   WATCHED_PROCESSES,
+  ...GIT_FACT_ENUMS,
 ];
 
 /**
@@ -524,4 +527,5 @@ export const FACT_KEYS: readonly string[] = [
   "via",
   "files",
   "hidingForms",
+  ...GIT_FACT_KEYS,
 ];

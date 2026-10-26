@@ -203,8 +203,14 @@ describe("no value the git-backed checks read leaves scan --verify", () => {
     const { stdout } = await scan(["--agent", "claude", "--dir", dir, "--verify", "--json"]);
     clean(stdout, "json");
     for (const text of stringLeaves(JSON.parse(stdout))) clean(text, "json leaf");
-    // The checks are in it, so the search above searched them.
-    expect(JSON.parse(stdout).result.verification.categories["lost-work"].status).toBe("act");
+    // The checks are in it, so the search above searched them, and their facts pass the
+    // boundary because their keys and enums are registered.
+    const categories = JSON.parse(stdout).result.verification.categories;
+    expect(categories["lost-work"].status).toBe("act");
+    expect(categories["lost-work"].facts.branches.recoverable).toBe(1);
+    expect(categories["skipped-checks"].facts.noVerify.onMain).toBe(1);
+    expect(categories.destructive.facts.databases.classes.other).toBe(1);
+    expect(Object.keys(categories.destructive.facts.rm.classes).length).toBeGreaterThan(5);
   });
 
   it("the report carries no marker in any decoded form, either variant", async () => {

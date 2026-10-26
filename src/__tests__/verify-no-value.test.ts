@@ -24,7 +24,7 @@ import { runScan } from "../commands/scan.js";
 import { FIXES_FILENAME } from "../core/report.js";
 import type { AgentSource } from "../core/types.js";
 import { isLocalFix, type LocalFix, localFixCommand } from "../core/verify/cards.js";
-import { DATABASE_CLASSES, RM_TARGET_CLASSES } from "../core/verify/destructive.js";
+import { GIT_FACT_ENUMS, GIT_FACT_KEYS } from "../core/verify/git-facts.js";
 import {
   FIXTURE_CHECKS,
   RAN_EVIDENCE,
@@ -160,50 +160,8 @@ const ALLOWED = new Set<string>([
   "via",
   "files",
   // The git-backed checks: skipped checks, lost work, destructive commands.
-  ...RM_TARGET_CLASSES,
-  ...DATABASE_CLASSES,
-  "noVerify",
-  "calls",
-  "commits",
-  "notIdentified",
-  "withoutHooks",
-  "onMain",
-  "offMain",
-  "noMainToCheck",
-  "gone",
-  "couldNotCheck",
-  "otherNoVerify",
-  "husky",
-  "hooksPath",
-  "off",
-  "on",
-  "instructions",
-  "read",
-  "sayToSkip",
-  "agentWrote",
-  "agentWroteStill",
-  "agentWroteRemoved",
-  "couldNotRead",
-  "branches",
-  "deleted",
-  "recoverable",
-  "onAnotherRef",
-  "stashes",
-  "dropped",
-  "cleared",
-  "listed",
-  "discards",
-  "paths",
-  "ownCopy",
-  "agentEdited",
-  "mainCheckout",
-  "none",
-  "rm",
-  "targets",
-  "trackedBack",
-  "trackedGone",
-  "trackedPartlyBack",
-  "databases",
+  ...GIT_FACT_ENUMS.flat(),
+  ...GIT_FACT_KEYS,
 ]);
 
 describe.each([

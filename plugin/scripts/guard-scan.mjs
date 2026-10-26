@@ -7991,6 +7991,70 @@ function formatCount(n2) {
 // src/core/verify/destructive.ts
 import { dirname, relative as relative2, sep as sep2 } from "path";
 
+// src/core/verify/git-facts.ts
+var RM_TARGET_CLASSES = [
+  "unguarded-variable",
+  "guarded-variable",
+  "scratch",
+  "tracked",
+  "untracked",
+  "home",
+  "other"
+];
+var DATABASE_CLASSES = ["local", "scratch", "other", "unresolved"];
+var GIT_FACT_ENUMS = [RM_TARGET_CLASSES, DATABASE_CLASSES];
+var GIT_FACT_KEYS = [
+  // Shared by every tally of calls.
+  "calls",
+  "ran",
+  "mentioned",
+  "unknown",
+  "couldNotCheck",
+  // Skipped checks.
+  "noVerify",
+  "commits",
+  "notIdentified",
+  "withoutHooks",
+  "onMain",
+  "offMain",
+  "noMainToCheck",
+  "gone",
+  "otherNoVerify",
+  "husky",
+  "hooksPath",
+  "off",
+  "on",
+  "none",
+  "instructions",
+  "read",
+  "sayToSkip",
+  "agentWrote",
+  "agentWroteStill",
+  "agentWroteRemoved",
+  "couldNotRead",
+  // Lost work.
+  "branches",
+  "deleted",
+  "recoverable",
+  "onAnotherRef",
+  "stashes",
+  "dropped",
+  "cleared",
+  "listed",
+  "discards",
+  "paths",
+  "ownCopy",
+  "agentEdited",
+  "mainCheckout",
+  // Destructive commands.
+  "rm",
+  "targets",
+  "trackedBack",
+  "trackedGone",
+  "trackedPartlyBack",
+  "databases"
+];
+
 // src/core/verify/types.ts
 var VERIFY_CATEGORIES = [
   "secrets",
@@ -8068,7 +8132,8 @@ var FACT_VALUE_ENUMS = [
   SECRET_KINDS,
   SECRET_CLASSES,
   FIXTURE_CHECKS,
-  WATCHED_PROCESSES
+  WATCHED_PROCESSES,
+  ...GIT_FACT_ENUMS
 ];
 var FACT_KEYS = [
   "classes",
@@ -8086,7 +8151,8 @@ var FACT_KEYS = [
   "kind",
   "via",
   "files",
-  "hidingForms"
+  "hidingForms",
+  ...GIT_FACT_KEYS
 ];
 
 // src/core/verify/cards.ts
@@ -11977,16 +12043,6 @@ function outputOf(call) {
 }
 
 // src/core/verify/destructive.ts
-var RM_TARGET_CLASSES = [
-  "unguarded-variable",
-  "guarded-variable",
-  "scratch",
-  "tracked",
-  "untracked",
-  "home",
-  "other"
-];
-var DATABASE_CLASSES = ["local", "scratch", "other", "unresolved"];
 function recursiveRmTargets(args2) {
   let recursive = false;
   for (const word of args2) {
