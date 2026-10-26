@@ -7062,7 +7062,19 @@ var LIGHT_TOKENS = {
   "act-ask-fg": "#b45309",
   "act-ask-bd": "#fbd391",
   "act-warn-fg": "#52525b",
-  "act-warn-bd": "#bfbfc3"
+  "act-warn-bd": "#bfbfc3",
+  "tone-act-fg": "#b91c1c",
+  "tone-act-bg": "#fdecec",
+  "tone-act-bd": "#f9bebe",
+  "tone-review-fg": "#b45309",
+  "tone-review-bg": "#fef5e7",
+  "tone-review-bd": "#fcddaa",
+  "tone-clean-fg": "#15803d",
+  "tone-clean-bg": "#ecfdf3",
+  "tone-clean-bd": "#a6e5bd",
+  "tone-none-fg": "#52525b",
+  "tone-none-bg": "#f1f1f2",
+  "tone-none-bd": "#cdcdd0"
 };
 var DARK_TOKENS = {
   bg: "#0b0f1e",
@@ -7105,7 +7117,19 @@ var DARK_TOKENS = {
   "act-ask-fg": "#fbbf24",
   "act-ask-bd": "#835a1a",
   "act-warn-fg": "#a1a1aa",
-  "act-warn-bd": "#414452"
+  "act-warn-bd": "#414452",
+  "tone-act-fg": "#f87171",
+  "tone-act-bg": "#351d2d",
+  "tone-act-bd": "#6a2834",
+  "tone-review-fg": "#fbbf24",
+  "tone-review-bg": "#352c24",
+  "tone-review-bd": "#6c4c1d",
+  "tone-clean-fg": "#4ade80",
+  "tone-clean-bg": "#12301f",
+  "tone-clean-bd": "#1f5a37",
+  "tone-none-fg": "#a1a1aa",
+  "tone-none-bg": "#202536",
+  "tone-none-bd": "#373a49"
 };
 function vars(tokens) {
   return Object.entries(tokens).map(([key, value]) => `  --${key}: ${value};`).join("\n");
@@ -7119,6 +7143,17 @@ var severityRules = SEVERITIES.map(
 ).join("\n");
 var actionRules = ACTIONS.map(
   (a) => `.act-${a} { color: var(--act-${a}-fg); border-color: var(--act-${a}-bd); }`
+).join("\n");
+var TONES = [
+  ["act", "act"],
+  ["review", "review"],
+  ["clean", "clean"],
+  ["could-not-check", "none"],
+  ["not-checked", "none"]
+];
+var toneRules = TONES.map(
+  ([tone, palette]) => `.tone-${tone} { color: var(--tone-${palette}-fg); background: var(--tone-${palette}-bg); border-color: var(--tone-${palette}-bd); }
+.v-${tone} { border-left-color: var(--tone-${palette}-fg); }`
 ).join("\n");
 var REPORT_STYLES = `
 :root {
@@ -7413,6 +7448,78 @@ td.num { font-weight: 600; }
 .card-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .card-meta { font-size: 13px; color: var(--muted-fg); margin: 6px 0; }
 .example { margin: 6px 0; }
+.lead.totals { color: var(--muted-fg); }
+.evidence, .also-checked { margin-top: 28px; }
+.evidence-list {
+  list-style: none;
+  margin: 10px 0 12px;
+  padding: 0;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--tone-act-fg);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+}
+.evidence-list li {
+  display: grid;
+  grid-template-columns: minmax(10rem, 14rem) 1fr auto;
+  align-items: baseline;
+  gap: 4px 16px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--divider);
+  font-size: 14px;
+}
+.evidence-list li:last-child { border-bottom: 0; }
+.evidence-kind { font-weight: 600; }
+.evidence-how { color: var(--muted-fg); }
+.check-chips {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+  gap: 10px;
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+}
+.check-chip {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  height: 100%;
+  padding: 10px 14px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--border);
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+  color: var(--fg);
+  text-decoration: none;
+}
+.check-chip:hover { border-color: var(--brand-text); }
+.chip-title { font-size: 12px; color: var(--muted-fg); }
+.chip-text { font-size: 14px; font-weight: 600; }
+.verified-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr)); gap: 12px; margin-top: 12px; }
+.verified { border-left: 4px solid var(--border); }
+.verified:target { border-color: var(--brand-text); }
+.verified h3 { font-size: 16px; margin: 8px 0 6px; }
+.tone {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid;
+  border-radius: 999px;
+  padding: 0 9px;
+  font-size: 11.5px;
+  font-weight: 650;
+  line-height: 1.8;
+  white-space: nowrap;
+}
+${toneRules}
+.tone-not-checked { border-style: dashed; }
+.verified-facts { margin: 0; }
+.verified-facts dt { margin: 10px 0 2px; font-size: 12px; font-weight: 600; color: var(--muted-fg); }
+.verified-facts dd { margin: 0; font-size: 14px; }
+.verified-facts dd p { margin: 0 0 6px; }
+.verified-facts .command { margin: 6px 0; }
+.codex-caveat { margin: 10px 0 0; font-size: 13px; }
 .controls { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
 .filters { display: flex; flex-wrap: wrap; gap: 6px; }
 .sort { font-size: 13px; color: var(--muted-fg); }
@@ -7551,6 +7658,8 @@ footer p { margin: 0 0 6px; max-width: none; }
   .recurring td.num { text-align: left; }
   .legend { grid-template-columns: 1fr; gap: 2px; }
   .legend dd { margin-bottom: 8px; }
+  .evidence-list li { grid-template-columns: 1fr; gap: 2px; }
+  .verified-cards { grid-template-columns: 1fr; }
 }
 @media print {
   html:root:not([data-theme="print"]) {
@@ -7561,8 +7670,10 @@ ${vars(LIGHT_TOKENS)}
   .sections, .toolbar, .js-only, .actions, .controls, .copy, .share { display: none; }
   .button, .button.secondary { display: inline; background: none; color: var(--brand-text); border: 0; padding: 0; }
   .stat, .tally, .product-note, tr, .card, .col, .risk, .finding-head, .shapes li { break-inside: avoid; }
-  h1, h2, h3, .section-head, summary, h2 + .note, h2 + .lead { break-after: avoid; }
+  .evidence-list li, .check-chip, .verified-facts > div { break-inside: avoid; }
+  h1, h2, h3, .section-head, summary, h2 + .note, h2 + .lead, .verified-facts dt { break-after: avoid; }
   .chip::before { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+  .tone, .verified, .check-chip, .evidence-list { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
   .owasp-ids a[href^="http"]::after, .risk-name a[href^="http"]::after { content: none; }
   .how a[href^="http"]::after, .card a[href^="http"]::after { content: none; }
   a[href^="http"]::after { content: " (" attr(href) ")"; font-size: 11px; color: var(--muted-fg); overflow-wrap: anywhere; }
@@ -8074,17 +8185,440 @@ var FACT_KEYS = [
 ];
 
 // src/core/verify/cards.ts
+function sentence(template, facts) {
+  const text = template.render(facts);
+  return text === void 0 ? void 0 : { template: template.id, text };
+}
+function sentences(templates, facts) {
+  const out = [];
+  for (const template of templates) {
+    const made = sentence(template, facts);
+    if (made !== void 0) out.push(made);
+  }
+  return out;
+}
+var NOT_CHECKED_SENTENCE = {
+  id: "not-checked",
+  render: () => "Not checked yet."
+};
+var COULD_NOT_CHECK_SENTENCE = {
+  id: "could-not-check",
+  render: () => "Could not be checked on this machine, so this is not a clean result."
+};
+function notCheckedCard(category) {
+  return {
+    category,
+    tone: "not-checked",
+    count: 0,
+    found: sentences([NOT_CHECKED_SENTENCE], void 0),
+    now: [],
+    fixes: [],
+    codexCaveat: false
+  };
+}
+function couldNotCheckCard(category, count2) {
+  return {
+    category,
+    tone: "could-not-check",
+    count: count2,
+    found: sentences([COULD_NOT_CHECK_SENTENCE], void 0),
+    now: [],
+    fixes: [],
+    codexCaveat: false
+  };
+}
+var TONE_ORDER = [
+  "act",
+  "review",
+  "clean",
+  "could-not-check",
+  "not-checked"
+];
+function orderCards(cards) {
+  return [...cards].sort(
+    (a, b) => TONE_ORDER.indexOf(a.tone) - TONE_ORDER.indexOf(b.tone) || VERIFY_CATEGORIES.indexOf(a.category) - VERIFY_CATEGORIES.indexOf(b.category)
+  );
+}
+function cardsFor(verification, builders) {
+  const context = { ranEvidence: verification.ranEvidence };
+  const cards = VERIFY_CATEGORIES.map((category) => {
+    const result = verification.categories[category];
+    if (result.status === "not-checked") return notCheckedCard(category);
+    if (result.status === "could-not-check") {
+      return couldNotCheckCard(category, result.matches ?? 0);
+    }
+    const build = builders[category];
+    if (build === void 0 || result.facts === void 0) {
+      return couldNotCheckCard(category, result.matches ?? 0);
+    }
+    return build(result, context);
+  });
+  return orderCards(cards);
+}
+var HEADLINE_ORDER = [
+  "secrets",
+  "skipped-checks",
+  "lost-work",
+  "cloud",
+  "tests",
+  "destructive"
+];
+var HEADLINE_TONES = {
+  secrets: "act",
+  "skipped-checks": "act",
+  "lost-work": "act",
+  cloud: "review",
+  tests: "act",
+  destructive: "act"
+};
+var HEADLINE_BASIS = {
+  secrets: "likely-real-credentials",
+  "skipped-checks": "commits-on-main-without-checks",
+  "lost-work": "recoverable-deleted-work",
+  cloud: "iam-changes",
+  tests: "lowered-test-floors",
+  destructive: "unguarded-recursive-deletes"
+};
+function pickHeadline(cards, context) {
+  if (context.ranEvidence === "output-record") return void 0;
+  for (const category of HEADLINE_ORDER) {
+    const card = cards.find(
+      (c) => c.category === category && c.headline !== void 0 && c.tone === HEADLINE_TONES[category] && c.headline.basis === HEADLINE_BASIS[category] && c.headline.count > 0 && !c.headline.restsOnCodexRan
+    );
+    if (card !== void 0) return card;
+  }
+  return void 0;
+}
 var LOCAL_ONLY = /* @__PURE__ */ Symbol("local-only");
 var LOCAL_FIX_SERIALIZED = "a local fix command belongs in the local fixes file only, and is never serialized";
 function isLocalFix(value) {
   return typeof value === "object" && value !== null && LOCAL_ONLY in value;
 }
 
+// src/core/verify/copy.ts
+function countOf(n, one, many = `${one}s`) {
+  return `${formatCount(n)} ${n === 1 ? one : many}`;
+}
+var CATEGORY_TITLES = {
+  secrets: "Secrets in transcripts",
+  "skipped-checks": "Skipped safety checks",
+  "lost-work": "Lost work",
+  cloud: "Cloud and permissions",
+  "prod-infra": "Production infrastructure",
+  tests: "Gaming tests",
+  destructive: "Destructive commands",
+  unreviewed: "Unreviewed code",
+  egress: "Data leaving the machine"
+};
+var TONE_LABELS = {
+  act: "Act on this",
+  review: "Review",
+  clean: "Clean",
+  "could-not-check": "Could not check",
+  "not-checked": "Not checked"
+};
+var KIND_LABELS = {
+  "aws-access-key": "AWS access key",
+  "aws-secret-key": "AWS secret key",
+  "private-key": "Private key",
+  "github-token": "GitHub token",
+  "slack-token": "Slack token",
+  "api-key": "API key",
+  jwt: "JSON web token",
+  "bearer-token": "Bearer token",
+  "auth-header": "Authorization header",
+  "database-url": "Database URL with a password",
+  "url-credentials": "URL with a password",
+  password: "Password",
+  "named-secret": "A named secret",
+  "random-string": "Random-looking secret",
+  other: "Other credential"
+};
+var PROVENANCE_PHRASES = {
+  "pasted-into-prompt": "you pasted it into a prompt",
+  "typed-into-command": "typed into a command",
+  "printed-by-command": "printed by a command",
+  "in-agent-reply": "in an agent reply"
+};
+function evidenceRow(item) {
+  return {
+    kind: KIND_LABELS[item.kind],
+    how: item.via.map((via) => PROVENANCE_PHRASES[via]).join(", "),
+    files: `in ${countOf(item.files, "transcript file")}`
+  };
+}
+var MORE_EVIDENCE = {
+  id: "evidence.more",
+  render: ({ more }) => more > 0 ? `And ${countOf(more, "more likely-real credential", "more likely-real credentials")}.` : void 0
+};
+var RAN_BASIS = {
+  id: "lead.ran-basis",
+  render: (v) => v.resultsRecorded ? "Checked against command output: a match counts only when the transcript records that its command ran." : void 0
+};
+var NO_RESULTS = {
+  id: "lead.no-results",
+  render: (v) => v.resultsRecorded ? void 0 : "These sessions record no command output, so no matched command could be confirmed as run. A count of commands that ran is zero here because nothing could be confirmed, not because nothing ran."
+};
+var MENTIONED = {
+  id: "lead.mentioned",
+  render: (v) => v.matchedCalls.mentioned > 0 ? `${countOf(v.matchedCalls.mentioned, "match", "matches")} only mentioned a command, in a search, a message or a file, and ${v.matchedCalls.mentioned === 1 ? "is" : "are"} left out.` : void 0
+};
+var UNCONFIRMED = {
+  id: "lead.unconfirmed",
+  render: (v) => v.resultsRecorded && v.matchedCalls.unknown > 0 ? `${countOf(v.matchedCalls.unknown, "matched call")} had no recorded output to show ${v.matchedCalls.unknown === 1 ? "it" : "they"} ran, and ${v.matchedCalls.unknown === 1 ? "is" : "are"} left out.` : void 0
+};
+var CODEX_RAN = {
+  id: "lead.codex-ran",
+  render: (v) => v.ranEvidence === "output-record" && v.matchedCalls.ran > 0 ? "A Codex call counts as ran when Codex recorded an output for it, which may include calls a hook blocked." : void 0
+};
+var LEAD_NOTES = [
+  RAN_BASIS,
+  NO_RESULTS,
+  MENTIONED,
+  UNCONFIRMED,
+  CODEX_RAN
+];
+function leadNotes(verification) {
+  return sentences(LEAD_NOTES, verification);
+}
+var CHIP_CANDIDATES = [
+  "secrets",
+  "skipped-checks",
+  "lost-work",
+  "cloud",
+  "prod-infra",
+  "destructive",
+  "egress"
+];
+var CHIP_COUNT = 6;
+function chipCategories(headline2) {
+  return CHIP_CANDIDATES.filter((c) => c !== headline2).slice(0, CHIP_COUNT);
+}
+var CHIP_TONE = {
+  id: "chip.tone",
+  render: ({ tone }) => TONE_LABELS[tone].toLowerCase()
+};
+function chipText(card) {
+  if (card.chip !== void 0 && (card.tone === "act" || card.tone === "review" || card.tone === "clean")) {
+    return { count: card.chip.count, label: card.chip.label };
+  }
+  return { label: sentence(CHIP_TONE, card) ?? { template: CHIP_TONE.id, text: "" } };
+}
+var CODEX_CAVEAT = {
+  id: "card.codex-caveat",
+  render: ({ codexCaveat }) => codexCaveat ? "Codex counts here include every call Codex recorded an output for, which may include calls a hook blocked." : void 0
+};
+var TONE_TALLY = {
+  id: "cards.tally",
+  render: (cards) => {
+    const parts = [];
+    const n = (tone) => cards.filter((c) => c.tone === tone).length;
+    if (n("act") > 0) parts.push(`${formatCount(n("act"))} to act on`);
+    if (n("review") > 0) parts.push(`${formatCount(n("review"))} to review`);
+    if (n("clean") > 0) parts.push(`${formatCount(n("clean"))} clean`);
+    if (n("could-not-check") > 0)
+      parts.push(`${formatCount(n("could-not-check"))} could not check`);
+    if (n("not-checked") > 0) parts.push(`${formatCount(n("not-checked"))} not checked`);
+    return parts.length === 0 ? void 0 : parts.join(" \xB7 ");
+  }
+};
+var READ_NOTE = {
+  id: "lead.read",
+  render: (f) => {
+    if (f.filesRead === 0) return void 0;
+    const files = `read ${countOf(f.filesRead, "transcript file")} again`;
+    const repos = f.reposChecked + f.reposNotChecked;
+    return repos === 0 ? `To check these, AgentTrail Guard ${files}.` : `To check these, AgentTrail Guard ${files} and searched the git-tracked files of ${countOf(repos, "repo")} the sessions ran in, with read-only git.`;
+  }
+};
+var FIXES_FILE_NOTE = {
+  id: "card.fixes-file",
+  render: ({ variant }) => variant === "artifact" ? `The exact commands, with real names and paths, are in ${FIXES_FILE} on the machine the scan ran on. That file was not published with this page.` : `The exact commands for this machine, with real names and paths, are in ${FIXES_FILE} next to this report. That file stays on this machine and is not part of this page.`
+};
+var FIXES_FILE = "agenttrail-guard-fixes.txt";
+var CARD_COUNT = {
+  id: "card.count",
+  render: ({ tone, count: count2 }) => tone === "not-checked" || tone === "could-not-check" && count2 === 0 ? void 0 : countOf(count2, "match", "matches")
+};
+
+// src/core/verify/secrets-card.ts
+function likelyReal(n) {
+  return countOf(n, "likely-real credential");
+}
+function be(n) {
+  return n === 1 ? "is" : "are";
+}
+function setAsideCount(facts) {
+  const counts = facts.setAside;
+  if (counts === null || typeof counts !== "object") return 0;
+  let n = 0;
+  for (const value of Object.values(counts)) {
+    if (typeof value === "number" && Number.isFinite(value) && value > 0) n += value;
+  }
+  return n;
+}
+function anyFound(f) {
+  return f.classes["likely-real"] + f.classes["committed-fixture"] + f.classes.placeholder + f.classes["local-dev"] + setAsideCount(f) > 0;
+}
+var FOUND_LIKELY_REAL = {
+  id: "secrets.found.likely-real",
+  render: (f) => f.classes["likely-real"] > 0 ? `Found ${likelyReal(f.classes["likely-real"])} in ${countOf(f.filesRead, "transcript file")}.` : void 0
+};
+var FOUND_NO_LIKELY_REAL = {
+  id: "secrets.found.no-likely-real",
+  render: (f) => f.classes["likely-real"] === 0 && f.filesRead > 0 ? anyFound(f) ? `Found no likely-real credential in ${countOf(f.filesRead, "transcript file")}.` : `Found no credential-shaped value in ${countOf(f.filesRead, "transcript file")}.` : void 0
+};
+var FOUND_FIXTURES = {
+  id: "secrets.found.committed-fixtures",
+  render: (f) => {
+    const n = f.classes["committed-fixture"];
+    if (n === 0) return void 0;
+    return n === 1 ? "1 value is also in a git-tracked file, a committed fixture: it may be test data, or a real secret that was committed." : `${formatCount(n)} values are also in git-tracked files, committed fixtures: each may be test data, or a real secret that was committed.`;
+  }
+};
+var FOUND_NOT_COUNTED = {
+  id: "secrets.found.not-counted",
+  render: (f) => {
+    const parts = [];
+    const placeholders = f.classes.placeholder;
+    const local = f.classes["local-dev"];
+    if (placeholders > 0) {
+      parts.push(
+        countOf(placeholders, "placeholder or false positive", "placeholders or false positives")
+      );
+    }
+    if (local > 0) {
+      parts.push(`${countOf(local, "local dev value")} for a database or service on this machine`);
+    }
+    return parts.length > 0 ? `Not counted as likely real: ${parts.join(", and ")}.` : void 0;
+  }
+};
+var FOUND_SET_ASIDE = {
+  id: "secrets.found.set-aside",
+  render: (f) => {
+    const n = setAsideCount(f);
+    if (n === 0) return void 0;
+    return n === 1 ? "1 more credential-like string was set aside as unlikely to be real." : `${formatCount(n)} more credential-like strings were set aside as unlikely to be real.`;
+  }
+};
+var FOUND_FIXTURES_PARTIAL = {
+  id: "secrets.found.fixtures-partial",
+  render: (f) => f.classes["likely-real"] > 0 && f.fixtureCheck === "partial" ? `${countOf(f.reposNotChecked, "repo")} could not be searched for committed fixtures, so some of these may be fixtures.` : void 0
+};
+var FOUND_FIXTURES_UNAVAILABLE = {
+  id: "secrets.found.fixtures-unavailable",
+  render: (f) => f.classes["likely-real"] > 0 && f.fixtureCheck === "unavailable" ? "No repo could be searched for committed fixtures, so a fixture would be counted here as likely real." : void 0
+};
+var FOUND_UNREAD = {
+  id: "secrets.found.unread",
+  render: (f) => f.filesNotRead > 0 ? `${countOf(f.filesNotRead, "transcript file")} could not be read.` : void 0
+};
+var FOUND_UNPLACED = {
+  id: "secrets.found.unplaced",
+  render: (f) => f.unplaced > 0 ? `${countOf(f.unplaced, "redacted text")} could not be lined up with the original, so ${f.unplaced === 1 ? "it was" : "they were"} not classed.` : void 0
+};
+var FOUND_METHOD = {
+  id: "secrets.found.method",
+  render: (f) => f.filesRead > 0 ? "Each value was classed by its format and by where else it appears. None was checked with the service that issued it." : void 0
+};
+var SECRETS_FOUND = [
+  FOUND_LIKELY_REAL,
+  FOUND_NO_LIKELY_REAL,
+  FOUND_FIXTURES,
+  FOUND_NOT_COUNTED,
+  FOUND_SET_ASIDE,
+  FOUND_FIXTURES_PARTIAL,
+  FOUND_FIXTURES_UNAVAILABLE,
+  FOUND_UNREAD,
+  FOUND_UNPLACED,
+  FOUND_METHOD
+];
+var NOW_STILL_THERE = {
+  id: "secrets.now.still-there",
+  render: (f) => {
+    const n = f.classes["likely-real"];
+    if (n === 0) return void 0;
+    return n === 1 ? "It is still in the transcript files on this machine, where anything that can read those files can read it." : `All ${formatCount(n)} are still in the transcript files on this machine, where anything that can read those files can read them.`;
+  }
+};
+var NOW_FIXTURES = {
+  id: "secrets.now.committed-fixtures",
+  render: (f) => {
+    const n = f.classes["committed-fixture"];
+    if (n === 0) return void 0;
+    return n === 1 ? "The committed fixture is in a git-tracked file today, and so in the repo's history." : `The ${formatCount(n)} committed fixtures are in git-tracked files today, and so in the repo's history.`;
+  }
+};
+var NOW_NOTHING = {
+  id: "secrets.now.nothing",
+  render: (f) => f.classes["likely-real"] === 0 && f.classes["committed-fixture"] === 0 && f.filesRead > 0 ? "There is no likely-real credential to rotate." : void 0
+};
+var SECRETS_NOW = [
+  NOW_STILL_THERE,
+  NOW_FIXTURES,
+  NOW_NOTHING
+];
+var FIX_ROTATE = {
+  id: "secrets.fix.rotate",
+  render: (f) => {
+    const n = f.classes["likely-real"];
+    if (n === 0) return void 0;
+    return n === 1 ? "Rotate it first, with the service that issued it, so the copy in the transcripts no longer works." : "Rotate each one first, with the service that issued it, so the copies in the transcripts no longer work.";
+  }
+};
+var FIX_FIXTURES = {
+  id: "secrets.fix.committed-fixtures",
+  render: (f) => f.classes["committed-fixture"] > 0 ? "If a committed fixture is a real secret, rotate it as well: removing the file does not remove it from the repo's history." : void 0
+};
+var SECRETS_FIX = [FIX_ROTATE, FIX_FIXTURES];
+var SECRETS_HEADLINE = {
+  id: "secrets.headline",
+  render: (f) => {
+    const n = f.classes["likely-real"];
+    return n > 0 ? `${likelyReal(n)} ${be(n)} still in the agent's transcripts` : void 0;
+  }
+};
+var SECRETS_CHIP = {
+  id: "secrets.chip",
+  render: (f) => f.classes["likely-real"] === 1 ? "likely-real credential in transcripts" : "likely-real credentials in transcripts"
+};
+var secretsCard = (result) => {
+  const facts = result.facts;
+  const likely = facts.classes["likely-real"];
+  const headline2 = sentence(SECRETS_HEADLINE, facts);
+  const chip = sentence(SECRETS_CHIP, facts);
+  return {
+    category: "secrets",
+    tone: result.status,
+    count: result.matches,
+    found: sentences(SECRETS_FOUND, facts),
+    now: sentences(SECRETS_NOW, facts),
+    fixSteps: sentences(SECRETS_FIX, facts),
+    fixes: [],
+    codexCaveat: false,
+    ...headline2 === void 0 ? {} : {
+      headline: {
+        basis: "likely-real-credentials",
+        count: likely,
+        restsOnCodexRan: false,
+        sentence: headline2
+      }
+    },
+    ...chip === void 0 ? {} : { chip: { count: likely, label: chip } }
+  };
+};
+
+// src/core/verify/builders.ts
+var CARD_BUILDERS = {
+  secrets: secretsCard
+};
+
 // src/core/report.ts
 var REPOSITORY_URL = "https://github.com/agenttrailhq/guard";
 var SITE_URL = "https://www.agenttrail.sh";
 var REPORT_FILENAME = "agenttrail-guard-report.html";
 var ARTIFACT_FILENAME = "agenttrail-guard-artifact.html";
+var FIXES_FILENAME = FIXES_FILE;
 var PRODUCT_NOTE = {
   eyebrow: "AgentTrail OS",
   heading: "AgentTrail Guard stops the mistake. AgentTrail OS remembers it and turns it into a rule.",
@@ -8315,7 +8849,7 @@ function payloadFinding(finding) {
     ...finding.description === void 0 ? {} : { descriptionLines: wrapLines(finding.description, DESCRIPTION_LINE) }
   };
 }
-function reportPayload(result, meta) {
+function reportPayload(result, meta, builders = CARD_BUILDERS) {
   const ordered = bySeverityThenCount(result.findings);
   const payload = {
     tool: "agenttrail-guard",
@@ -8354,7 +8888,8 @@ function reportPayload(result, meta) {
       guardrailCount: t.guardrailCount
     }))
   };
-  const withVerification = result.verification === void 0 ? payload : { ...payload, verification: copyVerification(result.verification, true) };
+  const verification = result.verification === void 0 ? void 0 : copyVerification(result.verification, true);
+  const withVerification = verification === void 0 ? payload : { ...payload, verification, cards: cardsFor(verification, builders) };
   const skipped = result.skipped;
   if (skipped === void 0) return withVerification;
   return {
@@ -8519,6 +9054,7 @@ function topBar(payload) {
   const scanned = payload.toolCalls > 0;
   const links = [
     ["overview", "Overview"],
+    ...scanned && payload.cards !== void 0 ? [["what-happened", "What happened"]] : [],
     ...scanned ? [["fix-first", "Fix first"]] : [],
     ...payload.owasp.length > 0 ? [["owasp", "OWASP"]] : [],
     ...scanned ? [["findings", "All findings"]] : [],
@@ -8561,8 +9097,32 @@ function emptyLead(result) {
   const read = result.sessions === 0 ? `The scan found no ${agentName(result.agent)} sessions to read` : `The scan read ${counted(result.sessions, "session", "sessions")} with no tool calls in them`;
   return `${read}, so nothing was checked. This is not a clean result: check that the folder and the agent are the ones you meant, then scan again.`;
 }
-function heroSection(result, payload, meta, variant) {
+function heroSection(result, payload, meta, variant, lead) {
   const origin = variant === "artifact" ? "Scanned locally &middot; published by the person who ran it" : "Scanned locally &middot; nothing uploaded";
+  const fixTarget = payload.findings.some((f) => f.action === "block") ? "fix-first" : "findings";
+  const top = mostSerious(payload);
+  const claim = lead?.headline;
+  const leadLine = claim === void 0 ? "What your coding agent actually did, and which guardrails would have fired." : `${escapeHtml(headline(result))}.`;
+  const next = result.toolCalls === 0 ? `<p class="lead">${escapeHtml(emptyLead(result))}</p>
+<p class="provenance">${provenance(result, meta, variant)}</p>
+${copyable("cmd-scan-hero", `agenttrail-guard scan --agent ${result.agent}`, "Copy the scan command")}
+<p class="note">This reads the folder ${escapeHtml(agentName(result.agent))} uses by default. To read another folder, add <code>--dir</code> and its path.</p>` : `<p class="lead${claim === void 0 ? "" : " totals"}">${leadLine}</p>
+<p class="provenance">${provenance(result, meta, variant)}</p>${top === void 0 ? "" : `
+${top}`}
+<div class="actions">${payload.findings.length > 0 ? `
+<a class="button" href="#${fixTarget}">See what to fix first</a>` : ""}
+${outLink(shareLink(payload.shareText, result.agent), "Share on X", "button secondary")}
+</div>
+${copyable("cmd-init-hero", `agenttrail-guard init --agent ${result.agent}`, "Copy the init command")}`;
+  const h1 = claim === void 0 ? `<h1>${escapeHtml(headline(result))}</h1>` : `<h1 data-template="${escapeHtml(claim.sentence.template)}">${escapeHtml(claim.sentence.text)}</h1>`;
+  return `<section class="intro" id="overview">
+<p class="origin">${origin}</p>
+<p class="agent">Agent: ${escapeHtml(agentName(result.agent))}</p>
+${h1}
+${next}
+</section>`;
+}
+function statsSection(result) {
   const t = result.tokens;
   const repeatedShapes = new Set(result.recurring.map((r) => r.text)).size;
   const cells = [
@@ -8587,27 +9147,113 @@ function heroSection(result, payload, meta, variant) {
       )
     );
   }
-  const fixTarget = payload.findings.some((f) => f.action === "block") ? "fix-first" : "findings";
-  const top = mostSerious(payload);
-  const next = result.toolCalls === 0 ? `<p class="lead">${escapeHtml(emptyLead(result))}</p>
-<p class="provenance">${provenance(result, meta, variant)}</p>
-${copyable("cmd-scan-hero", `agenttrail-guard scan --agent ${result.agent}`, "Copy the scan command")}
-<p class="note">This reads the folder ${escapeHtml(agentName(result.agent))} uses by default. To read another folder, add <code>--dir</code> and its path.</p>` : `<p class="lead">What your coding agent actually did, and which guardrails would have fired.</p>
-<p class="provenance">${provenance(result, meta, variant)}</p>${top === void 0 ? "" : `
-${top}`}
-<div class="actions">${payload.findings.length > 0 ? `
-<a class="button" href="#${fixTarget}">See what to fix first</a>` : ""}
-${outLink(shareLink(payload.shareText, result.agent), "Share on X", "button secondary")}
-</div>
-${copyable("cmd-init-hero", `agenttrail-guard init --agent ${result.agent}`, "Copy the init command")}`;
-  return `<section class="intro" id="overview">
-<p class="origin">${origin}</p>
-<p class="agent">Agent: ${escapeHtml(agentName(result.agent))}</p>
-<h1>${escapeHtml(headline(result))}</h1>
-${next}
-</section>
-<section class="stats" aria-label="Summary">
+  return `<section class="stats" aria-label="Summary">
 ${cells.join("\n")}
+</section>`;
+}
+function sentenceHtml(line, className) {
+  const cls = className === void 0 ? "" : ` class="${className}"`;
+  return `<p${cls} data-template="${escapeHtml(line.template)}">${escapeHtml(line.text)}</p>`;
+}
+function cardId(category) {
+  return `check-${category}`;
+}
+function evidenceSection(payload) {
+  const facts = payload.verification?.categories.secrets.facts;
+  if (facts === void 0 || facts.items.length === 0) return "";
+  const rows = facts.items.map((item) => {
+    const row = evidenceRow(item);
+    return `<li><span class="evidence-kind">${escapeHtml(row.kind)}</span><span class="evidence-how">${escapeHtml(row.how)}</span><span class="times">${escapeHtml(row.files)}</span></li>`;
+  }).join("\n");
+  const more = MORE_EVIDENCE.render({ more: facts.moreItems });
+  return `<section class="evidence" id="found" aria-labelledby="found-heading">
+<h2 id="found-heading">What it found, never the values</h2>
+<p class="note">Each credential that looks real, by its kind and how it got into the transcripts. Never the value, and never the name it was given.</p>
+<ul class="evidence-list">
+${rows}
+</ul>${more === void 0 ? "" : `
+${sentenceHtml({ template: MORE_EVIDENCE.id, text: more }, "note")}`}
+<p class="note"><a href="#${cardId("secrets")}">What checking found, and how to fix it</a></p>
+</section>`;
+}
+function alsoCheckedSection(payload, cards, lead) {
+  const verification = payload.verification;
+  if (verification === void 0) return "";
+  const chips = chipCategories(lead?.category).map((category) => {
+    const card = cards.find((c) => c.category === category);
+    if (card === void 0) return "";
+    const chip = chipText(card);
+    const text = chip.count === void 0 ? chip.label.text : `${formatCount(chip.count)} ${chip.label.text}`;
+    return `<li><a class="check-chip v-${card.tone}" href="#${cardId(category)}"><span class="chip-title">${escapeHtml(CATEGORY_TITLES[category])}</span><span class="chip-text" data-template="${escapeHtml(chip.label.template)}">${escapeHtml(text)}</span></a></li>`;
+  }).filter((chip) => chip !== "").join("\n");
+  const notes = leadNotes(verification).map((line) => sentenceHtml(line, "note")).join("\n");
+  return `<section class="also-checked" id="also-checked" aria-labelledby="also-checked-heading">
+<h2 id="also-checked-heading">Also checked on this machine</h2>
+${notes}
+<ul class="check-chips">
+${chips}
+</ul>
+</section>`;
+}
+function verifiedCard(card, variant, localFixes) {
+  const title = CATEGORY_TITLES[card.category];
+  const id = cardId(card.category);
+  const count2 = CARD_COUNT.render(card);
+  const block = (lines) => lines.map((line) => sentenceHtml(line)).join("\n");
+  const fields = [];
+  if (card.found.length > 0) {
+    fields.push(`<div><dt>What checking found</dt><dd>
+${block(card.found)}
+</dd></div>`);
+  }
+  if (card.now.length > 0) {
+    fields.push(`<div><dt>Now</dt><dd>
+${block(card.now)}
+</dd></div>`);
+  }
+  const steps = card.fixSteps ?? [];
+  const fileNote = localFixes ? FIXES_FILE_NOTE.render({ variant }) : void 0;
+  if (steps.length > 0 || card.fixes.length > 0 || fileNote !== void 0) {
+    const shapes = card.fixes.map(
+      (fix, i) => copyable(
+        `fix-${card.category}-${i + 1}`,
+        fix.shape,
+        `Copy fix command ${i + 1} for ${title.toLowerCase()}`
+      )
+    );
+    const parts = [
+      ...steps.map((line) => sentenceHtml(line)),
+      ...shapes,
+      ...fileNote === void 0 ? [] : [
+        `<p class="note fixes-file" data-template="${FIXES_FILE_NOTE.id}">${escapeHtml(fileNote).replace(FIXES_FILENAME, `<code>${FIXES_FILENAME}</code>`)}</p>`
+      ]
+    ];
+    fields.push(`<div><dt>Fix</dt><dd>
+${parts.join("\n")}
+</dd></div>`);
+  }
+  const caveat = sentence(CODEX_CAVEAT, card);
+  return `<article class="card verified v-${card.tone}" id="${id}" aria-labelledby="${id}-title">
+<div class="card-head"><span class="tone tone-${card.tone}">${escapeHtml(TONE_LABELS[card.tone])}</span>${count2 === void 0 ? "" : `<span class="times">${escapeHtml(count2)}</span>`}</div>
+<h3 id="${id}-title">${escapeHtml(title)}</h3>
+<dl class="verified-facts">
+${fields.join("\n")}
+</dl>${caveat === void 0 ? "" : `
+${sentenceHtml(caveat, "note codex-caveat")}`}
+</article>`;
+}
+function whatHappenedSection(payload, cards, variant, localFixCategories) {
+  const facts = payload.verification?.categories.secrets.facts;
+  const read = facts === void 0 ? void 0 : sentence(READ_NOTE, facts);
+  const tally = sentence(TONE_TALLY, cards);
+  const rows = cards.map((card) => verifiedCard(card, variant, localFixCategories.includes(card.category))).join("\n");
+  return `<section id="what-happened" class="what-happened">
+<div class="section-head"><h2>What actually happened</h2>${tally === void 0 ? "" : `<p class="section-meta" data-template="${escapeHtml(tally.template)}">${escapeHtml(tally.text)}</p>`}</div>
+<p class="note">A match means a guardrail fired on a command. Each card says what checking that on this machine found, how things stand now, and how to fix it. The checks only read: they changed nothing on this machine.</p>${read === void 0 ? "" : `
+${sentenceHtml(read, "note")}`}
+<div class="verified-cards">
+${rows}
+</div>
 </section>`;
 }
 var ACTION_MEANING = {
@@ -9102,13 +9748,18 @@ function contentSecurityPolicy() {
 }
 function renderReport(result, meta, options = {}) {
   const variant = options.variant ?? "document";
-  const payload = reportPayload(result, meta);
+  const payload = reportPayload(result, meta, options.cardBuilders);
   const scanned = result.toolCalls > 0;
+  const cards = scanned ? payload.cards : void 0;
+  const lead = cards === void 0 || payload.verification === void 0 ? void 0 : pickHeadline(cards, { ranEvidence: payload.verification.ranEvidence });
   const head = `<title>${escapeHtml(pageTitle(result, meta))}</title>
 <style>${REPORT_STYLES}</style>`;
   const sections = [
     topBar(payload),
-    heroSection(result, payload, meta, variant),
+    heroSection(result, payload, meta, variant, lead),
+    ...cards === void 0 ? [] : [evidenceSection(payload), alsoCheckedSection(payload, cards, lead)],
+    statsSection(result),
+    ...cards === void 0 ? [] : [whatHappenedSection(payload, cards, variant, options.localFixCategories ?? [])],
     ...scanned ? [
       wouldHaveDoneSection(result, payload),
       fixFirstSection(payload),

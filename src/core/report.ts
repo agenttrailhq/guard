@@ -1,4 +1,4 @@
-// cspell:words backticked hellip middot noopener noreferrer ldquo rdquo rsquo
+// cspell:words backticked hellip labelledby middot noopener noreferrer ldquo rdquo rsquo
 /**
  * `agenttrail-guard-report.html` — one self-contained file.
  *
@@ -89,7 +89,32 @@ import type {
 } from "./scan-report.js";
 import { formatCount, formatTokens, type TokenTotals, totalTokens } from "./tokens.js";
 import type { AgentSource, GuardAction } from "./types.js";
-import { isLocalFix, LOCAL_FIX_SERIALIZED } from "./verify/cards.js";
+import { CARD_BUILDERS } from "./verify/builders.js";
+import {
+  type CardBuilders,
+  type CardSentence,
+  type CardView,
+  cardsFor,
+  isLocalFix,
+  LOCAL_FIX_SERIALIZED,
+  pickHeadline,
+  sentence,
+} from "./verify/cards.js";
+import {
+  CARD_COUNT,
+  CATEGORY_TITLES,
+  CODEX_CAVEAT,
+  chipCategories,
+  chipText,
+  evidenceRow,
+  FIXES_FILE,
+  FIXES_FILE_NOTE,
+  leadNotes,
+  MORE_EVIDENCE,
+  READ_NOTE,
+  TONE_LABELS,
+  TONE_TALLY,
+} from "./verify/copy.js";
 import {
   FACT_KEYS,
   FACT_VALUE_ENUMS,
@@ -97,6 +122,7 @@ import {
   VERIFY_STATUSES,
   type Verification,
   type VerifyStatus as VerificationStatus,
+  type VerifyCategory,
 } from "./verify/types.js";
 
 /** Where the source lives. Rendered as text. */
@@ -111,12 +137,26 @@ export const REPORT_FILENAME = "agenttrail-guard-report.html";
 /** The page-content variant's default filename, so it never overwrites the standalone page. */
 export const ARTIFACT_FILENAME = "agenttrail-guard-artifact.html";
 
+/**
+ * The local fix-commands file, written next to the report when a check has an exact command for
+ * this machine. It holds real branch names and paths, so it is never part of the page: the page
+ * names it and shows redacted shapes.
+ */
+export const FIXES_FILENAME = FIXES_FILE;
+
 /** Which page to render. See "Two variants, one body" in the header. */
 export type ReportVariant = "document" | "artifact";
 
 /** How to render. The default is the standalone `document`. */
 export interface RenderOptions {
   readonly variant?: ReportVariant;
+  /**
+   * The categories whose exact fix commands were written to `FIXES_FILENAME`. Their cards name
+   * the file. Empty, or absent, when no file was written.
+   */
+  readonly localFixCategories?: readonly VerifyCategory[];
+  /** The card builders. For tests; the report uses `CARD_BUILDERS`. */
+  readonly cardBuilders?: CardBuilders;
 }
 
 /** The AgentTrail OS block, in Claude Code reports only. Wording lives here, not in markup. */
@@ -393,6 +433,11 @@ export interface ReportPayload {
    * likely-real credentials capped at `MAX_ROWS`.
    */
   readonly verification?: Verification;
+  /**
+   * The nine cards, in page order, built from `verification` above. Every sentence on them comes
+   * from a template, and every fix command is a redacted shape. Absent without verification.
+   */
+  readonly cards?: readonly CardView[];
 }
 
 /** The secrets check, copied field by field, its list capped at `MAX_ROWS`. */
@@ -579,7 +624,12 @@ function payloadFinding(finding: ScanFinding): PayloadFinding {
  * Fields are copied one by one, never spread from the result, so a field added to
  * `ScanResult` reaches the file only when it is added here.
  */
-export function reportPayload(result: ScanResult, meta: ReportMeta): ReportPayload {
+export function reportPayload(
+  result: ScanResult,
+  meta: ReportMeta,
+  /** The card builders. For tests; the report uses `CARD_BUILDERS`. */
+  builders: CardBuilders = CARD_BUILDERS,
+): ReportPayload {
   const ordered = bySeverityThenCount(result.findings);
   const payload: ReportPayload = {
     tool: "agenttrail-guard",
@@ -620,10 +670,13 @@ export function reportPayload(result: ScanResult, meta: ReportMeta): ReportPaylo
         guardrailCount: t.guardrailCount,
       })),
   };
+  // The cards are built from the copy, so they say no more than the file carries.
+  const verification =
+    result.verification === undefined ? undefined : copyVerification(result.verification, true);
   const withVerification: ReportPayload =
-    result.verification === undefined
+    verification === undefined
       ? payload
-      : { ...payload, verification: copyVerification(result.verification, true) };
+      : { ...payload, verification, cards: cardsFor(verification, builders) };
   const skipped = result.skipped;
   if (skipped === undefined) return withVerification;
   return {
@@ -875,6 +928,9 @@ function topBar(payload: ReportPayload): string {
   const scanned = payload.toolCalls > 0;
   const links: [string, string][] = [
     ["overview", "Overview"],
+    ...(scanned && payload.cards !== undefined
+      ? [["what-happened", "What happened"] as [string, string]]
+      : []),
     ...(scanned ? [["fix-first", "Fix first"] as [string, string]] : []),
     ...(payload.owasp.length > 0 ? [["owasp", "OWASP"] as [string, string]] : []),
     ...(scanned ? [["findings", "All findings"] as [string, string]] : []),
@@ -936,17 +992,61 @@ function emptyLead(result: ScanResult): string {
   return `${read}, so nothing was checked. This is not a clean result: check that the folder and the agent are the ones you meant, then scan again.`;
 }
 
-/** The hero: where it came from, the headline, the numbers, and what to do next. */
+/**
+ * The hero: where it came from, the headline, and what to do next.
+ *
+ * `lead` is the card whose verified finding leads, if any. It takes the headline, and the totals
+ * headline moves to the line under it. Without one the hero is exactly the totals hero.
+ */
 function heroSection(
   result: ScanResult,
   payload: ReportPayload,
   meta: ReportMeta,
   variant: ReportVariant,
+  lead?: CardView,
 ): string {
   const origin =
     variant === "artifact"
       ? "Scanned locally &middot; published by the person who ran it"
       : "Scanned locally &middot; nothing uploaded";
+  const fixTarget = payload.findings.some((f) => f.action === "block") ? "fix-first" : "findings";
+  const top = mostSerious(payload);
+  const claim = lead?.headline;
+  // With a verified headline, the totals headline is the line under it.
+  const leadLine =
+    claim === undefined
+      ? "What your coding agent actually did, and which guardrails would have fired."
+      : `${escapeHtml(headline(result))}.`;
+  const next =
+    result.toolCalls === 0
+      ? `<p class="lead">${escapeHtml(emptyLead(result))}</p>
+<p class="provenance">${provenance(result, meta, variant)}</p>
+${copyable("cmd-scan-hero", `agenttrail-guard scan --agent ${result.agent}`, "Copy the scan command")}
+<p class="note">This reads the folder ${escapeHtml(agentName(result.agent))} uses by default. To read another folder, add <code>--dir</code> and its path.</p>`
+      : `<p class="lead${claim === undefined ? "" : " totals"}">${leadLine}</p>
+<p class="provenance">${provenance(result, meta, variant)}</p>${top === undefined ? "" : `\n${top}`}
+<div class="actions">${
+          payload.findings.length > 0
+            ? `\n<a class="button" href="#${fixTarget}">See what to fix first</a>`
+            : ""
+        }
+${outLink(shareLink(payload.shareText, result.agent), "Share on X", "button secondary")}
+</div>
+${copyable("cmd-init-hero", `agenttrail-guard init --agent ${result.agent}`, "Copy the init command")}`;
+  const h1 =
+    claim === undefined
+      ? `<h1>${escapeHtml(headline(result))}</h1>`
+      : `<h1 data-template="${escapeHtml(claim.sentence.template)}">${escapeHtml(claim.sentence.text)}</h1>`;
+  return `<section class="intro" id="overview">
+<p class="origin">${origin}</p>
+<p class="agent">Agent: ${escapeHtml(agentName(result.agent))}</p>
+${h1}
+${next}
+</section>`;
+}
+
+/** The numbers under the hero. */
+function statsSection(result: ScanResult): string {
   const t = result.tokens;
   // Distinct shapes: one shape two guardrails matched is one repeat, as Repeat offenders lists it.
   const repeatedShapes = new Set(result.recurring.map((r) => r.text)).size;
@@ -973,32 +1073,145 @@ function heroSection(
       ),
     );
   }
-  const fixTarget = payload.findings.some((f) => f.action === "block") ? "fix-first" : "findings";
-  const top = mostSerious(payload);
-  const next =
-    result.toolCalls === 0
-      ? `<p class="lead">${escapeHtml(emptyLead(result))}</p>
-<p class="provenance">${provenance(result, meta, variant)}</p>
-${copyable("cmd-scan-hero", `agenttrail-guard scan --agent ${result.agent}`, "Copy the scan command")}
-<p class="note">This reads the folder ${escapeHtml(agentName(result.agent))} uses by default. To read another folder, add <code>--dir</code> and its path.</p>`
-      : `<p class="lead">What your coding agent actually did, and which guardrails would have fired.</p>
-<p class="provenance">${provenance(result, meta, variant)}</p>${top === undefined ? "" : `\n${top}`}
-<div class="actions">${
-          payload.findings.length > 0
-            ? `\n<a class="button" href="#${fixTarget}">See what to fix first</a>`
-            : ""
-        }
-${outLink(shareLink(payload.shareText, result.agent), "Share on X", "button secondary")}
-</div>
-${copyable("cmd-init-hero", `agenttrail-guard init --agent ${result.agent}`, "Copy the init command")}`;
-  return `<section class="intro" id="overview">
-<p class="origin">${origin}</p>
-<p class="agent">Agent: ${escapeHtml(agentName(result.agent))}</p>
-<h1>${escapeHtml(headline(result))}</h1>
-${next}
-</section>
-<section class="stats" aria-label="Summary">
+  return `<section class="stats" aria-label="Summary">
 ${cells.join("\n")}
+</section>`;
+}
+
+// ── Verified on this machine ──────────────────────────────────────────────────
+
+/** One template sentence as a paragraph, naming its template for the copy checks. */
+function sentenceHtml(line: CardSentence, className?: string): string {
+  const cls = className === undefined ? "" : ` class="${className}"`;
+  return `<p${cls} data-template="${escapeHtml(line.template)}">${escapeHtml(line.text)}</p>`;
+}
+
+/** A card's anchor. */
+function cardId(category: VerifyCategory): string {
+  return `check-${category}`;
+}
+
+/**
+ * "What it found, never the values": one row per likely-real credential, by kind, how it got
+ * there and how many transcript files hold it. Nothing when there is none.
+ */
+function evidenceSection(payload: ReportPayload): string {
+  const facts = payload.verification?.categories.secrets.facts;
+  if (facts === undefined || facts.items.length === 0) return "";
+  const rows = facts.items
+    .map((item) => {
+      const row = evidenceRow(item);
+      return `<li><span class="evidence-kind">${escapeHtml(row.kind)}</span><span class="evidence-how">${escapeHtml(row.how)}</span><span class="times">${escapeHtml(row.files)}</span></li>`;
+    })
+    .join("\n");
+  const more = MORE_EVIDENCE.render({ more: facts.moreItems });
+  return `<section class="evidence" id="found" aria-labelledby="found-heading">
+<h2 id="found-heading">What it found, never the values</h2>
+<p class="note">Each credential that looks real, by its kind and how it got into the transcripts. Never the value, and never the name it was given.</p>
+<ul class="evidence-list">
+${rows}
+</ul>${more === undefined ? "" : `\n${sentenceHtml({ template: MORE_EVIDENCE.id, text: more }, "note")}`}
+<p class="note"><a href="#${cardId("secrets")}">What checking found, and how to fix it</a></p>
+</section>`;
+}
+
+/** "Also checked on this machine": six chips, zeros included, each linking to its card. */
+function alsoCheckedSection(
+  payload: ReportPayload,
+  cards: readonly CardView[],
+  lead?: CardView,
+): string {
+  const verification = payload.verification;
+  if (verification === undefined) return "";
+  const chips = chipCategories(lead?.category)
+    .map((category) => {
+      const card = cards.find((c) => c.category === category);
+      if (card === undefined) return "";
+      const chip = chipText(card);
+      const text =
+        chip.count === undefined
+          ? chip.label.text
+          : `${formatCount(chip.count)} ${chip.label.text}`;
+      return `<li><a class="check-chip v-${card.tone}" href="#${cardId(category)}"><span class="chip-title">${escapeHtml(CATEGORY_TITLES[category])}</span><span class="chip-text" data-template="${escapeHtml(chip.label.template)}">${escapeHtml(text)}</span></a></li>`;
+    })
+    .filter((chip) => chip !== "")
+    .join("\n");
+  const notes = leadNotes(verification)
+    .map((line) => sentenceHtml(line, "note"))
+    .join("\n");
+  return `<section class="also-checked" id="also-checked" aria-labelledby="also-checked-heading">
+<h2 id="also-checked-heading">Also checked on this machine</h2>
+${notes}
+<ul class="check-chips">
+${chips}
+</ul>
+</section>`;
+}
+
+/** One card of "What actually happened". */
+function verifiedCard(card: CardView, variant: ReportVariant, localFixes: boolean): string {
+  const title = CATEGORY_TITLES[card.category];
+  const id = cardId(card.category);
+  const count = CARD_COUNT.render(card);
+  const block = (lines: readonly CardSentence[]): string =>
+    lines.map((line) => sentenceHtml(line)).join("\n");
+  const fields: string[] = [];
+  if (card.found.length > 0) {
+    fields.push(`<div><dt>What checking found</dt><dd>\n${block(card.found)}\n</dd></div>`);
+  }
+  if (card.now.length > 0) {
+    fields.push(`<div><dt>Now</dt><dd>\n${block(card.now)}\n</dd></div>`);
+  }
+  const steps = card.fixSteps ?? [];
+  const fileNote = localFixes ? FIXES_FILE_NOTE.render({ variant }) : undefined;
+  if (steps.length > 0 || card.fixes.length > 0 || fileNote !== undefined) {
+    const shapes = card.fixes.map((fix, i) =>
+      copyable(
+        `fix-${card.category}-${i + 1}`,
+        fix.shape,
+        `Copy fix command ${i + 1} for ${title.toLowerCase()}`,
+      ),
+    );
+    const parts = [
+      ...steps.map((line) => sentenceHtml(line)),
+      ...shapes,
+      ...(fileNote === undefined
+        ? []
+        : [
+            `<p class="note fixes-file" data-template="${FIXES_FILE_NOTE.id}">${escapeHtml(fileNote).replace(FIXES_FILENAME, `<code>${FIXES_FILENAME}</code>`)}</p>`,
+          ]),
+    ];
+    fields.push(`<div><dt>Fix</dt><dd>\n${parts.join("\n")}\n</dd></div>`);
+  }
+  const caveat = sentence(CODEX_CAVEAT, card);
+  return `<article class="card verified v-${card.tone}" id="${id}" aria-labelledby="${id}-title">
+<div class="card-head"><span class="tone tone-${card.tone}">${escapeHtml(TONE_LABELS[card.tone])}</span>${count === undefined ? "" : `<span class="times">${escapeHtml(count)}</span>`}</div>
+<h3 id="${id}-title">${escapeHtml(title)}</h3>
+<dl class="verified-facts">
+${fields.join("\n")}
+</dl>${caveat === undefined ? "" : `\n${sentenceHtml(caveat, "note codex-caveat")}`}
+</article>`;
+}
+
+/** "What actually happened": the nine cards, act first, then review, clean and the rest. */
+function whatHappenedSection(
+  payload: ReportPayload,
+  cards: readonly CardView[],
+  variant: ReportVariant,
+  localFixCategories: readonly VerifyCategory[],
+): string {
+  const facts = payload.verification?.categories.secrets.facts;
+  const read = facts === undefined ? undefined : sentence(READ_NOTE, facts);
+  const tally = sentence(TONE_TALLY, cards);
+  const rows = cards
+    .map((card) => verifiedCard(card, variant, localFixCategories.includes(card.category)))
+    .join("\n");
+  return `<section id="what-happened" class="what-happened">
+<div class="section-head"><h2>What actually happened</h2>${tally === undefined ? "" : `<p class="section-meta" data-template="${escapeHtml(tally.template)}">${escapeHtml(tally.text)}</p>`}</div>
+<p class="note">A match means a guardrail fired on a command. Each card says what checking that on this machine found, how things stand now, and how to fix it. The checks only read: they changed nothing on this machine.</p>${read === undefined ? "" : `\n${sentenceHtml(read, "note")}`}
+<div class="verified-cards">
+${rows}
+</div>
 </section>`;
 }
 
@@ -1721,15 +1934,29 @@ export function renderReport(
   options: RenderOptions = {},
 ): string {
   const variant = options.variant ?? "document";
-  const payload = reportPayload(result, meta);
+  const payload = reportPayload(result, meta, options.cardBuilders);
   // A scan that read no tool calls has no result to show or share: the page says so instead.
   const scanned = result.toolCalls > 0;
+  // The verified lead, from the payload's cards: only with verification, and only over a scan
+  // that read tool calls. Without it the page is the totals page, byte for byte.
+  const cards = scanned ? payload.cards : undefined;
+  const lead =
+    cards === undefined || payload.verification === undefined
+      ? undefined
+      : pickHeadline(cards, { ranEvidence: payload.verification.ranEvidence });
   const head = `<title>${escapeHtml(pageTitle(result, meta))}</title>
 <style>${REPORT_STYLES}</style>`;
   // Each section on its own lines; one that has nothing to say is left out entirely.
   const sections = [
     topBar(payload),
-    heroSection(result, payload, meta, variant),
+    heroSection(result, payload, meta, variant, lead),
+    ...(cards === undefined
+      ? []
+      : [evidenceSection(payload), alsoCheckedSection(payload, cards, lead)]),
+    statsSection(result),
+    ...(cards === undefined
+      ? []
+      : [whatHappenedSection(payload, cards, variant, options.localFixCategories ?? [])]),
     ...(scanned
       ? [
           wouldHaveDoneSection(result, payload),

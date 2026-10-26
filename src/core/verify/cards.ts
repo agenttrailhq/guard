@@ -107,6 +107,16 @@ export interface HeadlineClaim {
   readonly sentence: CardSentence;
 }
 
+/**
+ * What a card shows among the "Also checked on this machine" chips: a count, zero included, and
+ * what it counts. A count of commands counts only commands that ran.
+ */
+export interface ChipClaim {
+  readonly count: number;
+  /** What the count is of, without the number: "production databases touched". */
+  readonly label: CardSentence;
+}
+
 /** One category's card: what the report renders. */
 export interface CardView {
   readonly category: VerifyCategory;
@@ -118,12 +128,16 @@ export interface CardView {
   readonly found: readonly CardSentence[];
   /** "Now": the state on this machine today. */
   readonly now: readonly CardSentence[];
+  /** "Fix" in words, shown before the command shapes, such as which step comes first. */
+  readonly fixSteps?: readonly CardSentence[];
   /** Redacted fix command shapes. The exact commands are `LocalFix`es. */
   readonly fixes: readonly FixShape[];
   /** The card states Codex `ran` counts, which may include calls a hook blocked; say so. */
   readonly codexCaveat: boolean;
   /** What this card could put in the headline, if anything. */
   readonly headline?: HeadlineClaim;
+  /** Its chip in "Also checked on this machine". Without one, the chip states the tone. */
+  readonly chip?: ChipClaim;
 }
 
 /** What a card builder may know beyond its own category's result. */

@@ -58,6 +58,18 @@ export const LIGHT_TOKENS = {
   "act-ask-bd": "#fbd391",
   "act-warn-fg": "#52525b",
   "act-warn-bd": "#bfbfc3",
+  "tone-act-fg": "#b91c1c",
+  "tone-act-bg": "#fdecec",
+  "tone-act-bd": "#f9bebe",
+  "tone-review-fg": "#b45309",
+  "tone-review-bg": "#fef5e7",
+  "tone-review-bd": "#fcddaa",
+  "tone-clean-fg": "#15803d",
+  "tone-clean-bg": "#ecfdf3",
+  "tone-clean-bd": "#a6e5bd",
+  "tone-none-fg": "#52525b",
+  "tone-none-bg": "#f1f1f2",
+  "tone-none-bd": "#cdcdd0",
 } as const;
 
 /** Dark-theme colour tokens. Typed off the light set, so a missing key does not compile. */
@@ -103,6 +115,18 @@ export const DARK_TOKENS: { readonly [K in keyof typeof LIGHT_TOKENS]: string } 
   "act-ask-bd": "#835a1a",
   "act-warn-fg": "#a1a1aa",
   "act-warn-bd": "#414452",
+  "tone-act-fg": "#f87171",
+  "tone-act-bg": "#351d2d",
+  "tone-act-bd": "#6a2834",
+  "tone-review-fg": "#fbbf24",
+  "tone-review-bg": "#352c24",
+  "tone-review-bd": "#6c4c1d",
+  "tone-clean-fg": "#4ade80",
+  "tone-clean-bg": "#12301f",
+  "tone-clean-bd": "#1f5a37",
+  "tone-none-fg": "#a1a1aa",
+  "tone-none-bg": "#202536",
+  "tone-none-bd": "#373a49",
 };
 
 /** One custom property per line, so no line of the rendered file grows unbounded. */
@@ -125,6 +149,21 @@ const severityRules = SEVERITIES.map(
 
 const actionRules = ACTIONS.map(
   (a) => `.act-${a} { color: var(--act-${a}-fg); border-color: var(--act-${a}-bd); }`,
+).join("\n");
+
+/** A verified card's tone, and the palette it takes. The two unchecked tones share a neutral. */
+const TONES = [
+  ["act", "act"],
+  ["review", "review"],
+  ["clean", "clean"],
+  ["could-not-check", "none"],
+  ["not-checked", "none"],
+] as const;
+
+const toneRules = TONES.map(
+  ([tone, palette]) =>
+    `.tone-${tone} { color: var(--tone-${palette}-fg); background: var(--tone-${palette}-bg); border-color: var(--tone-${palette}-bd); }
+.v-${tone} { border-left-color: var(--tone-${palette}-fg); }`,
 ).join("\n");
 
 /** The report's whole stylesheet. No `url(…)`, no `@import`, no `@font-face`. */
@@ -421,6 +460,78 @@ td.num { font-weight: 600; }
 .card-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .card-meta { font-size: 13px; color: var(--muted-fg); margin: 6px 0; }
 .example { margin: 6px 0; }
+.lead.totals { color: var(--muted-fg); }
+.evidence, .also-checked { margin-top: 28px; }
+.evidence-list {
+  list-style: none;
+  margin: 10px 0 12px;
+  padding: 0;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--tone-act-fg);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+}
+.evidence-list li {
+  display: grid;
+  grid-template-columns: minmax(10rem, 14rem) 1fr auto;
+  align-items: baseline;
+  gap: 4px 16px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--divider);
+  font-size: 14px;
+}
+.evidence-list li:last-child { border-bottom: 0; }
+.evidence-kind { font-weight: 600; }
+.evidence-how { color: var(--muted-fg); }
+.check-chips {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+  gap: 10px;
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+}
+.check-chip {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  height: 100%;
+  padding: 10px 14px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--border);
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+  color: var(--fg);
+  text-decoration: none;
+}
+.check-chip:hover { border-color: var(--brand-text); }
+.chip-title { font-size: 12px; color: var(--muted-fg); }
+.chip-text { font-size: 14px; font-weight: 600; }
+.verified-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr)); gap: 12px; margin-top: 12px; }
+.verified { border-left: 4px solid var(--border); }
+.verified:target { border-color: var(--brand-text); }
+.verified h3 { font-size: 16px; margin: 8px 0 6px; }
+.tone {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid;
+  border-radius: 999px;
+  padding: 0 9px;
+  font-size: 11.5px;
+  font-weight: 650;
+  line-height: 1.8;
+  white-space: nowrap;
+}
+${toneRules}
+.tone-not-checked { border-style: dashed; }
+.verified-facts { margin: 0; }
+.verified-facts dt { margin: 10px 0 2px; font-size: 12px; font-weight: 600; color: var(--muted-fg); }
+.verified-facts dd { margin: 0; font-size: 14px; }
+.verified-facts dd p { margin: 0 0 6px; }
+.verified-facts .command { margin: 6px 0; }
+.codex-caveat { margin: 10px 0 0; font-size: 13px; }
 .controls { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
 .filters { display: flex; flex-wrap: wrap; gap: 6px; }
 .sort { font-size: 13px; color: var(--muted-fg); }
@@ -559,6 +670,8 @@ footer p { margin: 0 0 6px; max-width: none; }
   .recurring td.num { text-align: left; }
   .legend { grid-template-columns: 1fr; gap: 2px; }
   .legend dd { margin-bottom: 8px; }
+  .evidence-list li { grid-template-columns: 1fr; gap: 2px; }
+  .verified-cards { grid-template-columns: 1fr; }
 }
 @media print {
   html:root:not([data-theme="print"]) {
@@ -569,8 +682,10 @@ ${vars(LIGHT_TOKENS)}
   .sections, .toolbar, .js-only, .actions, .controls, .copy, .share { display: none; }
   .button, .button.secondary { display: inline; background: none; color: var(--brand-text); border: 0; padding: 0; }
   .stat, .tally, .product-note, tr, .card, .col, .risk, .finding-head, .shapes li { break-inside: avoid; }
-  h1, h2, h3, .section-head, summary, h2 + .note, h2 + .lead { break-after: avoid; }
+  .evidence-list li, .check-chip, .verified-facts > div { break-inside: avoid; }
+  h1, h2, h3, .section-head, summary, h2 + .note, h2 + .lead, .verified-facts dt { break-after: avoid; }
   .chip::before { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+  .tone, .verified, .check-chip, .evidence-list { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
   .owasp-ids a[href^="http"]::after, .risk-name a[href^="http"]::after { content: none; }
   .how a[href^="http"]::after, .card a[href^="http"]::after { content: none; }
   a[href^="http"]::after { content: " (" attr(href) ")"; font-size: 11px; color: var(--muted-fg); overflow-wrap: anywhere; }
