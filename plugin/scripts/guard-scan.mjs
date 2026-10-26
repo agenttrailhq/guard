@@ -5705,10 +5705,10 @@ var PATCH_MARKERS = [
 ];
 function patchCandidates(patch) {
   const candidates = [];
-  for (const line of patch.split("\n")) {
+  for (const line2 of patch.split("\n")) {
     for (const { marker, tool } of PATCH_MARKERS) {
-      if (!line.startsWith(marker)) continue;
-      const filePath = line.slice(marker.length).trim();
+      if (!line2.startsWith(marker)) continue;
+      const filePath = line2.slice(marker.length).trim();
       if (filePath !== "") candidates.push({ tool, args: { file_path: filePath } });
       break;
     }
@@ -5796,15 +5796,15 @@ async function readCodexFile(path, source, options) {
   };
   for await (const raw of source.readLines(path)) {
     lineNumber++;
-    const line = raw.trim();
-    if (line.length === 0) continue;
+    const line2 = raw.trim();
+    if (line2.length === 0) continue;
     if (pendingUnparseable) {
       unparseableLines++;
       pendingUnparseable = false;
     }
     let record;
     try {
-      record = JSON.parse(line);
+      record = JSON.parse(line2);
     } catch {
       pendingUnparseable = true;
       continue;
@@ -5908,48 +5908,48 @@ function isIdentPart(code2) {
 function isIdentStart(code2) {
   return code2 >= 65 && code2 <= 90 || code2 >= 97 && code2 <= 122 || code2 === 95 || code2 === 36;
 }
-function readEscape(source, at) {
-  const ch = source[at + 1];
+function readEscape(source, at2) {
+  const ch = source[at2 + 1];
   if (ch === void 0) return void 0;
   switch (ch) {
     case "n":
-      return { text: "\n", end: at + 2 };
+      return { text: "\n", end: at2 + 2 };
     case "t":
-      return { text: "	", end: at + 2 };
+      return { text: "	", end: at2 + 2 };
     case "r":
-      return { text: "\r", end: at + 2 };
+      return { text: "\r", end: at2 + 2 };
     case "b":
-      return { text: "\b", end: at + 2 };
+      return { text: "\b", end: at2 + 2 };
     case "f":
-      return { text: "\f", end: at + 2 };
+      return { text: "\f", end: at2 + 2 };
     case "v":
-      return { text: "\v", end: at + 2 };
+      return { text: "\v", end: at2 + 2 };
     case "0":
-      return { text: "\0", end: at + 2 };
+      return { text: "\0", end: at2 + 2 };
     case "x": {
-      const hex = source.slice(at + 2, at + 4);
+      const hex = source.slice(at2 + 2, at2 + 4);
       if (!/^[0-9a-fA-F]{2}$/.test(hex)) return void 0;
-      return { text: String.fromCharCode(Number.parseInt(hex, 16)), end: at + 4 };
+      return { text: String.fromCharCode(Number.parseInt(hex, 16)), end: at2 + 4 };
     }
     case "u":
-      return readUnicodeEscape(source, at);
+      return readUnicodeEscape(source, at2);
     default:
-      return { text: ch, end: at + 2 };
+      return { text: ch, end: at2 + 2 };
   }
 }
-function readUnicodeEscape(source, at) {
-  if (source[at + 2] === "{") {
-    const close = source.indexOf("}", at + 3);
+function readUnicodeEscape(source, at2) {
+  if (source[at2 + 2] === "{") {
+    const close = source.indexOf("}", at2 + 3);
     if (close === -1) return void 0;
-    const digits = source.slice(at + 3, close);
+    const digits = source.slice(at2 + 3, close);
     if (!/^[0-9a-fA-F]{1,6}$/.test(digits)) return void 0;
     const code2 = Number.parseInt(digits, 16);
     if (code2 > 1114111) return void 0;
     return { text: String.fromCodePoint(code2), end: close + 1 };
   }
-  const hex = source.slice(at + 2, at + 6);
+  const hex = source.slice(at2 + 2, at2 + 6);
   if (!/^[0-9a-fA-F]{4}$/.test(hex)) return void 0;
-  return { text: String.fromCharCode(Number.parseInt(hex, 16)), end: at + 6 };
+  return { text: String.fromCharCode(Number.parseInt(hex, 16)), end: at2 + 6 };
 }
 function readQuoted(source, open) {
   const quote = source[open];
@@ -5971,8 +5971,8 @@ function readQuoted(source, open) {
   }
   return void 0;
 }
-function skipTrivia(source, at) {
-  let i = at;
+function skipTrivia(source, at2) {
+  let i = at2;
   while (i < source.length) {
     const ch = source[i];
     if (ch === " " || ch === "	" || ch === "\n" || ch === "\r") {
@@ -5993,9 +5993,9 @@ function skipTrivia(source, at) {
   }
   return i;
 }
-function skipValue(source, at) {
+function skipValue(source, at2) {
   let depth = 0;
-  let i = at;
+  let i = at2;
   while (i < source.length) {
     const ch = source[i];
     if (ch === '"' || ch === "'") {
@@ -6021,17 +6021,17 @@ function skipValue(source, at) {
   }
   return void 0;
 }
-function readKey(source, at) {
-  const ch = source[at];
+function readKey(source, at2) {
+  const ch = source[at2];
   if (ch === '"' || ch === "'") {
-    const quoted2 = readQuoted(source, at);
+    const quoted2 = readQuoted(source, at2);
     if (quoted2 === void 0) return void 0;
     return { name: quoted2.value, end: quoted2.end };
   }
-  if (!isIdentStart(source.charCodeAt(at))) return void 0;
-  let i = at + 1;
+  if (!isIdentStart(source.charCodeAt(at2))) return void 0;
+  let i = at2 + 1;
   while (i < source.length && isIdentPart(source.charCodeAt(i))) i += 1;
-  return { name: source.slice(at, i), end: i };
+  return { name: source.slice(at2, i), end: i };
 }
 function readObjectLiteral(source, open, key) {
   if (source[open] !== "{") return void 0;
@@ -6069,8 +6069,8 @@ function readObjectLiteral(source, open, key) {
     return void 0;
   }
 }
-function readShimCall(source, at, withWorkdir = false) {
-  const nameStart = at + TOOLS_PREFIX.length;
+function readShimCall(source, at2, withWorkdir = false) {
+  const nameStart = at2 + TOOLS_PREFIX.length;
   if (!isIdentStart(source.charCodeAt(nameStart))) return { end: nameStart };
   let i = nameStart + 1;
   while (i < source.length && isIdentPart(source.charCodeAt(i))) i += 1;
@@ -6444,15 +6444,15 @@ async function readCursorFile(path, source, options) {
   let lineNumber = 0;
   for await (const raw of source.readLines(path)) {
     lineNumber++;
-    const line = raw.trim();
-    if (line.length === 0) continue;
+    const line2 = raw.trim();
+    if (line2.length === 0) continue;
     if (pendingUnparseable) {
       unparseableLines++;
       pendingUnparseable = false;
     }
     let record;
     try {
-      record = JSON.parse(line);
+      record = JSON.parse(line2);
     } catch {
       pendingUnparseable = true;
       continue;
@@ -7368,6 +7368,9 @@ td.num { font-weight: 600; }
 .verified { border-left: 4px solid var(--border); }
 .verified:target { border-color: var(--brand-text); }
 .verified h3 { font-size: 16px; margin: 8px 0 6px; }
+.verified-note { margin: 8px 0 4px; padding: 4px 0 4px 10px; border-left: 3px solid var(--tone-none-fg); }
+.verified-note p { margin: 0; }
+.verified-note-label { font-size: 12px; font-weight: 600; color: var(--muted-fg); }
 .tone {
   display: inline-flex;
   align-items: center;
@@ -7539,12 +7542,12 @@ ${vars(LIGHT_TOKENS)}
   .sections, .toolbar, .js-only, .actions, .controls, .copy, .share { display: none; }
   .button, .button.secondary { display: inline; background: none; color: var(--brand-text); border: 0; padding: 0; }
   .stat, .tally, .product-note, tr, .card, .col, .risk, .finding-head, .shapes li { break-inside: avoid; }
-  .evidence-list li, .check-chip, .verified-facts > div { break-inside: avoid; }
+  .evidence-list li, .check-chip, .verified-facts > div, .verified-note { break-inside: avoid; }
   .verified { break-inside: auto; }
   .verified .card-head { break-after: avoid; }
   h1, h2, h3, .section-head, summary, h2 + .note, h2 + .lead, .verified-facts dt { break-after: avoid; }
   .chip::before { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
-  .tone, .verified, .check-chip, .evidence-list { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+  .tone, .verified, .check-chip, .evidence-list, .verified-note { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
   .owasp-ids a[href^="http"]::after, .risk-name a[href^="http"]::after { content: none; }
   .how a[href^="http"]::after, .card a[href^="http"]::after { content: none; }
   a[href^="http"]::after { content: " (" attr(href) ")"; font-size: 11px; color: var(--muted-fg); overflow-wrap: anywhere; }
@@ -8437,20 +8440,20 @@ function redactHeredocBodies(text2) {
     for (const operator of operators) {
       const stripTabs = operator[1] === "-";
       const delimiter = operator[3];
-      let at = next;
+      let at2 = next;
       let terminator = -1;
       let terminatorEnd = -1;
-      while (at <= text2.length) {
-        const newline = text2.indexOf("\n", at);
+      while (at2 <= text2.length) {
+        const newline = text2.indexOf("\n", at2);
         const end = newline === -1 ? text2.length : newline;
-        const line = text2.slice(at, end);
-        if ((stripTabs ? line.replace(/^\t+/, "") : line).trim() === delimiter) {
-          terminator = at;
+        const line2 = text2.slice(at2, end);
+        if ((stripTabs ? line2.replace(/^\t+/, "") : line2).trim() === delimiter) {
+          terminator = at2;
           terminatorEnd = end;
           break;
         }
         if (newline === -1) break;
-        at = newline + 1;
+        at2 = newline + 1;
       }
       if (terminator === -1) {
         if (next < text2.length) edits.push({ start: next, end: text2.length });
@@ -9297,8 +9300,8 @@ function jsonKeyLength(text2, i, end) {
   while (j < end && (text2[j] === " " || text2[j] === "	")) j++;
   return j < end && text2[j] === ":" ? j + 1 - i : 0;
 }
-function holdsCommand(text2, at, i) {
-  const from = Math.max(at, i - 8);
+function holdsCommand(text2, at2, i) {
+  const from = Math.max(at2, i - 8);
   let p = i - 1;
   while (p >= from && (text2[p] === " " || text2[p] === "	")) p--;
   if (p < from) return false;
@@ -9309,8 +9312,8 @@ function holdsCommand(text2, at, i) {
   while (q >= from && /[A-Za-z]/.test(text2[q])) q--;
   return q >= from && text2[q] === "-" && (q === from || text2[q - 1] === " " || text2[q - 1] === "	");
 }
-function gluedWordStart(text2, i, at) {
-  const from = Math.max(at, i - 64);
+function gluedWordStart(text2, i, at2) {
+  const from = Math.max(at2, i - 64);
   let j = i;
   while (j > from && text2[j - 1] !== " " && text2[j - 1] !== "	") j--;
   return j;
@@ -9319,16 +9322,16 @@ var carried = null;
 function statementStart(text2, end) {
   const windowStart = Math.max(0, end - WINDOW);
   let i;
-  let at;
+  let at2;
   let found;
   let blank;
   let inside;
   let word;
   if (carried && carried.text === text2 && carried.i <= end && carried.i >= windowStart) {
-    ({ i, at, found, blank, inside, word } = carried);
+    ({ i, at: at2, found, blank, inside, word } = carried);
   } else {
     i = windowStart;
-    at = windowStart;
+    at2 = windowStart;
     found = windowStart === 0;
     blank = true;
     inside = null;
@@ -9340,7 +9343,7 @@ function statementStart(text2, end) {
     const next = text2[i + 1];
     if (c === "\\") {
       if (next === "n" || next === "r") {
-        at = i + 2;
+        at2 = i + 2;
         found = true;
         blank = true;
         inside = null;
@@ -9357,7 +9360,7 @@ function statementStart(text2, end) {
         continue;
       }
       if (next === "u" && text2.startsWith("0026", i + 2)) {
-        at = i + 6;
+        at2 = i + 6;
         found = true;
         blank = true;
         i += 6;
@@ -9369,7 +9372,7 @@ function statementStart(text2, end) {
       const key = jsonKeyLength(text2, i, end);
       if (key > 0) {
         i += key;
-        at = i;
+        at2 = i;
         found = true;
         blank = true;
         inside = null;
@@ -9384,15 +9387,15 @@ function statementStart(text2, end) {
       }
       if (quote === inside || !blank && (after === "," || after === "]" || after === "}")) {
         i += quote.length;
-        at = i;
+        at2 = i;
         found = true;
         blank = true;
         inside = null;
         continue;
       }
-      if (blank || holdsCommand(text2, at, i)) {
+      if (blank || holdsCommand(text2, at2, i)) {
         i += quote.length;
-        at = i;
+        at2 = i;
         found = true;
         blank = true;
         inside = quote;
@@ -9401,8 +9404,8 @@ function statementStart(text2, end) {
       }
       const close = closingQuote(text2, quote, i + quote.length, end);
       if (close === -1) {
-        carried = { text: text2, i, at, found, blank, inside, word };
-        return { start: gluedWordStart(text2, i, at), unsure: true, inside };
+        carried = { text: text2, i, at: at2, found, blank, inside, word };
+        return { start: gluedWordStart(text2, i, at2), unsure: true, inside };
       }
       if (isNewline(text2, close)) {
         i += quote.length;
@@ -9414,7 +9417,7 @@ function statementStart(text2, end) {
       continue;
     }
     if (SEPARATORS.has(c)) {
-      at = i + 1;
+      at2 = i + 1;
       found = true;
       blank = true;
       word = false;
@@ -9426,8 +9429,8 @@ function statementStart(text2, end) {
     }
     i++;
   }
-  carried = { text: text2, i, at, found, blank, inside, word };
-  if (found && at >= windowStart) return { start: at, unsure: false, inside };
+  carried = { text: text2, i, at: at2, found, blank, inside, word };
+  if (found && at2 >= windowStart) return { start: at2, unsure: false, inside };
   return {
     start: Math.max(windowStart, end - UNSURE_TAIL),
     unsure: true,
@@ -9501,8 +9504,8 @@ function isMysqlPasswordFlag(match, offset, text2) {
 }
 
 // src/core/scrub.ts
-function redacted(kind, hint) {
-  return hint ? `[REDACTED:${kind}:${hint}]` : `[REDACTED:${kind}]`;
+function redacted(kind2, hint) {
+  return hint ? `[REDACTED:${kind2}:${hint}]` : `[REDACTED:${kind2}]`;
 }
 var ESCAPE_BOUNDARY = String.raw`(?<=\\[nrtfb])|(?<=\\u[0-9A-Fa-f]{4})|(?<=\x1b\[[0-9;:?]{0,32}[@-~])|(?<=\\(?:u001[bB]|x1[bB]|033)\[[0-9;:?]{0,32}[@-~])|(?<=\x1b\([0-9A-Za-z])|(?<=\\(?:u001[bB]|x1[bB]|033)\([0-9A-Za-z])`;
 var LEAD2 = `(?:\\b|${ESCAPE_BOUNDARY})`;
@@ -10335,8 +10338,8 @@ function emptySegment() {
 function holdsSubstitution(text2) {
   return text2.includes("$(") || text2.includes("`");
 }
-function skipQuoted(text2, at, quote) {
-  let i = at + 1;
+function skipQuoted(text2, at2, quote) {
+  let i = at2 + 1;
   while (i < text2.length) {
     const ch = text2[i];
     if (quote !== "'" && ch === "\\") {
@@ -10352,8 +10355,8 @@ function skipQuoted(text2, at, quote) {
   }
   return text2.length;
 }
-function readDelimiter(text2, at) {
-  let i = at;
+function readDelimiter(text2, at2) {
+  let i = at2;
   while (text2[i] === " " || text2[i] === "	") i += 1;
   const quote = text2[i];
   if (quote === "'" || quote === '"') {
@@ -10365,9 +10368,9 @@ function readDelimiter(text2, at) {
   if (match === null) return void 0;
   return { delimiter: match[0].replace(/\\/g, ""), end: i + match[0].length };
 }
-function skipSubstitution(text2, at) {
+function skipSubstitution(text2, at2) {
   let depth = 0;
-  let i = at;
+  let i = at2;
   const pending = [];
   while (i < text2.length) {
     const ch = text2[i];
@@ -10377,9 +10380,9 @@ function skipSubstitution(text2, at) {
         while (i < text2.length) {
           const lineEnd = text2.indexOf("\n", i);
           const stop = lineEnd < 0 ? text2.length : lineEnd;
-          const line = text2.slice(i, stop);
+          const line2 = text2.slice(i, stop);
           i = lineEnd < 0 ? text2.length : lineEnd + 1;
-          if ((doc.stripTabs ? line.replace(/^\t+/, "") : line) === doc.delimiter) break;
+          if ((doc.stripTabs ? line2.replace(/^\t+/, "") : line2) === doc.delimiter) break;
         }
       }
       continue;
@@ -10470,8 +10473,8 @@ function parseShell(text2) {
       }
     }
   };
-  const startWord = (at) => {
-    if (wordStart < 0) wordStart = at;
+  const startWord = (at2) => {
+    if (wordStart < 0) wordStart = at2;
   };
   let i = 0;
   while (i < text2.length) {
@@ -10487,8 +10490,8 @@ function parseShell(text2) {
         while (i < text2.length) {
           const lineEnd = text2.indexOf("\n", i);
           const stop = lineEnd < 0 ? text2.length : lineEnd;
-          const line = text2.slice(i, stop);
-          if ((doc.stripTabs ? line.replace(/^\t+/, "") : line) === doc.delimiter) {
+          const line2 = text2.slice(i, stop);
+          if ((doc.stripTabs ? line2.replace(/^\t+/, "") : line2) === doc.delimiter) {
             end = i;
             after = lineEnd < 0 ? text2.length : lineEnd + 1;
             break;
@@ -10775,11 +10778,11 @@ var PURE_CONSUMERS = /* @__PURE__ */ new Set([
   "printf"
 ]);
 function commandOf(segment) {
-  const at = programIndex(segment.words);
-  const program = segment.words[at];
+  const at2 = programIndex(segment.words);
+  const program = segment.words[at2];
   if (program === void 0) return void 0;
   const name = programName(program);
-  const rest = segment.words.slice(at + 1);
+  const rest = segment.words.slice(at2 + 1);
   if (name !== "git") return { name, sub: "", globals: [], args: rest };
   let k = 0;
   while (k < rest.length && rest[k].value.startsWith("-")) {
@@ -10954,14 +10957,14 @@ function searchPatterns(words2) {
 function segmentRegions(segment, keep) {
   if (keep) return [];
   const words2 = segment.words;
-  const at = programIndex(words2);
-  const program = words2[at];
+  const at2 = programIndex(words2);
+  const program = words2[at2];
   if (program === void 0) return [];
   const name = programName(program);
-  const rest = words2.slice(at + 1);
+  const rest = words2.slice(at2 + 1);
   const regions = [];
-  const blank = (list, kind) => {
-    for (const word of list) regions.push({ start: word.start, end: word.end, kind });
+  const blank = (list, kind2) => {
+    for (const word of list) regions.push({ start: word.start, end: word.end, kind: kind2 });
   };
   if (PRINTERS.has(name))
     blank(
@@ -11312,8 +11315,8 @@ function patchEdits(patch) {
   const files = [];
   let current;
   for (const raw of patch.split("\n")) {
-    const line = raw.replace(/\r$/, "");
-    const marker = /^\*\*\* (Update|Add|Delete) File: (.*)$/.exec(line);
+    const line2 = raw.replace(/\r$/, "");
+    const marker = /^\*\*\* (Update|Add|Delete) File: (.*)$/.exec(line2);
     if (marker !== null) {
       const path = (marker[2] ?? "").trim();
       const mode = marker[1] === "Update" ? "update" : marker[1] === "Add" ? "add" : "delete";
@@ -11321,13 +11324,13 @@ function patchEdits(patch) {
       if (current !== void 0) files.push(current);
       continue;
     }
-    if (line.startsWith("***")) {
-      if (line.startsWith("*** End Patch")) current = void 0;
+    if (line2.startsWith("***")) {
+      if (line2.startsWith("*** End Patch")) current = void 0;
       continue;
     }
     if (current === void 0) continue;
-    if (line.startsWith("+")) current.added.push(line.slice(1));
-    else if (line.startsWith("-")) current.removed.push(line.slice(1));
+    if (line2.startsWith("+")) current.added.push(line2.slice(1));
+    else if (line2.startsWith("-")) current.removed.push(line2.slice(1));
   }
   return files.map((file2) => ({
     path: file2.path,
@@ -11684,7 +11687,7 @@ function confirmedCard(built, facts, verification) {
     tone: finalTone,
     found: [
       ...lead,
-      ...built.found.filter((line) => line.template !== COULD_NOT_CHECK_SENTENCE.id)
+      ...built.found.filter((line2) => line2.template !== COULD_NOT_CHECK_SENTENCE.id)
     ],
     ...unconfirmed === void 0 ? {} : { unconfirmed }
   };
@@ -13050,11 +13053,11 @@ ${edit.added}`)) {
   const before = thresholds(edit.removed);
   const after = thresholds(edit.added);
   if (before.size > 0 && after.size === 0) return true;
-  for (const [key, was2] of before) {
+  for (const [key, was3] of before) {
     const now = after.get(key);
     if (now === void 0) continue;
-    for (let i = 0; i < Math.min(was2.length, now.length); i++) {
-      if (now[i] < was2[i]) return true;
+    for (let i = 0; i < Math.min(was3.length, now.length); i++) {
+      if (now[i] < was3[i]) return true;
     }
   }
   return false;
@@ -13101,11 +13104,11 @@ var TEST_RUN = /\b(?:vitest|jest|mocha|pytest|playwright\s+test|go\s+test|cargo\
 var FAILED_LINE = /\bFAIL(?:ED)?\b|✗|×|\b[1-9]\d* (?:failed|failing)\b/;
 var NAME_BEFORE = /[\s/\\"'`([]/;
 var NAME_AFTER = /[\s:"'`)\],>]/;
-function namesFile(line, name) {
+function namesFile(line2, name) {
   if (name === "") return false;
-  for (let at = line.indexOf(name); at >= 0; at = line.indexOf(name, at + 1)) {
-    const before = line[at - 1];
-    const after = line[at + name.length];
+  for (let at2 = line2.indexOf(name); at2 >= 0; at2 = line2.indexOf(name, at2 + 1)) {
+    const before = line2[at2 - 1];
+    const after = line2[at2 + name.length];
     if ((before === void 0 || NAME_BEFORE.test(before)) && (after === void 0 || NAME_AFTER.test(after))) {
       return true;
     }
@@ -13113,7 +13116,7 @@ function namesFile(line, name) {
   return false;
 }
 function namesAsFailing(output, name) {
-  return output.split(/\r?\n/).some((line) => FAILED_LINE.test(line) && namesFile(line, name));
+  return output.split(/\r?\n/).some((line2) => FAILED_LINE.test(line2) && namesFile(line2, name));
 }
 function shellWrittenPaths(command) {
   const out = [];
@@ -13243,11 +13246,11 @@ async function checkTests(input) {
         before.set(key, set);
       }
     }
-    const was2 = thresholds(edit.removed);
+    const was3 = thresholds(edit.removed);
     const now = thresholds(edit.added);
     let lowered = false;
     for (const [key, values] of now) {
-      const old = was2.get(key) ?? [];
+      const old = was3.get(key) ?? [];
       for (let i = 0; i < Math.min(old.length, values.length); i++) {
         if (values[i] >= old[i]) continue;
         lowered = true;
@@ -13592,13 +13595,13 @@ function hasPush(command) {
 function pushedRefs(output) {
   const out = [];
   for (const raw of output.split(/\r?\n/)) {
-    const line = raw.trimStart();
-    const range = /^\+?\s*([0-9a-f]{7,64})\.\.\.?([0-9a-f]{7,64})\s+(\S+)\s+->\s+(\S+)/.exec(line);
+    const line2 = raw.trimStart();
+    const range = /^\+?\s*([0-9a-f]{7,64})\.\.\.?([0-9a-f]{7,64})\s+(\S+)\s+->\s+(\S+)/.exec(line2);
     if (range !== null) {
       out.push({ from: range[1], to: range[2], branch: range[4] });
       continue;
     }
-    const created = /^\*\s+\[new branch\]\s+(\S+)\s+->\s+(\S+)/.exec(line);
+    const created = /^\*\s+\[new branch\]\s+(\S+)\s+->\s+(\S+)/.exec(line2);
     if (created !== null)
       out.push({ from: void 0, to: void 0, branch: created[2] });
   }
@@ -14117,7 +14120,7 @@ var RepoProbe = class {
   }
 };
 function lines(text2) {
-  return text2.split(/\r?\n/).map((line) => line.trim()).filter((line) => line !== "");
+  return text2.split(/\r?\n/).map((line2) => line2.trim()).filter((line2) => line2 !== "");
 }
 function entries(text2) {
   return text2.split("\0").filter((entry) => entry !== "");
@@ -14128,8 +14131,8 @@ import { isAbsolute as isAbsolute3, join as join5, resolve as resolve2 } from "p
 
 // src/core/verify/shell-words.ts
 var SHELLS2 = /* @__PURE__ */ new Set(["sh", "bash", "zsh", "dash", "ksh"]);
-function skipQuoted2(text2, at, quote) {
-  let i = at + 1;
+function skipQuoted2(text2, at2, quote) {
+  let i = at2 + 1;
   while (i < text2.length) {
     const ch = text2[i];
     if (quote !== "'" && ch === "\\") {
@@ -14141,9 +14144,9 @@ function skipQuoted2(text2, at, quote) {
   }
   return text2.length;
 }
-function skipSubstitution2(text2, at) {
+function skipSubstitution2(text2, at2) {
   let depth = 0;
-  let i = at;
+  let i = at2;
   while (i < text2.length) {
     const ch = text2[i];
     if (ch === "'" || ch === '"' || ch === "`") {
@@ -14193,8 +14196,8 @@ function shellItems(text2) {
     words2 = [];
     writes = [];
   };
-  const begin = (at) => {
-    if (start < 0) start = at;
+  const begin = (at2) => {
+    if (start < 0) start = at2;
   };
   let i = 0;
   while (i < text2.length) {
@@ -14212,9 +14215,9 @@ function shellItems(text2) {
         while (i < text2.length) {
           const lineEnd = text2.indexOf("\n", i);
           const stop = lineEnd < 0 ? text2.length : lineEnd;
-          const line = text2.slice(i, stop);
+          const line2 = text2.slice(i, stop);
           i = lineEnd < 0 ? text2.length : lineEnd + 1;
-          if ((doc.stripTabs ? line.replace(/^\t+/, "") : line) === doc.delimiter) break;
+          if ((doc.stripTabs ? line2.replace(/^\t+/, "") : line2) === doc.delimiter) break;
         }
       }
       continue;
@@ -14380,12 +14383,12 @@ var GIT_VALUE_OPTIONS2 = /* @__PURE__ */ new Set([
   "--exec-path"
 ]);
 function gitCommand(words2) {
-  const at = commandStart(words2).index;
-  const program = words2[at];
+  const at2 = commandStart(words2).index;
+  const program = words2[at2];
   if (program === void 0 || programName2(program) !== "git") return void 0;
   const folders = [];
   let elsewhere = false;
-  let k = at + 1;
+  let k = at2 + 1;
   while (k < words2.length && words2[k].value.startsWith("-")) {
     const option = words2[k].value;
     if (option.startsWith("--git-dir") || option.startsWith("--work-tree")) elsewhere = true;
@@ -14414,13 +14417,13 @@ function operands2(args2, valueOptions = /* @__PURE__ */ new Set()) {
   return out;
 }
 function directoryChange(words2) {
-  const at = commandStart(words2).index;
-  const program = words2[at];
+  const at2 = commandStart(words2).index;
+  const program = words2[at2];
   if (program === void 0) return { kind: "none" };
   const name = programName2(program);
   if (name === "popd") return { kind: "unknown" };
   if (name !== "cd" && name !== "pushd") return { kind: "none" };
-  const targets = operands2(words2.slice(at + 1));
+  const targets = operands2(words2.slice(at2 + 1));
   if (targets.length === 0) return name === "cd" ? { kind: "home" } : { kind: "unknown" };
   const target = targets[0];
   if (targets.length > 1 || target.expands || target.value === "-") return { kind: "unknown" };
@@ -14534,12 +14537,12 @@ function innerCommands(command) {
   return out;
 }
 function gitFolder(folder, options, home) {
-  let at = folder;
+  let at2 = folder;
   for (const option of options) {
     if (option.expands) return void 0;
-    at = resolvePath(at, option.value, home);
+    at2 = resolvePath(at2, option.value, home);
   }
-  return at;
+  return at2;
 }
 function sessionFolder(cwd) {
   return cwd !== null && cwd !== "" && isAbsolute3(cwd) ? resolve2(cwd) : void 0;
@@ -15014,19 +15017,19 @@ var KUBECTL_VALUE_OPTIONS = /* @__PURE__ */ new Set([
 var LAUNCHERS2 = /* @__PURE__ */ new Set(["npx", "pnpm", "yarn", "bunx", "bun"]);
 function databaseTargets(words2, scratchRoots, view, depth = 0) {
   const start = commandStart(words2);
-  let at = start.index;
-  let program = words2[at];
+  let at2 = start.index;
+  let program = words2[at2];
   if (program === void 0 || depth > 3) return [];
   let name = programName2(program);
   if (LAUNCHERS2.has(name)) {
-    at += 1;
-    while (words2[at] !== void 0 && ["exec", "dlx", "run", "x"].includes(words2[at].value))
-      at += 1;
-    program = words2[at];
+    at2 += 1;
+    while (words2[at2] !== void 0 && ["exec", "dlx", "run", "x"].includes(words2[at2].value))
+      at2 += 1;
+    program = words2[at2];
     if (program === void 0) return [];
     name = programName2(program);
   }
-  const args2 = words2.slice(at + 1);
+  const args2 = words2.slice(at2 + 1);
   const values = args2.map((a) => a.value);
   const relay = (rest, host) => databaseTargets(rest, scratchRoots, view, depth + 1).map(
     (t) => host === "remote" ? { ...t, host } : t.noHostGiven === true ? { ...t, host: "local" } : t
@@ -16200,14 +16203,14 @@ var SECRETS_READ = {
   id: "secrets.read",
   render: (f) => {
     if (f.filesRead === 0) return void 0;
-    let line = `Read ${countOf(f.filesRead, "transcript file")} again`;
+    let line2 = `Read ${countOf(f.filesRead, "transcript file")} again`;
     if (f.reposChecked > 0) {
-      line += ` and searched the git-tracked files of ${countOf(f.reposChecked, "repo")} the sessions ran in, with read-only git`;
+      line2 += ` and searched the git-tracked files of ${countOf(f.reposChecked, "repo")} the sessions ran in, with read-only git`;
     }
     if (f.reposNotChecked > 0) {
-      line += `; ${countOf(f.reposNotChecked, "repo")} the sessions named could not be searched`;
+      line2 += `; ${countOf(f.reposNotChecked, "repo")} the sessions named could not be searched`;
     }
-    return `${line}.`;
+    return `${line2}.`;
   }
 };
 var SECRETS_COUNT = {
@@ -16424,7 +16427,7 @@ var SKIP_LINE = new RegExp(
 );
 var NEGATED = /\b(?:never|don'?t|do\s+not|does\s+not|must\s+not|mustn'?t|should\s+not|shouldn'?t|can'?t|cannot|avoid|forbidden|not\s+allowed|no\s+longer|refuse|instead\s+of|rather\s+than)\b/i;
 function tellsToSkip(text2) {
-  return text2.split(/\r?\n/).some((line) => SKIP_LINE.test(line) && !NEGATED.test(line));
+  return text2.split(/\r?\n/).some((line2) => SKIP_LINE.test(line2) && !NEGATED.test(line2));
 }
 var SKIP_GREP = "grep -n -i -E 'no-verify|HUSKY|SKIP=|hooks'";
 var SKIP_GREP_PARTS = [
@@ -16881,6 +16884,530 @@ var CARD_BUILDERS = {
   ...COMMAND_CHECK_CARDS
 };
 
+// src/core/verify/notes.ts
+function at(facts, path) {
+  let value = facts;
+  for (const key of path) {
+    if (value === null || typeof value !== "object" || Array.isArray(value)) return void 0;
+    if (!Object.hasOwn(value, key)) return void 0;
+    value = value[key];
+  }
+  return value;
+}
+function asCount(value) {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : void 0;
+}
+function isPath(read) {
+  return Array.isArray(read);
+}
+function readCount(facts, read) {
+  if (isPath(read)) return asCount(at(facts, read));
+  if ("equals" in read) {
+    const value2 = at(facts, read.path);
+    return typeof value2 === "string" ? value2 === read.equals ? 1 : 0 : void 0;
+  }
+  const list = at(facts, read.list);
+  if (!Array.isArray(list)) return void 0;
+  const [key, value] = read.where;
+  let n2 = 0;
+  for (const item of list) {
+    const held = at(item, [key]);
+    if (!Array.isArray(held)) return void 0;
+    if (held.includes(value)) n2 += 1;
+  }
+  return n2;
+}
+function readCounts(facts, reads) {
+  const out = {};
+  for (const [name, read] of Object.entries(reads)) {
+    const n2 = readCount(facts, read);
+    if (n2 === void 0) return void 0;
+    out[name] = n2;
+  }
+  return out;
+}
+function is2(n2) {
+  return n2 === 1 ? "is" : "are";
+}
+function was2(n2) {
+  return n2 === 1 ? "was" : "were";
+}
+function line(parts) {
+  const made = parts.filter((p) => p !== void 0);
+  return made.length === 0 ? void 0 : made.join(" ");
+}
+function notLookedUp(n2, one, many) {
+  return n2 > 0 ? `${countOf(n2, one, many)} could not be looked up.` : void 0;
+}
+var CODEX_NOTE_TEXT = CODEX_CAVEAT.render({ codexCaveat: true }) ?? "";
+function reviewByHand(n2) {
+  return n2 === 1 ? "It cannot be checked from this machine, so review it by hand." : "They cannot be checked from this machine, so review them by hand.";
+}
+function kind(spec) {
+  return spec;
+}
+var NO_VERIFY = kind({
+  reads: {
+    commits: ["noVerify", "commits"],
+    notIdentified: ["noVerify", "notIdentified"],
+    withoutHooks: ["noVerify", "withoutHooks"],
+    onMain: ["noVerify", "onMain"],
+    offMain: ["noVerify", "offMain"],
+    noMain: ["noVerify", "noMainToCheck"],
+    gone: ["noVerify", "gone"],
+    couldNotCheck: ["noVerify", "couldNotCheck"],
+    unknown: ["noVerify", "calls", "unknown"]
+  },
+  ran: true,
+  template: {
+    id: "note.no-verify",
+    render: (f) => {
+      const withHooks2 = f.onMain + f.offMain + f.noMain + f.gone;
+      const settled = f.notIdentified + f.couldNotCheck + f.unknown === 0;
+      return line([
+        withHooks2 > 0 ? `${countOf(withHooks2, "commit")} skipped the hooks of a repo that has them; ${formatCount(f.onMain)} ${is2(f.onMain)} on main now.` : void 0,
+        withHooks2 === 0 && f.withoutHooks > 0 && settled ? `False positive: ${f.withoutHooks === 1 ? "the commit" : `all ${formatCount(f.withoutHooks)} commits`} that skipped hooks ${was2(f.withoutHooks)} in repos with no commit hook, so no check was skipped.` : void 0,
+        f.noMain > 0 ? `${countOf(f.noMain, "commit")} ${is2(f.noMain)} in a repo with no main branch to check against.` : void 0,
+        notLookedUp(f.notIdentified + f.couldNotCheck, "commit")
+      ]);
+    }
+  }
+});
+var HOOKS_OFF = kind({
+  reads: {
+    off: ["hooksPath", "off"],
+    on: ["hooksPath", "on"],
+    couldNotCheck: ["hooksPath", "couldNotCheck"],
+    unknown: ["hooksPath", "calls", "unknown"],
+    oneCommand: ["husky", "ran"]
+  },
+  ran: true,
+  template: {
+    id: "note.hooks-off",
+    render: (f) => line([
+      f.off > 0 ? `Hooks are switched off now in ${countOf(f.off, "repo")}.` : void 0,
+      f.off === 0 && f.on > 0 && f.couldNotCheck + f.unknown === 0 ? "Hooks are on now in every repo where they were switched." : void 0,
+      f.oneCommand > 0 ? `${countOf(f.oneCommand, "command")} turned Husky off for that command only.` : void 0,
+      notLookedUp(f.couldNotCheck, "repo")
+    ])
+  }
+});
+var BRANCHES = kind({
+  reads: {
+    deleted: ["branches", "deleted"],
+    notIdentified: ["branches", "notIdentified"],
+    recoverable: ["branches", "recoverable"],
+    onAnotherRef: ["branches", "onAnotherRef"],
+    gone: ["branches", "gone"],
+    couldNotCheck: ["branches", "couldNotCheck"],
+    unknown: ["branches", "calls", "unknown"]
+  },
+  ran: true,
+  template: {
+    id: "note.branches",
+    render: (f) => line([
+      f.recoverable > 0 ? `${countOf(f.recoverable, "deleted branch", "deleted branches")} can still be recovered by commit id.` : void 0,
+      f.gone > 0 ? `${countOf(f.gone, "deleted branch", "deleted branches")} ${is2(f.gone)} gone from the object store.` : void 0,
+      f.recoverable + f.gone === 0 && f.onAnotherRef > 0 && f.notIdentified + f.couldNotCheck + f.unknown === 0 ? "Nothing lost: every deleted branch's commits are still on another branch or tag." : void 0,
+      notLookedUp(f.notIdentified + f.couldNotCheck, "deleted branch", "deleted branches")
+    ])
+  }
+});
+var STASHES = kind({
+  reads: {
+    cleared: ["stashes", "cleared"],
+    notIdentified: ["stashes", "notIdentified"],
+    recoverable: ["stashes", "recoverable"],
+    listed: ["stashes", "listed"],
+    gone: ["stashes", "gone"],
+    couldNotCheck: ["stashes", "couldNotCheck"],
+    unknown: ["stashes", "calls", "unknown"]
+  },
+  ran: true,
+  template: {
+    id: "note.stashes",
+    render: (f) => line([
+      f.recoverable > 0 ? `${countOf(f.recoverable, "dropped stash", "dropped stashes")} can still be recovered by commit id.` : void 0,
+      f.gone > 0 ? `${countOf(f.gone, "dropped stash", "dropped stashes")} ${is2(f.gone)} gone from the object store.` : void 0,
+      f.recoverable + f.gone + f.cleared === 0 && f.listed > 0 && f.notIdentified + f.couldNotCheck + f.unknown === 0 ? "Nothing lost: every dropped stash is back in the stash list." : void 0,
+      f.cleared > 0 ? `${countOf(f.cleared, "stash clear")} ran; what ${f.cleared === 1 ? "it" : "they"} removed is not checked.` : void 0,
+      notLookedUp(f.notIdentified + f.couldNotCheck, "dropped stash", "dropped stashes")
+    ])
+  }
+});
+var DISCARDS = kind({
+  reads: {
+    paths: ["discards", "paths"],
+    ownCopy: ["discards", "ownCopy"],
+    agentEdited: ["discards", "agentEdited"],
+    mainCheckout: ["discards", "mainCheckout"],
+    couldNotCheck: ["discards", "couldNotCheck"],
+    unknown: ["discards", "calls", "unknown"]
+  },
+  ran: true,
+  template: {
+    id: "note.discards",
+    render: (f) => {
+      if (f.paths === 0) return void 0;
+      if (f.ownCopy === f.paths && f.couldNotCheck + f.unknown === 0) {
+        return f.paths === 1 ? "The discarded path was in the agent's own worktree or a scratch copy." : `All ${formatCount(f.paths)} discarded paths were in the agent's own worktree or a scratch copy.`;
+      }
+      const parts = [];
+      if (f.ownCopy > 0) parts.push(`${formatCount(f.ownCopy)} in the agent's own copy`);
+      if (f.agentEdited > 0) parts.push(`${formatCount(f.agentEdited)} the agent had edited`);
+      if (f.mainCheckout > 0) {
+        parts.push(
+          `${formatCount(f.mainCheckout)} in the main checkout with no agent edit on record`
+        );
+      }
+      if (f.couldNotCheck > 0) parts.push(`${formatCount(f.couldNotCheck)} could not be placed`);
+      return parts.length === 0 ? void 0 : `Of ${countOf(f.paths, "discarded path")}: ${parts.join(", ")}.`;
+    }
+  }
+});
+var RM_TARGETS = kind({
+  reads: {
+    targets: ["rm", "targets"],
+    scratch: ["rm", "classes", "scratch"],
+    untracked: ["rm", "classes", "untracked"],
+    home: ["rm", "classes", "home"],
+    unguarded: ["rm", "classes", "unguarded-variable"],
+    trackedGone: ["rm", "trackedGone"],
+    trackedPartlyBack: ["rm", "trackedPartlyBack"],
+    couldNotCheck: ["rm", "couldNotCheck"],
+    unknown: ["rm", "calls", "unknown"]
+  },
+  ran: true,
+  template: {
+    id: "note.rm-targets",
+    render: (f) => {
+      if (f.targets === 0) return void 0;
+      const missing = f.trackedGone + f.trackedPartlyBack;
+      return line([
+        f.scratch === f.targets ? "All scratch, temp or build folders." : f.scratch * 2 > f.targets ? "Mostly scratch, temp or build folders." : f.scratch > 0 ? `${formatCount(f.scratch)} of ${countOf(f.targets, "target")} ${was2(f.scratch)} scratch, temp or build folders.` : void 0,
+        missing > 0 ? `${countOf(missing, "tracked target")} still ${missing === 1 ? "has" : "have"} files missing.` : f.couldNotCheck + f.unknown === 0 ? "No tracked file is missing." : void 0,
+        f.untracked > 0 ? `${countOf(f.untracked, "target")} held untracked files in a repo.` : void 0,
+        f.home > 0 ? `${countOf(f.home, "target")} ${was2(f.home)} under the home folder, outside a repo.` : void 0,
+        f.unguarded > 0 ? `${countOf(f.unguarded, "target")} came from a variable with no guard.` : void 0,
+        f.couldNotCheck > 0 ? `${countOf(f.couldNotCheck, "target")} could not be checked.` : void 0
+      ]);
+    }
+  }
+});
+var DATABASES = kind({
+  reads: {
+    local: ["databases", "classes", "local"],
+    scratch: ["databases", "classes", "scratch"],
+    other: ["databases", "classes", "other"],
+    unresolved: ["databases", "classes", "unresolved"],
+    unknown: ["databases", "calls", "unknown"]
+  },
+  ran: true,
+  template: {
+    id: "note.databases",
+    render: (f) => {
+      if (f.local + f.scratch + f.other + f.unresolved === 0) return void 0;
+      return line([
+        f.other > 0 ? `${countOf(f.other, "database")} aimed at ${was2(f.other)} neither local nor scratch.` : f.unresolved + f.unknown === 0 ? `Only local or scratch databases: ${formatCount(f.local)} local, ${formatCount(f.scratch)} scratch.` : void 0,
+        f.unresolved > 0 ? `${countOf(f.unresolved, "database")} could not be placed.` : void 0
+      ]);
+    }
+  }
+});
+function secretsBy(id, via, how) {
+  return kind({
+    reads: {
+      likelyReal: ["classes", "likely-real"],
+      shown: { list: ["items"], where: ["via", via] },
+      more: ["moreItems"],
+      read: ["filesRead"],
+      notRead: ["filesNotRead"],
+      unplaced: ["unplaced"],
+      outputOnly: ["setAside", "unnamedOutputOnly"],
+      notShaped: ["setAside", "namedNotCredentialShaped"]
+    },
+    ran: false,
+    template: {
+      id,
+      render: (f) => {
+        if (f.shown > 0) {
+          return `Likely-real credentials ${how}: ${f.more > 0 ? "at least " : ""}${formatCount(f.shown)}.`;
+        }
+        if (f.read === 0 || f.more + f.notRead + f.unplaced + f.outputOnly + f.notShaped > 0) {
+          return void 0;
+        }
+        return f.likelyReal > 0 ? `None of the likely-real credentials found ${was2(f.likelyReal)} ${how}.` : "No likely-real credential was found in the transcripts.";
+      }
+    }
+  });
+}
+var SECRETS_PRINTED = secretsBy(
+  "note.secrets-printed",
+  "printed-by-command",
+  "printed by a command"
+);
+var SECRETS_TYPED = secretsBy("note.secrets-typed", "typed-into-command", "typed into a command");
+var IAM = kind({
+  reads: { iam: ["iamChanges"] },
+  ran: true,
+  template: {
+    id: "note.iam",
+    render: (f) => f.iam > 0 ? `${countOf(f.iam, "IAM change")} ran. ${reviewByHand(f.iam)}` : void 0
+  }
+});
+var TERRAFORM = kind({
+  reads: { changes: ["terraformChanges"], autoApprove: ["terraformAutoApprove"] },
+  ran: true,
+  template: {
+    id: "note.terraform",
+    render: (f) => f.changes > 0 ? `${countOf(f.changes, "Terraform command")} that change${f.changes === 1 ? "s" : ""} infrastructure or state ran, ${formatCount(f.autoApprove)} with auto-approve. ${reviewByHand(f.changes)}` : void 0
+  }
+});
+var INFRA = kind({
+  reads: { infra: ["infraMatches"] },
+  ran: true,
+  template: {
+    id: "note.infra",
+    render: (f) => f.infra > 0 ? `${countOf(f.infra, "production infrastructure command or edit", "production infrastructure commands or edits")} ran. ${reviewByHand(f.infra)}` : void 0
+  }
+});
+var TESTS_DELETED = kind({
+  reads: {
+    deleted: ["testFilesDeleted"],
+    afterFailing: ["deletedAfterFailing"],
+    notKnown: ["deletedFailureUnknown"]
+  },
+  ran: true,
+  template: {
+    id: "note.tests-deleted",
+    render: (f) => f.deleted > 0 ? line([
+      `${countOf(f.deleted, "test file")} deleted, ${formatCount(f.afterFailing)} after a test run reported ${f.afterFailing === 1 ? "it" : "them"} failing.`,
+      f.notKnown > 0 ? `For ${formatCount(f.notKnown)}, whether ${f.notKnown === 1 ? "it" : "they"} failed first is not known.` : void 0
+    ]) : void 0
+  }
+});
+var TESTS_CONFIG = kind({
+  reads: {
+    lowered: ["thresholdsLowered"],
+    reverts: ["autoUpdateReverts"],
+    excludes: ["excludesAdded"],
+    rewritten: ["configsRewritten"],
+    unconfirmed: ["unconfirmed"]
+  },
+  ran: true,
+  template: {
+    id: "note.tests-config",
+    render: (f) => line([
+      f.lowered > 0 ? `${countOf(f.lowered, "coverage threshold")} lowered.` : f.reverts > 0 && f.rewritten + f.unconfirmed === 0 ? `No coverage floor went down: the ${countOf(f.reverts, "threshold drop")} undid an automatic raise.` : void 0,
+      f.excludes > 0 ? `${countOf(f.excludes, "exclude")} added to a test or coverage list.` : void 0,
+      f.rewritten > 0 ? `${countOf(f.rewritten, "test config")} rewritten whole, so whether a threshold went down cannot be told.` : void 0
+    ])
+  }
+});
+var TESTS_PASS = kind({
+  reads: { passWithNoTests: ["passWithNoTests"], forcedTrue: ["ciStepsForcedTrue"] },
+  ran: true,
+  template: {
+    id: "note.tests-pass",
+    render: (f) => line([
+      f.passWithNoTests > 0 ? `${countOf(f.passWithNoTests, "test run or config", "test runs or configs")} allowed passing with no tests.` : void 0,
+      f.forcedTrue > 0 ? `${countOf(f.forcedTrue, "CI step")} ${was2(f.forcedTrue)} made to pass whatever ${f.forcedTrue === 1 ? "it returns" : "they return"}.` : void 0
+    ])
+  }
+});
+var PUSHES = kind({
+  reads: {
+    pushes: ["pushesToMain"],
+    onMain: ["commitsOnMain"],
+    notChecked: ["pushesNotChecked"]
+  },
+  ran: true,
+  template: {
+    id: "note.pushes",
+    render: (f) => line([
+      f.pushes > 0 ? `${countOf(f.pushes, "push", "pushes")} went straight to main or master, carrying ${countOf(f.onMain, "commit")} still on it.` : void 0,
+      f.notChecked > 0 ? `${countOf(f.notChecked, "push", "pushes")} could not be checked.` : void 0
+    ])
+  }
+});
+var UPLOADS = kind({
+  reads: { uploads: ["uploads"], localOnly: ["localOnly"], unconfirmed: ["unconfirmed"] },
+  ran: true,
+  template: {
+    id: "note.uploads",
+    render: (f) => f.uploads > 0 ? `${countOf(f.uploads, "upload")} to a host off this machine ran.` : f.localOnly > 0 && f.unconfirmed === 0 ? `False positive: the ${countOf(f.localOnly, "upload-shaped call")} that ran went to this machine or LocalStack.` : void 0
+  }
+});
+var TUNNELS = kind({
+  reads: {
+    started: ["tunnelsStarted"],
+    running: ["tunnelsRunning"],
+    listed: { path: ["processCheck"], equals: "checked" }
+  },
+  ran: true,
+  template: {
+    id: "note.tunnels",
+    render: (f) => line([
+      f.started > 0 ? `${countOf(f.started, "tunnel")} ${was2(f.started)} started to expose this machine.` : void 0,
+      f.running > 0 ? `${countOf(f.running, "tunnel program")} ${is2(f.running)} running now.` : f.listed === 1 ? "No known tunnel or relay program was seen running now." : "Whether one is running now could not be checked."
+    ])
+  }
+});
+var INSTALLS = kind({
+  reads: {
+    installs: ["installs"],
+    restores: ["lockfileRestores"],
+    unconfirmed: ["unconfirmed"]
+  },
+  ran: true,
+  template: {
+    id: "note.installs",
+    render: (f) => f.installs > 0 ? `${countOf(f.installs, "package install")} ran, not counting ${countOf(f.restores, "lockfile restore")}. Package age is not checked: the scan runs offline.` : f.restores > 0 && f.unconfirmed === 0 ? `False positive: the ${countOf(f.restores, "install")} that ran only restored a lockfile.` : void 0
+  }
+});
+var NOTE_KINDS = {
+  "no-verify": NO_VERIFY,
+  "hooks-off": HOOKS_OFF,
+  branches: BRANCHES,
+  stashes: STASHES,
+  discards: DISCARDS,
+  "rm-targets": RM_TARGETS,
+  databases: DATABASES,
+  "secrets-printed": SECRETS_PRINTED,
+  "secrets-typed": SECRETS_TYPED,
+  iam: IAM,
+  terraform: TERRAFORM,
+  infra: INFRA,
+  "tests-deleted": TESTS_DELETED,
+  "tests-config": TESTS_CONFIG,
+  "tests-pass": TESTS_PASS,
+  pushes: PUSHES,
+  uploads: UPLOADS,
+  tunnels: TUNNELS,
+  installs: INSTALLS
+};
+var NOTE_RULES = {
+  // Skipped safety checks.
+  "gb.git-no-verify": { category: "skipped-checks", kind: "no-verify" },
+  "gb.hooks-disable": { category: "skipped-checks", kind: "hooks-off" },
+  // Lost work.
+  "wt.branch-force-delete": { category: "lost-work", kind: "branches" },
+  "wt.stash-drop": { category: "lost-work", kind: "stashes" },
+  "wt.checkout-discard": { category: "lost-work", kind: "discards" },
+  "wt.restore-path": { category: "lost-work", kind: "discards" },
+  "wt.reset-hard": { category: "lost-work", kind: "discards" },
+  // Destructive commands.
+  "require-approval-rm-rf": { category: "destructive", kind: "rm-targets" },
+  "dd.rm-rf-absolute": { category: "destructive", kind: "rm-targets" },
+  "dd.database-drop": { category: "destructive", kind: "databases" },
+  "block-destructive-sql": { category: "destructive", kind: "databases" },
+  // Secrets in transcripts.
+  "se.env-print": { category: "secrets", kind: "secrets-printed" },
+  "se.token-print": { category: "secrets", kind: "secrets-printed" },
+  "se.secret-manager-read": { category: "secrets", kind: "secrets-printed" },
+  "se.credential-file": { category: "secrets", kind: "secrets-printed" },
+  "block-env-file-read": { category: "secrets", kind: "secrets-printed" },
+  "warn-op-read-secret": { category: "secrets", kind: "secrets-printed" },
+  "block-hardcoded-secrets": { category: "secrets", kind: "secrets-typed" },
+  // Cloud and permissions.
+  "ps.iam-grant": { category: "cloud", kind: "iam" },
+  "pi.terraform-auto-approve": { category: "cloud", kind: "terraform" },
+  "pi.terraform-state-mutate": { category: "cloud", kind: "terraform" },
+  // Production infrastructure.
+  "pi.kubectl-delete": { category: "prod-infra", kind: "infra" },
+  "pi.prod-namespace": { category: "prod-infra", kind: "infra" },
+  "pi.helm-release": { category: "prod-infra", kind: "infra" },
+  "pi.cloud-resource-delete": { category: "prod-infra", kind: "infra" },
+  "pi.deploy-to-prod": { category: "prod-infra", kind: "infra" },
+  "block-prod-config-edit": { category: "prod-infra", kind: "infra" },
+  // Gaming tests.
+  "ti.test-file-delete": { category: "tests", kind: "tests-deleted" },
+  "ti.test-config-edit": { category: "tests", kind: "tests-config" },
+  "ti.coverage-bypass": { category: "tests", kind: "tests-pass" },
+  // Unreviewed code.
+  "block-force-push": { category: "unreviewed", kind: "pushes" },
+  // Data leaving the machine.
+  "ex.file-upload": { category: "egress", kind: "uploads" },
+  "se.secret-egress": { category: "egress", kind: "uploads" },
+  "ex.paste-service": { category: "egress", kind: "uploads" },
+  "ex.reverse-shell": { category: "egress", kind: "uploads" },
+  "ex.tunnel-expose": { category: "egress", kind: "tunnels" },
+  // Dependencies.
+  "flag-dependency-install": { category: "dependencies", kind: "installs" },
+  "rce.unverified-package": { category: "dependencies", kind: "installs" }
+};
+var HIDING_COUNTS = [["couldHide"], ["hidingCalls"]];
+var NOTE_FACT_KEYS = [
+  .../* @__PURE__ */ new Set([
+    "dependencies",
+    "hidingForms",
+    ...HIDING_COUNTS.flat(),
+    ...Object.values(NOTE_KINDS).flatMap(
+      (k) => Object.values(k.reads).flatMap(
+        (read) => isPath(read) ? [...read] : "equals" in read ? [...read.path, read.equals] : [...read.list, ...read.where]
+      )
+    )
+  ])
+];
+var NOTE_COULD_NOT_CHECK = {
+  id: "note.could-not-check",
+  render: () => "Could not confirm: the check behind this could not finish on this machine."
+};
+var NOTE_COULD_HIDE = {
+  id: "note.could-hide",
+  render: () => "Could not confirm: commands that ran could have run others this reading does not take apart."
+};
+function hidingIn(facts) {
+  const named = at(facts, ["hidingForms"]);
+  const forms = Array.isArray(named) ? HIDING_FORMS.filter((form) => named.includes(form)) : [];
+  const counted6 = HIDING_COUNTS.some((path) => (asCount(at(facts, path)) ?? 0) > 0);
+  return { forms, any: forms.length > 0 || counted6 };
+}
+function unconfirmedLine(rule, facts, card, verification) {
+  if (card?.unconfirmed !== void 0) return sentence(UNCONFIRMED_SENTENCE, card.unconfirmed);
+  const hiding = hidingIn(facts);
+  if (hiding.forms.length > 0) {
+    return sentence(UNCONFIRMED_SENTENCE, { reason: "hiding-forms", forms: hiding.forms });
+  }
+  if (hiding.any) return sentence(NOTE_COULD_HIDE, void 0);
+  if (card?.tone === "could-not-check") return sentence(NOTE_COULD_NOT_CHECK, void 0);
+  if (NOTE_KINDS[rule.kind].ran && !verification.resultsRecorded) {
+    return sentence(UNCONFIRMED_SENTENCE, { reason: "no-output", forms: [] });
+  }
+  return void 0;
+}
+function factsFor(rule, verification) {
+  if (rule.category === "dependencies") {
+    return verification.dependencies;
+  }
+  return verification.categories[rule.category].facts;
+}
+function verifiedNote(finding, verification, cards) {
+  if (finding.source !== "library" || !Object.hasOwn(NOTE_RULES, finding.ruleId)) return void 0;
+  const rule = NOTE_RULES[finding.ruleId];
+  const card = rule.category === "dependencies" ? void 0 : cards.find((c) => c.category === rule.category);
+  if (rule.category !== "dependencies" && (card === void 0 || card.tone === "not-checked")) {
+    return void 0;
+  }
+  const facts = factsFor(rule, verification);
+  const note = (made2) => made2 === void 0 ? void 0 : { ruleId: finding.ruleId, category: rule.category, sentence: made2 };
+  if (rule.category === "dependencies" && facts === void 0) return void 0;
+  const unconfirmed = unconfirmedLine(rule, facts, card, verification);
+  if (unconfirmed !== void 0) return note(unconfirmed);
+  const spec = NOTE_KINDS[rule.kind];
+  const counts = readCounts(facts, spec.reads);
+  if (counts === void 0) return void 0;
+  const made = sentence(spec.template, counts);
+  if (made === void 0) return void 0;
+  return verification.ranEvidence === "output-record" && spec.ran ? note({ template: made.template, text: `${made.text} ${CODEX_NOTE_TEXT}` }) : note(made);
+}
+function verifiedNotes(findings, verification, cards) {
+  return findings.flatMap((finding) => {
+    const made = verifiedNote(finding, verification, cards);
+    return made === void 0 ? [] : [made];
+  });
+}
+
 // src/core/verify/share-copy.ts
 var SHARE_PHRASES = {
   "likely-real-credentials": [
@@ -17014,16 +17541,16 @@ function packLabel(category) {
 }
 function wrapLines(text2, width) {
   const lines2 = [];
-  let line = "";
+  let line2 = "";
   for (const word of text2.split(/\s+/).filter(Boolean)) {
-    if (line === "") line = word;
-    else if (line.length + 1 + word.length <= width) line = `${line} ${word}`;
+    if (line2 === "") line2 = word;
+    else if (line2.length + 1 + word.length <= width) line2 = `${line2} ${word}`;
     else {
-      lines2.push(line);
-      line = word;
+      lines2.push(line2);
+      line2 = word;
     }
   }
-  if (line !== "") lines2.push(line);
+  if (line2 !== "") lines2.push(line2);
   return lines2;
 }
 var SECRET_KIND_SET = new Set(SECRET_KINDS);
@@ -17217,10 +17744,12 @@ function reportPayload(result, meta, builders = CARD_BUILDERS) {
       guardrailCount: t.guardrailCount
     }))
   };
+  const notes = copied === void 0 || cards === void 0 ? [] : verifiedNotes(payload.findings, copied, cards);
   const withVerification = copied === void 0 ? payload : {
     ...payload,
     verification: honestVerification(copied),
-    ...cards === void 0 ? {} : { cards }
+    ...cards === void 0 ? {} : { cards },
+    ...notes.length === 0 ? {} : { notes }
   };
   const skipped = result.skipped;
   if (skipped === void 0) return withVerification;
@@ -17362,8 +17891,8 @@ function copyable(id, command, name) {
   return `<div class="command"><code id="${escapeHtml(id)}">${escapeHtml(command)}</code><button type="button" class="copy js-only" data-copy="${escapeHtml(id)}" data-label="Copy" aria-label="${escapeHtml(name)}" hidden>Copy</button></div>`;
 }
 function stat(value, label, note) {
-  const noteHtml = note === void 0 ? "" : `<div class="stat-note">${escapeHtml(note)}</div>`;
-  return `<div class="stat"><div class="stat-value">${escapeHtml(value)}</div><div class="stat-label">${escapeHtml(label)}</div>${noteHtml}</div>`;
+  const noteHtml2 = note === void 0 ? "" : `<div class="stat-note">${escapeHtml(note)}</div>`;
+  return `<div class="stat"><div class="stat-value">${escapeHtml(value)}</div><div class="stat-label">${escapeHtml(label)}</div>${noteHtml2}</div>`;
 }
 function firstSentence(lines2) {
   const text2 = lines2.join(" ");
@@ -17375,9 +17904,9 @@ function libraryText(text2, className = "library-text") {
   return `<p class="${className}">${html}</p>`;
 }
 var MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-function readableTime(at) {
+function readableTime(at2) {
   const two = (n2) => String(n2).padStart(2, "0");
-  return `${at.getUTCDate()} ${MONTHS[at.getUTCMonth()]} ${at.getUTCFullYear()}, ${two(at.getUTCHours())}:${two(at.getUTCMinutes())} UTC`;
+  return `${at2.getUTCDate()} ${MONTHS[at2.getUTCMonth()]} ${at2.getUTCFullYear()}, ${two(at2.getUTCHours())}:${two(at2.getUTCMinutes())} UTC`;
 }
 function headline(result) {
   if (result.toolCalls === 0) {
@@ -17494,9 +18023,9 @@ function statsSection(result) {
 ${cells.join("\n")}
 </section>`;
 }
-function sentenceHtml(line, className) {
+function sentenceHtml(line2, className) {
   const cls = className === void 0 ? "" : ` class="${className}"`;
-  return `<p${cls} data-template="${escapeHtml(line.template)}">${escapeHtml(line.text)}</p>`;
+  return `<p${cls} data-template="${escapeHtml(line2.template)}">${escapeHtml(line2.text)}</p>`;
 }
 function cardId(category) {
   return `check-${category}`;
@@ -17542,7 +18071,7 @@ function alsoCheckedSection(payload, cards, lead) {
   const chips = chipsFor(cards, lead).map(
     (chip) => `<li><a class="check-chip v-${chip.tone}" href="#${cardId(chip.category)}"><span class="chip-title">${escapeHtml(chip.title)}</span><span class="chip-text" data-template="${escapeHtml(chip.template)}">${escapeHtml(chip.text)}</span></a></li>`
   ).join("\n");
-  const notes = leadNotes(verification).map((line) => sentenceHtml(line, "note")).join("\n");
+  const notes = leadNotes(verification).map((line2) => sentenceHtml(line2, "note")).join("\n");
   return `<section class="also-checked" id="also-checked" aria-labelledby="also-checked-heading">
 <h2 id="also-checked-heading">Also checked on this machine</h2>
 ${notes}
@@ -17555,7 +18084,7 @@ function verifiedCard(card, variant, localFixes) {
   const title = CATEGORY_TITLES[card.category];
   const id = cardId(card.category);
   const count2 = cardCount(card);
-  const block = (lines2) => lines2.map((line) => sentenceHtml(line)).join("\n");
+  const block = (lines2) => lines2.map((line2) => sentenceHtml(line2)).join("\n");
   const fields = [];
   if (card.found.length > 0) {
     fields.push(`<div><dt>What checking found</dt><dd>
@@ -17578,7 +18107,7 @@ ${block(card.now)}
       )
     );
     const parts = [
-      ...steps.map((line) => sentenceHtml(line)),
+      ...steps.map((line2) => sentenceHtml(line2)),
       ...shapes,
       ...fileNote === void 0 ? [] : [
         `<p class="note fixes-file" data-template="${FIXES_FILE_NOTE.id}">${escapeHtml(fileNote).replace(FIXES_FILENAME, `<code>${FIXES_FILENAME}</code>`)}</p>`
@@ -17803,7 +18332,18 @@ function ranks(findings) {
     )
   };
 }
-function findingRow(f, index, r, agent) {
+function noteTone(note, cards) {
+  if (note.sentence.template === UNCONFIRMED_SENTENCE.id || note.sentence.template === NOTE_COULD_NOT_CHECK.id || note.sentence.template === NOTE_COULD_HIDE.id) {
+    return "could-not-check";
+  }
+  return cards.find((card) => card.category === note.category)?.tone;
+}
+function noteHtml(note, tone) {
+  const cls = tone === void 0 ? "verified-note" : `verified-note v-${tone}`;
+  return `<div class="${cls}"><p class="verified-note-label">What checking found on this machine</p>
+${sentenceHtml(note.sentence)}</div>`;
+}
+function findingRow(f, index, r, agent, note) {
   const group = f.category === void 0 ? YOUR_GUARDRAILS : packLabel(f.category);
   const examples = f.examples.map(
     (example) => `<li><code>${escapeHtml(example.text)}</code><span class="times">${escapeHtml(formatCount(example.count))}&times;</span></li>`
@@ -17828,7 +18368,8 @@ ${f.owasp.map((id) => `<li>${outLink(owaspRiskLink(id, agent), riskLabel(id))}</
 <div class="finding-meta">${severityBadge(f.severity)} ${actionChip(f.action)}<span class="num" data-label="Matches">${escapeHtml(formatCount(f.count))}&times;</span></div>
 </div>
 <div class="guardrail-id"><code>${escapeHtml(f.ruleId)}</code> &middot; <span class="group">${escapeHtml(group)}</span></div>${risks}
-<details class="commands"><summary>The ${escapeHtml(shapes)} behind it</summary>
+<details class="commands"><summary>The ${escapeHtml(shapes)} behind it${note === void 0 ? "" : ", and what checking found"}</summary>${note === void 0 ? "" : `
+${noteHtml(note.note, note.tone)}`}
 <ul class="shapes">
 ${examples}${more}
 </ul>
@@ -17851,7 +18392,12 @@ function findingsSection(payload, variant) {
     return `<section id="findings"><h2>All findings</h2><p class="empty">No guardrail matched anything in these sessions.</p></section>`;
   }
   const r = ranks(payload.findings);
-  const rows = payload.findings.map((f, i) => findingRow(f, i, r, payload.agent)).join("\n");
+  const cards = payload.cards ?? [];
+  const noteFor = (f) => {
+    const note = f.source === "library" ? payload.notes?.find((n2) => n2.ruleId === f.ruleId) : void 0;
+    return note === void 0 ? void 0 : { note, tone: noteTone(note, cards) };
+  };
+  const rows = payload.findings.map((f, i) => findingRow(f, i, r, payload.agent, noteFor(f))).join("\n");
   const truncated = payload.moreFindings > 0 ? `
 <p class="note">${escapeHtml(formatCount(payload.moreFindings))} further guardrails matched and are not listed here.</p>` : "";
   const filters = [
@@ -17988,16 +18534,16 @@ function redactionSection() {
 function coverageNote(result) {
   if (result.notRead === 0) return "";
   const notRead = `${escapeHtml(formatCount(result.notRead))} further transcript file${result.notRead === 1 ? "" : "s"}`;
-  const was2 = result.notRead === 1 ? "was" : "were";
+  const was3 = result.notRead === 1 ? "was" : "were";
   const tail = `Every count above is of what was read, not of everything that exists.`;
   const open = `<p class="note"><strong>Coverage limit.</strong>`;
   switch (result.agent) {
     case "cursor":
-      return `${open} This reader opens each session&#39;s file, and the files of the sub-agents that session started, in each project&#39;s <code>agent-transcripts</code> folder. ${notRead} in those folders ${was2} not read. ${tail}</p>`;
+      return `${open} This reader opens each session&#39;s file, and the files of the sub-agents that session started, in each project&#39;s <code>agent-transcripts</code> folder. ${notRead} in those folders ${was3} not read. ${tail}</p>`;
     case "codex":
-      return `${open} This reader opens the session files Codex files by date, in <code>~/.codex/sessions/&lt;year&gt;/&lt;month&gt;/&lt;day&gt;/</code>. ${notRead} elsewhere under the sessions root ${was2} not read. ${tail}</p>`;
+      return `${open} This reader opens the session files Codex files by date, in <code>~/.codex/sessions/&lt;year&gt;/&lt;month&gt;/&lt;day&gt;/</code>. ${notRead} elsewhere under the sessions root ${was3} not read. ${tail}</p>`;
     case "claude":
-      return `${open} This reader opens each session&#39;s transcript and the sub-agent transcripts in its <code>subagents</code> folder, folding a sub-agent&#39;s actions into the session that started it. ${notRead} elsewhere under the projects root &mdash; a stray file, or one nested somewhere it does not walk &mdash; ${was2} not read. ${tail}</p>`;
+      return `${open} This reader opens each session&#39;s transcript and the sub-agent transcripts in its <code>subagents</code> folder, folding a sub-agent&#39;s actions into the session that started it. ${notRead} elsewhere under the projects root &mdash; a stray file, or one nested somewhere it does not walk &mdash; ${was3} not read. ${tail}</p>`;
     default:
       return unhandledAgent(result.agent);
   }
@@ -18238,13 +18784,14 @@ function verifiedLines(payload) {
     const title = CATEGORY_TITLES[card.category];
     const count2 = cardCount(card);
     if (count2 !== void 0) lines2.push(`${title}  ${count2.text}`);
-    for (const line of [...card.found, ...card.now, ...card.fixSteps ?? []]) {
-      lines2.push(`${title}  ${line.text}`);
+    for (const line2 of [...card.found, ...card.now, ...card.fixSteps ?? []]) {
+      lines2.push(`${title}  ${line2.text}`);
     }
     for (const fix of card.fixes) lines2.push(`${title}  ${fix.shape}`);
     const caveat = sentence(CODEX_CAVEAT, card);
     if (caveat !== void 0) lines2.push(`${title}  ${caveat.text}`);
   }
+  for (const note of payload.notes ?? []) lines2.push(`${note.ruleId}  ${note.sentence.text}`);
   return lines2;
 }
 function renderJson(result, meta) {
@@ -18407,9 +18954,9 @@ function readState(text2) {
 function productLineDue(stateText, surface, now) {
   const last = readState(stateText)[surface];
   if (typeof last !== "string") return true;
-  const at = Date.parse(last);
-  if (Number.isNaN(at) || at > now.getTime()) return true;
-  return now.getTime() - at >= PRODUCT_LINE.intervalHours * 36e5;
+  const at2 = Date.parse(last);
+  if (Number.isNaN(at2) || at2 > now.getTime()) return true;
+  return now.getTime() - at2 >= PRODUCT_LINE.intervalHours * 36e5;
 }
 function recordProductLine(stateText, surface, now) {
   const state = readState(stateText);
@@ -18790,7 +19337,7 @@ var fileLineSource = {
       crlfDelay: Number.POSITIVE_INFINITY
     });
     try {
-      for await (const line of rl) yield line;
+      for await (const line2 of rl) yield line2;
     } finally {
       rl.close();
     }
@@ -18829,11 +19376,11 @@ async function parseSession(path, fallbackSessionId, source = fileLineSource) {
   const toolResults = /* @__PURE__ */ new Map();
   let currentPromptUuid = "";
   for await (const raw of source.readLines(path)) {
-    const line = raw.trim();
-    if (line.length === 0) continue;
+    const line2 = raw.trim();
+    if (line2.length === 0) continue;
     let obj;
     try {
-      obj = JSON.parse(line);
+      obj = JSON.parse(line2);
     } catch {
       skippedLines++;
       continue;
@@ -18934,8 +19481,8 @@ async function sniff(path, source) {
   const id = { cwd: null, gitBranch: null, version: null, sessionId: null };
   let messageCount = 0;
   let sniffed = 0;
-  for await (const line of source.readLines(path)) {
-    const trimmed = line.trim();
+  for await (const line2 of source.readLines(path)) {
+    const trimmed = line2.trim();
     if (trimmed.length === 0) continue;
     messageCount++;
     const complete = id.cwd && id.gitBranch && id.version && id.sessionId;
@@ -19408,8 +19955,8 @@ function cursorLine(record) {
   }
   return { pieces, workingDirs: [] };
 }
-function lineText(agent, line) {
-  const trimmed = line.trim();
+function lineText(agent, line2) {
+  const trimmed = line2.trim();
   if (trimmed === "") return EMPTY;
   let record;
   try {
@@ -19476,12 +20023,12 @@ function alignValues(text2, literals) {
     const literal = literals[index + 1];
     let from = start + 1;
     for (; ; ) {
-      const at = text2.indexOf(literal, from);
-      if (at < 0 || at + literal.length >= tailStart) return false;
-      spans[index] = [start, at];
-      if (place2(index + 1, at + literal.length)) return true;
+      const at2 = text2.indexOf(literal, from);
+      if (at2 < 0 || at2 + literal.length >= tailStart) return false;
+      spans[index] = [start, at2];
+      if (place2(index + 1, at2 + literal.length)) return true;
       if (steps > MAX_ALIGN_STEPS) return false;
-      from = at + 1;
+      from = at2 + 1;
     }
   };
   return place2(0, head.length) ? spans : void 0;
@@ -19504,12 +20051,12 @@ function findValues(text2) {
   if (spans === void 0) return { values: [], unaligned: true };
   const values = [];
   labels.forEach((label, i) => {
-    const kind = kindOf(label);
+    const kind2 = kindOf(label);
     const span = spans[i];
-    if (kind === void 0 || span === void 0) return;
+    if (kind2 === void 0 || span === void 0) return;
     values.push({
       value: clean.slice(span[0], span[1]),
-      kind,
+      kind: kind2,
       after: clean.slice(span[1], span[1] + CONTEXT)
     });
   });
@@ -19748,8 +20295,8 @@ async function classifySecrets(input, keep) {
   const empty = /* @__PURE__ */ new Set();
   for (const [index, path] of input.files.entries()) {
     try {
-      for await (const line of input.readLines(path)) {
-        const { pieces, workingDirs: named } = lineText(input.agent, line);
+      for await (const line2 of input.readLines(path)) {
+        const { pieces, workingDirs: named } = lineText(input.agent, line2);
         for (const cwd of named) workingDirs.add(cwd);
         for (const piece of pieces) {
           const remember = piece.text.length >= MIN_REMEMBERED_TEXT;
@@ -19972,8 +20519,8 @@ import { join as join9, relative as relative4 } from "path";
 // src/core/scrub-transcripts.ts
 import { createHash as createHash2 } from "crypto";
 var SCRUB_MARKER = "REDACTED-BY-AGENTTRAIL";
-function scrubPlaceholder(kind) {
-  return `[${SCRUB_MARKER}:${kind}]`;
+function scrubPlaceholder(kind2) {
+  return `[${SCRUB_MARKER}:${kind2}]`;
 }
 function sha256(bytes) {
   return createHash2("sha256").update(bytes).digest("hex");
@@ -20008,9 +20555,9 @@ function formsOf(targets) {
   }
   return forms;
 }
-function escapedAt(text2, at) {
+function escapedAt(text2, at2) {
   let slashes = 0;
-  for (let i = at - 1; i >= 0 && text2.charCodeAt(i) === 92; i--) slashes += 1;
+  for (let i = at2 - 1; i >= 0 && text2.charCodeAt(i) === 92; i--) slashes += 1;
   return slashes % 2 === 1;
 }
 function replaceInString(inner, forms, counts) {
@@ -20020,43 +20567,43 @@ function replaceInString(inner, forms, counts) {
     let out = "";
     let from = 0;
     for (; ; ) {
-      const at = text2.indexOf(form.raw, from);
-      if (at < 0) break;
-      if (escapedAt(text2, at)) {
-        out += text2.slice(from, at + 1);
-        from = at + 1;
+      const at2 = text2.indexOf(form.raw, from);
+      if (at2 < 0) break;
+      if (escapedAt(text2, at2)) {
+        out += text2.slice(from, at2 + 1);
+        from = at2 + 1;
         continue;
       }
-      out += text2.slice(from, at) + form.placeholder;
-      from = at + form.raw.length;
+      out += text2.slice(from, at2) + form.placeholder;
+      from = at2 + form.raw.length;
       counts.set(form.kind, (counts.get(form.kind) ?? 0) + 1);
     }
     text2 = out + text2.slice(from);
   }
   return text2;
 }
-function replaceInLine(line, forms, counts) {
+function replaceInLine(line2, forms, counts) {
   let out = "";
   let i = 0;
-  while (i < line.length) {
-    const open = line.indexOf('"', i);
+  while (i < line2.length) {
+    const open = line2.indexOf('"', i);
     if (open < 0) {
-      out += line.slice(i);
+      out += line2.slice(i);
       break;
     }
     let end = open + 1;
-    while (end < line.length) {
-      const code2 = line.charCodeAt(end);
+    while (end < line2.length) {
+      const code2 = line2.charCodeAt(end);
       if (code2 === 92) end += 2;
       else if (code2 === 34) break;
       else end += 1;
     }
-    if (end >= line.length) {
-      out += line.slice(i);
+    if (end >= line2.length) {
+      out += line2.slice(i);
       break;
     }
-    out += line.slice(i, open + 1);
-    out += replaceInString(line.slice(open + 1, end), forms, counts);
+    out += line2.slice(i, open + 1);
+    out += replaceInString(line2.slice(open + 1, end), forms, counts);
     out += '"';
     i = end + 1;
   }
@@ -20082,9 +20629,9 @@ function holdsValue(parsed2, values) {
   }
   return stack.length > 0;
 }
-function parsed(line) {
+function parsed(line2) {
   try {
-    return { value: JSON.parse(line) };
+    return { value: JSON.parse(line2) };
   } catch {
     return void 0;
   }
@@ -20109,35 +20656,35 @@ function planFileScrub(text2, targets, held = []) {
   let linesChanged = 0;
   let linesLeft = 0;
   let linesIncomplete = 0;
-  for (const [index, line] of lines2.entries()) {
-    if (!forms.some((form) => line.includes(form.raw))) {
-      if (heldValues.length > 0 && line.includes("\\")) {
-        const decoded = parsed(line);
+  for (const [index, line2] of lines2.entries()) {
+    if (!forms.some((form) => line2.includes(form.raw))) {
+      if (heldValues.length > 0 && line2.includes("\\")) {
+        const decoded = parsed(line2);
         if (decoded !== void 0 && holdsValue(decoded.value, heldValues)) linesLeft += 1;
       }
       continue;
     }
     const lineCounts = /* @__PURE__ */ new Map();
-    const next = replaceInLine(line, forms, lineCounts);
-    if (next === line) {
-      const before = parsed(line);
+    const next = replaceInLine(line2, forms, lineCounts);
+    if (next === line2) {
+      const before = parsed(line2);
       if (before === void 0 || holdsValue(before.value, values)) linesLeft += 1;
       continue;
     }
     const after = parsed(next);
-    if (parsed(line) === void 0 || after === void 0) {
+    if (parsed(line2) === void 0 || after === void 0) {
       linesLeft += 1;
       continue;
     }
     lines2[index] = next;
     linesChanged += 1;
-    for (const [kind, n2] of lineCounts) counts.set(kind, (counts.get(kind) ?? 0) + n2);
+    for (const [kind2, n2] of lineCounts) counts.set(kind2, (counts.get(kind2) ?? 0) + n2);
     if (holdsValue(after.value, values)) linesIncomplete += 1;
   }
   const replaced = {};
   let total = 0;
-  for (const [kind, n2] of [...counts].sort(([a], [b]) => a.localeCompare(b))) {
-    replaced[kind] = n2;
+  for (const [kind2, n2] of [...counts].sort(([a], [b]) => a.localeCompare(b))) {
+    replaced[kind2] = n2;
     total += n2;
   }
   const changed = linesChanged > 0;
@@ -20285,7 +20832,7 @@ function planFiles(files, found, held, scrubIO) {
 }
 function replacementText(plan) {
   const kinds = Object.entries(plan.replaced);
-  const parts = kinds.map(([kind, n2]) => `${formatCount(n2)} ${kind}`).join(", ");
+  const parts = kinds.map(([kind2, n2]) => `${formatCount(n2)} ${kind2}`).join(", ");
   return `${formatCount(plan.total)} ${plan.total === 1 ? "replacement" : "replacements"}: ${parts}`;
 }
 function counted4(n2, singular, plural2 = `${singular}s`) {
@@ -20618,7 +21165,7 @@ async function runScrub(input) {
   }
   lines2.push("");
   lines2.push("To put a file back as it was:");
-  for (const line of restoreLines.slice(0, MAX_RESTORE_LINES_SHOWN)) lines2.push(`  ${line}`);
+  for (const line2 of restoreLines.slice(0, MAX_RESTORE_LINES_SHOWN)) lines2.push(`  ${line2}`);
   if (restoreLines.length > MAX_RESTORE_LINES_SHOWN) {
     lines2.push(c.dim(`  and ${formatCount(restoreLines.length - MAX_RESTORE_LINES_SHOWN)} more`));
   }
@@ -20980,7 +21527,7 @@ function renderSummary(result, colorsEnabled, reportPath, fixesPath, checksFaile
   };
   const actionTone = (action, text2) => action === "block" ? c.red(text2) : action === "require_approval" ? c.yellow(text2) : c.dim(text2);
   const plural2 = (n2, word) => `${formatCount(n2)} ${word}${n2 === 1 ? "" : "s"}`;
-  const was2 = (n2) => n2 === 1 ? "was" : "were";
+  const was3 = (n2) => n2 === 1 ? "was" : "were";
   out.push(
     [
       agentName(result.agent),
@@ -21012,14 +21559,14 @@ function renderSummary(result, colorsEnabled, reportPath, fixesPath, checksFaile
   if (result.quarantined > 0) {
     out.push(
       c.yellow(
-        `${plural2(result.quarantined, "file")} yielded no session and ${was2(result.quarantined)} skipped.`
+        `${plural2(result.quarantined, "file")} yielded no session and ${was3(result.quarantined)} skipped.`
       )
     );
   }
   if (result.notRead > 0) {
     out.push(
       c.dim(
-        `${plural2(result.notRead, "further transcript file")} ${was2(result.notRead)} not read; see the report for why.`
+        `${plural2(result.notRead, "further transcript file")} ${was3(result.notRead)} not read; see the report for why.`
       )
     );
   }
@@ -21096,7 +21643,7 @@ function verificationSummary(verification) {
   const parts = [];
   if (secrets.status === "not-checked") parts.push("no transcript files to check for secrets");
   else {
-    let line = `${counted5(facts.classes["likely-real"], "likely-real credential")} in ${counted5(facts.filesRead, "transcript file")}`;
+    let line2 = `${counted5(facts.classes["likely-real"], "likely-real credential")} in ${counted5(facts.filesRead, "transcript file")}`;
     const also = [];
     const fixtures = facts.classes["committed-fixture"];
     const placeholders = facts.classes.placeholder;
@@ -21108,8 +21655,8 @@ function verificationSummary(verification) {
       );
     }
     if (local > 0) also.push(counted5(local, "local dev value"));
-    if (also.length > 0) line += ` (and ${also.join(", ")})`;
-    parts.push(line);
+    if (also.length > 0) line2 += ` (and ${also.join(", ")})`;
+    parts.push(line2);
     const { unnamedOutputOnly, namedNotCredentialShaped } = facts.setAside;
     if (unnamedOutputOnly + namedNotCredentialShaped > 0) {
       const why = [];
@@ -21140,9 +21687,9 @@ function verificationSummary(verification) {
   const skipped = verification.categories["skipped-checks"];
   if ("facts" in skipped && skipped.facts !== void 0) {
     const files = skipped.facts.instructions;
-    let line = `${counted5(files.read, "instruction or memory file")} read for an instruction to skip checks, keeping only yes or no`;
-    if (files.couldNotRead > 0) line += ` (${formatCount(files.couldNotRead)} could not be read)`;
-    parts.push(line);
+    let line2 = `${counted5(files.read, "instruction or memory file")} read for an instruction to skip checks, keeping only yes or no`;
+    if (files.couldNotRead > 0) line2 += ` (${formatCount(files.couldNotRead)} could not be read)`;
+    parts.push(line2);
   }
   const calls = verification.matchedCalls;
   if (!verification.resultsRecorded) {
@@ -21184,12 +21731,12 @@ function renderReview(result, colorsEnabled, reportPath, mcpDisclosures = [], fi
   for (const group of groups) {
     out.push("");
     out.push(c.bold(group.label));
-    for (const line of group.lines) out.push(`  ${line}`);
+    for (const line2 of group.lines) out.push(`  ${line2}`);
   }
   if (mcpDisclosures.length > 0) {
     out.push("");
     out.push(c.bold("MCP payload values (redacted to <value> in the file; shown here to review)"));
-    for (const line of mcpDisclosures) out.push(`  ${line}`);
+    for (const line2 of mcpDisclosures) out.push(`  ${line2}`);
   }
   out.push("");
   out.push(
@@ -21492,7 +22039,7 @@ function createRealScanIO() {
         crlfDelay: Number.POSITIVE_INFINITY
       });
       try {
-        for await (const line of rl) yield line;
+        for await (const line2 of rl) yield line2;
       } finally {
         rl.close();
       }
@@ -21524,7 +22071,7 @@ function createRealScanIO() {
           process.stdin.pause();
           resolve5(value);
         };
-        rl.once("line", (line) => done(line));
+        rl.once("line", (line2) => done(line2));
         rl.once("close", () => done(void 0));
       });
     },
@@ -21592,20 +22139,20 @@ var NODE_FS = {
 };
 function readAll(fs, fd, size) {
   const bytes = new Uint8Array(size);
-  let at = 0;
-  while (at < size) {
-    const n2 = fs.readSync(fd, bytes, at, size - at, at);
+  let at2 = 0;
+  while (at2 < size) {
+    const n2 = fs.readSync(fd, bytes, at2, size - at2, at2);
     if (n2 <= 0) return void 0;
-    at += n2;
+    at2 += n2;
   }
   return bytes;
 }
 function writeAll(fs, fd, bytes) {
-  let at = 0;
-  while (at < bytes.length) {
-    const n2 = fs.writeSync(fd, bytes, at, bytes.length - at);
+  let at2 = 0;
+  while (at2 < bytes.length) {
+    const n2 = fs.writeSync(fd, bytes, at2, bytes.length - at2);
     if (n2 <= 0) throw new Error("write made no progress");
-    at += n2;
+    at2 += n2;
   }
 }
 function closeQuietly(fs, fd) {
@@ -21925,7 +22472,7 @@ function watchedProcessOf(entry) {
   return void 0;
 }
 function watchedIn(lines2, entryOf) {
-  const entries2 = lines2.filter((line) => line.trim() !== "");
+  const entries2 = lines2.filter((line2) => line2.trim() !== "");
   if (entries2.length > MAX_PROCESS_ENTRIES) return { ok: false, reason: "too-large" };
   const seen = /* @__PURE__ */ new Set();
   for (const entry of entries2) {
@@ -21935,10 +22482,10 @@ function watchedIn(lines2, entryOf) {
   return { ok: true, running: WATCHED_PROCESSES.filter((id) => seen.has(id)) };
 }
 function watchedInPs(stdout) {
-  return watchedIn(stdout.split(/\r?\n/), (line) => line);
+  return watchedIn(stdout.split(/\r?\n/), (line2) => line2);
 }
 function watchedInTasklist(stdout) {
-  return watchedIn(stdout.split(/\r?\n/), (line) => /^"([^"]*)"/.exec(line.trim())?.[1] ?? "");
+  return watchedIn(stdout.split(/\r?\n/), (line2) => /^"([^"]*)"/.exec(line2.trim())?.[1] ?? "");
 }
 function isInside(root, path, paths = { relative: relative5, isAbsolute: isAbsolute5 }) {
   const rel = paths.relative(root, path);

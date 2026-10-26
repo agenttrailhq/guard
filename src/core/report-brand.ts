@@ -513,6 +513,9 @@ td.num { font-weight: 600; }
 .verified { border-left: 4px solid var(--border); }
 .verified:target { border-color: var(--brand-text); }
 .verified h3 { font-size: 16px; margin: 8px 0 6px; }
+.verified-note { margin: 8px 0 4px; padding: 4px 0 4px 10px; border-left: 3px solid var(--tone-none-fg); }
+.verified-note p { margin: 0; }
+.verified-note-label { font-size: 12px; font-weight: 600; color: var(--muted-fg); }
 .tone {
   display: inline-flex;
   align-items: center;
@@ -684,12 +687,12 @@ ${vars(LIGHT_TOKENS)}
   .sections, .toolbar, .js-only, .actions, .controls, .copy, .share { display: none; }
   .button, .button.secondary { display: inline; background: none; color: var(--brand-text); border: 0; padding: 0; }
   .stat, .tally, .product-note, tr, .card, .col, .risk, .finding-head, .shapes li { break-inside: avoid; }
-  .evidence-list li, .check-chip, .verified-facts > div { break-inside: avoid; }
+  .evidence-list li, .check-chip, .verified-facts > div, .verified-note { break-inside: avoid; }
   .verified { break-inside: auto; }
   .verified .card-head { break-after: avoid; }
   h1, h2, h3, .section-head, summary, h2 + .note, h2 + .lead, .verified-facts dt { break-after: avoid; }
   .chip::before { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
-  .tone, .verified, .check-chip, .evidence-list { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+  .tone, .verified, .check-chip, .evidence-list, .verified-note { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
   .owasp-ids a[href^="http"]::after, .risk-name a[href^="http"]::after { content: none; }
   .how a[href^="http"]::after, .card a[href^="http"]::after { content: none; }
   a[href^="http"]::after { content: " (" attr(href) ")"; font-size: 11px; color: var(--muted-fg); overflow-wrap: anywhere; }

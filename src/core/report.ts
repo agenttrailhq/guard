@@ -102,6 +102,8 @@ import {
   LOCAL_FIX_SERIALIZED,
   pickHeadline,
   sentence,
+  UNCONFIRMED_SENTENCE,
+  type VerifiedNote,
 } from "./verify/cards.js";
 import {
   CATEGORY_TITLES,
@@ -118,6 +120,7 @@ import {
   TONE_TALLY,
   toneLabel,
 } from "./verify/copy.js";
+import { NOTE_COULD_HIDE, NOTE_COULD_NOT_CHECK, verifiedNotes } from "./verify/notes.js";
 import { shareCounts } from "./verify/share-copy.js";
 import {
   FACT_KEYS,
@@ -446,6 +449,11 @@ export interface ReportPayload {
    * from a template, and every fix command is a redacted shape. Absent without verification.
    */
   readonly cards?: readonly CardView[];
+  /**
+   * The verified note on each listed finding a check covers, in the findings' order, from the
+   * same verification and cards. Absent when no finding gets one.
+   */
+  readonly notes?: readonly VerifiedNote[];
 }
 
 const SECRET_KIND_SET: ReadonlySet<string> = new Set(SECRET_KINDS);
@@ -740,6 +748,11 @@ export function reportPayload(
         guardrailCount: t.guardrailCount,
       })),
   };
+  // A note is read beside its card, so there are notes only where there are cards.
+  const notes =
+    copied === undefined || cards === undefined
+      ? []
+      : verifiedNotes(payload.findings, copied, cards);
   const withVerification: ReportPayload =
     copied === undefined
       ? payload
@@ -747,6 +760,7 @@ export function reportPayload(
           ...payload,
           verification: honestVerification(copied),
           ...(cards === undefined ? {} : { cards }),
+          ...(notes.length === 0 ? {} : { notes }),
         };
   const skipped = result.skipped;
   if (skipped === undefined) return withVerification;
@@ -1636,12 +1650,32 @@ function ranks(findings: readonly PayloadFinding[]): {
   };
 }
 
+/** The tone a note's mark takes: its card's, neutral for one that could not confirm. */
+function noteTone(note: VerifiedNote, cards: readonly CardView[]): VerificationStatus | undefined {
+  if (
+    note.sentence.template === UNCONFIRMED_SENTENCE.id ||
+    note.sentence.template === NOTE_COULD_NOT_CHECK.id ||
+    note.sentence.template === NOTE_COULD_HIDE.id
+  ) {
+    return "could-not-check";
+  }
+  return cards.find((card) => card.category === note.category)?.tone;
+}
+
+/** A finding's verified note, as the first thing its expander shows. */
+function noteHtml(note: VerifiedNote, tone: VerificationStatus | undefined): string {
+  const cls = tone === undefined ? "verified-note" : `verified-note v-${tone}`;
+  return `<div class="${cls}"><p class="verified-note-label">What checking found on this machine</p>
+${sentenceHtml(note.sentence)}</div>`;
+}
+
 /** One row of All findings. */
 function findingRow(
   f: PayloadFinding,
   index: number,
   r: ReturnType<typeof ranks>,
   agent: AgentSource,
+  note?: { readonly note: VerifiedNote; readonly tone: VerificationStatus | undefined },
 ): string {
   const group = f.category === undefined ? YOUR_GUARDRAILS : packLabel(f.category);
   const examples = f.examples
@@ -1676,7 +1710,7 @@ ${f.owasp.map((id) => `<li>${outLink(owaspRiskLink(id, agent), riskLabel(id))}</
 <div class="finding-meta">${severityBadge(f.severity)} ${actionChip(f.action)}<span class="num" data-label="Matches">${escapeHtml(formatCount(f.count))}&times;</span></div>
 </div>
 <div class="guardrail-id"><code>${escapeHtml(f.ruleId)}</code> &middot; <span class="group">${escapeHtml(group)}</span></div>${risks}
-<details class="commands"><summary>The ${escapeHtml(shapes)} behind it</summary>
+<details class="commands"><summary>The ${escapeHtml(shapes)} behind it${note === undefined ? "" : ", and what checking found"}</summary>${note === undefined ? "" : `\n${noteHtml(note.note, note.tone)}`}
 <ul class="shapes">
 ${examples}${more}
 </ul>
@@ -1706,7 +1740,15 @@ function findingsSection(payload: ReportPayload, variant: ReportVariant): string
     return `<section id="findings"><h2>All findings</h2><p class="empty">No guardrail matched anything in these sessions.</p></section>`;
   }
   const r = ranks(payload.findings);
-  const rows = payload.findings.map((f, i) => findingRow(f, i, r, payload.agent)).join("\n");
+  const cards = payload.cards ?? [];
+  const noteFor = (f: PayloadFinding) => {
+    const note =
+      f.source === "library" ? payload.notes?.find((n) => n.ruleId === f.ruleId) : undefined;
+    return note === undefined ? undefined : { note, tone: noteTone(note, cards) };
+  };
+  const rows = payload.findings
+    .map((f, i) => findingRow(f, i, r, payload.agent, noteFor(f)))
+    .join("\n");
   const truncated =
     payload.moreFindings > 0
       ? `\n<p class="note">${escapeHtml(formatCount(payload.moreFindings))} further guardrails matched and are not listed here.</p>`
@@ -2256,6 +2298,8 @@ function verifiedLines(payload: ReportPayload): string[] {
     const caveat = sentence(CODEX_CAVEAT, card);
     if (caveat !== undefined) lines.push(`${title}  ${caveat.text}`);
   }
+  // Each finding's note, after its guardrail's id, as its row shows them.
+  for (const note of payload.notes ?? []) lines.push(`${note.ruleId}  ${note.sentence.text}`);
   return lines;
 }
 

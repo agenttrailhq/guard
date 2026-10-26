@@ -626,12 +626,18 @@ export function isLocalFix(value: unknown): value is LocalFix {
 // ── The per-guardrail note ───────────────────────────────────────────────────
 
 /**
+ * Where a note's facts come from: a category's check, or the dependency check, which has no
+ * card of its own and keeps its facts beside the categories.
+ */
+export type NoteSource = VerifyCategory | "dependencies";
+
+/**
  * The one-line note under a guardrail in the findings list, from the check that covers its
- * rule. A rule no check covers gets no note.
+ * rule. A rule no check covers gets no note. See `notes.ts`.
  */
 export interface VerifiedNote {
   /** The guardrail's id, as the finding carries it. */
   readonly ruleId: string;
-  readonly category: VerifyCategory;
+  readonly category: NoteSource;
   readonly sentence: CardSentence;
 }
