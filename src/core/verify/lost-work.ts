@@ -9,10 +9,12 @@
  *  - Dropped stashes (`git stash drop`). The id comes from `Dropped stash@{n} (<id>)`. One is
  *    recoverable when its commit is still in the object store and not back in the stash list.
  *    `git stash clear` prints no ids, so what it removed cannot be looked up.
- *  - Discarded changes (`git checkout -- <path>`, `git checkout .`, `git restore <path>`,
- *    `git reset --hard`). Git keeps no copy of uncommitted changes, so these are classed by
- *    where they were: the agent's own worktree or scratch copy; files the agent had edited; or
- *    the main checkout with no agent edit on record, where someone's own changes may have gone.
+ *  - Discarded changes (`git checkout -- <path>`, `git checkout .`, `git checkout -f`,
+ *    `git restore <path>`, `git reset --hard`, `git switch --discard-changes`, `git clean -f`).
+ *    Git keeps no copy of uncommitted changes, so these are classed by where they were: the
+ *    agent's own worktree or scratch copy; named files the agent had edited; or the main
+ *    checkout, where someone's own changes may have gone. A whole-tree discard in the main
+ *    checkout is always the last, whatever the agent edited: it throws away every change there.
  *
  * Only what ran counts. The exact recovery commands, with real branch names and ids, are
  * `LocalFix`es for the local fixes file; the card shows their redacted shapes.
@@ -101,9 +103,9 @@ export interface DiscardFacts {
   readonly paths: number;
   /** In the agent's own worktree or a scratch copy. */
   readonly ownCopy: number;
-  /** Files the agent had edited, or a folder holding an edit of the agent's on record. */
+  /** Named paths the agent had edited, or a named folder holding an edit of the agent's. */
   readonly agentEdited: number;
-  /** In the main checkout, with no agent edit on record. */
+  /** In the main checkout: a named path with no agent edit on record, or a whole-tree discard. */
   readonly mainCheckout: number;
   /** Paths whose folder could not be told. */
   readonly couldNotCheck: number;
@@ -222,7 +224,28 @@ export function discardedPaths(
       return paths.some((p) => p.value === ".") ? "all" : paths;
     }
     const rest = operands(args);
-    return rest.length === 1 && rest[0]?.value === "." ? "all" : undefined;
+    if (rest.length === 1 && rest[0]?.value === ".") return "all";
+    // `git checkout -f <branch>` switches and throws away every local change.
+    return args.some((a) => a.value === "-f" || a.value === "--force") ? "all" : undefined;
+  }
+  if (sub === "switch") {
+    const values = args.map((a) => a.value);
+    return values.includes("--discard-changes") ||
+      values.includes("-f") ||
+      values.includes("--force")
+      ? "all"
+      : undefined;
+  }
+  if (sub === "clean") {
+    // `git clean -f` deletes untracked files: the named paths, or every one below.
+    if (!args.some((a) => /^-[A-Za-z]*f[A-Za-z]*$/.test(a.value) || a.value === "--force")) {
+      return undefined;
+    }
+    if (args.some((a) => /^-[A-Za-z]*n[A-Za-z]*$/.test(a.value) || a.value === "--dry-run")) {
+      return undefined;
+    }
+    const paths = operands(args, new Set(["-e", "--exclude"]));
+    return paths.length === 0 || paths.some((p) => p.value === ".") ? "all" : paths;
   }
   if (sub === "restore") {
     const values = args.map((a) => a.value);
@@ -512,37 +535,48 @@ function within(path: string, folder: string): boolean {
 }
 
 /** Class each discarded path. Read from the transcripts alone: git keeps no copy to look up. */
-function checkDiscards(
+async function checkDiscards(
   context: GitCheckContext,
   judged: readonly Judged<DiscardFound>[],
   own: readonly string[],
-): DiscardFacts {
+): Promise<DiscardFacts> {
   const log: CallLog = context.log;
   let paths = 0;
   let ownCopy = 0;
   let agentEdited = 0;
   let mainCheckout = 0;
   let couldNotCheck = 0;
+  /** Is a folder the agent's own worktree or scratch copy? */
+  const isOwn = (folder: string): boolean =>
+    own.some((copy) => within(folder, copy)) ||
+    isUnder(folder, context.scratchRoots) ||
+    AGENT_WORKTREES.some((marker) => `${folder}${sep}`.includes(marker));
   for (const j of judged) {
     for (const found of j.found) {
-      const targets: (string | undefined)[] =
-        found.paths === "all"
-          ? [found.folder]
-          : found.paths.map((p) =>
-              p.expands ? undefined : resolvePath(found.folder, p.value, log.home),
-            );
+      if (found.paths === "all") {
+        // A whole-tree discard throws away every change in the repository, whatever the
+        // agent edited, so it is the main checkout unless the repository is the agent's own.
+        paths += 1;
+        if (found.folder === undefined) {
+          couldNotCheck += 1;
+          continue;
+        }
+        const folder = resolve(found.folder);
+        const root = await context.probe.toplevel(folder);
+        if (isOwn(folder) || (!isFailure(root) && isOwn(root))) ownCopy += 1;
+        else mainCheckout += 1;
+        continue;
+      }
+      const targets = found.paths.map((p) =>
+        p.expands ? undefined : resolvePath(found.folder, p.value, log.home),
+      );
       for (const target of targets) {
         paths += 1;
         if (target === undefined || found.folder === undefined) {
           couldNotCheck += 1;
           continue;
         }
-        const folder = resolve(found.folder);
-        if (
-          own.some((copy) => within(folder, copy)) ||
-          isUnder(folder, context.scratchRoots) ||
-          AGENT_WORKTREES.some((marker) => `${folder}${sep}`.includes(marker))
-        ) {
+        if (isOwn(resolve(found.folder))) {
           ownCopy += 1;
           continue;
         }
@@ -563,12 +597,12 @@ export async function checkLostWork(context: GitCheckContext): Promise<LostWorkO
   const fixes = new FixList("lost-work");
   const branchCalls = judgeAll(log, /branch/, branchDeletes);
   const stashCalls = judgeAll(log, /stash/, stashDrops);
-  const discardCalls = judgeAll(log, /checkout|restore|reset/, discards);
+  const discardCalls = judgeAll(log, /checkout|restore|reset|switch|clean/, discards);
   const own = judgeAll(log, /worktree|clone|cp\s/, copies).flatMap((j) => j.found);
 
   const branches = await checkBranches(context, branchCalls, fixes);
   const stashes = await checkStashes(context, stashCalls, fixes);
-  const discarded = checkDiscards(context, discardCalls, own);
+  const discarded = await checkDiscards(context, discardCalls, own);
   const facts: LostWorkFacts = {
     branches,
     stashes,
@@ -659,7 +693,7 @@ const FOUND: readonly T[] = [
     id: "lost-work.discards",
     render: (f) =>
       f.discards.paths > 0
-        ? `Uncommitted changes to ${counted(f.discards.paths, "path")} were discarded with git checkout, git restore or git reset --hard.`
+        ? `Uncommitted changes to ${counted(f.discards.paths, "path")} were discarded with git checkout, git restore, git reset --hard, git switch or git clean.`
         : undefined,
   },
   {

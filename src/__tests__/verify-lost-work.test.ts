@@ -107,6 +107,15 @@ describe("forceDeletesBranch and discardedPaths", () => {
     ["git reset --hard", "all"],
     ["git reset --hard HEAD~1", "all"],
     ["git reset --soft HEAD~1", undefined],
+    ["git checkout -f main", "all"],
+    ["git checkout --force main", "all"],
+    ["git switch --discard-changes main", "all"],
+    ["git switch -f main", "all"],
+    ["git switch main", undefined],
+    ["git clean -fd", "all"],
+    ["git clean -f build", ["build"]],
+    ["git clean -fdn", undefined],
+    ["git clean -d", undefined],
   ])("%s → %j", (text, expected) => {
     const [cmd] = shellCommands(text);
     const sub = cmd?.words[1]?.value ?? "";
@@ -309,18 +318,41 @@ describe("discarded paths, classed by where they were", () => {
     expect(facts.discards.mainCheckout).toBe(1);
   });
 
-  it("a whole-tree discard with an agent edit under it on record", async () => {
-    const root = tempFolder("tree");
-    const { facts } = await lost([
-      {
-        cwd: root,
-        events: [
-          { kind: "write", path: join(root, "deep", "x.ts"), content: "x" },
-          { kind: "bash", command: "git reset --hard", output: "" },
-        ],
-      },
-    ]);
-    expect(facts.discards).toMatchObject({ paths: 1, agentEdited: 1 });
+  it("a whole-tree discard in the main checkout is the main checkout, whatever the agent edited", async () => {
+    const root = makeRepo("tree");
+    for (const command of [
+      "git reset --hard",
+      "git checkout -f main",
+      "git switch --discard-changes main",
+      "git clean -fd",
+    ]) {
+      const { facts, result } = await lost([
+        {
+          cwd: join(root),
+          events: [
+            { kind: "write", path: join(root, "a.txt"), content: "x" },
+            { kind: "bash", command, output: "" },
+          ],
+        },
+      ]);
+      expect(facts.discards, command).toMatchObject({ paths: 1, agentEdited: 0, mainCheckout: 1 });
+      expect(result.status, command).toBe("review");
+    }
+  });
+
+  it("a whole-tree discard run from a subfolder is judged at the repo's top", async () => {
+    const root = makeRepo("tree-sub", { files: { "pkg/a.txt": "a\n" } });
+    const scratch = tempFolder("tree-sub-scratch");
+    const { facts } = await lost(
+      [
+        {
+          cwd: join(root, "pkg"),
+          events: [{ kind: "bash", command: "git reset --hard", output: "" }],
+        },
+      ],
+      { scratchRoots: [scratch] },
+    );
+    expect(facts.discards.mainCheckout).toBe(1);
   });
 
   it("the agent's own worktree, a scratch copy, or an agent worktree folder", async () => {
@@ -515,7 +547,7 @@ describe("the card", () => {
     expect(card.found.map((s) => s.text)).toEqual([
       "2 branches were force-deleted.",
       "1 stash was dropped.",
-      "Uncommitted changes to 1 path were discarded with git checkout, git restore or git reset --hard.",
+      "Uncommitted changes to 1 path were discarded with git checkout, git restore, git reset --hard, git switch or git clean.",
     ]);
     expect(card.now.map((s) => s.text)).toEqual([
       "1 deleted branch is still in the repo and on no other branch: recoverable by commit id.",

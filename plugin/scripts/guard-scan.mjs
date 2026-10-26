@@ -12791,7 +12791,22 @@ function discardedPaths(sub, args2) {
       return paths.some((p) => p.value === ".") ? "all" : paths;
     }
     const rest = operands(args2);
-    return rest.length === 1 && rest[0]?.value === "." ? "all" : void 0;
+    if (rest.length === 1 && rest[0]?.value === ".") return "all";
+    return args2.some((a) => a.value === "-f" || a.value === "--force") ? "all" : void 0;
+  }
+  if (sub === "switch") {
+    const values = args2.map((a) => a.value);
+    return values.includes("--discard-changes") || values.includes("-f") || values.includes("--force") ? "all" : void 0;
+  }
+  if (sub === "clean") {
+    if (!args2.some((a) => /^-[A-Za-z]*f[A-Za-z]*$/.test(a.value) || a.value === "--force")) {
+      return void 0;
+    }
+    if (args2.some((a) => /^-[A-Za-z]*n[A-Za-z]*$/.test(a.value) || a.value === "--dry-run")) {
+      return void 0;
+    }
+    const paths = operands(args2, /* @__PURE__ */ new Set(["-e", "--exclude"]));
+    return paths.length === 0 || paths.some((p) => p.value === ".") ? "all" : paths;
   }
   if (sub === "restore") {
     const values = args2.map((a) => a.value);
@@ -13010,16 +13025,29 @@ var AGENT_WORKTREES = [
 function within(path, folder) {
   return path === folder || path.startsWith(folder.endsWith(sep3) ? folder : `${folder}${sep3}`);
 }
-function checkDiscards(context, judged, own) {
+async function checkDiscards(context, judged, own) {
   const log = context.log;
   let paths = 0;
   let ownCopy = 0;
   let agentEdited = 0;
   let mainCheckout = 0;
   let couldNotCheck = 0;
+  const isOwn = (folder) => own.some((copy) => within(folder, copy)) || isUnder(folder, context.scratchRoots) || AGENT_WORKTREES.some((marker) => `${folder}${sep3}`.includes(marker));
   for (const j of judged) {
     for (const found of j.found) {
-      const targets = found.paths === "all" ? [found.folder] : found.paths.map(
+      if (found.paths === "all") {
+        paths += 1;
+        if (found.folder === void 0) {
+          couldNotCheck += 1;
+          continue;
+        }
+        const folder = resolve3(found.folder);
+        const root = await context.probe.toplevel(folder);
+        if (isOwn(folder) || !isFailure(root) && isOwn(root)) ownCopy += 1;
+        else mainCheckout += 1;
+        continue;
+      }
+      const targets = found.paths.map(
         (p) => p.expands ? void 0 : resolvePath(found.folder, p.value, log.home)
       );
       for (const target of targets) {
@@ -13028,8 +13056,7 @@ function checkDiscards(context, judged, own) {
           couldNotCheck += 1;
           continue;
         }
-        const folder = resolve3(found.folder);
-        if (own.some((copy) => within(folder, copy)) || isUnder(folder, context.scratchRoots) || AGENT_WORKTREES.some((marker) => `${folder}${sep3}`.includes(marker))) {
+        if (isOwn(resolve3(found.folder))) {
           ownCopy += 1;
           continue;
         }
@@ -13048,11 +13075,11 @@ async function checkLostWork(context) {
   const fixes = new FixList("lost-work");
   const branchCalls = judgeAll(log, /branch/, branchDeletes);
   const stashCalls = judgeAll(log, /stash/, stashDrops);
-  const discardCalls = judgeAll(log, /checkout|restore|reset/, discards);
+  const discardCalls = judgeAll(log, /checkout|restore|reset|switch|clean/, discards);
   const own = judgeAll(log, /worktree|clone|cp\s/, copies).flatMap((j) => j.found);
   const branches = await checkBranches(context, branchCalls, fixes);
   const stashes = await checkStashes(context, stashCalls, fixes);
-  const discarded = checkDiscards(context, discardCalls, own);
+  const discarded = await checkDiscards(context, discardCalls, own);
   const facts = {
     branches,
     stashes,
@@ -13107,7 +13134,7 @@ var FOUND2 = [
   },
   {
     id: "lost-work.discards",
-    render: (f) => f.discards.paths > 0 ? `Uncommitted changes to ${counted(f.discards.paths, "path")} were discarded with git checkout, git restore or git reset --hard.` : void 0
+    render: (f) => f.discards.paths > 0 ? `Uncommitted changes to ${counted(f.discards.paths, "path")} were discarded with git checkout, git restore, git reset --hard, git switch or git clean.` : void 0
   },
   {
     id: "lost-work.mentioned",
