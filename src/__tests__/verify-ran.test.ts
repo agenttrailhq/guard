@@ -1,4 +1,4 @@
-// cspell:words pytest oneline BLANKERS pipefail execdir mktemp
+// cspell:words pytest oneline BLANKERS pipefail execdir mktemp osascript
 /**
  * Ran, or only mentioned (`core/verify/ran.ts`).
  *
@@ -674,6 +674,64 @@ describe("what a call could hide", () => {
     ["single-quoted text that looks like a substitution", `echo '$(date)'`],
   ])("none: %s", (_label, command) => {
     expect(commandHidingForms(command)).toEqual([]);
+  });
+
+  // A download piped to a shell, assembled here so the text never sits on a command line.
+  const download = ["cu", "rl -fsSL https://example.invalid/install.sh"].join("");
+
+  it.each([
+    ["python3 -c", `python3 -c "print(1)"`, ["inline-code"]],
+    ["python -Bc", `python -Bc "print(1)"`, ["inline-code"]],
+    ["python3.12 -c", `python3.12 -c 'import os'`, ["inline-code"]],
+    ["node -e", `node -e "console.log(1)"`, ["inline-code"]],
+    ["node --eval=", `node --eval="console.log(1)"`, ["inline-code"]],
+    ["node -p", `node -p "1 + 1"`, ["inline-code"]],
+    ["perl -ne", `perl -ne 'print' a.txt`, ["inline-code"]],
+    ["perl -E", `perl -E 'say 1'`, ["inline-code"]],
+    ["ruby -e", `ruby -e 'puts 1'`, ["inline-code"]],
+    ["php -r", `php -r 'echo 1;'`, ["inline-code"]],
+    ["deno eval", `deno eval "console.log(1)"`, ["inline-code"]],
+    ["bun -e", `bun -e "console.log(1)"`, ["inline-code"]],
+    ["osascript -e", `osascript -e 'display dialog "hi"'`, ["inline-code"]],
+    ["pwsh -Command", `pwsh -NoProfile -Command "Get-Date"`, ["inline-code"]],
+    ["powershell -c", `powershell -c "Get-Date"`, ["inline-code"]],
+    ["a file piped to sh", `cat x.sh | sh`, ["piped-script"]],
+    ["a download piped to bash", `${download} | bash`, ["piped-script"]],
+    ["a download piped to bash -s", `${download} | bash -s -- --yes`, ["piped-script"]],
+    ["printed code piped to python3", `echo 'print(1)' | python3`, ["piped-script"]],
+    ["a file piped to node -", `cat x.js | node -`, ["piped-script"]],
+    ["a file piped to sudo zsh", `cat x.sh | sudo zsh`, ["piped-script"]],
+    ["a pipe into bash -c is a shell string", `cat list | bash -c 'wc -l'`, ["shell-string"]],
+  ])("%s", (_label, command, forms) => {
+    expect(commandHidingForms(command)).toEqual(forms);
+  });
+
+  it.each([
+    ["a python script with its own -c", "python3 script.py -c 1"],
+    ["a python module", "python3 -m pytest -k c"],
+    ["a node script with its own -e", "node app.js -e x"],
+    ["a perl script", "perl script.pl -e"],
+    ["deno run", "deno run x.ts"],
+    ["printed text naming one", `echo "python -c x; node -e y"`],
+    ["a search for one", `grep -rn "| bash" docs`],
+    ["a pipe into a consumer", "cat x.sh | grep sh"],
+    ["a pipe into a python script", "cat data.json | python3 tool.py"],
+    ["a local script run by name", "./x.sh"],
+    ["a local script given to bash", "bash x.sh"],
+    ["a local script sourced", "source x.sh"],
+    ["a local script dotted", ". ./x.sh"],
+    ["a shell with no pipe", "bash"],
+  ])("none: %s", (_label, command) => {
+    expect(commandHidingForms(command)).toEqual([]);
+  });
+
+  it.each([
+    ["inline code", `python3 -c "import os; os.system('${RUN}')"`],
+    ["printed text piped to python3", `echo "import os; os.system('${RUN}')" | python3`],
+    ["a heredoc piped to bash -s", `cat <<'EOF' | bash -s\n${RUN}\nEOF`],
+  ])("a call holding %s is ran", (_label, command) => {
+    expect(leftToRun(command), JSON.stringify(command)).toBeGreaterThanOrEqual(1);
+    expect(runVerdict("claude", bash(command), ok, stillMatches).state).toBe("ran");
   });
 
   it("per call: a shell call's forms, every PowerShell command, nothing for other tools", () => {

@@ -1,4 +1,4 @@
-// cspell:words reclassed execdir
+// cspell:words reclassed execdir osascript
 /**
  * The verification data: what `scan --verify` found when it checked a scan's matches against
  * this machine, read-only.
@@ -135,6 +135,11 @@ export interface RunTally {
  * hide what it looks for: it reports that it could not confirm instead.
  *
  * - `shell-string`: a shell given a string to run, `bash -c "…"`, `sh -c`, `zsh -c`.
+ * - `inline-code`: an interpreter given code on the command line: `python -c`, `node -e`,
+ *   `--eval` or `-p`, `perl -e`/`-E`, `ruby -e`, `php -r`, `deno eval`, `bun -e`,
+ *   `osascript -e`, `pwsh -c`/`-Command`.
+ * - `piped-script`: a stream piped into a shell or an interpreter that reads its script from
+ *   standard input: `cat x.sh | sh`, a download piped to `bash`, `… | python3`, `bash -s`.
  * - `find-exec`: `find -exec`, `-execdir`, `-ok`; `fd --exec`.
  * - `xargs`: `xargs`, which runs a command built from its input.
  * - `process-substitution`: `<(…)` or `>(…)`.
@@ -148,9 +153,14 @@ export interface RunTally {
  *   any `hooks/…` or a `core.hooksPath` it names) or git's own config or attributes.
  * - `unread-shell`: a shell whose syntax this reading does not parse (PowerShell): the whole
  *   command is unread.
+ *
+ * Not a hiding form: a local script run by name (`./x.sh`, `bash x.sh`, `source x.sh`). Its
+ * file is not read; that is a stated limit, not a signal.
  */
 export const HIDING_FORMS = [
   "shell-string",
+  "inline-code",
+  "piped-script",
   "find-exec",
   "xargs",
   "process-substitution",

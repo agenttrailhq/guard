@@ -7998,6 +7998,8 @@ var RUN_STATES = ["ran", "mentioned", "unknown"];
 var RAN_EVIDENCE = ["tool-result", "output-record", "none"];
 var HIDING_FORMS = [
   "shell-string",
+  "inline-code",
+  "piped-script",
   "find-exec",
   "xargs",
   "process-substitution",
@@ -12563,12 +12565,42 @@ function runsAString(args2) {
   }
   return false;
 }
+var INLINE_CODE = [
+  [/^python[0-9.]*$/, /^-[A-Za-z]*c$/],
+  [/^(?:node|nodejs|bun)$/, /^(?:-e|-p|--eval|--print)(?:=.*)?$/],
+  [/^perl$/, /^-[A-Za-z]*[eE]$/],
+  [/^ruby$/, /^-[A-Za-z]*e$/],
+  [/^php$/, /^-r$/],
+  [/^osascript$/, /^-e$/],
+  [/^(?:pwsh|powershell)$/, /^-(?:c|command|encodedcommand|ec|e)$/i]
+];
+function runsInlineCode(name, args2) {
+  if (name === "deno") return args2[0]?.value === "eval";
+  const entry = INLINE_CODE.find(([program]) => program.test(name));
+  if (entry === void 0) return false;
+  for (const word of args2) {
+    if (entry[1].test(word.value)) return true;
+    if (!word.value.startsWith("-") || word.value === "-m") return false;
+  }
+  return false;
+}
+var STDIN_INTERPRETER = /^(?:python[0-9.]*|node|nodejs|perl|ruby|php|pwsh|powershell)$/;
+function runsPipedScript(name, args2) {
+  const shell = SHELLS.has(name);
+  if (!shell && !STDIN_INTERPRETER.test(name)) return false;
+  for (const word of args2) {
+    if (word.value === "-" || shell && /^-[A-Za-z]*s[A-Za-z]*$/.test(word.value)) return true;
+    if (word.value === "--") continue;
+    if (!word.value.startsWith("-")) return false;
+  }
+  return true;
+}
 function runsASubstitution(word) {
   if (isDataValue(word)) return false;
   const eq = word.value.indexOf("=");
   return eq < 0 || !isDataValue(word, word.value.slice(eq + 1));
 }
-function segmentHidingForms(segment, command, gitConfigured, writtenBefore, hooksPaths) {
+function segmentHidingForms(segment, command, gitConfigured, writtenBefore, hooksPaths, fedByPipe) {
   const forms = [];
   if (segment.words.some(runsASubstitution) || segment.inputs.some((input) => input.expands)) {
     forms.push("command-substitution");
@@ -12576,6 +12608,10 @@ function segmentHidingForms(segment, command, gitConfigured, writtenBefore, hook
   if (command === void 0) return forms;
   const { name, args: args2 } = command;
   if (SHELLS.has(name) && runsAString(args2)) forms.push("shell-string");
+  if (runsInlineCode(name, args2)) forms.push("inline-code");
+  if (fedByPipe && !(SHELLS.has(name) && runsAString(args2)) && runsPipedScript(name, args2)) {
+    forms.push("piped-script");
+  }
   if (name === "eval") forms.push("eval");
   if (name === "xargs") forms.push("xargs");
   if (name === "find" && args2.some((w) => /^-(?:exec|execdir|ok|okdir)$/.test(w.value))) {
@@ -12624,7 +12660,8 @@ function readCommand(command, trustWrites) {
       command2,
       gitConfigured,
       writtenBefore(index),
-      hooksPaths
+      hooksPaths,
+      segments[index - 1]?.pipedOut === true
     )) {
       forms.add(form);
     }

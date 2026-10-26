@@ -1,4 +1,4 @@
-// cspell:words egrep fgrep zgrep apropos whatis tldr whereis stdbuf bunx herestring heredocs redirections whatchanged shortlog pytest nohup iglob mtext Stext ovalue osascript hookspath mksh execdir okdir fdfind
+// cspell:words egrep fgrep zgrep apropos whatis tldr whereis stdbuf bunx herestring heredocs redirections whatchanged shortlog pytest nohup iglob mtext Stext ovalue osascript hookspath mksh execdir okdir fdfind encodedcommand
 /**
  * Ran, or only mentioned: did a matched tool call actually run on this machine?
  *
@@ -1066,6 +1066,48 @@ function runsAString(args: readonly Word[]): boolean {
   return false;
 }
 
+/** Interpreters by name pattern, and the options that give them code on the command line. */
+const INLINE_CODE: readonly (readonly [RegExp, RegExp])[] = [
+  [/^python[0-9.]*$/, /^-[A-Za-z]*c$/],
+  [/^(?:node|nodejs|bun)$/, /^(?:-e|-p|--eval|--print)(?:=.*)?$/],
+  [/^perl$/, /^-[A-Za-z]*[eE]$/],
+  [/^ruby$/, /^-[A-Za-z]*e$/],
+  [/^php$/, /^-r$/],
+  [/^osascript$/, /^-e$/],
+  [/^(?:pwsh|powershell)$/, /^-(?:c|command|encodedcommand|ec|e)$/i],
+];
+
+/** Does this program get code to run as an argument: `python -c`, `node -e`, `deno eval`? */
+function runsInlineCode(name: string, args: readonly Word[]): boolean {
+  if (name === "deno") return args[0]?.value === "eval";
+  const entry = INLINE_CODE.find(([program]) => program.test(name));
+  if (entry === undefined) return false;
+  for (const word of args) {
+    if (entry[1].test(word.value)) return true;
+    // The first operand is a script file (or `-m module`'s module); what follows is its own.
+    if (!word.value.startsWith("-") || word.value === "-m") return false;
+  }
+  return false;
+}
+
+/** Interpreters that run a script read from standard input when given no script file. */
+const STDIN_INTERPRETER = /^(?:python[0-9.]*|node|nodejs|perl|ruby|php|pwsh|powershell)$/;
+
+/**
+ * Does this program, fed by a pipe, run what the pipe carries: a shell or an interpreter with
+ * no script file operand, a `-` operand, or a shell's `-s`?
+ */
+function runsPipedScript(name: string, args: readonly Word[]): boolean {
+  const shell = SHELLS.has(name);
+  if (!shell && !STDIN_INTERPRETER.test(name)) return false;
+  for (const word of args) {
+    if (word.value === "-" || (shell && /^-[A-Za-z]*s[A-Za-z]*$/.test(word.value))) return true;
+    if (word.value === "--") continue;
+    if (!word.value.startsWith("-")) return false;
+  }
+  return true;
+}
+
 /** Is this word a `$(…)` or backticks that runs, rather than a value that prints a heredoc? */
 function runsASubstitution(word: Word): boolean {
   if (isDataValue(word)) return false;
@@ -1080,6 +1122,7 @@ function segmentHidingForms(
   gitConfigured: boolean,
   writtenBefore: readonly string[],
   hooksPaths: readonly string[],
+  fedByPipe: boolean,
 ): HidingForm[] {
   const forms: HidingForm[] = [];
   if (segment.words.some(runsASubstitution) || segment.inputs.some((input) => input.expands)) {
@@ -1088,6 +1131,10 @@ function segmentHidingForms(
   if (command === undefined) return forms;
   const { name, args } = command;
   if (SHELLS.has(name) && runsAString(args)) forms.push("shell-string");
+  if (runsInlineCode(name, args)) forms.push("inline-code");
+  if (fedByPipe && !(SHELLS.has(name) && runsAString(args)) && runsPipedScript(name, args)) {
+    forms.push("piped-script");
+  }
   if (name === "eval") forms.push("eval");
   if (name === "xargs") forms.push("xargs");
   if (name === "find" && args.some((w) => /^-(?:exec|execdir|ok|okdir)$/.test(w.value))) {
@@ -1164,6 +1211,7 @@ function readCommand(command: string, trustWrites: boolean): Reading {
       gitConfigured,
       writtenBefore(index),
       hooksPaths,
+      segments[index - 1]?.pipedOut === true,
     )) {
       forms.add(form);
     }
