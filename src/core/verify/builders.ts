@@ -8,9 +8,15 @@
  */
 
 import type { CardBuilders } from "./cards.js";
+import { destructiveCard } from "./destructive.js";
+import { lostWorkCard } from "./lost-work.js";
 import { secretsCard } from "./secrets-card.js";
+import { skippedChecksCard } from "./skipped.js";
 
 /** The registry. One entry per checked category. */
 export const CARD_BUILDERS: CardBuilders = {
   secrets: secretsCard,
+  "skipped-checks": skippedChecksCard,
+  "lost-work": lostWorkCard,
+  destructive: destructiveCard,
 };

@@ -7,16 +7,19 @@
  * belongs to. Read-only: the only things it starts are the allow-listed `git` calls on
  * `VerifyIO`, and it writes nothing.
  *
- * Today it runs two checks: whether each matched call ran (`ran.ts`) and the secrets check
- * (`secrets.ts`). Every other category reads `not-checked` until its check exists, which the
+ * Today it runs: whether each matched call ran (`ran.ts`), the secrets check (`secrets.ts`),
+ * and the git-backed checks for skipped checks, lost work and destructive commands
+ * (`git-checks.ts`). Every other category reads `not-checked` until its check exists, which the
  * report states as such and never as clean.
  */
 
+import { homedir } from "node:os";
 import type { CompiledAllowlist } from "../evaluate.js";
 import type { CompiledRule } from "../rules.js";
 import type { ScanCorpus } from "../scan-report.js";
 import type { LocalFix } from "./cards.js";
 import { createFingerprinter, type Fingerprinter } from "./fingerprint.js";
+import { checkGitBacked } from "./git-checks.js";
 import { tallyMatchedCalls } from "./ran.js";
 import { checkSecrets } from "./secrets.js";
 import type { PendingCheck, Verification, VerifyIO } from "./types.js";
@@ -31,6 +34,8 @@ export interface VerifyInput {
   readonly io: VerifyIO;
   /** For tests. Production gets a fresh random key for every run. */
   readonly fingerprint?: Fingerprinter;
+  /** The home folder, for `~` in commands. Production uses the user's. */
+  readonly home?: string;
 }
 
 /**
@@ -73,22 +78,26 @@ export async function verifyScan(input: VerifyInput): Promise<VerifyOutcome> {
     io: input.io,
     fingerprint: input.fingerprint ?? createFingerprinter(),
   });
+  const git = await checkGitBacked({
+    corpus: input.corpus,
+    io: input.io,
+    home: input.home ?? homedir(),
+  });
   const verification: Verification = {
     matchedCalls: matched.tally,
     resultsRecorded: matched.resultsRecorded,
     ranEvidence: matched.ranEvidence,
     categories: {
       secrets,
-      "skipped-checks": NOT_CHECKED,
-      "lost-work": NOT_CHECKED,
+      "skipped-checks": git["skipped-checks"],
+      "lost-work": git["lost-work"],
       cloud: NOT_CHECKED,
       "prod-infra": NOT_CHECKED,
       tests: NOT_CHECKED,
-      destructive: NOT_CHECKED,
+      destructive: git.destructive,
       unreviewed: NOT_CHECKED,
       egress: NOT_CHECKED,
     },
   };
-  // No check makes a local fix yet; the checks that find something to fix add theirs here.
-  return { verification, localFixes: [] };
+  return { verification, localFixes: git.localFixes };
 }

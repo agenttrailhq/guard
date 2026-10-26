@@ -34,13 +34,13 @@ import {
   sentences,
   TONE_ORDER,
 } from "../core/verify/cards.js";
+import { GIT_CARD_BUILDERS } from "../core/verify/git-checks.js";
 import {
   type CategoriesMissingHidingForms,
   FACT_KEYS,
   FACT_VALUE_ENUMS,
   HIDING_FORMS,
   type HidingForm,
-  type HidingFormsRequired,
   type SecretsFacts,
   VERIFY_CATEGORIES,
   VERIFY_STATUSES,
@@ -99,8 +99,9 @@ const LIKELY: SentenceTemplate<SecretsFacts> = {
       : undefined,
 };
 
-/** The builders the tests use: a secrets card only, as the contract requires. */
+/** The builders the tests use: a test secrets card, and the shipped card of every other check. */
 const BUILDERS: CardBuilders = {
+  ...GIT_CARD_BUILDERS,
   secrets: (result, context) => ({
     category: "secrets",
     tone: result.status,
@@ -673,9 +674,7 @@ describe("a checked category's facts reach the file as plain data", () => {
     const bad: Bad = "lost-work";
     // @ts-expect-error: a category that has hidingForms is not listed as missing it.
     const notListed: Bad = "destructive";
-    // The contract's own map passes today; `HidingFormsRequired` holds only `true`.
-    const required: HidingFormsRequired = true;
-    expect([good, bad, notListed, required]).toEqual([true, "lost-work", "destructive", true]);
+    expect([good, bad, notListed]).toEqual([true, "lost-work", "destructive"]);
   });
 
   it("the secrets block in the file checks its strings against the enums, as --json does", () => {

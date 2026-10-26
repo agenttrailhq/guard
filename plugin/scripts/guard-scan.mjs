@@ -584,9 +584,9 @@ var require_scan = __commonJS({
       if (opts.parts === true || opts.tokens === true) {
         let prevIndex;
         for (let idx = 0; idx < slashes.length; idx++) {
-          const n = prevIndex ? prevIndex + 1 : start;
+          const n2 = prevIndex ? prevIndex + 1 : start;
           const i = slashes[idx];
-          const value = input.slice(n, i);
+          const value = input.slice(n2, i);
           if (opts.tokens) {
             if (idx === 0 && start !== 0) {
               tokens[idx].isPrefix = true;
@@ -923,7 +923,7 @@ var require_parse = __commonJS({
       let prev = bos;
       let value;
       const eos = () => state.index === len - 1;
-      const peek = state.peek = (n = 1) => input[state.index + n];
+      const peek = state.peek = (n2 = 1) => input[state.index + n2];
       const advance = state.advance = () => input[++state.index] || "";
       const remaining = () => input.slice(state.index + 1);
       const consume = (value2 = "", num = 0) => {
@@ -1775,7 +1775,7 @@ var require_picomatch2 = __commonJS({
 });
 
 // src/commands/scan.ts
-import { basename as basename3, dirname, join as join6, resolve } from "path";
+import { basename as basename3, dirname as dirname3, join as join9, resolve as resolve4 } from "path";
 import { pathToFileURL } from "url";
 
 // src/core/types.ts
@@ -6768,9 +6768,9 @@ function describeRule(ruleId, titles) {
   const title = (titles.get(ruleId) ?? "").replace(/\s+/g, " ").trim();
   return title === "" ? `guardrail ${ruleId}` : `${title} (guardrail ${ruleId})`;
 }
-function compileAllowlist(entries) {
+function compileAllowlist(entries2) {
   const compiled = [];
-  for (const entry of entries) {
+  for (const entry of entries2) {
     try {
       compiled.push({ rule: entry.guardrail, isMatch: (0, import_picomatch.default)(entry.pattern, { dot: true }) });
     } catch {
@@ -7946,8 +7946,8 @@ ${REPORT_SCRIPT_GLUE.trim()}
 `;
 
 // src/core/tokens.ts
-function tok(n) {
-  return typeof n === "number" && Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
+function tok(n2) {
+  return typeof n2 === "number" && Number.isFinite(n2) && n2 > 0 ? Math.floor(n2) : 0;
 }
 var EMPTY_TOKEN_TOTALS = {
   input: 0,
@@ -7976,17 +7976,20 @@ function addUsage(totals, usage) {
 function totalTokens(t) {
   return t.input + t.output + t.cacheRead + t.cacheCreation;
 }
-function formatTokens(n) {
-  if (!Number.isFinite(n) || n < 0) return "0";
-  if (n >= 1e9) return `${(n / 1e9).toFixed(1)}B`;
-  if (n >= 1e6) return `${(n / 1e6).toFixed(1)}M`;
-  if (n >= 1e3) return `${(n / 1e3).toFixed(1)}K`;
-  return String(Math.floor(n));
+function formatTokens(n2) {
+  if (!Number.isFinite(n2) || n2 < 0) return "0";
+  if (n2 >= 1e9) return `${(n2 / 1e9).toFixed(1)}B`;
+  if (n2 >= 1e6) return `${(n2 / 1e6).toFixed(1)}M`;
+  if (n2 >= 1e3) return `${(n2 / 1e3).toFixed(1)}K`;
+  return String(Math.floor(n2));
 }
-function formatCount(n) {
-  if (!Number.isFinite(n) || n < 0) return "0";
-  return Math.floor(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+function formatCount(n2) {
+  if (!Number.isFinite(n2) || n2 < 0) return "0";
+  return Math.floor(n2).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
 }
+
+// src/core/verify/destructive.ts
+import { dirname, relative as relative2, sep as sep2 } from "path";
 
 // src/core/verify/types.ts
 var VERIFY_CATEGORIES = [
@@ -8248,2209 +8251,316 @@ function pickHeadline(cards, context) {
 }
 var LOCAL_ONLY = /* @__PURE__ */ Symbol("local-only");
 var LOCAL_FIX_SERIALIZED = "a local fix command belongs in the local fixes file only, and is never serialized";
+function localFix(category, command) {
+  return Object.freeze({
+    [LOCAL_ONLY]: true,
+    category,
+    command,
+    toJSON() {
+      throw new Error(LOCAL_FIX_SERIALIZED);
+    }
+  });
+}
+var SAFE_REF = /^[A-Za-z0-9_@%+=:,./-]+$/;
+var SHA = /^(?:[0-9a-fA-F]{7,40}|[0-9a-fA-F]{64})$/;
+function isSafeBranch(name) {
+  if (!SAFE_REF.test(name) || name.includes(":")) return false;
+  if (name === "@" || name === "HEAD" || name.includes("..") || name.includes("@{")) return false;
+  if (name.includes("//") || name.startsWith("/") || name.endsWith("/")) return false;
+  if (name.endsWith(".")) return false;
+  return name.split("/").every((part) => !part.startsWith(".") && !part.endsWith(".lock"));
+}
+function isSafeRepoPath(path) {
+  return SAFE_REF.test(path) && !path.includes(":") && !path.startsWith("/") && !path.includes("..");
+}
+function safeValue(part) {
+  let value;
+  let safe;
+  if ("sha" in part) {
+    value = part.sha;
+    safe = SHA.test(value);
+  } else if ("branch" in part) {
+    value = part.branch;
+    safe = isSafeBranch(value);
+  } else if ("repoPath" in part) {
+    value = part.repoPath;
+    safe = isSafeRepoPath(value);
+  } else {
+    value = part.ref;
+    safe = SAFE_REF.test(value);
+  }
+  return safe && !value.startsWith("-") ? value : void 0;
+}
+function quoteArgument(argument) {
+  return `'${argument.replace(/'/g, "'\\''")}'`;
+}
+function localFixCommand(category, parts) {
+  const argv = [];
+  for (const part of parts) {
+    if (typeof part === "string") {
+      argv.push(quoteArgument(part));
+      continue;
+    }
+    const value = safeValue(part);
+    if (value === void 0) {
+      return { category, unsafe: true, note: "could not make a safe command" };
+    }
+    argv.push(quoteArgument(value));
+  }
+  return localFix(category, argv.join(" "));
+}
 function isLocalFix(value) {
   return typeof value === "object" && value !== null && LOCAL_ONLY in value;
 }
 
-// src/core/verify/copy.ts
-function countOf(n, one, many = `${one}s`) {
-  return `${formatCount(n)} ${n === 1 ? one : many}`;
+// src/core/verify/git-copy.ts
+function counted(n2, singular, plural2 = `${singular}s`) {
+  return `${formatCount(n2)} ${n2 === 1 ? singular : plural2}`;
 }
-var CATEGORY_TITLES = {
-  secrets: "Secrets in transcripts",
-  "skipped-checks": "Skipped safety checks",
-  "lost-work": "Lost work",
-  cloud: "Cloud and permissions",
-  "prod-infra": "Production infrastructure",
-  tests: "Gaming tests",
-  destructive: "Destructive commands",
-  unreviewed: "Unreviewed code",
-  egress: "Data leaving the machine"
-};
-var TONE_LABELS = {
-  act: "Act on this",
-  review: "Review",
-  clean: "Clean",
-  "could-not-check": "Could not check",
-  "not-checked": "Not checked"
-};
-var KIND_LABELS = {
-  "aws-access-key": "AWS access key",
-  "aws-secret-key": "AWS secret key",
-  "private-key": "Private key",
-  "github-token": "GitHub token",
-  "slack-token": "Slack token",
-  "api-key": "API key",
-  jwt: "JSON web token",
-  "bearer-token": "Bearer token",
-  "auth-header": "Authorization header",
-  "database-url": "Database URL with a password",
-  "url-credentials": "URL with a password",
-  password: "Password",
-  "named-secret": "A named secret",
-  "random-string": "Random-looking secret",
-  other: "Other credential"
-};
-var PROVENANCE_PHRASES = {
-  "pasted-into-prompt": "you pasted it into a prompt",
-  "typed-into-command": "typed into a command",
-  "printed-by-command": "printed by a command",
-  "in-agent-reply": "in an agent reply"
-};
-function evidenceRow(item) {
+function was(n2) {
+  return n2 === 1 ? "was" : "were";
+}
+function is(n2) {
+  return n2 === 1 ? "is" : "are";
+}
+function addTallies(...tallies) {
+  const sum = { ran: 0, mentioned: 0, unknown: 0 };
+  for (const tally of tallies) {
+    sum.ran += tally.ran;
+    sum.mentioned += tally.mentioned;
+    sum.unknown += tally.unknown;
+  }
+  return sum;
+}
+function statusOf(found) {
+  if (found.sessions === 0) return "not-checked";
+  if (found.act) return "act";
+  if (found.review) return "review";
+  if (found.incomplete) return "could-not-check";
+  return "clean";
+}
+function codexCaveat(context, ran) {
+  return context.ranEvidence === "output-record" && ran > 0;
+}
+function cardExtras(chip, fixSteps) {
   return {
-    kind: KIND_LABELS[item.kind] ?? KIND_LABELS.other,
-    how: item.via.map((via) => PROVENANCE_PHRASES[via]).filter((phrase) => phrase !== void 0).join(", "),
-    files: `in ${countOf(item.files, "transcript file")}`
+    ...chip.label === void 0 ? {} : { chip: { count: chip.count, label: chip.label } },
+    ...fixSteps.length === 0 ? {} : { fixSteps }
   };
 }
-var MORE_EVIDENCE = {
-  id: "evidence.more",
-  render: ({ more }) => more > 0 ? `And ${countOf(more, "more likely-real credential", "more likely-real credentials")}.` : void 0
-};
-var RAN_BASIS = {
-  id: "lead.ran-basis",
-  render: (v) => v.resultsRecorded ? "Checked against command output: a match counts only when the transcript records that its command ran." : void 0
-};
-var NO_RESULTS = {
-  id: "lead.no-results",
-  render: (v) => v.resultsRecorded ? void 0 : "These sessions record no command output, so no matched command could be confirmed as run. A count of commands that ran is zero here because nothing could be confirmed, not because nothing ran."
-};
-var MENTIONED = {
-  id: "lead.mentioned",
-  render: (v) => v.matchedCalls.mentioned > 0 ? `${countOf(v.matchedCalls.mentioned, "match", "matches")} only mentioned a command, in a search, a message or a file, and ${v.matchedCalls.mentioned === 1 ? "is" : "are"} left out.` : void 0
-};
-var UNCONFIRMED = {
-  id: "lead.unconfirmed",
-  render: (v) => v.resultsRecorded && v.matchedCalls.unknown > 0 ? `${countOf(v.matchedCalls.unknown, "matched call")} had no recorded output to show ${v.matchedCalls.unknown === 1 ? "it" : "they"} ran, and ${v.matchedCalls.unknown === 1 ? "is" : "are"} left out.` : void 0
-};
-var CODEX_RAN = {
-  id: "lead.codex-ran",
-  render: (v) => v.ranEvidence === "output-record" && v.matchedCalls.ran > 0 ? "A Codex call counts as ran when Codex recorded an output for it, which may include calls a hook blocked." : void 0
-};
-var CODEX_UNVERIFIED_TEXT = "The Codex reading is limited and unverified: it is tested on synthetic sessions only.";
-var CODEX_UNVERIFIED = {
-  id: "lead.codex-unverified",
-  render: (v) => v.ranEvidence === "output-record" ? `${CODEX_UNVERIFIED_TEXT} No Codex finding leads this page.` : void 0
-};
-var LEAD_NOTES = [
-  RAN_BASIS,
-  NO_RESULTS,
-  MENTIONED,
-  UNCONFIRMED,
-  CODEX_UNVERIFIED,
-  CODEX_RAN
+function pushFix(fixes, category, parts) {
+  const fix = localFixCommand(category, parts);
+  if (isLocalFix(fix)) fixes.push(fix);
+}
+var MAX_PROBED_ITEMS = 500;
+var TEMP_ROOTS = [
+  "/tmp",
+  "/private/tmp",
+  "/var/tmp",
+  "/private/var/tmp",
+  "/var/folders",
+  "/private/var/folders",
+  "/dev/shm"
 ];
-function leadNotes(verification) {
-  return sentences(LEAD_NOTES, verification);
-}
-var CHIP_CANDIDATES = [
-  "secrets",
-  "skipped-checks",
-  "lost-work",
-  "cloud",
-  "prod-infra",
-  "destructive",
-  "egress"
-];
-var CHIP_COUNT = 6;
-function chipCategories(headline2) {
-  return CHIP_CANDIDATES.filter((c) => c !== headline2).slice(0, CHIP_COUNT);
-}
-var CHIP_TONE = {
-  id: "chip.tone",
-  render: ({ tone }) => TONE_LABELS[tone].toLowerCase()
-};
-function chipText(card) {
-  const counted4 = card.chip !== void 0 && (card.tone === "act" || card.tone === "review" || card.tone === "clean");
-  if (card.unconfirmed !== void 0 && (!counted4 || (card.chip?.count ?? 0) === 0)) {
-    return {
-      label: sentence(CHIP_UNCONFIRMED, card) ?? { template: CHIP_UNCONFIRMED.id, text: "" }
-    };
-  }
-  if (counted4 && card.chip !== void 0) {
-    return { count: card.chip.count, label: card.chip.label };
-  }
-  return { label: sentence(CHIP_TONE, card) ?? { template: CHIP_TONE.id, text: "" } };
-}
-var CHIP_UNCONFIRMED = {
-  id: "chip.could-not-confirm",
-  render: ({ unconfirmed }) => unconfirmed === void 0 ? void 0 : "could not confirm"
-};
-function toneLabel(card) {
-  return card.unconfirmed !== void 0 && card.tone === "could-not-check" ? "Could not confirm" : TONE_LABELS[card.tone];
-}
-var CODEX_CAVEAT = {
-  id: "card.codex-caveat",
-  render: ({ codexCaveat }) => codexCaveat ? "Codex counts here include every call Codex recorded an output for, which may include calls a hook blocked." : void 0
-};
-var TONE_TALLY = {
-  id: "cards.tally",
-  render: (cards) => {
-    const parts = [];
-    const n = (tone) => cards.filter((c) => c.tone === tone).length;
-    if (n("act") > 0) parts.push(`${formatCount(n("act"))} to act on`);
-    if (n("review") > 0) parts.push(`${formatCount(n("review"))} to review`);
-    if (n("clean") > 0) parts.push(`${formatCount(n("clean"))} clean`);
-    if (n("could-not-check") > 0)
-      parts.push(`${formatCount(n("could-not-check"))} could not check`);
-    if (n("not-checked") > 0) parts.push(`${formatCount(n("not-checked"))} not checked`);
-    return parts.length === 0 ? void 0 : parts.join(" \xB7 ");
-  }
-};
-var FIXES_FILE_NOTE = {
-  id: "card.fixes-file",
-  render: ({ variant }) => variant === "artifact" ? `The exact commands, with real names and paths, are in ${FIXES_FILE} on the machine the scan ran on. That file was not published with this page.` : `The exact commands for this machine, with real names and paths, are in ${FIXES_FILE} next to this report. That file stays on this machine and is not part of this page.`
-};
-var FIXES_FILE = "agenttrail-guard-fixes.txt";
-function cardCount(card) {
-  if (card.tone === "not-checked" || card.tone === "could-not-check" && card.count === 0) {
-    return void 0;
-  }
-  return card.countLine ?? sentence(CARD_COUNT, card);
-}
-var CARD_COUNT = {
-  id: "card.count",
-  render: ({ tone, count: count2 }) => tone === "not-checked" || tone === "could-not-check" && count2 === 0 ? void 0 : countOf(count2, "match", "matches")
-};
-
-// src/core/verify/secrets-card.ts
-function likelyReal(n) {
-  return countOf(n, "likely-real credential");
-}
-function filesItRead(n) {
-  return n === 1 ? "the one transcript file it read" : `the ${formatCount(n)} transcript files it read`;
-}
-function be(n) {
-  return n === 1 ? "is" : "are";
-}
-function anyFound(f) {
-  return f.classes["likely-real"] + f.classes["committed-fixture"] + f.classes.placeholder + f.classes["local-dev"] > 0;
-}
-var FOUND_LIKELY_REAL = {
-  id: "secrets.found.likely-real",
-  render: (f) => f.classes["likely-real"] > 0 ? `Found ${likelyReal(f.classes["likely-real"])} in ${filesItRead(f.filesRead)}.` : void 0
-};
-var FOUND_NO_LIKELY_REAL = {
-  id: "secrets.found.no-likely-real",
-  render: (f) => f.classes["likely-real"] === 0 && f.filesRead > 0 ? anyFound(f) ? `Found no likely-real credential in ${filesItRead(f.filesRead)}.` : `Found no credential-shaped value in ${filesItRead(f.filesRead)}.` : void 0
-};
-var FOUND_FIXTURES = {
-  id: "secrets.found.committed-fixtures",
-  render: (f) => {
-    const n = f.classes["committed-fixture"];
-    if (n === 0) return void 0;
-    return n === 1 ? "1 value is also in a git-tracked file, a committed fixture: it may be test data, or a real secret that was committed." : `${formatCount(n)} values are also in git-tracked files, committed fixtures: each may be test data, or a real secret that was committed.`;
-  }
-};
-var FOUND_NOT_COUNTED = {
-  id: "secrets.found.not-counted",
-  render: (f) => {
-    const parts = [];
-    const placeholders = f.classes.placeholder;
-    const local = f.classes["local-dev"];
-    if (placeholders > 0) {
-      parts.push(
-        countOf(placeholders, "placeholder or false positive", "placeholders or false positives")
-      );
-    }
-    if (local > 0) {
-      parts.push(`${countOf(local, "local dev value")} for a database or service on this machine`);
-    }
-    return parts.length > 0 ? `Not counted as likely real: ${parts.join(", and ")}.` : void 0;
-  }
-};
-var FOUND_SET_ASIDE = {
-  id: "secrets.found.set-aside",
-  render: (f) => {
-    const { unnamedOutputOnly, namedNotCredentialShaped } = f.setAside;
-    const n = unnamedOutputOnly + namedNotCredentialShaped;
-    if (n === 0) return void 0;
-    const why = [];
-    if (unnamedOutputOnly > 0) {
-      why.push(`${formatCount(unnamedOutputOnly)} unnamed and seen only in output or replies`);
-    }
-    if (namedNotCredentialShaped > 0) {
-      why.push(`${formatCount(namedNotCredentialShaped)} named but not shaped like a credential`);
-    }
-    return `Of the placeholders or false positives, ${formatCount(n)} ${n === 1 ? "was" : "were"} set aside by a rule that can miss a real credential: ${why.join(", and ")}.`;
-  }
-};
-var FOUND_FIXTURES_PARTIAL = {
-  id: "secrets.found.fixtures-partial",
-  render: (f) => f.classes["likely-real"] > 0 && f.fixtureCheck === "partial" ? `${countOf(f.reposNotChecked, "repo")} could not be searched for committed fixtures, so some of these may be fixtures.` : void 0
-};
-var FOUND_FIXTURES_UNAVAILABLE = {
-  id: "secrets.found.fixtures-unavailable",
-  render: (f) => f.classes["likely-real"] > 0 && f.fixtureCheck === "unavailable" ? "No repo could be searched for committed fixtures, so a fixture would be counted here as likely real." : void 0
-};
-var FOUND_UNREAD = {
-  id: "secrets.found.unread",
-  render: (f) => f.filesNotRead > 0 ? `${countOf(f.filesNotRead, "transcript file")} could not be read.` : void 0
-};
-var FOUND_UNPLACED = {
-  id: "secrets.found.unplaced",
-  render: (f) => f.unplaced > 0 ? `${countOf(f.unplaced, "redacted text")} could not be lined up with the original, so ${f.unplaced === 1 ? "it was" : "they were"} not classed.` : void 0
-};
-var FOUND_METHOD = {
-  id: "secrets.found.method",
-  render: (f) => f.filesRead > 0 ? "Each value was classed by its format and by where else it appears. None was checked with the service that issued it." : void 0
-};
-var SECRETS_FOUND = [
-  FOUND_LIKELY_REAL,
-  FOUND_NO_LIKELY_REAL,
-  FOUND_FIXTURES,
-  FOUND_NOT_COUNTED,
-  FOUND_SET_ASIDE,
-  FOUND_FIXTURES_PARTIAL,
-  FOUND_FIXTURES_UNAVAILABLE,
-  FOUND_UNREAD,
-  FOUND_UNPLACED,
-  FOUND_METHOD
-];
-var NOW_STILL_THERE = {
-  id: "secrets.now.still-there",
-  render: (f) => {
-    const n = f.classes["likely-real"];
-    if (n === 0) return void 0;
-    return n === 1 ? "It is still in the transcript files on this machine, where anything that can read those files can read it." : `All ${formatCount(n)} are still in the transcript files on this machine, where anything that can read those files can read them.`;
-  }
-};
-var NOW_FIXTURES = {
-  id: "secrets.now.committed-fixtures",
-  render: (f) => {
-    const n = f.classes["committed-fixture"];
-    if (n === 0) return void 0;
-    return n === 1 ? "The committed fixture is in a git-tracked file today, and so in the repo's history." : `The ${formatCount(n)} committed fixtures are in git-tracked files today, and so in the repo's history.`;
-  }
-};
-var NOW_NOTHING = {
-  id: "secrets.now.nothing",
-  render: (f) => f.classes["likely-real"] === 0 && f.classes["committed-fixture"] === 0 && f.filesRead > 0 ? "There is no likely-real credential to rotate." : void 0
-};
-var SECRETS_NOW = [
-  NOW_STILL_THERE,
-  NOW_FIXTURES,
-  NOW_NOTHING
-];
-var FIX_ROTATE = {
-  id: "secrets.fix.rotate",
-  render: (f) => {
-    const n = f.classes["likely-real"];
-    if (n === 0) return void 0;
-    return n === 1 ? "Rotate it first, with the service that issued it, so the copy in the transcripts no longer works." : "Rotate each one first, with the service that issued it, so the copies in the transcripts no longer work.";
-  }
-};
-var FIX_FIXTURES = {
-  id: "secrets.fix.committed-fixtures",
-  render: (f) => f.classes["committed-fixture"] > 0 ? "If a committed fixture is a real secret, rotate it as well: removing the file does not remove it from the repo's history." : void 0
-};
-var SECRETS_FIX = [FIX_ROTATE, FIX_FIXTURES];
-var SECRETS_HEADLINE = {
-  id: "secrets.headline",
-  render: (f) => {
-    const n = f.classes["likely-real"];
-    return n > 0 ? `${likelyReal(n)} ${be(n)} still in the agent's transcripts` : void 0;
-  }
-};
-var SECRETS_READ = {
-  id: "secrets.read",
-  render: (f) => {
-    if (f.filesRead === 0) return void 0;
-    let line = `Read ${countOf(f.filesRead, "transcript file")} again`;
-    if (f.reposChecked > 0) {
-      line += ` and searched the git-tracked files of ${countOf(f.reposChecked, "repo")} the sessions ran in, with read-only git`;
-    }
-    if (f.reposNotChecked > 0) {
-      line += `; ${countOf(f.reposNotChecked, "repo")} the sessions named could not be searched`;
-    }
-    return `${line}.`;
-  }
-};
-var SECRETS_COUNT = {
-  id: "secrets.count",
-  render: ({ matches }) => countOf(matches, "credential-shaped value")
-};
-var SECRETS_CHIP = {
-  id: "secrets.chip",
-  render: (f) => f.classes["likely-real"] === 1 ? "likely-real credential in transcripts" : "likely-real credentials in transcripts"
-};
-var secretsCard = (result) => {
-  const facts = result.facts;
-  const likely = facts.classes["likely-real"];
-  const headline2 = sentence(SECRETS_HEADLINE, facts);
-  const chip = sentence(SECRETS_CHIP, facts);
-  const countLine = sentence(SECRETS_COUNT, result);
-  const read = sentence(SECRETS_READ, facts);
-  return {
-    category: "secrets",
-    tone: result.status,
-    count: result.matches,
-    ...countLine === void 0 ? {} : { countLine },
-    found: sentences(SECRETS_FOUND, facts),
-    now: sentences(SECRETS_NOW, facts),
-    fixSteps: sentences(SECRETS_FIX, facts),
-    fixes: [],
-    codexCaveat: false,
-    ...headline2 === void 0 ? {} : {
-      headline: {
-        basis: "likely-real-credentials",
-        count: likely,
-        restsOnCodexRan: false,
-        sentence: headline2
-      }
-    },
-    ...chip === void 0 ? {} : { chip: { count: likely, label: chip } },
-    ...read === void 0 ? {} : { read }
-  };
-};
-
-// src/core/verify/builders.ts
-var CARD_BUILDERS = {
-  secrets: secretsCard
-};
-
-// src/core/report.ts
-var REPOSITORY_URL = "https://github.com/agenttrailhq/guard";
-var SITE_URL = "https://www.agenttrail.sh";
-var REPORT_FILENAME = "agenttrail-guard-report.html";
-var ARTIFACT_FILENAME = "agenttrail-guard-artifact.html";
-var FIXES_FILENAME = FIXES_FILE;
-var PRODUCT_NOTE = {
-  eyebrow: "AgentTrail OS",
-  heading: "AgentTrail Guard stops the mistake. AgentTrail OS remembers it and turns it into a rule.",
-  body: "This report is one look at the transcripts on one machine. AgentTrail OS watches every agent session, turns each repeated mistake into a guardrail, and proves the fix on your own history. It is a separate product, and nothing in this report was sent to it.",
-  primary: { label: "Book a team demo", path: "/agenttrail-os", content: "os-demo" },
-  secondary: { label: "Guard vs OS", path: "/guard-vs-os", content: "os-compare" }
-};
-var SEVERITY_ORDER = ["critical", "high", "medium", "low", "info"];
-function knownSeverity(severity) {
-  return SEVERITY_ORDER.includes(severity) ? severity : "unknown";
-}
-function severityRank(severity) {
-  const index = SEVERITY_ORDER.indexOf(severity);
-  return index === -1 ? SEVERITY_ORDER.length : index;
-}
-var ACTION_ORDER = ["block", "require_approval", "warn"];
-function matchTally(result) {
-  const bySeverity = /* @__PURE__ */ new Map();
-  const byAction = /* @__PURE__ */ new Map();
-  for (const finding of result.findings) {
-    bySeverity.set(finding.severity, (bySeverity.get(finding.severity) ?? 0) + finding.count);
-    byAction.set(finding.action, (byAction.get(finding.action) ?? 0) + finding.count);
-  }
-  return {
-    bySeverity: [...bySeverity].map(([severity, count2]) => ({ severity, count: count2 })).sort(
-      (a, b) => severityRank(a.severity) - severityRank(b.severity) || b.count - a.count || a.severity.localeCompare(b.severity)
-    ),
-    byAction: ACTION_ORDER.flatMap((action) => {
-      const count2 = byAction.get(action) ?? 0;
-      return count2 > 0 ? [{ action, count: count2 }] : [];
-    })
-  };
-}
-function bySeverityThenCount(findings) {
-  return [...findings].sort(
-    (a, b) => severityRank(a.severity) - severityRank(b.severity) || b.count - a.count || a.ruleId.localeCompare(b.ruleId)
-  );
-}
-var MAX_ROWS = 50;
-var MAX_EXAMPLES = 3;
-var FIX_FIRST_MAX = 6;
-var TOP_PER_ACTION = 3;
-var DESCRIPTION_LINE = 160;
-var TUNING_MAX_GUARDRAILS = 3;
-var TUNING_MIN_SHARE = 0.6;
-var TUNING_MIN_ASKS = 5;
-function escapeHtml(value) {
-  return String(value).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
-}
-function agentName(agent) {
-  return agentDisplayName(agent);
-}
-function counted(n, one, many) {
-  return `${formatCount(n)} ${n === 1 ? one : many}`;
-}
-function ruleSlug(id) {
-  return id.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
-}
-function siteLink(path, agent, content) {
-  const tags = `utm_source=guard&utm_medium=scan-report&utm_campaign=${agent}&utm_content=${content}`;
-  const hash = path.indexOf("#");
-  const base = hash === -1 ? path : path.slice(0, hash);
-  const fragment = hash === -1 ? "" : path.slice(hash);
-  return `${SITE_URL}${base}${base.includes("?") ? "&" : "?"}${tags}${fragment}`;
-}
-function sitePath(url) {
-  if (!url.startsWith(`${SITE_URL}/`)) throw new Error(`Not a page on the site: ${url}`);
-  return url.slice(SITE_URL.length);
-}
-function owaspRiskLink(id, agent) {
-  return siteLink(sitePath(owaspAnchorUrl(id)), agent, "owasp-risk");
-}
-function libraryLink(category, ruleId, agent) {
-  return siteLink(
-    `/guardrails/${encodeURIComponent(category)}/${encodeURIComponent(ruleSlug(ruleId))}`,
-    agent,
-    "guardrail"
-  );
-}
-var PACK_LABELS = {
-  "working-tree": "Working tree",
-  "destructive-data": "Destructive data",
-  "prod-infra": "Production infrastructure",
-  "secret-exposure": "Secret exposure",
-  "rce-supply-chain": "Remote code and supply chain",
-  "safety-bypass": "Safety bypass",
-  "privilege-supply-chain": "Privileges and supply chain",
-  "file-scope": "File scope",
-  "agent-context": "Agent context",
-  "test-integrity": "Test integrity",
-  exfiltration: "Data leaving the machine"
-};
-var YOUR_GUARDRAILS = "Your guardrails";
-var OWN_CARD_HEADING = "A guardrail you added";
-function packLabel(category) {
-  return PACK_LABELS[category] ?? category;
-}
-function wrapLines(text, width) {
-  const lines = [];
-  let line = "";
-  for (const word of text.split(/\s+/).filter(Boolean)) {
-    if (line === "") line = word;
-    else if (line.length + 1 + word.length <= width) line = `${line} ${word}`;
-    else {
-      lines.push(line);
-      line = word;
-    }
-  }
-  if (line !== "") lines.push(line);
-  return lines;
-}
-var SECRET_KIND_SET = new Set(SECRET_KINDS);
-var PROVENANCE_SET = new Set(SECRET_PROVENANCES);
-var FIXTURE_CHECK_SET = new Set(FIXTURE_CHECKS);
-function payloadSecrets(check) {
-  const facts = check.facts;
-  return {
-    status: copyStatus(check.status),
-    matches: check.matches,
-    facts: {
-      classes: {
-        "likely-real": facts.classes["likely-real"],
-        "committed-fixture": facts.classes["committed-fixture"],
-        placeholder: facts.classes.placeholder,
-        "local-dev": facts.classes["local-dev"]
-      },
-      items: facts.items.slice(0, MAX_ROWS).map((item) => ({
-        kind: SECRET_KIND_SET.has(item.kind) ? item.kind : "other",
-        via: item.via.filter((way) => PROVENANCE_SET.has(way)),
-        files: item.files
-      })),
-      moreItems: facts.moreItems + Math.max(0, facts.items.length - MAX_ROWS),
-      filesRead: facts.filesRead,
-      filesNotRead: facts.filesNotRead,
-      unplaced: facts.unplaced,
-      setAside: {
-        unnamedOutputOnly: facts.setAside.unnamedOutputOnly,
-        namedNotCredentialShaped: facts.setAside.namedNotCredentialShaped
-      },
-      fixtureCheck: FIXTURE_CHECK_SET.has(facts.fixtureCheck) ? facts.fixtureCheck : "unavailable",
-      reposChecked: facts.reposChecked,
-      reposNotChecked: facts.reposNotChecked
-    }
-  };
-}
-var MAX_FACTS_DEPTH = 6;
-var FACT_VALUES = new Set(FACT_VALUE_ENUMS.flat());
-var FACT_KEY_SET = /* @__PURE__ */ new Set([...FACT_KEYS, ...FACT_VALUES]);
-function copyFacts(value, capLists, depth = 0) {
-  if (isLocalFix(value)) throw new Error(LOCAL_FIX_SERIALIZED);
-  if (typeof value === "number" || typeof value === "boolean") return value;
-  if (typeof value === "string") return FACT_VALUES.has(value) ? value : void 0;
-  if (depth >= MAX_FACTS_DEPTH) return void 0;
-  if (Array.isArray(value)) {
-    const items = capLists ? value.slice(0, MAX_ROWS) : value;
-    return items.map((item) => copyFacts(item, capLists, depth + 1)).filter((item) => item !== void 0);
-  }
-  if (value !== null && typeof value === "object" && Object.getPrototypeOf(value) === Object.prototype) {
-    const out = {};
-    for (const [key, item] of Object.entries(value)) {
-      if (!FACT_KEY_SET.has(key)) continue;
-      const copied = copyFacts(item, capLists, depth + 1);
-      if (copied !== void 0) out[key] = copied;
-    }
-    return out;
-  }
-  return void 0;
-}
-var STATUS_SET = new Set(VERIFY_STATUSES);
-function copyStatus(status) {
-  return typeof status === "string" && STATUS_SET.has(status) ? status : "could-not-check";
-}
-function copyCategory(result, capLists) {
-  const out = {
-    status: copyStatus(result.status)
-  };
-  const matches = result.matches;
-  if (typeof matches === "number") out.matches = matches;
-  if ("facts" in result) {
-    out.facts = copyFacts(result.facts, capLists);
-  }
-  return out;
-}
-function copyVerification(verification, capLists) {
-  const categories = verification.categories;
-  return {
-    matchedCalls: {
-      ran: verification.matchedCalls.ran,
-      mentioned: verification.matchedCalls.mentioned,
-      unknown: verification.matchedCalls.unknown
-    },
-    resultsRecorded: verification.resultsRecorded,
-    ranEvidence: verification.ranEvidence,
-    categories: {
-      secrets: capLists ? payloadSecrets(categories.secrets) : copyCategory(categories.secrets, false),
-      "skipped-checks": copyCategory(categories["skipped-checks"], capLists),
-      "lost-work": copyCategory(categories["lost-work"], capLists),
-      cloud: copyCategory(categories.cloud, capLists),
-      "prod-infra": copyCategory(categories["prod-infra"], capLists),
-      tests: copyCategory(categories.tests, capLists),
-      destructive: copyCategory(categories.destructive, capLists),
-      unreviewed: copyCategory(categories.unreviewed, capLists),
-      egress: copyCategory(categories.egress, capLists)
-    }
-  };
-}
-function honestVerification(verification) {
-  const recorded = verification.resultsRecorded;
-  const categories = {};
-  for (const category of VERIFY_CATEGORIES) {
-    const result = verification.categories[category];
-    categories[category] = {
-      ...result,
-      status: honestStatus(category, result.status, result.facts, recorded)
-    };
-  }
-  return { ...verification, categories };
-}
-function boundaryVerification(verification, capLists) {
-  return honestVerification(copyVerification(verification, capLists));
-}
-function tokenCopy(t) {
-  return {
-    input: t.input,
-    output: t.output,
-    cacheRead: t.cacheRead,
-    cacheCreation: t.cacheCreation,
-    cacheCreation5m: t.cacheCreation5m,
-    cacheCreation1h: t.cacheCreation1h,
-    turnsWithSplit: t.turnsWithSplit,
-    turns: t.turns
-  };
-}
-function payloadFinding(finding) {
-  const base = {
-    ruleId: finding.ruleId,
-    title: finding.title,
-    severity: knownSeverity(finding.severity),
-    action: finding.action,
-    count: finding.count,
-    examples: finding.examples.slice(0, MAX_EXAMPLES).map((e) => ({ text: e.text, count: e.count })),
-    moreShapes: Math.max(0, finding.examples.length - MAX_EXAMPLES),
-    owasp: finding.owasp.filter((id) => isOwaspId(id))
-  };
-  if (finding.source !== "library") return { ...base, source: "yours" };
-  return {
-    ...base,
-    source: "library",
-    ...finding.category === void 0 ? {} : { category: finding.category },
-    ...finding.description === void 0 ? {} : { descriptionLines: wrapLines(finding.description, DESCRIPTION_LINE) }
-  };
-}
-function reportPayload(result, meta, builders = CARD_BUILDERS) {
-  const ordered = bySeverityThenCount(result.findings);
-  const payload = {
-    tool: "agenttrail-guard",
-    version: meta.version,
-    generatedAt: meta.generatedAt.toISOString(),
-    catalog: formatCatalogStamp(catalogStamp(), meta.generatedAt),
-    agent: result.agent,
-    sessions: result.sessions,
-    projects: result.projects,
-    quarantined: result.quarantined,
-    notRead: result.notRead,
-    skippedLines: result.skippedLines,
-    toolCalls: result.toolCalls,
-    riskyActions: result.riskyActions,
-    riskyByAction: {
-      block: result.riskyByAction.block,
-      require_approval: result.riskyByAction.require_approval,
-      warn: result.riskyByAction.warn
-    },
-    findings: ordered.slice(0, MAX_ROWS).map(payloadFinding),
-    moreFindings: Math.max(0, result.findings.length - MAX_ROWS),
-    recurring: result.recurring.slice(0, MAX_ROWS).map((r) => ({
-      text: r.text,
-      count: r.count,
-      calls: r.calls,
-      ruleId: r.ruleId,
-      title: r.title
-    })),
-    moreRecurring: Math.max(0, result.recurring.length - MAX_ROWS),
-    tokens: result.tokens === null ? null : tokenCopy(result.tokens),
-    shareText: shareText(result),
-    owasp: result.owasp.filter((t) => isOwaspId(t.id)).map((t) => ({
-      id: t.id,
-      callCount: t.callCount,
-      ruleMatches: t.ruleMatches,
-      guardrailCount: t.guardrailCount
-    }))
-  };
-  const copied = result.verification === void 0 ? void 0 : copyVerification(result.verification, true);
-  const withVerification = copied === void 0 ? payload : {
-    ...payload,
-    verification: honestVerification(copied),
-    // A scan that read no tool calls shows no cards, so the file carries none either.
-    ...result.toolCalls === 0 ? {} : { cards: cardsFor(copied, builders) }
-  };
-  const skipped = result.skipped;
-  if (skipped === void 0) return withVerification;
-  return {
-    ...withVerification,
-    skipped: {
-      unreadableFiles: skipped.unreadableFiles,
-      truncatedLastLines: skipped.truncatedLastLines,
-      unparseableLines: skipped.unparseableLines,
-      unknownRecords: skipped.unknownRecords,
-      turnsEndedWithError: skipped.turnsEndedWithError,
-      notActions: skipped.notActions,
-      unmappedTools: skipped.unmappedTools.map((t) => ({ name: t.name, count: t.count }))
-    }
-  };
-}
-function postLength(text) {
-  let n = 0;
-  for (const ch of text) {
-    const code2 = ch.codePointAt(0) ?? 0;
-    const light = code2 <= 4351 || code2 >= 8192 && code2 <= 8205 || code2 >= 8208 && code2 <= 8223 || code2 >= 8242 && code2 <= 8247;
-    n += light ? 1 : 2;
-  }
-  return n + 1 + 23 + 1 + "#agenttrail".length;
-}
-function topLibraryBlocker(result) {
-  return result.findings.filter((f) => f.action === "block" && f.source === "library").sort(
-    (a, b) => b.count - a.count || severityRank(a.severity) - severityRank(b.severity) || a.ruleId.localeCompare(b.ruleId)
-  )[0];
-}
-function shareText(result) {
-  const { block, require_approval: ask, warn } = result.riskyByAction;
-  const calls = counted(result.toolCalls, "tool call", "tool calls");
-  const head = `I scanned ${calls} from ${agentName(result.agent)} with AgentTrail Guard`;
-  const tail = ". Checked locally, nothing uploaded.";
-  const top = topLibraryBlocker(result);
-  const compose = (withTitle) => {
-    const parts = [];
-    if (block > 0) {
-      const detail = withTitle && top !== void 0 ? ` (${formatCount(top.count)} of those: ${top.title.replace(/`/g, "")})` : "";
-      parts.push(`${formatCount(block)} would block${detail}`);
-    }
-    if (ask > 0) parts.push(`${formatCount(ask)} would ask`);
-    if (warn > 0) parts.push(`${formatCount(warn)} would warn`);
-    const body = parts.length === 0 ? ": nothing matched a guardrail" : `: ${parts.join(" \xB7 ")}`;
-    return `${head}${body}${tail}`;
-  };
-  const full = compose(true);
-  return postLength(full) <= POST_LIMIT ? full : compose(false);
-}
-function shareLink(text, agent) {
-  const url = siteLink("/agenttrail-guard", agent, "share");
-  return `https://x.com/intent/post?text=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}&hashtags=agenttrail`;
-}
-function skippedPhrases(skipped) {
-  const unrecognized = skipped.unmappedTools.reduce((sum, tool) => sum + tool.count, 0);
-  const kinds = [
-    [skipped.unreadableFiles, "file that could not be read", "files that could not be read"],
-    [
-      skipped.truncatedLastLines,
-      "file whose last line was cut off",
-      "files whose last line was cut off"
-    ],
-    [skipped.unparseableLines, "line that is not JSON", "lines that are not JSON"],
-    [
-      skipped.unknownRecords,
-      "record of a kind this reader does not know",
-      "records of a kind this reader does not know"
-    ],
-    [
-      unrecognized,
-      "tool call of a kind this reader does not recognize",
-      "tool calls of a kind this reader does not recognize"
-    ]
-  ];
-  return kinds.filter(([n]) => n > 0).map(([n, one, many]) => counted(n, one, many));
-}
-function severityClass(severity) {
-  switch (severity) {
-    case "critical":
-      return "sev-critical";
-    case "high":
-      return "sev-high";
-    case "medium":
-      return "sev-medium";
-    case "low":
-      return "sev-low";
-    case "info":
-      return "sev-info";
-    default:
-      return "sev-unknown";
-  }
-}
-function actionLabel(action) {
-  switch (action) {
-    case "block":
-      return "would block";
-    case "require_approval":
-      return "would ask";
-    default:
-      return "would warn";
-  }
-}
-function actionClass(action) {
-  switch (action) {
-    case "block":
-      return "act-block";
-    case "require_approval":
-      return "act-ask";
-    default:
-      return "act-warn";
-  }
-}
-function severityBadge(severity) {
-  return `<span class="badge ${severityClass(severity)}">${escapeHtml(severity)}</span>`;
-}
-function actionChip(action) {
-  return `<span class="chip ${actionClass(action)}">${escapeHtml(actionLabel(action))}</span>`;
-}
-function inlineTitle(title) {
-  return escapeHtml(title).replace(/`([^`\n]+)`/g, "<code>$1</code>");
-}
-function outLink(url, text, className) {
-  const cls = className === void 0 ? "" : ` class="${className}"`;
-  return `<a${cls} href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${text}</a>`;
-}
-function copyable(id, command, name) {
-  return `<div class="command"><code id="${escapeHtml(id)}">${escapeHtml(command)}</code><button type="button" class="copy js-only" data-copy="${escapeHtml(id)}" data-label="Copy" aria-label="${escapeHtml(name)}" hidden>Copy</button></div>`;
-}
-function stat(value, label, note) {
-  const noteHtml = note === void 0 ? "" : `<div class="stat-note">${escapeHtml(note)}</div>`;
-  return `<div class="stat"><div class="stat-value">${escapeHtml(value)}</div><div class="stat-label">${escapeHtml(label)}</div>${noteHtml}</div>`;
-}
-function firstSentence(lines) {
-  const text = lines.join(" ");
-  const end = text.search(/\.(\s|$)/);
-  return end === -1 ? text : text.slice(0, end + 1);
-}
-function libraryText(text, className = "library-text") {
-  const html = wrapLines(inlineTitle(text), DESCRIPTION_LINE).join("\n");
-  return `<p class="${className}">${html}</p>`;
-}
-var MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-function readableTime(at) {
-  const two = (n) => String(n).padStart(2, "0");
-  return `${at.getUTCDate()} ${MONTHS[at.getUTCMonth()]} ${at.getUTCFullYear()}, ${two(at.getUTCHours())}:${two(at.getUTCMinutes())} UTC`;
-}
-function headline(result) {
-  if (result.toolCalls === 0) {
-    return result.sessions === 0 ? "No sessions found to scan" : "No tool calls found to scan";
-  }
-  const { block, require_approval: ask, warn } = result.riskyByAction;
-  const actions = (n) => counted(n, "action", "actions");
-  if (block > 0 && ask > 0) {
-    return `AgentTrail Guard would have stopped ${actions(block)} and asked you about ${formatCount(ask)} more`;
-  }
-  if (block > 0) return `AgentTrail Guard would have stopped ${actions(block)}`;
-  if (ask > 0) return `AgentTrail Guard would have asked you about ${actions(ask)}`;
-  if (warn > 0) return `AgentTrail Guard would have warned you about ${actions(warn)}`;
-  return "Nothing in these sessions matched a guardrail";
-}
-function topBar(payload) {
-  const scanned = payload.toolCalls > 0;
-  const links = [
-    ["overview", "Overview"],
-    ...scanned && payload.cards !== void 0 ? [["what-happened", "What happened"]] : [],
-    ...scanned ? [["fix-first", "Fix first"]] : [],
-    ...payload.owasp.length > 0 ? [["owasp", "OWASP"]] : [],
-    ...scanned ? [["findings", "All findings"]] : [],
-    ["next-steps", "Next steps"],
-    ...scanned ? [["share", "Share"]] : [],
-    ["privacy", "Privacy"]
-  ];
-  const nav = links.map(([id, label]) => `<li><a href="#${id}">${label}</a></li>`).join("\n");
-  const controls = `<div class="toolbar">
-<button type="button" id="print-button" class="tool js-only" hidden>PDF</button>
-<button type="button" id="export-button" class="tool js-only" hidden>JSON</button>
-<button type="button" id="theme-toggle" class="tool js-only" hidden>Theme</button>
-</div>`;
-  return `<header class="masthead">
-<div class="brand" role="img" aria-label="AgentTrail">${LOGO_LOCKUP_SVG}</div>
-<span class="product-tag">Guard</span>
-<nav class="sections" aria-label="Report sections"><ul>
-${nav}
-</ul></nav>
-${controls}
-</header>`;
-}
-function provenance(result, meta, variant) {
-  const iso = meta.generatedAt.toISOString();
-  const stamp = `Generated <time datetime="${escapeHtml(iso)}">${escapeHtml(readableTime(meta.generatedAt))}</time> by agenttrail-guard ${escapeHtml(meta.version)}`;
-  if (variant === "artifact") {
-    return `${stamp} on the publisher&#39;s own machine, from their own ${escapeHtml(agentName(result.agent))} transcripts. The scan itself made no network call &mdash; crash reporting is the one exception anywhere in this tool, off unless turned on, and a scan never uses it. This copy was published to claude.ai by the person who ran it, through Claude Code.`;
-  }
-  return `${stamp}. Produced entirely on this machine from transcripts already on disk &mdash; no account, nothing uploaded, and no network call: the one exception anywhere in this tool is crash reporting, which is off unless you turn it on and which a scan never uses.`;
-}
-function mostSerious(payload) {
-  if (payload.findings.length === 0) return void 0;
-  const library = payload.findings.find((f) => f.source === "library");
-  if (library === void 0) {
-    return `<p class="top-match">Most serious match: a guardrail you added</p>`;
-  }
-  return `<p class="top-match">Most serious match: ${severityBadge(library.severity)} <span class="top-title">${inlineTitle(library.title)}</span></p>`;
-}
-function emptyLead(result) {
-  const read = result.sessions === 0 ? `The scan found no ${agentName(result.agent)} sessions to read` : `The scan read ${counted(result.sessions, "session", "sessions")} with no tool calls in them`;
-  return `${read}, so nothing was checked. This is not a clean result: check that the folder and the agent are the ones you meant, then scan again.`;
-}
-function heroSection(result, payload, meta, variant, lead) {
-  const origin = variant === "artifact" ? "Scanned locally &middot; published by the person who ran it" : "Scanned locally &middot; nothing uploaded";
-  const fixTarget = payload.findings.some((f) => f.action === "block") ? "fix-first" : "findings";
-  const top = mostSerious(payload);
-  const claim = lead?.headline;
-  const leadLine = claim === void 0 ? "What your coding agent actually did, and which guardrails would have fired." : `${escapeHtml(headline(result))}.`;
-  const next = result.toolCalls === 0 ? `<p class="lead">${escapeHtml(emptyLead(result))}</p>
-<p class="provenance">${provenance(result, meta, variant)}</p>
-${copyable("cmd-scan-hero", `agenttrail-guard scan --agent ${result.agent}`, "Copy the scan command")}
-<p class="note">This reads the folder ${escapeHtml(agentName(result.agent))} uses by default. To read another folder, add <code>--dir</code> and its path.</p>` : `<p class="lead${claim === void 0 ? "" : " totals"}">${leadLine}</p>
-<p class="provenance">${provenance(result, meta, variant)}</p>${top === void 0 ? "" : `
-${top}`}
-<div class="actions">${payload.findings.length > 0 ? `
-<a class="button" href="#${fixTarget}">See what to fix first</a>` : ""}
-${outLink(shareLink(payload.shareText, result.agent), "Share on X", "button secondary")}
-</div>
-${copyable("cmd-init-hero", `agenttrail-guard init --agent ${result.agent}`, "Copy the init command")}`;
-  const h1 = claim === void 0 ? `<h1>${escapeHtml(headline(result))}</h1>` : `<h1 data-template="${escapeHtml(claim.sentence.template)}">${escapeHtml(claim.sentence.text)}</h1>`;
-  return `<section class="intro" id="overview">
-<p class="origin">${origin}</p>
-<p class="agent">Agent: ${escapeHtml(agentName(result.agent))}</p>
-${h1}
-${next}
-</section>`;
-}
-function statsSection(result) {
-  const t = result.tokens;
-  const repeatedShapes = new Set(result.recurring.map((r) => r.text)).size;
-  const cells = [
-    stat(formatCount(result.sessions), result.sessions === 1 ? "session" : "sessions"),
-    stat(formatCount(result.toolCalls), "tool calls"),
-    stat(formatCount(result.riskyActions), "risky actions"),
-    stat(
-      formatCount(repeatedShapes),
-      repeatedShapes === 1 ? "repeated command shape" : "repeated command shapes"
-    )
-  ];
-  if (result.toolCalls > 0) {
-    const clean = Math.floor((result.toolCalls - result.riskyActions) / result.toolCalls * 100);
-    cells.push(stat(`${clean}%`, "matched no guardrail"));
-  }
-  if (t !== null && result.toolCalls > 0) {
-    cells.push(
-      stat(
-        formatTokens(totalTokens(t)),
-        "tokens",
-        `${formatTokens(t.cacheRead)} cache reads (cumulative)`
-      )
-    );
-  }
-  return `<section class="stats" aria-label="Summary">
-${cells.join("\n")}
-</section>`;
-}
-function sentenceHtml(line, className) {
-  const cls = className === void 0 ? "" : ` class="${className}"`;
-  return `<p${cls} data-template="${escapeHtml(line.template)}">${escapeHtml(line.text)}</p>`;
-}
-function cardId(category) {
-  return `check-${category}`;
-}
-function evidenceSection(payload) {
-  const facts = payload.verification?.categories.secrets.facts;
-  if (facts === void 0 || facts.items.length === 0) return "";
-  const rows = facts.items.map((item) => {
-    const row = evidenceRow(item);
-    return `<li><span class="evidence-kind">${escapeHtml(row.kind)}</span><span class="evidence-how">${escapeHtml(row.how)}</span><span class="times">${escapeHtml(row.files)}</span></li>`;
-  }).join("\n");
-  const more = MORE_EVIDENCE.render({ more: facts.moreItems });
-  return `<section class="evidence" id="found" aria-labelledby="found-heading">
-<h2 id="found-heading">What it found, never the values</h2>
-<p class="note">Each credential that looks real, by its kind and how it got into the transcripts. Never the value, and never the name it was given.</p>
-<ul class="evidence-list">
-${rows}
-</ul>${more === void 0 ? "" : `
-${sentenceHtml({ template: MORE_EVIDENCE.id, text: more }, "note")}`}
-<p class="note"><a href="#${cardId("secrets")}">What checking found, and how to fix it</a></p>
-</section>`;
-}
-function chipsFor(cards, lead) {
-  return chipCategories(lead?.category).flatMap((category) => {
-    const card = cards.find((c) => c.category === category);
-    if (card === void 0) return [];
-    const chip = chipText(card);
-    const text = chip.count === void 0 ? chip.label.text : `${formatCount(chip.count)} ${chip.label.text}`;
-    return [
-      {
-        category,
-        tone: card.tone,
-        title: CATEGORY_TITLES[category],
-        text,
-        template: chip.label.template
-      }
-    ];
+function isUnder(path, roots) {
+  return roots.some((root) => {
+    const base = root.replace(/[\\/]+$/, "");
+    return path === base || path.startsWith(`${base}/`) || path.startsWith(`${base}\\`);
   });
 }
-function alsoCheckedSection(payload, cards, lead) {
-  const verification = payload.verification;
-  if (verification === void 0) return "";
-  const chips = chipsFor(cards, lead).map(
-    (chip) => `<li><a class="check-chip v-${chip.tone}" href="#${cardId(chip.category)}"><span class="chip-title">${escapeHtml(chip.title)}</span><span class="chip-text" data-template="${escapeHtml(chip.template)}">${escapeHtml(chip.text)}</span></a></li>`
-  ).join("\n");
-  const notes = leadNotes(verification).map((line) => sentenceHtml(line, "note")).join("\n");
-  return `<section class="also-checked" id="also-checked" aria-labelledby="also-checked-heading">
-<h2 id="also-checked-heading">Also checked on this machine</h2>
-${notes}
-<ul class="check-chips">
-${chips}
-</ul>
-</section>`;
+
+// src/core/verify/repo-probe.ts
+import { isAbsolute, join as join3, relative, resolve, sep } from "path";
+function isFailure(value) {
+  return typeof value === "object" && value !== null && "failed" in value;
 }
-function verifiedCard(card, variant, localFixes) {
-  const title = CATEGORY_TITLES[card.category];
-  const id = cardId(card.category);
-  const count2 = cardCount(card);
-  const block = (lines) => lines.map((line) => sentenceHtml(line)).join("\n");
-  const fields = [];
-  if (card.found.length > 0) {
-    fields.push(`<div><dt>What checking found</dt><dd>
-${block(card.found)}
-</dd></div>`);
+function isCommitId(value) {
+  return /^[0-9a-f]{7,64}$/.test(value);
+}
+function literalPathspec(folder, path) {
+  const rel = relative(folder, path);
+  if (rel.startsWith("..") || isAbsolute(rel)) return void 0;
+  const posix2 = rel === "" ? "." : rel.split(sep).join("/");
+  if (posix2.startsWith("-") || /[\0\r\n\\]/.test(posix2)) return void 0;
+  return `:(literal)${posix2}`;
+}
+var COMMIT_HOOKS = ["pre-commit", "commit-msg"];
+var CHECK_HOOKS = [
+  "pre-commit",
+  "commit-msg",
+  "pre-push",
+  "pre-merge-commit",
+  "prepare-commit-msg"
+];
+var RepoProbe = class {
+  #io;
+  #toplevels = /* @__PURE__ */ new Map();
+  #hooks = /* @__PURE__ */ new Map();
+  #defaults = /* @__PURE__ */ new Map();
+  #stashes = /* @__PURE__ */ new Map();
+  constructor(io) {
+    this.#io = io;
   }
-  if (card.now.length > 0) {
-    fields.push(`<div><dt>Now</dt><dd>
-${block(card.now)}
-</dd></div>`);
+  /** Does `path` exist, as a file or a folder? A path that cannot be read counts as missing. */
+  exists(path) {
+    return this.#io.isDirectory(path) !== void 0;
   }
-  const steps = card.fixSteps ?? [];
-  const fileNote = localFixes && card.tone !== "not-checked" ? FIXES_FILE_NOTE.render({ variant }) : void 0;
-  if (steps.length > 0 || card.fixes.length > 0 || fileNote !== void 0) {
-    const shapes = card.fixes.map(
-      (fix, i) => copyable(
-        `fix-${card.category}-${i + 1}`,
-        fix.shape,
-        `Copy fix command ${i + 1} for ${title.toLowerCase()}`
-      )
-    );
-    const parts = [
-      ...steps.map((line) => sentenceHtml(line)),
-      ...shapes,
-      ...fileNote === void 0 ? [] : [
-        `<p class="note fixes-file" data-template="${FIXES_FILE_NOTE.id}">${escapeHtml(fileNote).replace(FIXES_FILENAME, `<code>${FIXES_FILENAME}</code>`)}</p>`
-      ]
-    ];
-    fields.push(`<div><dt>Fix</dt><dd>
-${parts.join("\n")}
-</dd></div>`);
+  /** Is `path` a folder: `undefined` when it cannot be read. */
+  isFolder(path) {
+    return this.#io.isDirectory(path);
   }
-  const caveat = sentence(CODEX_CAVEAT, card);
-  return `<article class="card verified v-${card.tone}" id="${id}" aria-labelledby="${id}-title" aria-describedby="${id}-tone">
-<div class="card-head"><span class="tone tone-${card.tone}" id="${id}-tone">${escapeHtml(toneLabel(card))}</span>${count2 === void 0 ? "" : `<span class="times" data-template="${escapeHtml(count2.template)}">${escapeHtml(count2.text)}</span>`}</div>
-<h3 id="${id}-title">${escapeHtml(title)}</h3>
-<dl class="verified-facts">
-${fields.join("\n")}
-</dl>${caveat === void 0 ? "" : `
-${sentenceHtml(caveat, "note codex-caveat")}`}
-</article>`;
-}
-function whatHappenedSection(cards, variant, localFixCategories) {
-  const tally = sentence(TONE_TALLY, cards);
-  const reads = cards.filter((card) => card.read !== void 0).map(
-    (card) => `<li><span class="read-title">${escapeHtml(CATEGORY_TITLES[card.category])}:</span> <span data-template="${escapeHtml(card.read?.template ?? "")}">${escapeHtml(card.read?.text ?? "")}</span></li>`
-  );
-  const readList = reads.length === 0 ? "" : `
-<p class="note">What the checks read on this machine:</p>
-<ul class="read-list">
-${reads.join("\n")}
-</ul>`;
-  const rows = cards.map((card) => verifiedCard(card, variant, localFixCategories.includes(card.category))).join("\n");
-  return `<section id="what-happened" class="what-happened" aria-labelledby="what-happened-heading">
-<div class="section-head"><h2 id="what-happened-heading">What actually happened</h2>${tally === void 0 ? "" : `<p class="section-meta" data-template="${escapeHtml(tally.template)}">${escapeHtml(tally.text)}</p>`}</div>
-<p class="note">A match means a guardrail fired on a command. Each card says what checking that on this machine found, how things stand now, and how to fix it. The checks only read: they changed nothing on this machine.</p>${readList}
-<div class="verified-cards">
-${rows}
-</div>
-</section>`;
-}
-var ACTION_MEANING = {
-  block: "The command does not run, and the agent is told which guardrail stopped it.",
-  require_approval: "The command waits until you allow or deny it.",
-  warn: "The command runs, and the agent is shown which guardrail it matched."
-};
-function askOnCodexNote(result, byAction) {
-  if (result.agent !== "codex") return "";
-  if (!byAction.some((a) => a.action === "require_approval")) return "";
-  return `
-<p class="note"><strong>On Codex, &ldquo;would ask&rdquo; means the action would have been stopped.</strong> Codex gives a guardrail no way to ask you, so AgentTrail Guard sends those as a block. The label above is the guardrail&#39;s own decision, kept the same across apps so one guardrail reads the same way everywhere.</p>`;
-}
-function decidedBy(decided, action) {
-  const out = /* @__PURE__ */ new Map();
-  for (const group of decided) {
-    if (group.action !== action) continue;
-    for (const id of group.ruleIds) out.set(id, (out.get(id) ?? 0) + group.calls);
-  }
-  return out;
-}
-function tuningHint(decided, carried2) {
-  const asks = decided.filter((group) => group.action === "require_approval");
-  const total = asks.reduce((sum, group) => sum + group.calls, 0);
-  if (total < TUNING_MIN_ASKS) return void 0;
-  const askers = new Set(
-    carried2.filter((f) => f.action === "require_approval").map((f) => f.ruleId)
-  );
-  const own = new Map([...decidedBy(asks, "require_approval")].filter(([id]) => askers.has(id)));
-  const removed = (ids) => asks.reduce((sum, g) => g.ruleIds.every((id) => ids.has(id)) ? sum + g.calls : sum, 0);
-  const chosen = /* @__PURE__ */ new Set();
-  while (chosen.size < TUNING_MAX_GUARDRAILS && removed(chosen) / total < TUNING_MIN_SHARE) {
-    let best;
-    for (const [id, calls] of own) {
-      if (chosen.has(id)) continue;
-      const gain = removed(/* @__PURE__ */ new Set([...chosen, id]));
-      if (best === void 0 || gain > best.gain || gain === best.gain && (calls > best.calls || calls === best.calls && id < best.id)) {
-        best = { id, gain, calls };
-      }
+  /** The top folder of the repository `folder` is in. */
+  toplevel(folder) {
+    let answer = this.#toplevels.get(folder);
+    if (answer === void 0) {
+      answer = (async () => {
+        if (this.#io.isDirectory(folder) !== true) return { failed: "missing" };
+        const top = await this.#io.git(folder, ["rev-parse", "--show-toplevel"]);
+        if (!top.ok) return { failed: top.reason };
+        const root = top.stdout.trim();
+        return root === "" ? { failed: "failed" } : root;
+      })();
+      this.#toplevels.set(folder, answer);
     }
-    if (best === void 0) break;
-    chosen.add(best.id);
+    return answer;
   }
-  const drop = removed(chosen);
-  if (drop / total < TUNING_MIN_SHARE) return void 0;
-  return {
-    ids: [...chosen].sort((a, b) => (own.get(b) ?? 0) - (own.get(a) ?? 0) || a.localeCompare(b)),
-    share: drop / total,
-    asks: total,
-    remaining: total - drop
-  };
-}
-var SHELL_SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
-function tuningSection(result, payload) {
-  const hint = tuningHint(result.decided, payload.findings);
-  if (hint === void 0) return "";
-  const n = hint.ids.length;
-  const pct = Math.round(hint.share * 100);
-  const commands = hint.ids.map(
-    (id, i) => SHELL_SAFE_ID.test(id) ? copyable(
-      `cmd-tune-${i}`,
-      `agenttrail-guard guardrails set-action ${id} warn`,
-      `Copy set-action command ${i + 1}`
-    ) : `<p class="note">Set <code>${escapeHtml(id)}</code> to warn with <code>agenttrail-guard guardrails set-action</code>. Its id has characters a shell would read, so no command is offered to copy.</p>`
-  ).join("\n");
-  return `<div class="hint">
-<p><strong>${escapeHtml(counted(n, "guardrail accounts", "guardrails account"))} for ${pct}% of the asks.</strong> Setting ${n === 1 ? "it" : "them"} to warn would take the tool calls you are asked about from ${escapeHtml(formatCount(hint.asks))} to ${escapeHtml(formatCount(hint.remaining))}, and the agent would be shown a warning on those calls instead.</p>
-${commands}
-</div>`;
-}
-function wouldHaveDoneSection(result, payload) {
-  if (result.findings.length === 0) return "";
-  const columns = ACTION_ORDER.map((action) => {
-    const count2 = result.riskyByAction[action];
-    const calls = decidedBy(result.decided, action);
-    const top = payload.findings.filter((f) => f.action === action && (calls.get(f.ruleId) ?? 0) > 0).map((f) => ({ f, n: calls.get(f.ruleId) ?? 0 })).sort((a, b) => b.n - a.n || a.f.ruleId.localeCompare(b.f.ruleId)).slice(0, TOP_PER_ACTION).map(
-      ({ f, n }) => `<li><span class="col-title">${inlineTitle(f.title)}</span><span class="times">${escapeHtml(formatCount(n))}&times;</span></li>`
-    ).join("\n");
-    const label = { block: "Blocked", require_approval: "Asked you first", warn: "Warned" }[action];
-    return `<div class="col ${actionClass(action)}-col">
-<p class="col-label">${label}</p>
-<p class="col-count">${escapeHtml(formatCount(count2))}</p>
-<p class="note">${escapeHtml(ACTION_MEANING[action])}</p>${top === "" ? "" : `
-<ul class="col-list">
-${top}
-</ul>`}
-</div>`;
-  }).join("\n");
-  const { byAction } = matchTally(result);
-  const severityCounts = /* @__PURE__ */ new Map();
-  for (const s of matchTally(result).bySeverity) {
-    const key = knownSeverity(s.severity);
-    severityCounts.set(key, (severityCounts.get(key) ?? 0) + s.count);
+  /** The folder git runs a repository's hooks from now, after `core.hooksPath`. */
+  hooksFolder(root) {
+    let answer = this.#hooks.get(root);
+    if (answer === void 0) {
+      answer = (async () => {
+        const out = await this.#io.git(root, ["rev-parse", "--git-path", "hooks"]);
+        if (!out.ok) return { failed: out.reason };
+        const path = out.stdout.trim();
+        if (path === "") return { failed: "failed" };
+        return isAbsolute(path) ? path : resolve(root, path);
+      })();
+      this.#hooks.set(root, answer);
+    }
+    return answer;
   }
-  const bySeverity = [...severityCounts].map(([severity, count2]) => ({ severity, count: count2 }));
-  const item = (label, count2) => `<li>${label}<span class="tally-count">${escapeHtml(formatCount(count2))}</span></li>`;
-  const severities = bySeverity.map((s) => item(severityBadge(s.severity), s.count)).join("\n");
-  const actions = byAction.map((a) => item(actionChip(a.action), a.count)).join("\n");
-  return `<section id="would-do">
-<h2>What AgentTrail Guard would have done</h2>
-<p class="note">Tool calls, each counted once under the strictest guardrail it matched.</p>
-<div class="columns">
-${columns}
-</div>${askOnCodexNote(result, byAction)}
-${tuningSection(result, payload)}
-<div class="tally" role="group" aria-label="Guardrail matches">
-<div class="tally-group"><p class="tally-label">Matches by severity</p><ul class="pills">
-${severities}
-</ul></div>
-<div class="tally-group"><p class="tally-label">Matches by action</p><ul class="pills">
-${actions}
-</ul></div>
-<p class="note">Each guardrail counts its own matches, so a tool call that matched two guardrails is counted under both, and these totals can be larger than the number of risky actions.</p>
-</div>
-</section>`;
-}
-function fixFirstSection(payload) {
-  const blocking = payload.findings.filter((f) => f.action === "block").slice(0, FIX_FIRST_MAX);
-  if (blocking.length === 0) {
-    return `<section id="fix-first"><h2>Fix these first</h2><p class="empty">No guardrail would have blocked anything in these sessions.</p></section>`;
+  /** Does the repository have any of `names` as a hook file now? */
+  async hasHooks(root, names) {
+    const folder = await this.hooksFolder(root);
+    if (isFailure(folder)) return folder;
+    return names.some((name) => this.exists(join3(folder, name)));
   }
-  const cards = blocking.map((f) => {
-    const index = payload.findings.indexOf(f);
-    const yours = f.source !== "library";
-    const heading = yours ? OWN_CARD_HEADING : inlineTitle(f.title);
-    const why = yours ? `
-<p class="own-title">${inlineTitle(f.title)}</p>` : f.descriptionLines === void 0 ? "" : `
-${libraryText(firstSentence(f.descriptionLines), "library-text note")}`;
-    const example = f.examples[0];
-    const exampleHtml = example === void 0 ? "" : `
-<p class="example"><code>${escapeHtml(example.text)}</code></p>`;
-    const group = f.category === void 0 ? YOUR_GUARDRAILS : packLabel(f.category);
-    const link = f.category === void 0 ? "" : `
-<p>${outLink(libraryLink(f.category, f.ruleId, payload.agent), "How this guardrail works")}</p>`;
-    return `<article class="card">
-<div class="card-head">${severityBadge(f.severity)} ${actionChip(f.action)}<span class="times">${escapeHtml(formatCount(f.count))}&times;</span></div>
-<h3><a href="#finding-${index}">${heading}</a></h3>${why}${exampleHtml}
-<p class="card-meta">${escapeHtml(group)} &middot; <code>${escapeHtml(f.ruleId)}</code></p>${link}
-</article>`;
-  }).join("\n");
-  return `<section id="fix-first">
-<h2>Fix these first</h2>
-<p class="note">The guardrails that would have stopped a command outright, most serious first.</p>
-<div class="cards">
-${cards}
-</div>
-</section>`;
-}
-var OWASP_EDITION = "2026 edition";
-function riskLabel(id) {
-  return `<span class="risk-id">${escapeHtml(id)}</span> ${escapeHtml(owaspTitle(id))}`;
-}
-function owaspSection(payload) {
-  if (payload.owasp.length === 0) return "";
-  const touched = (list) => payload.owasp.filter((t) => list.some((risk) => risk.id === t.id)).length;
-  const summary = `These matches touched ${touched(OWASP_AGENTIC)} of ${OWASP_AGENTIC.length} agentic and ${touched(OWASP_LLM)} of ${OWASP_LLM.length} LLM risks, in the ${OWASP_EDITION} lists.`;
-  const risks = payload.owasp.map(
-    (t) => `<li class="risk" id="risk-${escapeHtml(t.id.toLowerCase())}">
-<p class="risk-name">${outLink(owaspRiskLink(t.id, payload.agent), riskLabel(t.id))}</p>
-<p class="risk-counts">${escapeHtml(counted(t.callCount, "tool call", "tool calls"))} &middot; ${escapeHtml(counted(t.guardrailCount, "guardrail", "guardrails"))}</p>
-<button type="button" class="tool js-only" data-risk="${escapeHtml(t.id)}" aria-label="Show its findings: ${escapeHtml(t.id)}" hidden>Show its findings</button>
-</li>`
-  ).join("\n");
-  return `<section id="owasp">
-<h2>OWASP risks</h2>
-<p class="lead">${escapeHtml(summary)}</p>
-<ul class="risks">
-${risks}
-</ul>
-<p class="note">A guardrail can name more than one risk, and a tool call can match more than one guardrail, so one tool call can count under several risks. These counts can add up to more than the totals above.</p>
-<p class="note">Covers coding-agent actions only, not full OWASP coverage. Each id names a risk where it becomes a command or a file change, and is never a claim that a guardrail covers the whole risk.</p>
-<p class="risk-sources">${outLink(siteLink(sitePath(OWASP_PAGE_URL), payload.agent, "owasp"), "How the guardrails map to OWASP")} &middot; ${outLink(OWASP_SOURCES.agentic, `OWASP Top 10 for Agentic Applications (${OWASP_EDITION})`)} &middot; ${outLink(OWASP_SOURCES.llm, `OWASP Top 10 for LLM Applications (${OWASP_EDITION})`)}</p>
-</section>`;
-}
-function ranks(findings) {
-  const yours = (f) => f.category === void 0 ? 1 : 0;
-  const pack = (f) => f.category === void 0 ? YOUR_GUARDRAILS : packLabel(f.category);
-  const rankBy = (cmp) => new Map([...findings].sort(cmp).map((f, i) => [f, i]));
-  return {
-    category: rankBy(
-      (a, b) => yours(a) - yours(b) || pack(a).localeCompare(pack(b), "en") || findings.indexOf(a) - findings.indexOf(b)
-    ),
-    count: rankBy((a, b) => b.count - a.count || findings.indexOf(a) - findings.indexOf(b)),
-    name: rankBy(
-      (a, b) => a.title.localeCompare(b.title, "en") || a.ruleId.localeCompare(b.ruleId, "en")
-    )
-  };
-}
-function findingRow(f, index, r, agent) {
-  const group = f.category === void 0 ? YOUR_GUARDRAILS : packLabel(f.category);
-  const examples = f.examples.map(
-    (example) => `<li><code>${escapeHtml(example.text)}</code><span class="times">${escapeHtml(formatCount(example.count))}&times;</span></li>`
-  ).join("\n");
-  const more = f.moreShapes > 0 ? `
-<li class="more">and ${escapeHtml(formatCount(f.moreShapes))} more shapes</li>` : "";
-  const shapeCount = f.examples.length + f.moreShapes;
-  const shapes = shapeCount === 1 ? "command shape" : `${formatCount(shapeCount)} command shapes`;
-  const how = f.descriptionLines === void 0 ? "" : `
-<details class="how"><summary>How this guardrail decides, and what it misses</summary>
-${libraryText(f.descriptionLines.join(" "))}
-<p>${outLink(libraryLink(f.category ?? "", f.ruleId, agent), "Open it in the guardrail library")}</p>
-</details>`;
-  const risks = f.owasp.length === 0 ? "" : `
-<ul class="owasp-ids" aria-label="OWASP risks">
-${f.owasp.map((id) => `<li>${outLink(owaspRiskLink(id, agent), riskLabel(id))}</li>`).join("\n")}
-</ul>`;
-  const riskData = f.owasp.length === 0 ? "" : ` data-owasp="${escapeHtml(f.owasp.join(" "))}"`;
-  return `<li class="finding" id="finding-${index}" data-action="${escapeHtml(f.action)}"${riskData} data-rank-serious="${index}" data-rank-category="${r.category.get(f) ?? index}" data-rank-count="${r.count.get(f) ?? index}" data-rank-name="${r.name.get(f) ?? index}">
-<div class="finding-head">
-<div class="guardrail-title">${inlineTitle(f.title)}</div>
-<div class="finding-meta">${severityBadge(f.severity)} ${actionChip(f.action)}<span class="num" data-label="Matches">${escapeHtml(formatCount(f.count))}&times;</span></div>
-</div>
-<div class="guardrail-id"><code>${escapeHtml(f.ruleId)}</code> &middot; <span class="group">${escapeHtml(group)}</span></div>${risks}
-<details class="commands"><summary>The ${escapeHtml(shapes)} behind it</summary>
-<ul class="shapes">
-${examples}${more}
-</ul>
-</details>${how}
-</li>`;
-}
-function riskFilter(payload) {
-  if (payload.owasp.length === 0) return "";
-  const options = payload.owasp.map(
-    (t) => `<option value="${escapeHtml(t.id)}">${escapeHtml(`${t.id} ${owaspTitle(t.id)}`)}</option>`
-  ).join("\n");
-  return `
-<label class="sort">OWASP risk <select id="risk-filter">
-<option value="">Any risk</option>
-${options}
-</select></label>`;
-}
-function findingsSection(payload, variant) {
-  if (payload.findings.length === 0) {
-    return `<section id="findings"><h2>All findings</h2><p class="empty">No guardrail matched anything in these sessions.</p></section>`;
+  /**
+   * The repository's hooks now: `on` when the folder in effect holds one of `names`; `off` when
+   * `core.hooksPath` points away from the default folder at one that holds none (switched
+   * off); `none` when the default folder holds none (never set up).
+   */
+  async hooksState(root, names) {
+    const folder = await this.hooksFolder(root);
+    if (isFailure(folder)) return folder;
+    if (names.some((name) => this.exists(join3(folder, name)))) return "on";
+    const common = await this.#io.git(root, ["rev-parse", "--git-common-dir"]);
+    if (!common.ok) return { failed: common.reason };
+    const dir = common.stdout.trim();
+    if (dir === "") return { failed: "failed" };
+    const standard = resolve(isAbsolute(dir) ? dir : resolve(root, dir), "hooks");
+    return resolve(folder) === standard ? "none" : "off";
   }
-  const r = ranks(payload.findings);
-  const rows = payload.findings.map((f, i) => findingRow(f, i, r, payload.agent)).join("\n");
-  const truncated = payload.moreFindings > 0 ? `
-<p class="note">${escapeHtml(formatCount(payload.moreFindings))} further guardrails matched and are not listed here.</p>` : "";
-  const filters = [
-    ["all", "All"],
-    ["block", "Would block"],
-    ["require_approval", "Would ask"],
-    ["warn", "Would warn"]
-  ].map(
-    ([value, label]) => `<button type="button" class="filter" data-filter="${value}" aria-pressed="${value === "all" ? "true" : "false"}">${label}</button>`
-  ).join("\n");
-  const matched = counted(
-    payload.findings.length + payload.moreFindings,
-    "guardrail matched",
-    "guardrails matched"
-  );
-  return `<section id="findings" class="findings-section">
-<div class="section-head"><h2>All findings</h2><p class="section-meta" id="findings-count">${escapeHtml(matched)}</p></div>${variant === "artifact" ? `
-<p class="note artifact-note">Filters, sort and export are in the report file itself, <code>${REPORT_FILENAME}</code>. To make one from your own sessions, run <code>agenttrail-guard scan</code>.</p>` : ""}
-<div class="controls js-only" hidden>
-<div class="filters" role="group" aria-label="Show findings">
-${filters}
-</div>
-<label class="sort">Sort <select id="sort">
-<option value="serious">Most serious</option>
-<option value="category">Category</option>
-<option value="count">Most matches</option>
-<option value="name">Name</option>
-</select></label>${riskFilter(payload)}
-</div>
-<p id="findings-status" class="sr-only" role="status" aria-live="polite"></p>
-<ol class="finding-list">
-${rows}
-</ol>
-<div class="filter-empty" id="findings-empty" hidden><p>No findings match these filters.</p><button type="button" class="tool" id="clear-filters">Show all findings</button></div>${truncated}
-</section>`;
-}
-function recurringSection(payload) {
-  if (payload.recurring.length === 0) {
-    return `<section id="repeats"><h2>Repeat offenders</h2><p class="empty">Nothing matched more than once.</p></section>`;
-  }
-  const byShape = /* @__PURE__ */ new Map();
-  for (const item of payload.recurring) {
-    byShape.set(item.text, [...byShape.get(item.text) ?? [], item]);
-  }
-  const rows = [...byShape].map(([text, items]) => {
-    const times = Math.max(...items.map((item) => item.calls));
-    const names = items.map((item) => {
-      const index = payload.findings.findIndex((f) => f.ruleId === item.ruleId);
-      const title = inlineTitle(item.title);
-      const named = index === -1 ? title : `<a href="#finding-${index}">${title}</a>`;
-      return item.count === times ? named : `${named} (${escapeHtml(formatCount(item.count))}&times;)`;
-    }).join("<br>");
-    return `<tr role="row"><td class="shape" role="cell"><code>${escapeHtml(text)}</code></td><td class="num" role="cell">${escapeHtml(formatCount(times))}&times;</td><td class="rule-name" role="cell">${names}</td></tr>`;
-  }).join("\n");
-  return `<section id="repeats"><h2>Repeat offenders</h2>
-<p class="note">The same shape, seen more than once. Paths are redacted before counting, so many different paths under one command become one repeat.</p>
-<div class="table-wrap"><table class="recurring" role="table">
-<thead role="rowgroup"><tr role="row"><th scope="col" role="columnheader">Command shape</th><th scope="col" class="num" role="columnheader">Times</th><th scope="col" role="columnheader">Guardrail</th></tr></thead>
-<tbody role="rowgroup">
-${rows}
-</tbody>
-</table></div>${payload.moreRecurring > 0 ? `
-<p class="note">${escapeHtml(counted(payload.moreRecurring, "further repeat is", "further repeats are"))} not listed here.</p>` : ""}
-</section>`;
-}
-var OTHER_AGENTS = {
-  claude: "Cursor or Codex",
-  cursor: "Claude Code or Codex",
-  codex: "Claude Code or Cursor"
-};
-function nextStepsSection(result) {
-  const a = result.agent;
-  return `<section id="next-steps">
-<h2>Next steps</h2>
-<ol class="steps">
-<li><p><strong>Turn on AgentTrail Guard</strong> so these guardrails run before each command.</p>
-${copyable("cmd-init", `agenttrail-guard init --agent ${a}`, "Copy the step 1 command")}</li>
-<li><p><strong>See what it is doing</strong>: whether it is on, and what it decided recently.</p>
-${copyable("cmd-status", "agenttrail-guard status", "Copy the step 2 command")}</li>
-<li><p><strong>Scan again next week</strong>, and read every line before the report is written.</p>
-${copyable("cmd-scan-again", `agenttrail-guard scan --agent ${a} --review`, "Copy the step 3 command")}</li>
-</ol>
-<ul class="links">
-<li>${outLink(siteLink("/get-started/guard", a, "next-commands"), "Every command")}</li>
-<li>${outLink(siteLink("/guardrails", a, "next-library"), "The guardrail library")}</li>
-<li>${outLink(siteLink("/get-started/guard", a, "next-agents"), `Set up ${OTHER_AGENTS[a]}`)}</li>
-</ul>
-</section>`;
-}
-function shareSectionHtml(result, payload, variant) {
-  const length = postLength(payload.shareText);
-  const editable = variant === "document";
-  const edit = editable ? "Edit it before posting." : "This published copy cannot change the post. In the report file it was made from, the post can be edited before posting.";
-  return `<section id="share" class="share">
-<h2>Share your result</h2>
-<p class="note share-note">Totals and at most one library guardrail&#39;s name: no commands, paths, project names or guardrails you wrote. ${edit}</p>
-<label class="share-label" for="share-text">Post preview</label>
-<textarea id="share-text" rows="4"${editable ? "" : " readonly"}>${escapeHtml(payload.shareText)}</textarea>
-<p class="share-actions"><span id="share-count" class="share-count" data-over="${length > POST_LIMIT ? "true" : "false"}">${escapeHtml(`${length} / ${POST_LIMIT}`)}</span>
-<a id="share-link" class="button" href="${escapeHtml(shareLink(payload.shareText, result.agent))}" target="_blank" rel="noopener noreferrer">Post on X</a>
-<button type="button" class="copy js-only" data-copy="share-text" data-label="Copy text" aria-label="Copy text of the post" hidden>Copy text</button></p>
-</section>`;
-}
-function beforeYouShareSection(result, variant) {
-  const review = `<code>agenttrail-guard scan --agent ${escapeHtml(result.agent)} --review</code>`;
-  const check = variant === "artifact" ? `Redaction is thorough but not a guarantee. Read the findings before passing this page on; the person who published it can check every line with ${review} before the file is written.` : `Redaction is thorough but not a guarantee. Read the findings before posting this anywhere public, and run ${review} to see every line before the file is written.`;
-  const warning = result.toolCalls === 0 ? "" : `
-<p class="warning">${check}</p>`;
-  return `<section class="callout" id="privacy">
-<h2>Before you share this</h2>
-<p class="note">This report was made on one machine from transcripts already on its disk, and the scan sent nothing anywhere.</p>
-<p class="note">Every command in this report has been through a secret scrubber, a path redactor, a pass for secret-named values and long random-looking strings, and an identifier redactor, and every MCP tool call has had its payload values structurally redacted. Redaction runs before anything is written, so this file has never held the original text.</p>
-<dl class="legend">
-<div><dt><code>&lt;path&gt;</code></dt><dd>stands for a redacted filesystem path or URL</dd></div>
-<div><dt><code>&lt;name&gt;</code> <code>&lt;host&gt;</code> <code>&lt;user&gt;</code> <code>&lt;message&gt;</code> <code>&lt;comment&gt;</code></dt><dd>stand for an identifying operand of a command &mdash; a container, a namespace, a machine, a login, a commit message or heredoc body, a shell comment</dd></div>
-<div><dt><code>&lt;value&gt;</code></dt><dd>stands for a redacted MCP payload value</dd></div>
-<div><dt><code>[REDACTED:&hellip;]</code></dt><dd>stands for a redacted secret; <code>[REDACTED:secret:generic]</code> marks a long random-looking string masked on a best guess</dd></div>
-<div><dt><code>&hellip;</code></dt><dd>marks where a long command was shortened for display</dd></div>
-</dl>${warning}
-<p class="note pdf-tip"><strong>Saving as PDF?</strong> Turn off headers and footers in the print dialog, so the file&rsquo;s location on your disk is not printed on every page.</p>
-</section>`;
-}
-function redactionSection() {
-  return `<section id="redaction"><h2>How redaction works and where it can miss</h2>
-<p class="note">Working directories and file paths appear nowhere in this file, and the projects these sessions came from are carried as a count and never as names.</p>
-<p class="note"><strong>Identifying names are a weaker claim than paths, and the difference is worth knowing.</strong> Shell commands go through an identifier redactor keyed to a fixed list of tools &mdash; container runtimes, <code>kubectl</code> (including resource names), the database clients (host, database, and the SQL handed to <code>-c</code> / <code>-e</code>), <code>ssh</code>, <code>git</code> commit messages and identity settings, 1Password&#39;s <code>op</code> (item and vault names), and <code>gh</code> titles and bodies &mdash; plus, in any command, a secret passed as a flag value (<code>--token</code>, <code>--password</code>, <code>--key</code>), a UUID, the body of a heredoc, and the text of a <code>#</code> comment. That list is a deny-list and will miss the tool nobody thought of, so a bare operand naming a resource for a tool not on it can survive.</p>
-<p class="note">Cloud account identifiers are redacted where a name or flag gives them away: <code>CLOUDFLARE_ACCOUNT_ID</code> and <code>--account-id</code>, <code>wrangler</code> commands, AWS account numbers after <code>--account</code> or inside an ARN, and <code>--project</code> for <code>gcloud</code>, <code>gsutil</code>, <code>bq</code> and <code>firebase</code>.</p>
-<p class="note"><strong>Secrets without a known format are caught by name and by shape, and both are guesses.</strong> A value after a name ending in <code>_KEY</code> or <code>-key</code>, an <code>Authorization</code> header, and any long random-looking string of 32 or more characters is masked. A secret that is shorter, that is only hexadecimal and has no revealing name, that is split by punctuation, or that has no name and is followed by a <code>.</code>, ends in <code>=</code> or is written as short dashed groups can survive. Branch names, folder names and git branch operands are kept readable and are not redacted.</p>
-<p class="note"><strong>MCP tool calls are handled the other way round:</strong> a call to an MCP server arrives as a structured payload, and rather than deny-listing known-sensitive fields, every value in it is redacted to <code>&lt;value&gt;</code> by default and only the field names and the shape are kept.</p>
-<p class="note">Guardrail ids and titles are shown as their author wrote them &mdash; which for any guardrail you added yourself means your own words, unredacted. Redaction is thorough but not a guarantee. Read the commands and guardrail names above before posting this anywhere public.</p>
-</section>`;
-}
-function coverageNote(result) {
-  if (result.notRead === 0) return "";
-  const notRead = `${escapeHtml(formatCount(result.notRead))} further transcript file${result.notRead === 1 ? "" : "s"}`;
-  const was = result.notRead === 1 ? "was" : "were";
-  const tail = `Every count above is of what was read, not of everything that exists.`;
-  const open = `<p class="note"><strong>Coverage limit.</strong>`;
-  switch (result.agent) {
-    case "cursor":
-      return `${open} This reader opens each session&#39;s file, and the files of the sub-agents that session started, in each project&#39;s <code>agent-transcripts</code> folder. ${notRead} in those folders ${was} not read. ${tail}</p>`;
-    case "codex":
-      return `${open} This reader opens the session files Codex files by date, in <code>~/.codex/sessions/&lt;year&gt;/&lt;month&gt;/&lt;day&gt;/</code>. ${notRead} elsewhere under the sessions root ${was} not read. ${tail}</p>`;
-    case "claude":
-      return `${open} This reader opens each session&#39;s transcript and the sub-agent transcripts in its <code>subagents</code> folder, folding a sub-agent&#39;s actions into the session that started it. ${notRead} elsewhere under the projects root &mdash; a stray file, or one nested somewhere it does not walk &mdash; ${was} not read. ${tail}</p>`;
-    default:
-      return unhandledAgent(result.agent);
-  }
-}
-function corpusSection(result) {
-  const lines = [];
-  lines.push(
-    `Read ${escapeHtml(formatCount(result.sessions))} session${result.sessions === 1 ? "" : "s"} across ${escapeHtml(formatCount(result.projects))} project${result.projects === 1 ? "" : "s"}.`
-  );
-  if (result.quarantined > 0) {
-    lines.push(
-      `${escapeHtml(formatCount(result.quarantined))} file${result.quarantined === 1 ? "" : "s"} yielded no session and ${result.quarantined === 1 ? "was" : "were"} skipped &mdash; a transcript holding no messages, such as a session started and abandoned, has nothing to report.`
-    );
-  }
-  if (result.skippedLines > 0 && result.skipped === void 0) {
-    lines.push(
-      `${escapeHtml(formatCount(result.skippedLines))} individual line${result.skippedLines === 1 ? "" : "s"} could not be parsed and ${result.skippedLines === 1 ? "was" : "were"} skipped.`
-    );
-  }
-  if (result.tokens === null) {
-    lines.push(
-      `${escapeHtml(agentName(result.agent))}&#39;s session files record no token counts, so this report shows none.`
-    );
-  }
-  const coverage = coverageNote(result);
-  const codex = result.agent === "codex" ? `
-<p class="note codex-reading">${escapeHtml(CODEX_UNVERIFIED_TEXT)}</p>` : "";
-  return `<section id="scanned"><h2>What was scanned</h2>
-<p class="note">${lines.join(" ")}</p>${coverage === "" ? "" : `
-${coverage}`}${codex}
-</section>`;
-}
-function skippedSection(payload) {
-  const skipped = payload.skipped;
-  if (skipped === void 0) return "";
-  const phrases = skippedPhrases(skipped);
-  const kinds = phrases.length === 0 ? `<p class="empty">Every line of every session file that was opened was read.</p>` : `<ul class="list">
-${phrases.map((phrase) => `<li>${escapeHtml(phrase)}</li>`).join("\n")}
-</ul>`;
-  const tools = skipped.unmappedTools.length === 0 ? "" : `
-<p class="note">Tool calls this reader does not recognize, by name:</p>
-<ul class="shapes">
-${skipped.unmappedTools.map(
-    (tool) => `<li><code>${escapeHtml(tool.name)}</code><span class="times">${escapeHtml(formatCount(tool.count))}&times;</span></li>`
-  ).join("\n")}
-</ul>`;
-  const notes = [];
-  if (skipped.notActions > 0) {
-    notes.push(
-      `${counted(skipped.notActions, "tool call was", "tool calls were")} not evaluated because no guardrail checks that kind of call: plans, to-do lists, questions, and starting a sub-agent, whose own tool calls are read from its file.`
-    );
-  }
-  if (skipped.turnsEndedWithError > 0) {
-    notes.push(
-      `${counted(skipped.turnsEndedWithError, "turn", "turns")} ended with an error; the tool calls made before it were read.`
-    );
-  }
-  return `<section id="not-evaluated"><h2>What was not evaluated</h2>
-<p class="note">None of this stopped the scan. Each line of a session file is read on its own, and whatever could not be used is counted here.</p>
-${kinds}${tools}${notes.map((note) => `
-<p class="note">${escapeHtml(note)}</p>`).join("")}
-</section>`;
-}
-function tokensSection(result) {
-  const t = result.tokens;
-  if (t === null) return "";
-  const rows = [
-    ["Input", formatCount(t.input)],
-    ["Output", formatCount(t.output)],
-    ["Read from cache (cumulative)", formatCount(t.cacheRead)],
-    ["Written to cache", formatCount(t.cacheCreation)]
-  ];
-  if (t.turnsWithSplit > 0) {
-    rows.push([
-      "\u2026of which 5-minute / 1-hour",
-      `${formatCount(t.cacheCreation5m)} / ${formatCount(t.cacheCreation1h)}`
+  /** The full id of a commit that is still in the object store, or `null` when it is not. */
+  async commit(root, id) {
+    if (!isCommitId(id)) return { failed: "refused" };
+    const out = await this.#io.git(root, [
+      "log",
+      "--no-walk",
+      "--ignore-missing",
+      "--format=%H",
+      id
     ]);
+    if (!out.ok) return { failed: out.reason };
+    const full = out.stdout.trim().split("\n")[0] ?? "";
+    if (full === "") return null;
+    return isCommitId(full) && full.startsWith(id) ? full : { failed: "failed" };
   }
-  const body = rows.map(
-    ([label, value]) => `<tr><th scope="row">${escapeHtml(label ?? "")}</th><td class="num">${escapeHtml(value ?? "")}</td></tr>`
-  ).join("\n");
-  const splitNote = t.turnsWithSplit > 0 ? `<p class="note">The 5-minute / 1-hour split is reported separately by the model and is not derived from the total above; on real sessions the two do not always agree, so both are shown as reported.</p>` : `<p class="note">None of these sessions reported a 5-minute / 1-hour cache-write split, so that row is omitted rather than shown as zero.</p>`;
-  const cacheReadNote = t.cacheRead > 0 ? `<p class="note">"Read from cache" is cumulative \u2014 the cached prefix is re-read and re-charged every turn, so this counts the same tokens many times over a session. It is a total of what the model billed for, not of distinct input.</p>` : "";
-  return `<section id="tokens"><h2>Tokens</h2>
-<p class="note">Read straight from the transcripts, so these are exact counts and not estimates.</p>
-<div class="table-wrap"><table class="kv">
-${body}
-</table></div>
-${cacheReadNote}${splitNote}</section>`;
-}
-function productNoteSection(result) {
-  if (result.agent !== "claude") return "";
-  const a = result.agent;
-  const { primary, secondary } = PRODUCT_NOTE;
-  return `<aside class="product-note" id="os" aria-label="About AgentTrail OS">
-<p class="eyebrow">${escapeHtml(PRODUCT_NOTE.eyebrow)}</p>
-<h2>${escapeHtml(PRODUCT_NOTE.heading)}</h2>
-<p>${escapeHtml(PRODUCT_NOTE.body)}</p>
-<p class="product-note-action">${outLink(siteLink(primary.path, a, primary.content), escapeHtml(primary.label), "button")}
-${outLink(siteLink(secondary.path, a, secondary.content), escapeHtml(secondary.label), "text-link")}</p>
-</aside>`;
-}
-function pageTitle(result, meta) {
-  return `AgentTrail Guard scan report \xB7 ${agentName(result.agent)} \xB7 ${meta.generatedAt.toISOString().slice(0, 10)}`;
-}
-function dataBlockText(payload) {
-  return JSON.stringify(payload, null, 1).replace(/</g, "\\u003c");
-}
-function contentSecurityPolicy() {
-  const hash = createHash("sha256").update(REPORT_SCRIPT, "utf8").digest("base64");
-  return `default-src 'none'; script-src 'sha256-${hash}'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; require-trusted-types-for 'script'`;
-}
-function renderReport(result, meta, options = {}) {
-  const variant = options.variant ?? "document";
-  const payload = reportPayload(result, meta, options.cardBuilders);
-  const scanned = result.toolCalls > 0;
-  const cards = scanned ? payload.cards : void 0;
-  const lead = cards === void 0 || payload.verification === void 0 ? void 0 : pickHeadline(cards, { ranEvidence: payload.verification.ranEvidence });
-  const head = `<title>${escapeHtml(pageTitle(result, meta))}</title>
-<style>${REPORT_STYLES}</style>`;
-  const sections = [
-    topBar(payload),
-    heroSection(result, payload, meta, variant, lead),
-    ...cards === void 0 ? [] : [evidenceSection(payload), alsoCheckedSection(payload, cards, lead)],
-    statsSection(result),
-    ...cards === void 0 ? [] : [whatHappenedSection(cards, variant, options.localFixCategories ?? [])],
-    ...scanned ? [
-      wouldHaveDoneSection(result, payload),
-      fixFirstSection(payload),
-      owaspSection(payload),
-      findingsSection(payload, variant),
-      recurringSection(payload)
-    ] : [],
-    nextStepsSection(result),
-    scanned ? shareSectionHtml(result, payload, variant) : "",
-    beforeYouShareSection(result, variant),
-    redactionSection(),
-    corpusSection(result),
-    skippedSection(payload),
-    scanned ? tokensSection(result) : "",
-    productNoteSection(result)
-  ].filter((section) => section !== "");
-  const body = `<main class="page" lang="en">
-${sections.join("\n")}
-<footer>
-<p class="footer-brand">${LOGO_MARK_SVG}<span>agenttrail-guard ${escapeHtml(meta.version)} &middot; ${escapeHtml(payload.catalog)}</span></p>
-<p>Source: ${escapeHtml(REPOSITORY_URL)}</p>
-<p>A finding is a guardrail that matched. It is not proof that anything went wrong, and the guardrails state their own coverage limits.</p>
-<ul class="footer-links">
-<li>${outLink(siteLink("/agenttrail-guard", result.agent, "footer-guard"), "AgentTrail Guard")}</li>
-<li>${outLink(siteLink("/guardrails", result.agent, "footer-library"), "Guardrail library")}</li>
-<li>${outLink(siteLink("/security", result.agent, "footer-security"), "Security")}</li>
-</ul>
-</footer>
-<p id="page-status" class="sr-only" role="status" aria-live="polite"></p>
-<textarea id="copy-buffer" class="sr-only" tabindex="-1" aria-hidden="true" readonly></textarea>
-</main>`;
-  if (variant === "artifact") return `${head}
-${body}
-`;
-  return `<!doctype html>
-<html lang="en">
-<head>
-<meta http-equiv="Content-Security-Policy" content="${contentSecurityPolicy()}">
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="color-scheme" content="light dark">
-${head}
-</head>
-<body>
-${body}
-<script type="application/json" id="report-data">
-${dataBlockText(payload)}
-</script>
-<script>${REPORT_SCRIPT}</script>
-</body>
-</html>
-`;
-}
-function reviewStrings(result, builders = CARD_BUILDERS) {
-  const payload = reportPayload(result, { version: "", generatedAt: /* @__PURE__ */ new Date(0) }, builders);
-  const seen = /* @__PURE__ */ new Set();
-  const take = (value) => {
-    if (seen.has(value)) return [];
-    seen.add(value);
-    return [value];
-  };
-  const guardrails = [];
-  const commands = [];
-  for (const finding of payload.findings) {
-    guardrails.push(...take(`${finding.ruleId}  ${finding.title}`));
-    for (const example of finding.examples) commands.push(...take(example.text));
-  }
-  for (const item of payload.recurring) {
-    guardrails.push(...take(`${item.ruleId}  ${item.title}`));
-    commands.push(...take(item.text));
-  }
-  const tools = (payload.skipped?.unmappedTools ?? []).flatMap((tool) => take(tool.name));
-  const groups = [];
-  if (guardrails.length > 0)
-    groups.push({ label: "Guardrails named in the report", lines: guardrails });
-  if (commands.length > 0) groups.push({ label: "Command shapes in the report", lines: commands });
-  if (tools.length > 0) groups.push({ label: "Tool names in the report", lines: tools });
-  const verified = verifiedLines(payload).flatMap(take);
-  if (verified.length > 0) {
-    groups.push({
-      label: "What the checks found on this machine, by count and kind, never a value",
-      lines: verified
-    });
-  }
-  if (payload.findings.length > 0) {
-    groups.push({ label: "The suggested post, which you can edit", lines: [payload.shareText] });
-  }
-  return groups;
-}
-function verifiedLines(payload) {
-  const cards = payload.toolCalls > 0 ? payload.cards : void 0;
-  if (cards === void 0 || payload.verification === void 0) return [];
-  const lines = [];
-  const lead = pickHeadline(cards, { ranEvidence: payload.verification.ranEvidence });
-  if (lead?.headline !== void 0) lines.push(lead.headline.sentence.text);
-  const facts = payload.verification.categories.secrets.facts;
-  for (const item of facts.items) {
-    const row = evidenceRow(item);
-    lines.push(`${row.kind}  ${row.how}  ${row.files}`);
-  }
-  const more = MORE_EVIDENCE.render({ more: facts.moreItems });
-  if (more !== void 0) lines.push(more);
-  for (const note of leadNotes(payload.verification)) lines.push(note.text);
-  for (const chip of chipsFor(cards, lead)) lines.push(`${chip.title}  ${chip.text}`);
-  const tally = sentence(TONE_TALLY, cards);
-  if (tally !== void 0) lines.push(tally.text);
-  for (const card of cards) {
-    if (card.read !== void 0)
-      lines.push(`${CATEGORY_TITLES[card.category]}:  ${card.read.text}`);
-  }
-  for (const card of cards) {
-    const title = CATEGORY_TITLES[card.category];
-    const count2 = cardCount(card);
-    if (count2 !== void 0) lines.push(`${title}  ${count2.text}`);
-    for (const line of [...card.found, ...card.now, ...card.fixSteps ?? []]) {
-      lines.push(`${title}  ${line.text}`);
+  /** Which of origin/main and origin/master the repository has. */
+  defaultRefs(root) {
+    let answer = this.#defaults.get(root);
+    if (answer === void 0) {
+      answer = (async () => {
+        const out = await this.#io.git(root, [
+          "for-each-ref",
+          "--format=%(refname)",
+          "refs/remotes/origin/main",
+          "refs/remotes/origin/master"
+        ]);
+        return out.ok ? lines(out.stdout) : { failed: out.reason };
+      })();
+      this.#defaults.set(root, answer);
     }
-    for (const fix of card.fixes) lines.push(`${title}  ${fix.shape}`);
-    const caveat = sentence(CODEX_CAVEAT, card);
-    if (caveat !== void 0) lines.push(`${title}  ${caveat.text}`);
+    return answer;
   }
-  return lines;
-}
-function renderJson(result, meta) {
-  const safe = result.verification === void 0 ? result : { ...result, verification: boundaryVerification(result.verification, false) };
-  return `${JSON.stringify(
-    {
-      tool: "agenttrail-guard",
-      version: meta.version,
-      generatedAt: meta.generatedAt.toISOString(),
-      catalog: formatCatalogStamp(catalogStamp(), meta.generatedAt),
-      // A Codex scan says, in --json too, how far its reading can be trusted.
-      ...result.agent === "codex" ? { notes: [CODEX_UNVERIFIED_TEXT] } : {},
-      result: safe
-    },
-    null,
-    2
-  )}
-`;
-}
-
-// src/core/fixes-file.ts
-var CONTROL = (
-  // biome-ignore lint/suspicious/noControlCharactersInRegex: control characters are what it finds.
-  /[\u0000-\u0008\u000a-\u001f\u007f-\u009f\u2028\u2029\u200e\u200f\u202a-\u202e\u2066-\u2069]/
-);
-function writable(fixes) {
-  return fixes.filter(
-    (fix) => isLocalFix(fix) && fix.command.trim() !== "" && !CONTROL.test(fix.command)
-  );
-}
-function unsafe(fixes) {
-  return fixes.filter((fix) => !isLocalFix(fix) && "unsafe" in fix);
-}
-function exactFixCount(fixes) {
-  return writable(fixes).length;
-}
-function unsafeFixCount(fixes) {
-  return unsafe(fixes).length;
-}
-function fixCategories(fixes) {
-  const kept = writable(fixes);
-  return VERIFY_CATEGORIES.filter((category) => kept.some((fix) => fix.category === category));
-}
-function hasFileFixes(fixes) {
-  return writable(fixes).length + unsafe(fixes).length > 0;
-}
-function fixesFileText(fixes, meta) {
-  const kept = writable(fixes);
-  const notes = unsafe(fixes);
-  const left = fixes.length - kept.length - notes.length;
-  const out = [
-    "AgentTrail Guard: fix commands for this machine",
-    "",
-    `Written by agenttrail-guard ${meta.version} on ${readableTime(meta.generatedAt)}, with ${meta.reportName}.`,
-    "",
-    "These are the exact commands behind the redacted shapes in the report, with real",
-    "branch names and paths. Keep this file on this machine: it is not part of the",
-    "report, and it is written for your user account only (mode 0600, where the system",
-    "honours it). Read each command before you run it. Nothing here has been run."
-  ];
-  if (left > 0) {
-    out.push(
-      "",
-      `${left === 1 ? "1 command was" : `${left} commands were`} left out because ${left === 1 ? "it does" : "they do"} not fit on one line.`
-    );
+  /** Is the commit on origin/main or origin/master? Pass a full id `commit` returned. */
+  async onDefaultBranch(root, full) {
+    if (!isCommitId(full)) return { failed: "refused" };
+    const out = await this.#io.git(root, [
+      "for-each-ref",
+      "--contains",
+      full,
+      "--format=%(refname)",
+      "refs/remotes/origin/main",
+      "refs/remotes/origin/master"
+    ]);
+    return out.ok ? lines(out.stdout).length > 0 : { failed: out.reason };
   }
-  for (const category of VERIFY_CATEGORIES) {
-    const commands = kept.filter((fix) => fix.category === category);
-    const unsafeHere = notes.filter((fix) => fix.category === category).length;
-    if (commands.length + unsafeHere === 0) continue;
-    out.push("", CATEGORY_TITLES[category]);
-    for (const fix of commands) out.push(fix.command);
-    if (unsafeHere > 0) {
-      out.push(
-        `(${unsafeHere === 1 ? "1 fix here: could not make a safe command" : `${unsafeHere} fixes here: could not make a safe command`}, so none is written for ${unsafeHere === 1 ? "it" : "them"}.)`
-      );
+  /** Is the commit on any branch, remote-tracking branch or tag? */
+  async onAnyRef(root, full) {
+    if (!isCommitId(full)) return { failed: "refused" };
+    const out = await this.#io.git(root, [
+      "for-each-ref",
+      "--contains",
+      full,
+      "--format=%(refname)",
+      "refs/heads",
+      "refs/remotes",
+      "refs/tags"
+    ]);
+    return out.ok ? lines(out.stdout).length > 0 : { failed: out.reason };
+  }
+  /** The commits in the repository's stash list now. */
+  stashes(root) {
+    let answer = this.#stashes.get(root);
+    if (answer === void 0) {
+      answer = (async () => {
+        const out = await this.#io.git(root, ["stash", "list", "--format=%H"]);
+        return out.ok ? new Set(lines(out.stdout)) : { failed: out.reason };
+      })();
+      this.#stashes.set(root, answer);
     }
+    return answer;
   }
-  return `${out.join("\n")}
-`;
-}
-
-// src/core/paths.ts
-import { join as join3 } from "path";
-function guardDir(homedir3) {
-  return join3(homedir3, ".agenttrail", "guard");
-}
-function configPath(homedir3) {
-  return join3(guardDir(homedir3), "config.json");
-}
-function userRulesPath(homedir3) {
-  return join3(guardDir(homedir3), "guardrails.json");
-}
-function productLineStatePath(homedir3) {
-  return join3(guardDir(homedir3), ".product-line");
-}
-
-// src/core/product-line.ts
-var SUPPORTED_AGENTS = /* @__PURE__ */ new Set(["claude", "cursor"]);
-var plural = (n, one, many) => `${formatCount(n)} ${n === 1 ? one : many}`;
-var PRODUCT_LINE = {
-  destination: "https://agenttrail.sh/agenttrail-os",
-  utm: "utm_source=guard&utm_medium=cli",
-  /** `config.json` key. Only `false` turns the line off. */
-  configKey: "productLine",
-  /** At most one showing per command in this many hours. */
-  intervalHours: 24,
-  /** How far back `status` counts decisions. */
-  statusWindowDays: 7,
-  text: {
-    init: (url) => `Want a teammate to approve risky actions, and every session on record? AgentTrail OS (Team plan): ${url}`,
-    statusAsks: (asks, url) => `This week guard asked about ${plural(asks, "action", "actions")}. In AgentTrail OS a teammate approves them from the app (Team plan): ${url}`,
-    statusBlocks: (blocks, url) => `Guard blocked ${plural(blocks, "action", "actions")} this week. AgentTrail OS finds the failures agents repeat and suggests the guardrail that stops them: ${url}`,
-    scanAsks: (asks, url) => `${formatCount(asks)} of these would have waited for a teammate's approval in AgentTrail OS (Team plan), not a prompt: ${url}`,
-    scanMatches: (url) => `AgentTrail OS finds the failures agents repeat and suggests the guardrail that stops them: ${url}`,
-    add: (id, url) => `Share it: with everyone, run agenttrail-guard guardrails export ${id}; with your team, AgentTrail OS syncs guardrails to every teammate (Team plan): ${url}`
+  /**
+   * The tracked files under `path`, asked from `folder` (an existing folder `path` is in), and
+   * how many of them are missing from the working tree now.
+   */
+  async tracked(folder, path) {
+    const spec = literalPathspec(folder, path);
+    if (spec === void 0) return { failed: "refused" };
+    const all = await this.#io.git(folder, ["ls-files", "-z", "--", spec]);
+    if (!all.ok) return { failed: all.reason };
+    const tracked = entries(all.stdout).length;
+    if (tracked === 0) return { tracked: 0, missing: 0 };
+    const gone = await this.#io.git(folder, ["ls-files", "--deleted", "-z", "--", spec]);
+    if (!gone.ok) return { failed: gone.reason };
+    return { tracked, missing: entries(gone.stdout).length };
+  }
+  /** Read one file through the seam. */
+  read(path) {
+    return this.#io.readFile(path);
   }
 };
-function productLineUrl(surface) {
-  return `${PRODUCT_LINE.destination}?${PRODUCT_LINE.utm}&utm_content=${surface}`;
+function lines(text) {
+  return text.split(/\r?\n/).map((line) => line.trim()).filter((line) => line !== "");
 }
-function productLineText(facts) {
-  const url = productLineUrl(facts.surface);
-  const t = PRODUCT_LINE.text;
-  switch (facts.surface) {
-    case "init":
-      return SUPPORTED_AGENTS.has(facts.agent) ? t.init(url) : void 0;
-    case "status":
-      if (facts.asks > 0) return t.statusAsks(facts.asks, url);
-      if (facts.blocks > 0) return t.statusBlocks(facts.blocks, url);
-      return void 0;
-    case "scan":
-      if (!SUPPORTED_AGENTS.has(facts.agent) || facts.matches === 0) return void 0;
-      return facts.asks > 0 ? t.scanAsks(facts.asks, url) : t.scanMatches(url);
-    case "add":
-      return t.add(facts.guardrailId, url);
-    default:
-      return void 0;
-  }
-}
-function productLineEnabled(configText) {
-  if (configText === void 0) return true;
-  try {
-    const raw = JSON.parse(configText);
-    if (raw === null || typeof raw !== "object" || Array.isArray(raw)) return true;
-    return raw[PRODUCT_LINE.configKey] !== false;
-  } catch {
-    return true;
-  }
-}
-function readState(text) {
-  if (text === void 0) return {};
-  try {
-    const raw = JSON.parse(text);
-    return raw !== null && typeof raw === "object" && !Array.isArray(raw) ? { ...raw } : {};
-  } catch {
-    return {};
-  }
-}
-function productLineDue(stateText, surface, now) {
-  const last = readState(stateText)[surface];
-  if (typeof last !== "string") return true;
-  const at = Date.parse(last);
-  if (Number.isNaN(at) || at > now.getTime()) return true;
-  return now.getTime() - at >= PRODUCT_LINE.intervalHours * 36e5;
-}
-function recordProductLine(stateText, surface, now) {
-  const state = readState(stateText);
-  state[surface] = now.toISOString();
-  return `${JSON.stringify(state, null, 2)}
-`;
-}
-function takeProductLine(ctx, facts) {
-  if (!ctx.interactive || !productLineEnabled(ctx.configText)) return void 0;
-  const text = productLineText(facts);
-  if (text === void 0) return void 0;
-  const state = ctx.readFile(ctx.statePath);
-  if (!productLineDue(state, facts.surface, ctx.now)) return void 0;
-  if (!ctx.writeFile(ctx.statePath, recordProductLine(state, facts.surface, ctx.now))) {
-    return void 0;
-  }
-  return text;
+function entries(text) {
+  return text.split("\0").filter((entry) => entry !== "");
 }
 
-// src/engine/matchers.ts
-var import_picomatch2 = __toESM(require_picomatch2(), 1);
-var DETAIL_ATTR = "detail";
-var FILE_PATH_ATTR = "file_path";
-var FILE_GLOB_OPTIONS = { dot: true, nocase: true };
-var LABEL_GLOB_OPTIONS = { dot: true, nocase: true };
-function matchKind(conditionKind, span) {
-  const matched = span.kind.toLowerCase() === conditionKind.toLowerCase();
-  return {
-    matched,
-    reason: matched ? `kind: "${conditionKind}" matched` : `kind: expected "${conditionKind}", got "${span.kind}"`
-  };
-}
-function matchLabel(conditionLabel, span) {
-  const matched = createCompiledLabelMatcher(conditionLabel)(span.label);
-  return {
-    matched,
-    reason: matched ? `label: "${conditionLabel}" matched` : `label: expected "${conditionLabel}", got "${span.label}"`
-  };
-}
-function matchDetailContains(requiredSubstrings, span) {
-  const detail = span.attributes[DETAIL_ATTR];
-  if (detail === void 0) {
-    return { matched: false, reason: "detail_contains: detail attribute missing" };
-  }
-  const missing = [];
-  for (const substring of requiredSubstrings) {
-    if (!detail.includes(substring)) {
-      missing.push(substring);
-    }
-  }
-  if (missing.length > 0) {
-    return {
-      matched: false,
-      reason: `detail_contains: missing substrings: ${JSON.stringify(missing)}`
-    };
-  }
-  return {
-    matched: true,
-    reason: `detail_contains: all ${requiredSubstrings.length} substring(s) found`
-  };
-}
-function matchDetailMatches(patterns, span) {
-  const detail = span.attributes[DETAIL_ATTR];
-  if (detail === void 0) {
-    return { matched: false, reason: "detail_matches: detail attribute missing" };
-  }
-  for (const pattern of patterns) {
-    if (createCompiledDetailMatcher(pattern)(detail)) {
-      return { matched: true, reason: `detail_matches: "${pattern}" matched` };
-    }
-  }
-  return {
-    matched: false,
-    reason: `detail_matches: no pattern of ${patterns.length} matched`
-  };
-}
-function matchFileGlob(pattern, span) {
-  const filePath = span.attributes[FILE_PATH_ATTR];
-  if (filePath === void 0) {
-    return { matched: false, reason: "file_glob: file_path attribute missing" };
-  }
-  try {
-    const isMatch = (0, import_picomatch2.default)(pattern, FILE_GLOB_OPTIONS);
-    const matched = isMatch(filePath);
-    return {
-      matched,
-      reason: matched ? `file_glob: "${pattern}" matched "${filePath}"` : `file_glob: "${pattern}" did not match "${filePath}"`
-    };
-  } catch {
-    return {
-      matched: false,
-      reason: `file_glob: invalid pattern: "${pattern}"`
-    };
-  }
-}
-function resolveNumericField(field, span) {
-  switch (field) {
-    case "tokens":
-      return span.tokens;
-    case "cached_tokens":
-      return span.cachedTokens;
-    case "duration_ms":
-      return span.durationMs;
-    default: {
-      const _exhaustive = field;
-      throw new Error(`unmapped numeric field: ${String(_exhaustive)}`);
-    }
-  }
-}
-function matchNumeric(comparison, span) {
-  const actual = resolveNumericField(comparison.field, span);
-  const { op, value, field } = comparison;
-  let matched;
-  switch (op) {
-    case "gt":
-      matched = actual > value;
-      break;
-    case "gte":
-      matched = actual >= value;
-      break;
-    case "lt":
-      matched = actual < value;
-      break;
-    case "lte":
-      matched = actual <= value;
-      break;
-    default: {
-      const _exhaustive = op;
-      throw new Error(`unmapped numeric op: ${String(_exhaustive)}`);
-    }
-  }
-  return {
-    matched,
-    reason: matched ? `numeric: ${field} (${actual}) ${op} ${value} matched` : `numeric: ${field} (${actual}) not ${op} ${value}`
-  };
-}
-var compiledGlobCache = /* @__PURE__ */ new Map();
-var compiledLabelCache = /* @__PURE__ */ new Map();
-var compiledDetailCache = /* @__PURE__ */ new Map();
-function createCompiledLabelMatcher(pattern) {
-  let matcher = compiledLabelCache.get(pattern);
-  if (matcher === void 0) {
-    try {
-      matcher = (0, import_picomatch2.default)(pattern, LABEL_GLOB_OPTIONS);
-    } catch {
-      matcher = () => false;
-    }
-    compiledLabelCache.set(pattern, matcher);
-  }
-  const cached = matcher;
-  return (label) => cached(label);
-}
-function createCompiledDetailMatcher(pattern) {
-  let compiled = compiledDetailCache.get(pattern);
-  if (compiled === void 0) {
-    try {
-      compiled = new RegExp(pattern, "i");
-    } catch {
-      compiled = null;
-    }
-    compiledDetailCache.set(pattern, compiled);
-  }
-  const cached = compiled;
-  return cached === null ? () => false : (detail) => cached.test(detail);
-}
-function createCompiledFileGlobMatcher(pattern) {
-  let matcher = compiledGlobCache.get(pattern);
-  if (!matcher) {
-    try {
-      matcher = (0, import_picomatch2.default)(pattern, FILE_GLOB_OPTIONS);
-      compiledGlobCache.set(pattern, matcher);
-    } catch {
-      return (_span) => ({
-        matched: false,
-        reason: `file_glob: invalid pattern: "${pattern}"`
-      });
-    }
-  }
-  const cachedMatcher = matcher;
-  return (span) => {
-    const filePath = span.attributes[FILE_PATH_ATTR];
-    if (filePath === void 0) {
-      return { matched: false, reason: "file_glob: file_path attribute missing" };
-    }
-    const matched = cachedMatcher(filePath);
-    return {
-      matched,
-      reason: matched ? `file_glob: "${pattern}" matched "${filePath}"` : `file_glob: "${pattern}" did not match "${filePath}"`
-    };
-  };
-}
-
-// src/engine/scope.ts
-function isInScopeArray(scopeArray, value) {
-  return scopeArray.includes("*") || scopeArray.includes(value);
-}
-function matchScope(scope, context) {
-  if (scope === void 0) {
-    return { matched: true, reason: "scope: no scope filter (applies globally)" };
-  }
-  const failures = [];
-  if (scope.agent_in !== void 0) {
-    if (!isInScopeArray(scope.agent_in, context.agentId)) {
-      failures.push(`agent_in: "${context.agentId}" not in [${scope.agent_in.join(", ")}]`);
-    }
-  }
-  if (scope.project_in !== void 0) {
-    if (!isInScopeArray(scope.project_in, context.projectId)) {
-      failures.push(`project_in: "${context.projectId}" not in [${scope.project_in.join(", ")}]`);
-    }
-  }
-  if (failures.length > 0) {
-    return {
-      matched: false,
-      reason: `scope: ${failures.join("; ")}`
-    };
-  }
-  return { matched: true, reason: "scope: all scope filters matched" };
-}
-
-// src/engine/evaluator.ts
-function evaluateConditionCompiled(condition, span, compiledGlobMatcher) {
-  const kindResult = matchKind(condition.kind, span);
-  if (!kindResult.matched) {
-    return kindResult;
-  }
-  const reasons = [kindResult.reason];
-  if (condition.label !== void 0) {
-    const labelResult = matchLabel(condition.label, span);
-    if (!labelResult.matched) {
-      return labelResult;
-    }
-    reasons.push(labelResult.reason);
-  }
-  if (condition.detail_contains !== void 0) {
-    const detailResult = matchDetailContains(condition.detail_contains, span);
-    if (!detailResult.matched) {
-      return detailResult;
-    }
-    reasons.push(detailResult.reason);
-  }
-  if (condition.detail_matches !== void 0) {
-    const regexResult = matchDetailMatches(condition.detail_matches, span);
-    if (!regexResult.matched) {
-      return regexResult;
-    }
-    reasons.push(regexResult.reason);
-  }
-  if (condition.file_glob !== void 0) {
-    if (compiledGlobMatcher) {
-      const globResult = compiledGlobMatcher(span);
-      if (!globResult.matched) {
-        return globResult;
-      }
-      reasons.push(globResult.reason);
-    } else {
-      const globResult = matchFileGlob(condition.file_glob, span);
-      if (!globResult.matched) {
-        return globResult;
-      }
-      reasons.push(globResult.reason);
-    }
-  }
-  if (condition.numeric !== void 0) {
-    for (const comparison of condition.numeric) {
-      const numericResult = matchNumeric(comparison, span);
-      if (!numericResult.matched) {
-        return numericResult;
-      }
-      reasons.push(numericResult.reason);
-    }
-  }
-  return {
-    matched: true,
-    reason: reasons.join("; ")
-  };
-}
-function compilePolicy(predicate) {
-  function compileConditions(conditions) {
-    if (conditions === void 0) return void 0;
-    return conditions.map((condition) => {
-      const globMatcher = condition.file_glob ? createCompiledFileGlobMatcher(condition.file_glob) : void 0;
-      return globMatcher ? { condition, globMatcher } : { condition };
-    });
-  }
-  const compiledAnyOf = compileConditions(predicate.match.any_of);
-  const compiledAllOf = compileConditions(predicate.match.all_of);
-  const compiledNoneOf = compileConditions(predicate.match.none_of);
-  const scope = predicate.scope;
-  return (context) => {
-    const scopeResult = matchScope(scope, context);
-    if (!scopeResult.matched) {
-      return { matched: false, reasons: [scopeResult.reason] };
-    }
-    const reasons = [];
-    const span = context.span;
-    if (compiledAllOf !== void 0) {
-      for (const { condition, globMatcher } of compiledAllOf) {
-        const result = evaluateConditionCompiled(condition, span, globMatcher);
-        if (!result.matched) {
-          return {
-            matched: false,
-            reasons: [`all_of: condition failed \u2014 ${result.reason}`]
-          };
-        }
-        reasons.push(`all_of: ${result.reason}`);
-      }
-    }
-    if (compiledAnyOf !== void 0) {
-      let anyMatched = false;
-      const anyOfReasons = [];
-      for (const { condition, globMatcher } of compiledAnyOf) {
-        const result = evaluateConditionCompiled(condition, span, globMatcher);
-        if (result.matched) {
-          anyMatched = true;
-          anyOfReasons.push(`any_of: ${result.reason}`);
-        }
-      }
-      if (!anyMatched) {
-        return { matched: false, reasons: ["any_of: no conditions matched"] };
-      }
-      reasons.push(...anyOfReasons);
-    }
-    if (compiledNoneOf !== void 0) {
-      for (const { condition, globMatcher } of compiledNoneOf) {
-        const result = evaluateConditionCompiled(condition, span, globMatcher);
-        if (result.matched) {
-          return {
-            matched: false,
-            reasons: [`none_of: excluded condition matched \u2014 ${result.reason}`]
-          };
-        }
-      }
-      reasons.push(`none_of: no excluded condition matched (${compiledNoneOf.length} checked)`);
-    }
-    return { matched: true, reasons };
-  };
-}
-
-// src/core/rules.ts
-function compileCatalog(rules12, config) {
-  const compiled = [];
-  const overrides = config?.guardrailActionOverrides ?? {};
-  const disabled = new Set(config?.disabledGuardrails ?? []);
-  const disabledPacks = new Set(config?.disabledPacks ?? []);
-  for (const rule of rules12) {
-    if (disabledPacks.has(rule.category)) continue;
-    if (disabled.has(rule.id)) continue;
-    const action = overrides[rule.id] ?? rule.defaultAction;
-    const predicate = {
-      version: 1,
-      match: rule.match,
-      action
-    };
-    try {
-      compiled.push({ rule, action, evaluate: compilePolicy(predicate) });
-    } catch {
-    }
-  }
-  return compiled;
-}
+// src/core/verify/shell-calls.ts
+import { isAbsolute as isAbsolute2, join as join4, resolve as resolve2 } from "path";
 
 // src/core/cursor-emit.ts
 function strictness(decision) {
@@ -10793,10 +8903,10 @@ var CLOUD_PROJECT_FLAGS = /* @__PURE__ */ new Set(["--project", "--project_id", 
 function redactCloudIds(text) {
   return text.replace(
     CLOUD_ID_ENV,
-    (_m, name, sep, quote) => `${name}${sep}${quote}${NAME_PLACEHOLDER}${quote}`
+    (_m, name, sep4, quote) => `${name}${sep4}${quote}${NAME_PLACEHOLDER}${quote}`
   ).replace(
     CLOUD_ID_FLAG,
-    (_m, flag, join9, quote) => `${flag}${join9}${quote}${NAME_PLACEHOLDER}${quote}`
+    (_m, flag, join13, quote) => `${flag}${join13}${quote}${NAME_PLACEHOLDER}${quote}`
   ).replace(AWS_ARN_ACCOUNT, NAME_PLACEHOLDER);
 }
 function sshUserOption(word) {
@@ -11162,8 +9272,8 @@ function redactNode(node) {
 function redactJsonTextValues(text) {
   let out = "";
   let i = 0;
-  const n = text.length;
-  while (i < n) {
+  const n2 = text.length;
+  while (i < n2) {
     const ch = text[i];
     if (ch !== '"') {
       out += ch;
@@ -11172,7 +9282,7 @@ function redactJsonTextValues(text) {
     }
     let j = i + 1;
     let terminated = false;
-    while (j < n) {
+    while (j < n2) {
       const c = text[j];
       if (c === "\\") {
         j += 2;
@@ -11188,7 +9298,7 @@ function redactJsonTextValues(text) {
       return `${out}"${MCP_VALUE_PLACEHOLDER}"`;
     }
     let k = j + 1;
-    while (k < n) {
+    while (k < n2) {
       const c = text[k];
       if (c === " " || c === "	" || c === "\n" || c === "\r") k++;
       else break;
@@ -11267,8 +9377,8 @@ function entropyOf(value) {
   const counts = /* @__PURE__ */ new Map();
   for (const ch of value) counts.set(ch, (counts.get(ch) ?? 0) + 1);
   let bits = 0;
-  for (const n of counts.values()) {
-    const p = n / value.length;
+  for (const n2 of counts.values()) {
+    const p = n2 / value.length;
     bits -= p * Math.log2(p);
   }
   return bits;
@@ -11342,9 +9452,9 @@ function redactSecrets(input) {
   if (input.length === 0) return input;
   let out = input.replace(
     KEY_NAME_ASSIGNMENT,
-    (_m, name, sep, dq, sq) => {
+    (_m, name, sep4, dq, sq) => {
       const quote = dq ?? sq ?? "";
-      return `${name}${sep}${quote}${NAME_RULE_PLACEHOLDER}${quote}`;
+      return `${name}${sep4}${quote}${NAME_RULE_PLACEHOLDER}${quote}`;
     }
   );
   out = out.replace(
@@ -12470,309 +10580,6 @@ function mcpReviewDisclosures(corpus, catalog, allowlist) {
   return out;
 }
 
-// src/core/transcript/parse.ts
-import { createReadStream } from "fs";
-import { createInterface } from "readline";
-var QuarantineError = class extends Error {
-  constructor(message, sessionId) {
-    super(message);
-    this.sessionId = sessionId;
-    this.name = "QuarantineError";
-  }
-  sessionId;
-};
-var fileLineSource = {
-  async *readLines(path) {
-    const rl = createInterface({
-      input: createReadStream(path, { encoding: "utf8" }),
-      crlfDelay: Number.POSITIVE_INFINITY
-    });
-    try {
-      for await (const line of rl) yield line;
-    } finally {
-      rl.close();
-    }
-  }
-};
-function str(v) {
-  return typeof v === "string" && v.length > 0 ? v : null;
-}
-function toBlocks(content) {
-  if (typeof content === "string") return [{ type: "text", text: content }];
-  if (Array.isArray(content)) return content;
-  return [];
-}
-function joinText(blocks) {
-  return blocks.filter((b) => b.type === "text" && typeof b.text === "string").map((b) => b.text).join("\n");
-}
-function resultToString(content) {
-  if (typeof content === "string") return content;
-  if (Array.isArray(content)) {
-    return content.map(
-      (b) => b && typeof b === "object" && "text" in b ? String(b.text) : ""
-    ).join("\n");
-  }
-  return content === void 0 || content === null ? "" : JSON.stringify(content);
-}
-async function parseSession(path, fallbackSessionId, source = fileLineSource) {
-  let sessionId = null;
-  let version = null;
-  let gitBranch = null;
-  let cwd = null;
-  let firstTimestamp = null;
-  let lastTimestamp = null;
-  let skippedLines = 0;
-  const turns = [];
-  const userPrompts = [];
-  const toolResults = /* @__PURE__ */ new Map();
-  let currentPromptUuid = "";
-  for await (const raw of source.readLines(path)) {
-    const line = raw.trim();
-    if (line.length === 0) continue;
-    let obj;
-    try {
-      obj = JSON.parse(line);
-    } catch {
-      skippedLines++;
-      continue;
-    }
-    if (obj === null || typeof obj !== "object") {
-      skippedLines++;
-      continue;
-    }
-    sessionId ??= str(obj.sessionId);
-    version ??= str(obj.version);
-    gitBranch ??= str(obj.gitBranch);
-    cwd ??= str(obj.cwd);
-    const ts = str(obj.timestamp);
-    const uuid = str(obj.uuid) ?? "";
-    const isSidechain = obj.isSidechain === true;
-    const type = obj.type;
-    if (ts && (type === "user" || type === "assistant")) {
-      firstTimestamp ??= ts;
-      lastTimestamp = ts;
-    }
-    if (type === "assistant" && obj.message) {
-      const blocks = toBlocks(obj.message.content);
-      const toolUses = [];
-      for (const b of blocks) {
-        if (b.type === "tool_use" && str(b.id) && str(b.name)) {
-          toolUses.push({
-            toolUseId: b.id,
-            name: b.name,
-            input: b.input ?? {}
-          });
-        }
-      }
-      turns.push({
-        messageUuid: uuid,
-        timestamp: ts ?? lastTimestamp ?? "",
-        model: str(obj.message.model) ?? "",
-        usage: obj.message.usage ?? {},
-        text: joinText(blocks),
-        toolUses,
-        isSidechain,
-        promptUuid: currentPromptUuid
-      });
-    } else if (type === "user" && obj.message) {
-      const blocks = toBlocks(obj.message.content);
-      let sawToolResult = false;
-      for (const b of blocks) {
-        if (b.type === "tool_result" && str(b.tool_use_id)) {
-          sawToolResult = true;
-          toolResults.set(b.tool_use_id, {
-            toolUseId: b.tool_use_id,
-            isError: b.is_error === true,
-            content: resultToString(b.content),
-            timestamp: ts ?? lastTimestamp ?? ""
-          });
-        }
-      }
-      if (!sawToolResult) {
-        const text = joinText(blocks);
-        if (text.length > 0) {
-          userPrompts.push({ messageUuid: uuid, timestamp: ts ?? "", text, isSidechain });
-          if (!isSidechain) currentPromptUuid = uuid;
-        }
-      }
-    }
-  }
-  const resolvedSessionId = sessionId ?? fallbackSessionId;
-  if (turns.length === 0 && userPrompts.length === 0) {
-    throw new QuarantineError(
-      `no coherent message spine (${skippedLines} unparseable line(s))`,
-      resolvedSessionId
-    );
-  }
-  const first = firstTimestamp ?? turns[0]?.timestamp ?? userPrompts[0]?.timestamp ?? "";
-  const last = lastTimestamp ?? first;
-  return {
-    sessionId: resolvedSessionId,
-    version,
-    gitBranch,
-    cwd,
-    turns,
-    userPrompts,
-    toolResults,
-    firstTimestamp: first,
-    lastTimestamp: last,
-    skippedLines
-  };
-}
-
-// src/core/transcript/scan.ts
-import { readdirSync, statSync } from "fs";
-import { homedir } from "os";
-import { basename as basename2, isAbsolute, join as join4, relative } from "path";
-function defaultProjectsRoot(home = homedir()) {
-  return join4(home, ".claude", "projects");
-}
-var SNIFF_LINE_CAP = 40;
-async function sniff(path, source) {
-  const id = { cwd: null, gitBranch: null, version: null, sessionId: null };
-  let messageCount = 0;
-  let sniffed = 0;
-  for await (const line of source.readLines(path)) {
-    const trimmed = line.trim();
-    if (trimmed.length === 0) continue;
-    messageCount++;
-    const complete = id.cwd && id.gitBranch && id.version && id.sessionId;
-    if (sniffed < SNIFF_LINE_CAP && !complete) {
-      sniffed++;
-      try {
-        const obj = JSON.parse(trimmed);
-        id.sessionId ??= typeof obj.sessionId === "string" ? obj.sessionId : null;
-        id.cwd ??= typeof obj.cwd === "string" ? obj.cwd : null;
-        id.gitBranch ??= typeof obj.gitBranch === "string" ? obj.gitBranch : null;
-        id.version ??= typeof obj.version === "string" ? obj.version : null;
-      } catch {
-      }
-    }
-  }
-  return { ...id, messageCount };
-}
-function isSessionInProject(cwd, projectRoot) {
-  if (cwd === null) return false;
-  const rel = relative(projectRoot, cwd);
-  return rel === "" || !rel.startsWith("..") && !isAbsolute(rel);
-}
-async function scanTranscripts(projectsRoot = defaultProjectsRoot(), projectRoot, io = {}) {
-  const readdir = io.readdir ?? ((p) => readdirSync(p));
-  const stat2 = io.stat ?? ((p) => statSync(p));
-  const source = io.lineSource ?? fileLineSource;
-  const scoped = projectRoot !== void 0;
-  let excludedOtherProject = 0;
-  let excludedUnknownCwd = 0;
-  const finalize = (projects2, totalSessions2) => scoped ? { projectsRoot, projects: projects2, totalSessions: totalSessions2, excludedOtherProject, excludedUnknownCwd } : { projectsRoot, projects: projects2, totalSessions: totalSessions2 };
-  let projectDirs;
-  try {
-    projectDirs = readdir(projectsRoot);
-  } catch {
-    return finalize([], 0);
-  }
-  const projects = [];
-  let totalSessions = 0;
-  for (const project of projectDirs.sort()) {
-    const dir = join4(projectsRoot, project);
-    let entries;
-    try {
-      if (!stat2(dir).isDirectory()) continue;
-      entries = readdir(dir);
-    } catch {
-      continue;
-    }
-    const sessions = [];
-    for (const entry of entries.sort()) {
-      if (!entry.endsWith(".jsonl")) continue;
-      const file2 = join4(dir, entry);
-      let size = 0;
-      let mtimeMs = 0;
-      try {
-        const s = stat2(file2);
-        size = s.size;
-        mtimeMs = s.mtimeMs;
-      } catch {
-        continue;
-      }
-      let identity;
-      try {
-        identity = await sniff(file2, source);
-      } catch {
-        identity = { cwd: null, gitBranch: null, version: null, sessionId: null, messageCount: 0 };
-      }
-      if (scoped && !isSessionInProject(identity.cwd, projectRoot)) {
-        if (identity.cwd === null) excludedUnknownCwd++;
-        else excludedOtherProject++;
-        continue;
-      }
-      sessions.push({
-        sessionId: identity.sessionId ?? basename2(entry, ".jsonl"),
-        file: file2,
-        project,
-        cwd: identity.cwd,
-        gitBranch: identity.gitBranch,
-        version: identity.version,
-        sizeBytes: size,
-        modifiedAt: new Date(mtimeMs).toISOString(),
-        messageCount: identity.messageCount
-      });
-    }
-    if (sessions.length > 0) {
-      projects.push({ project, sessions });
-      totalSessions += sessions.length;
-    }
-  }
-  return finalize(projects, totalSessions);
-}
-
-// src/core/user-rules-data.ts
-var VALID_ACTIONS2 = /* @__PURE__ */ new Set(["block", "require_approval", "warn"]);
-function hasSelectableMatch(match) {
-  if (match === null || typeof match !== "object" || Array.isArray(match)) return false;
-  const m = match;
-  const populated = (arm) => Array.isArray(arm) && arm.length > 0;
-  return populated(m.any_of) || populated(m.all_of);
-}
-function parseUserRulesData(text) {
-  if (text === void 0 || text.trim().length === 0) return [];
-  let parsed2;
-  try {
-    parsed2 = JSON.parse(text);
-  } catch {
-    return [];
-  }
-  if (!Array.isArray(parsed2)) return [];
-  const out = [];
-  for (const raw of parsed2) {
-    if (raw === null || typeof raw !== "object" || Array.isArray(raw)) continue;
-    const rec = raw;
-    const { id, category, defaultAction, match } = rec;
-    if (typeof id !== "string" || id.length === 0) continue;
-    if (typeof category !== "string" || category.length === 0) continue;
-    if (typeof defaultAction !== "string" || !VALID_ACTIONS2.has(defaultAction)) continue;
-    if (!hasSelectableMatch(match)) continue;
-    out.push({
-      id,
-      category,
-      severity: typeof rec.severity === "string" ? rec.severity : "medium",
-      defaultAction,
-      title: typeof rec.title === "string" ? rec.title : id,
-      description: typeof rec.description === "string" ? rec.description : "",
-      match
-    });
-  }
-  return out;
-}
-
-// src/core/verify/fingerprint.ts
-import { createHmac, randomBytes } from "crypto";
-var FINGERPRINT_HEX = 32;
-var KEY_BYTES = 32;
-function createFingerprinter(key = randomBytes(KEY_BYTES)) {
-  const own = Buffer.from(key);
-  return (value) => createHmac("sha256", own).update(value, "utf8").digest("hex").slice(0, FINGERPRINT_HEX);
-}
-
 // src/core/verify/ran.ts
 function emptySegment() {
   return { words: [], inputs: [], pipedOut: false, writesFile: false, written: [] };
@@ -13664,6 +11471,4703 @@ function tallyMatchedCalls(corpus, catalog, allowlist) {
   };
 }
 
+// src/core/verify/shell-words.ts
+var SHELLS2 = /* @__PURE__ */ new Set(["sh", "bash", "zsh", "dash", "ksh"]);
+function skipQuoted2(text, at, quote) {
+  let i = at + 1;
+  while (i < text.length) {
+    const ch = text[i];
+    if (quote !== "'" && ch === "\\") {
+      i += 2;
+      continue;
+    }
+    if (ch === quote) return i + 1;
+    i += 1;
+  }
+  return text.length;
+}
+function skipSubstitution2(text, at) {
+  let depth = 0;
+  let i = at;
+  while (i < text.length) {
+    const ch = text[i];
+    if (ch === "'" || ch === '"' || ch === "`") {
+      i = skipQuoted2(text, i, ch);
+      continue;
+    }
+    if (ch === "\\") {
+      i += 2;
+      continue;
+    }
+    if (ch === "(") depth += 1;
+    else if (ch === ")") {
+      depth -= 1;
+      if (depth === 0) return i + 1;
+    }
+    i += 1;
+  }
+  return text.length;
+}
+function shellItems(text) {
+  const items = [];
+  const pending = [];
+  let words2 = [];
+  let writes = [];
+  let next = "word";
+  let start = -1;
+  let value = "";
+  let expands = false;
+  const endWord = (end) => {
+    if (start < 0) return;
+    const word = { raw: text.slice(start, end), value, expands };
+    if (next === "word") words2.push(word);
+    else if (next === "write") writes.push(word);
+    else if (next === "heredoc" || next === "heredoc-tabs") {
+      pending.push({ delimiter: value, stripTabs: next === "heredoc-tabs", words: words2 });
+    }
+    next = "word";
+    start = -1;
+    value = "";
+    expands = false;
+  };
+  const endCommand = (end) => {
+    endWord(end);
+    if (words2.length > 0 || writes.length > 0) items.push({ kind: "command", words: words2, writes });
+    words2 = [];
+    writes = [];
+  };
+  const begin = (at) => {
+    if (start < 0) start = at;
+  };
+  let i = 0;
+  while (i < text.length) {
+    const ch = text[i];
+    if (ch === "\n") {
+      endCommand(i);
+      i += 1;
+      while (pending.length > 0) {
+        const doc = pending.shift();
+        const program = doc.words[commandStart(doc.words).index];
+        if (program !== void 0 && SHELLS2.has(programName2(program))) {
+          pending.length = 0;
+          break;
+        }
+        while (i < text.length) {
+          const lineEnd = text.indexOf("\n", i);
+          const stop = lineEnd < 0 ? text.length : lineEnd;
+          const line = text.slice(i, stop);
+          i = lineEnd < 0 ? text.length : lineEnd + 1;
+          if ((doc.stripTabs ? line.replace(/^\t+/, "") : line) === doc.delimiter) break;
+        }
+      }
+      continue;
+    }
+    if (ch === " " || ch === "	" || ch === "\r") {
+      endWord(i);
+      i += 1;
+      continue;
+    }
+    if (ch === "#" && start < 0) {
+      const lineEnd = text.indexOf("\n", i);
+      i = lineEnd < 0 ? text.length : lineEnd;
+      continue;
+    }
+    if (ch === "'" || ch === '"') {
+      begin(i);
+      const end = skipQuoted2(text, i, ch);
+      const inner = text.slice(i + 1, Math.max(i + 1, end - 1));
+      if (ch === '"') {
+        if (inner.includes("$") || inner.includes("`")) expands = true;
+        value += inner.replace(/\\(["\\$`])/g, "$1");
+      } else value += inner;
+      i = end;
+      continue;
+    }
+    if (ch === "\\") {
+      begin(i);
+      if (text[i + 1] !== "\n") value += text[i + 1] ?? "";
+      i += 2;
+      continue;
+    }
+    if (ch === "$") {
+      begin(i);
+      if (text[i + 1] === "(") {
+        const end = skipSubstitution2(text, i + 1);
+        value += text.slice(i, end);
+        expands = true;
+        i = end;
+        continue;
+      }
+      if (/[A-Za-z_{0-9@*#?$!-]/.test(text[i + 1] ?? "")) expands = true;
+      value += ch;
+      i += 1;
+      continue;
+    }
+    if (ch === "`") {
+      begin(i);
+      const end = skipQuoted2(text, i, "`");
+      value += text.slice(i, end);
+      expands = true;
+      i = end;
+      continue;
+    }
+    if (ch === "<" || ch === ">") {
+      if (start >= 0 && /^\d+$/.test(value)) {
+        start = -1;
+        value = "";
+      } else endWord(i);
+      if (text.startsWith("<<<", i)) {
+        next = "herestring";
+        i += 3;
+      } else if (text.startsWith("<<-", i)) {
+        next = "heredoc-tabs";
+        i += 3;
+      } else if (text.startsWith("<<", i)) {
+        next = "heredoc";
+        i += 2;
+      } else {
+        const writing = ch === ">" || text[i + 1] === ">";
+        i += 1;
+        const duplicating = text[i] === "&";
+        while (i < text.length && /[>|&<]/.test(text[i])) i += 1;
+        next = duplicating ? "read" : writing ? "write" : "read";
+      }
+      continue;
+    }
+    if (ch === "&" && text[i + 1] === ">") {
+      endWord(i);
+      i += 2;
+      if (text[i] === ">") i += 1;
+      next = "write";
+      continue;
+    }
+    if (ch === "(" || ch === ")") {
+      endCommand(i);
+      items.push({ kind: ch === "(" ? "open" : "close" });
+      i += 1;
+      continue;
+    }
+    if (ch === ";" || ch === "&" || ch === "|") {
+      endCommand(i);
+      i += 1;
+      if (/[&|;]/.test(text[i] ?? "")) i += 1;
+      continue;
+    }
+    begin(i);
+    value += ch;
+    i += 1;
+  }
+  endCommand(text.length);
+  return items;
+}
+function shellCommands(text) {
+  return shellItems(text).filter((item) => item.kind === "command");
+}
+var PREFIX_WORDS2 = /* @__PURE__ */ new Set([
+  "sudo",
+  "env",
+  "command",
+  "builtin",
+  "exec",
+  "time",
+  "nohup",
+  "nice",
+  "stdbuf",
+  "timeout",
+  "!",
+  "{",
+  "}",
+  "if",
+  "then",
+  "else",
+  "elif",
+  "do",
+  "while",
+  "until"
+]);
+var PREFIX_VALUE_OPTIONS2 = /* @__PURE__ */ new Set(["-u", "-g", "-n", "-s", "-k", "-C"]);
+var ASSIGNMENT4 = /^[A-Za-z_][A-Za-z0-9_]*=/;
+function programName2(word) {
+  const base = word.value.split(/[\\/]/).pop() ?? "";
+  return base.toLowerCase().replace(/\.exe$/, "");
+}
+function commandStart(words2) {
+  const assignments = [];
+  let k = 0;
+  while (k < words2.length) {
+    const word = words2[k];
+    if (ASSIGNMENT4.test(word.value)) {
+      assignments.push(word);
+      k += 1;
+      continue;
+    }
+    const name = programName2(word);
+    if (!PREFIX_WORDS2.has(name)) return { index: k, assignments };
+    k += 1;
+    while (k < words2.length && words2[k].value.startsWith("-")) {
+      const option = words2[k].value;
+      k += PREFIX_VALUE_OPTIONS2.has(option) ? 2 : 1;
+    }
+    if (name === "timeout" && k < words2.length) k += 1;
+  }
+  return { index: k, assignments };
+}
+var GIT_VALUE_OPTIONS = /* @__PURE__ */ new Set([
+  "-C",
+  "-c",
+  "--git-dir",
+  "--work-tree",
+  "--namespace",
+  "--config-env",
+  "--exec-path"
+]);
+function gitCommand(words2) {
+  const at = commandStart(words2).index;
+  const program = words2[at];
+  if (program === void 0 || programName2(program) !== "git") return void 0;
+  const folders = [];
+  let elsewhere = false;
+  let k = at + 1;
+  while (k < words2.length && words2[k].value.startsWith("-")) {
+    const option = words2[k].value;
+    if (option.startsWith("--git-dir") || option.startsWith("--work-tree")) elsewhere = true;
+    if (option === "-C" && words2[k + 1] !== void 0) folders.push(words2[k + 1]);
+    k += GIT_VALUE_OPTIONS.has(option) ? 2 : 1;
+  }
+  const sub = words2[k]?.value ?? "";
+  return { sub, args: words2.slice(k + 1), folders, elsewhere };
+}
+function operands(args2, valueOptions = /* @__PURE__ */ new Set()) {
+  const out = [];
+  let k = 0;
+  while (k < args2.length) {
+    const word = args2[k];
+    if (word.value === "--") {
+      out.push(...args2.slice(k + 1));
+      break;
+    }
+    if (word.value.startsWith("-") && word.value !== "-") {
+      k += valueOptions.has(word.value) ? 2 : 1;
+      continue;
+    }
+    out.push(word);
+    k += 1;
+  }
+  return out;
+}
+function directoryChange(words2) {
+  const at = commandStart(words2).index;
+  const program = words2[at];
+  if (program === void 0) return { kind: "none" };
+  const name = programName2(program);
+  if (name === "popd") return { kind: "unknown" };
+  if (name !== "cd" && name !== "pushd") return { kind: "none" };
+  const targets = operands(words2.slice(at + 1));
+  if (targets.length === 0) return name === "cd" ? { kind: "home" } : { kind: "unknown" };
+  const target = targets[0];
+  if (targets.length > 1 || target.expands || target.value === "-") return { kind: "unknown" };
+  return { kind: "to", path: target.value };
+}
+
+// src/core/verify/shell-calls.ts
+var EDIT_TOOLS = /* @__PURE__ */ new Set(["Edit", "Write", "MultiEdit", "NotebookEdit"]);
+var NOT_WRITTEN_KEYS = /* @__PURE__ */ new Set([
+  "file_path",
+  "path",
+  "notebook_path",
+  "old_string",
+  "old_str",
+  "target_file"
+]);
+var MAX_DEPTH = 8;
+function writtenTexts(value, out = [], depth = 0) {
+  if (depth > MAX_DEPTH) return out;
+  if (typeof value === "string") {
+    if (value !== "") out.push(value);
+  } else if (Array.isArray(value)) {
+    for (const item of value) writtenTexts(item, out, depth + 1);
+  } else if (value !== null && typeof value === "object") {
+    for (const [key, item] of Object.entries(value)) {
+      if (!NOT_WRITTEN_KEYS.has(key)) writtenTexts(item, out, depth + 1);
+    }
+  }
+  return out;
+}
+function resolvePath(folder, path, home) {
+  if (path === "") return void 0;
+  if (path === "~") return home;
+  if (path.startsWith("~/")) return join4(home, path.slice(2));
+  if (path.startsWith("~")) return void 0;
+  if (isAbsolute2(path)) return resolve2(path);
+  if (folder === void 0) return void 0;
+  return resolve2(folder, path);
+}
+function walkCommands(text, cwd, home, visit) {
+  let folder = cwd;
+  const saved = [];
+  for (const item of shellItems(text)) {
+    if (item.kind === "open") {
+      saved.push(folder);
+      continue;
+    }
+    if (item.kind === "close") {
+      if (saved.length > 0) folder = saved.pop();
+      continue;
+    }
+    visit(item, folder);
+    const change = directoryChange(item.words);
+    if (change.kind === "to") folder = resolvePath(folder, change.path, home);
+    else if (change.kind === "home") folder = home;
+    else if (change.kind === "unknown") folder = void 0;
+  }
+}
+function gitFolder(folder, options, home) {
+  let at = folder;
+  for (const option of options) {
+    if (option.expands) return void 0;
+    at = resolvePath(at, option.value, home);
+  }
+  return at;
+}
+function sessionFolder(cwd) {
+  return cwd !== null && cwd !== "" && isAbsolute2(cwd) ? resolve2(cwd) : void 0;
+}
+function readCalls(corpus, home) {
+  const agent = corpus.agent ?? "claude";
+  const shell = [];
+  const writes = [];
+  const folders = /* @__PURE__ */ new Set();
+  let id = 0;
+  corpus.sessions.forEach((session, index) => {
+    const cwd = sessionFolder(session.cwd);
+    if (cwd !== void 0) folders.add(cwd);
+    const seen = /* @__PURE__ */ new Set();
+    for (const turn of session.turns) {
+      for (const use of turn.toolUses) {
+        if (agent === "claude" && use.toolUseId !== "") {
+          if (seen.has(use.toolUseId)) continue;
+          seen.add(use.toolUseId);
+        }
+        const result = session.toolResults.get(use.toolUseId);
+        for (const call of toolUseCalls(agent, use)) {
+          if (call.kind !== "action") continue;
+          for (const mapped of call.candidates) {
+            id += 1;
+            const command = mapped.args.full_command;
+            if (mapped.tool === "Bash" && command !== void 0) {
+              const view = executedView(command).text;
+              const entry = {
+                id,
+                session: index,
+                mapped,
+                command,
+                view,
+                result,
+                cwd
+              };
+              shell.push(entry);
+              for (const path2 of redirectWrites(agent, entry, home)) {
+                writes.push({ id, session: index, path: path2, texts: [] });
+              }
+              continue;
+            }
+            const file2 = mapped.args.file_path;
+            if (!EDIT_TOOLS.has(mapped.tool) || file2 === void 0) continue;
+            const path = resolvePath(cwd, file2, home);
+            if (path === void 0) continue;
+            if (runVerdict(agent, mapped, result, () => true).state !== "ran") continue;
+            const texts = agent === "codex" ? [] : writtenTexts(use.input);
+            writes.push({ id, session: index, path, texts });
+          }
+        }
+      }
+    }
+  });
+  return {
+    agent,
+    home,
+    shell,
+    writes,
+    sessions: corpus.sessions.length,
+    folders: [...folders]
+  };
+}
+function redirectWrites(agent, call, home) {
+  if (!/>/.test(call.view)) return [];
+  const find = (text) => {
+    const out = [];
+    walkCommands(text, call.cwd, home, (command, folder) => {
+      for (const target of command.writes) {
+        if (target.expands) continue;
+        const path = resolvePath(folder, target.value, home);
+        if (path !== void 0 && !path.startsWith("/dev/")) out.push(path);
+      }
+    });
+    return out;
+  };
+  const verdict2 = runVerdict(
+    agent,
+    call.mapped,
+    call.result,
+    (m) => find(m.args.full_command ?? "").length > 0
+  );
+  return verdict2.state === "ran" ? find(call.view) : [];
+}
+var MAX_MENTION_WORDS = 64;
+function blankedRegions(command, view) {
+  const out = [];
+  let start = -1;
+  let last = -1;
+  for (let i = 0; i <= command.length; i++) {
+    const blanked = i < command.length && view[i] !== command[i];
+    if (blanked) {
+      if (start < 0) start = i;
+      last = i;
+    } else if (start >= 0 && (i >= command.length || !/\s/.test(command[i]))) {
+      out.push(command.slice(start, last + 1));
+      start = -1;
+    }
+  }
+  return out;
+}
+function mentionedIn(call, detect, home) {
+  for (const blanked of blankedRegions(call.command, call.view)) {
+    const region = blanked.replace(/^#+/, "");
+    if (detect(region, call.cwd, home).length > 0) return true;
+    const words2 = shellItems(region).flatMap(
+      (item) => item.kind === "command" ? item.words.map((w) => w.value) : []
+    );
+    for (const word of words2.slice(0, MAX_MENTION_WORDS)) {
+      if (word.includes(" ") && detect(word, call.cwd, home).length > 0) return true;
+    }
+  }
+  return false;
+}
+function judge(log, call, hint, detect) {
+  if (!hint.test(call.command)) return void 0;
+  const found = detect(call.view, call.cwd, log.home);
+  if (found.length === 0) {
+    if (!mentionedIn(call, detect, log.home)) return void 0;
+    const verdict3 = runVerdict(log.agent, call.mapped, call.result, () => false);
+    return { call, verdict: verdict3, found: [] };
+  }
+  const verdict2 = runVerdict(
+    log.agent,
+    call.mapped,
+    call.result,
+    (m) => detect(m.args.full_command ?? "", call.cwd, log.home).length > 0
+  );
+  return { call, verdict: verdict2, found: verdict2.state === "ran" ? found : [] };
+}
+function judgeAll(log, hint, detect) {
+  const out = [];
+  for (const call of log.shell) {
+    const judged = judge(log, call, hint, detect);
+    if (judged !== void 0) out.push(judged);
+  }
+  return out;
+}
+function tallyOf(judged) {
+  const tally = { ran: 0, mentioned: 0, unknown: 0 };
+  for (const j of judged) tally[j.verdict.state] += 1;
+  return tally;
+}
+function outputOf(call) {
+  return call.result?.content ?? "";
+}
+
+// src/core/verify/destructive.ts
+var RM_TARGET_CLASSES = [
+  "unguarded-variable",
+  "guarded-variable",
+  "scratch",
+  "tracked",
+  "untracked",
+  "home",
+  "other"
+];
+var DATABASE_CLASSES = ["local", "scratch", "other", "unresolved"];
+function recursiveRmTargets(args2) {
+  let recursive = false;
+  for (const word of args2) {
+    const value = word.value;
+    if (value === "--") break;
+    if (value === "--recursive") recursive = true;
+    else if (/^-[A-Za-z]+$/.test(value) && /[rR]/.test(value)) recursive = true;
+  }
+  return recursive ? operands(args2) : [];
+}
+var rmTargets = (text, cwd, home) => {
+  const out = [];
+  walkCommands(text, cwd, home, (command, folder) => {
+    const start = commandStart(command.words).index;
+    const program = command.words[start];
+    if (program === void 0 || programName2(program) !== "rm") return;
+    for (const word of recursiveRmTargets(command.words.slice(start + 1))) {
+      out.push({ folder, word });
+    }
+  });
+  return out;
+};
+function guarded(raw) {
+  if (raw.includes("`") || raw.includes("$(")) return false;
+  let inSingle = false;
+  for (let i = 0; i < raw.length; i++) {
+    const ch = raw[i];
+    if (ch === "'") inSingle = !inSingle;
+    if (inSingle || ch !== "$") continue;
+    if (!/^\$\{[A-Za-z_][A-Za-z0-9_]*:\?/.test(raw.slice(i))) return false;
+  }
+  return true;
+}
+var SCRATCH_NAMES = /* @__PURE__ */ new Set([
+  "node_modules",
+  "dist",
+  "build",
+  "out",
+  ".next",
+  ".nuxt",
+  ".turbo",
+  ".cache",
+  "coverage",
+  "target",
+  "__pycache__",
+  ".pytest_cache",
+  ".mypy_cache",
+  ".ruff_cache",
+  ".parcel-cache",
+  ".svelte-kit",
+  ".vite",
+  ".angular",
+  ".gradle",
+  ".expo",
+  ".output",
+  ".vercel",
+  "storybook-static",
+  "tmp",
+  "temp",
+  ".tmp"
+]);
+function namesScratch(path, folder) {
+  const below = folder !== void 0 && (path === folder || path.startsWith(`${folder}${sep2}`)) ? relative2(folder, path) : path.split(/[\\/]/).pop() ?? "";
+  return below.split(/[\\/]/).some((part) => SCRATCH_NAMES.has(part));
+}
+function literalPart(value) {
+  const wild = value.search(/[*?[]/);
+  if (wild < 0) return value;
+  const cut = value.lastIndexOf("/", wild);
+  return cut < 0 ? "." : value.slice(0, cut) || "/";
+}
+var MAX_PARENT_STEPS = 64;
+async function classify2(context, target) {
+  const { word } = target;
+  if (word.expands) return { kind: guarded(word.raw) ? "guarded-variable" : "unguarded-variable" };
+  const home = context.log.home;
+  const path = resolvePath(target.folder, literalPart(word.value), home);
+  if (path === void 0) return { kind: "could-not-check" };
+  if (isUnder(path, context.scratchRoots) || namesScratch(path, target.folder)) {
+    return { kind: "scratch" };
+  }
+  let folder = path;
+  let steps = 0;
+  while (context.probe.isFolder(folder) !== true && steps < MAX_PARENT_STEPS) {
+    const up = dirname(folder);
+    if (up === folder) break;
+    folder = up;
+    steps += 1;
+  }
+  if (context.probe.isFolder(folder) !== true) return { kind: "could-not-check" };
+  const root = await context.probe.toplevel(folder);
+  if (isFailure(root)) {
+    if (root.failed !== "not-a-repo") return { kind: "could-not-check" };
+    return { kind: isUnder(path, [home]) ? "home" : "other" };
+  }
+  const state = await context.probe.tracked(folder, path);
+  if (isFailure(state)) return { kind: "could-not-check" };
+  if (state.tracked === 0) return { kind: "untracked" };
+  return {
+    kind: "tracked",
+    missing: state.missing > 0,
+    folder,
+    path,
+    absent: !context.probe.exists(path)
+  };
+}
+function restoreParts(folder, path) {
+  const rel = relative2(folder, path).split(sep2).join("/") || ".";
+  return ["git", "-C", { ref: folder }, "restore", "--", { repoPath: rel }];
+}
+async function checkRm(context, judged, fixes) {
+  const classes = Object.fromEntries(RM_TARGET_CLASSES.map((c) => [c, 0]));
+  let targets = 0;
+  let trackedBack = 0;
+  let trackedGone = 0;
+  let trackedPartlyBack = 0;
+  let couldNotCheck = 0;
+  for (const j of judged) {
+    for (const target of j.found) {
+      targets += 1;
+      if (targets > MAX_PROBED_ITEMS) {
+        couldNotCheck += 1;
+        continue;
+      }
+      const classed = await classify2(context, target);
+      if (classed.kind === "could-not-check") {
+        couldNotCheck += 1;
+        continue;
+      }
+      classes[classed.kind] += 1;
+      if (classed.kind !== "tracked") continue;
+      if (!classed.missing) {
+        trackedBack += 1;
+        continue;
+      }
+      if (!classed.absent) {
+        trackedPartlyBack += 1;
+        continue;
+      }
+      trackedGone += 1;
+      pushFix(fixes, "destructive", restoreParts(classed.folder, classed.path));
+    }
+  }
+  return {
+    calls: tallyOf(judged),
+    targets,
+    classes,
+    trackedBack,
+    trackedGone,
+    trackedPartlyBack,
+    couldNotCheck
+  };
+}
+function trackedMissing(f) {
+  return f.rm.trackedGone + f.rm.trackedPartlyBack;
+}
+var DESTRUCTIVE_SQL = /\b(?:drop\s+(?:database|schema|table)|truncate)\b/i;
+var LOCAL_HOST = /^(?:localhost|127(?:\.\d{1,3}){3}|0\.0\.0\.0|\[?::1\]?|host\.docker\.internal|[a-z0-9-]+\.localhost)$/i;
+var SCRATCH_DATABASE = /(?:^|[_.-])(?:test|tests|testing|tmp|temp|scratch|e2e|ci|sandbox|throwaway|dummy)(?:$|[_.\d-])/i;
+var URL_PARTS = /^[a-z][a-z0-9+.-]*:\/\/(?:[^@/?#]*@)?(\[[^\]]*\]|[^:/?#]*)(?::\d+)?(?:\/([^?#]*))?/i;
+function hostClass(host) {
+  if (host === void 0 || host === "" || host.startsWith("/")) return "local";
+  if (host.includes("$")) return "unresolved";
+  return LOCAL_HOST.test(host) ? "local" : "remote";
+}
+function optionValue(words2, short, long) {
+  for (let k = 0; k < words2.length; k++) {
+    const value = words2[k].value;
+    const word = words2[k];
+    if (short !== void 0 && value === short || long !== void 0 && value === long) {
+      return words2[k + 1];
+    }
+    if (long !== void 0 && value.startsWith(`${long}=`)) {
+      return { ...word, value: value.slice(long.length + 1) };
+    }
+    if (short !== void 0 && value.startsWith(short) && value.length > short.length && !value.startsWith("--")) {
+      return { ...word, value: value.slice(short.length) };
+    }
+  }
+  return void 0;
+}
+function serverOf(args2, assignments, options, sql = "") {
+  const urls = args2.filter((a) => /^[a-z][a-z0-9+.-]*:\/\//i.test(a.value));
+  const hostWord = optionValue(args2, options.host[0], options.host[1]);
+  const nameWord = options.name === void 0 ? void 0 : optionValue(args2, options.name[0], options.name[1]);
+  const urlWord = urls[0] ?? (nameWord !== void 0 && /:\/\//.test(nameWord.value) ? nameWord : void 0);
+  const fromUrl = urlWord?.value.match(URL_PARTS) ?? void 0;
+  const pgHost = assignments.find((a) => a.value.startsWith("PGHOST="));
+  const host = fromUrl?.[1] ?? hostWord?.value ?? pgHost?.value.slice("PGHOST=".length);
+  const rest = operands(args2, DATABASE_VALUE_OPTIONS);
+  const variable = hostWord?.expands === true || pgHost?.expands === true || urlWord?.expands === true || hostWord === void 0 && fromUrl === void 0 && (nameWord?.expands === true || rest.some((o) => o.expands));
+  const dropped = /\bdrop\s+database\s+(?:if\s+exists\s+)?[`"']?([\w.-]+)/i.exec(sql)?.[1];
+  const name = dropped ?? fromUrl?.[2] ?? nameWord?.value ?? rest.find((o) => !o.value.includes("://"))?.value ?? "";
+  return {
+    host: variable ? "unresolved" : hostClass(host),
+    scratch: SCRATCH_DATABASE.test(name)
+  };
+}
+var DATABASE_VALUE_OPTIONS = /* @__PURE__ */ new Set([
+  "-h",
+  "-p",
+  "-U",
+  "-u",
+  "-d",
+  "-D",
+  "-c",
+  "-e",
+  "-f",
+  "-v",
+  "-o",
+  "-P",
+  "-T",
+  "-F",
+  "-R",
+  "-n",
+  "-a",
+  "--host",
+  "--port",
+  "--username",
+  "--user",
+  "--dbname",
+  "--database",
+  "--command",
+  "--execute",
+  "--file",
+  "--set",
+  "--variable",
+  "--uri",
+  "--eval"
+]);
+var LAUNCHERS2 = /* @__PURE__ */ new Set(["npx", "pnpm", "yarn", "bunx", "bun"]);
+function databaseTargets(words2, scratchRoots, view, depth = 0) {
+  const start = commandStart(words2);
+  let at = start.index;
+  let program = words2[at];
+  if (program === void 0 || depth > 3) return [];
+  let name = programName2(program);
+  if (LAUNCHERS2.has(name)) {
+    at += 1;
+    while (words2[at] !== void 0 && ["exec", "dlx", "run", "x"].includes(words2[at].value))
+      at += 1;
+    program = words2[at];
+    if (program === void 0) return [];
+    name = programName2(program);
+  }
+  const args2 = words2.slice(at + 1);
+  const values = args2.map((a) => a.value);
+  const relay = (rest, host) => databaseTargets(rest, scratchRoots, view, depth + 1).map(
+    (t) => host === "remote" ? { ...t, host } : t
+  );
+  switch (name) {
+    case "docker":
+    case "podman": {
+      let k = values[0] === "compose" ? 1 : 0;
+      if (values[k] !== "exec") return [];
+      k += 1;
+      while (k < args2.length && args2[k].value.startsWith("-")) {
+        k += ["-e", "--env", "-u", "--user", "-w", "--workdir"].includes(
+          args2[k].value
+        ) ? 2 : 1;
+      }
+      return relay(args2.slice(k + 1), "local");
+    }
+    case "kubectl": {
+      const dash = values.indexOf("--");
+      return values[0] === "exec" && dash >= 0 ? relay(args2.slice(dash + 1), "remote") : [];
+    }
+    case "ssh": {
+      const rest = operands(args2, /* @__PURE__ */ new Set(["-p", "-i", "-l", "-o", "-F", "-J", "-L", "-R", "-D"]));
+      const text = rest.slice(1).map((w) => w.value).join(" ");
+      return shellCommands(text).flatMap((c) => relay(c.words, "remote"));
+    }
+    case "psql": {
+      const sql = optionValue(args2, "-c", "--command")?.value ?? view;
+      return DESTRUCTIVE_SQL.test(sql) ? [
+        serverOf(
+          args2,
+          start.assignments,
+          { host: ["-h", "--host"], name: ["-d", "--dbname"] },
+          sql
+        )
+      ] : [];
+    }
+    case "dropdb":
+      return [serverOf(args2, start.assignments, { host: ["-h", "--host"] })];
+    case "mysql":
+    case "mariadb": {
+      const sql = optionValue(args2, "-e", "--execute")?.value ?? view;
+      return DESTRUCTIVE_SQL.test(sql) ? [
+        serverOf(
+          args2,
+          start.assignments,
+          { host: ["-h", "--host"], name: ["-D", "--database"] },
+          sql
+        )
+      ] : [];
+    }
+    case "mysqladmin":
+      return values.includes("drop") ? [serverOf(args2, start.assignments, { host: ["-h", "--host"] })] : [];
+    case "redis-cli":
+      return values.some((v) => /^flush(?:all|db)$/i.test(v)) ? [serverOf(args2, start.assignments, { host: ["-h", void 0], name: ["-u", "--uri"] })] : [];
+    case "mongo":
+    case "mongosh": {
+      const script = optionValue(args2, void 0, "--eval")?.value ?? "";
+      return /dropDatabase\s*\(|\.drop\s*\(/.test(script) ? [serverOf(args2, start.assignments, { host: [void 0, "--host"] })] : [];
+    }
+    case "sqlite3": {
+      const [file2, sql] = operands(args2);
+      if (file2 === void 0 || !DESTRUCTIVE_SQL.test(sql?.value ?? view)) return [];
+      return [
+        {
+          host: "local",
+          scratch: file2.value === ":memory:" || isUnder(file2.value, scratchRoots) || SCRATCH_DATABASE.test(file2.value.split(/[\\/]/).pop() ?? "")
+        }
+      ];
+    }
+    case "prisma": {
+      const reset = values[0] === "migrate" && values[1] === "reset" || values[0] === "db" && values[1] === "push" && values.includes("--force-reset");
+      return reset ? [{ host: "unresolved", scratch: false }] : [];
+    }
+    case "rails":
+    case "rake":
+      return values.some((v) => /^db:(?:drop|reset|purge)(?::|$)/.test(v)) ? [{ host: "unresolved", scratch: false }] : [];
+    default:
+      return [];
+  }
+}
+function databaseClass(target) {
+  if (target.host === "remote") return "other";
+  if (target.host === "unresolved") return "unresolved";
+  return target.scratch ? "scratch" : "local";
+}
+function databaseDetector(scratchRoots) {
+  return (text, cwd, home) => {
+    const out = [];
+    walkCommands(text, cwd, home, (command) => {
+      out.push(...databaseTargets(command.words, scratchRoots, text));
+    });
+    return out;
+  };
+}
+var DATABASE_HINT = /drop|truncate|flush|migrate\s+reset|force-reset|db:(?:drop|reset|purge)|dropDatabase|\.drop\s*\(/i;
+async function checkDestructive(context) {
+  const log = context.log;
+  const fixes = [];
+  const rmCalls = judgeAll(log, /\brm\b/, rmTargets);
+  const dbCalls = judgeAll(log, DATABASE_HINT, databaseDetector(context.scratchRoots));
+  const rm = await checkRm(context, rmCalls, fixes);
+  const dbClasses = Object.fromEntries(DATABASE_CLASSES.map((c) => [c, 0]));
+  for (const j of dbCalls) {
+    for (const target of j.found) dbClasses[databaseClass(target)] += 1;
+  }
+  const databases = { calls: tallyOf(dbCalls), classes: dbClasses };
+  const facts = { rm, databases };
+  const calls = new Set([...rmCalls, ...dbCalls].map((j) => j.call.id));
+  const all = addTallies(rm.calls, databases.calls);
+  const status = statusOf({
+    sessions: log.sessions,
+    act: rm.classes["unguarded-variable"] > 0 || trackedMissing(facts) > 0,
+    review: rm.classes.untracked + rm.classes.home + rm.classes.other > 0 || databases.classes.other + databases.classes.unresolved > 0,
+    incomplete: rm.couldNotCheck + all.unknown > 0
+  });
+  return { result: { status, matches: calls.size, facts }, localFixes: fixes };
+}
+function allCalls(f) {
+  return addTallies(f.rm.calls, f.databases.calls);
+}
+function n(f, c) {
+  return f.rm.classes[c];
+}
+var HEADLINE = {
+  id: "destructive.headline",
+  render: (f) => n(f, "unguarded-variable") > 0 ? `${counted(n(f, "unguarded-variable"), "rm -rf target")} ${was(n(f, "unguarded-variable"))} built from a variable with no guard.` : void 0
+};
+var CHIP = {
+  id: "destructive.chip",
+  render: (f) => `${counted(n(f, "unguarded-variable"), "rm -rf target")} built from an unguarded variable`
+};
+function classLine(c, what) {
+  return {
+    id: `destructive.rm.${c}`,
+    render: (f) => n(f, c) > 0 ? `${counted(n(f, c), "target")} ${what(n(f, c))}` : void 0
+  };
+}
+var FOUND = [
+  {
+    id: "destructive.rm",
+    render: (f) => f.rm.calls.ran > 0 ? `${counted(f.rm.calls.ran, "rm -rf command")} ran, with ${counted(f.rm.targets, "target")}.` : void 0
+  },
+  classLine(
+    "unguarded-variable",
+    (c) => `${was(c)} built from a variable with no \${VAR:?} guard, so an empty value deletes from the wrong folder.`
+  ),
+  classLine("scratch", (c) => `${was(c)} scratch, temp or build output.`),
+  classLine("tracked", () => "held files git tracks."),
+  classLine(
+    "untracked",
+    (c) => `${was(c)} in a repo with nothing tracked under ${c === 1 ? "it" : "them"}, so git keeps no copy.`
+  ),
+  classLine("home", (c) => `${was(c)} under the home folder, outside any repo.`),
+  classLine("other", (c) => `${was(c)} outside the home folder and outside any repo.`),
+  classLine(
+    "guarded-variable",
+    (c) => `${was(c)} built from guarded variables, so ${c === 1 ? "its" : "their"} folder is not known.`
+  ),
+  {
+    id: "destructive.databases",
+    render: (f) => {
+      const c = f.databases.classes;
+      const total = c.local + c.scratch + c.other + c.unresolved;
+      if (total === 0) return void 0;
+      const parts = [];
+      if (c.other > 0) parts.push(`${c.other} on another machine`);
+      if (c.unresolved > 0) parts.push(`${c.unresolved} whose host is set elsewhere`);
+      if (c.local > 0) parts.push(`${c.local} local`);
+      if (c.scratch > 0) parts.push(`${c.scratch} local scratch or test`);
+      return `${counted(total, "database")} ${was(total)} dropped or wiped: ${parts.join(", ")}.`;
+    }
+  },
+  {
+    id: "destructive.mentioned",
+    render: (f) => {
+      const m = allCalls(f).mentioned;
+      return m > 0 ? `${counted(m, "match", "matches")} only mentioned a delete, and ${m === 1 ? "is" : "are"} not counted.` : void 0;
+    }
+  },
+  {
+    id: "destructive.unknown",
+    render: (f) => {
+      const u = allCalls(f).unknown;
+      return u > 0 ? `${counted(u, "command")} could not be confirmed as run.` : void 0;
+    }
+  },
+  {
+    id: "destructive.none",
+    render: (f) => allCalls(f).ran === 0 ? "No rm -rf and no database wipe ran." : void 0
+  }
+];
+var NOW = [
+  {
+    id: "destructive.now.tracked-gone",
+    render: (f) => f.rm.trackedGone > 0 ? `${counted(f.rm.trackedGone, "tracked target")} ${is(f.rm.trackedGone)} still gone.` : void 0
+  },
+  {
+    id: "destructive.now.tracked-partly-back",
+    render: (f) => f.rm.trackedPartlyBack > 0 ? `${counted(f.rm.trackedPartlyBack, "tracked target")} ${is(f.rm.trackedPartlyBack)} partly back, with tracked files still missing.` : void 0
+  },
+  {
+    id: "destructive.now.tracked-back",
+    render: (f) => f.rm.trackedBack > 0 ? `${counted(f.rm.trackedBack, "tracked target")} ${f.rm.trackedBack === 1 ? "has" : "have"} every tracked file back.` : void 0
+  },
+  {
+    id: "destructive.now.could-not-check",
+    render: (f) => f.rm.couldNotCheck > 0 ? `${counted(f.rm.couldNotCheck, "target")} could not be checked on this machine.` : void 0
+  }
+];
+var FIX_STEPS = [
+  {
+    id: "destructive.fix.restore",
+    render: (f) => trackedMissing(f) > 0 ? "Restore the tracked files that are still missing. The exact commands are in the local fixes file." : void 0
+  },
+  {
+    id: "destructive.fix.guard",
+    render: (f) => n(f, "unguarded-variable") > 0 ? `Write a path built from a variable as \${VAR:?}/path, so an empty variable stops the command instead of deleting from the wrong folder.` : void 0
+  },
+  {
+    id: "destructive.fix.outside",
+    render: (f) => n(f, "untracked") + n(f, "home") + n(f, "other") > 0 ? "Check that each folder deleted outside scratch and build output was meant to go. Git keeps no copy of untracked files." : void 0
+  },
+  {
+    id: "destructive.fix.databases",
+    render: (f) => f.databases.classes.other + f.databases.classes.unresolved > 0 ? "Check that each database wiped on another machine, or whose host is set elsewhere, was meant to be." : void 0
+  }
+];
+function fixShapes(f) {
+  const out = [];
+  if (f.rm.trackedGone > 0) out.push({ shape: "git restore -- <path>" });
+  return out;
+}
+var destructiveCard = (result, context) => {
+  const f = result.facts;
+  const headline2 = sentence(HEADLINE, f);
+  const extras = cardExtras(
+    { count: n(f, "unguarded-variable"), label: sentence(CHIP, f) },
+    sentences(FIX_STEPS, f)
+  );
+  return {
+    ...extras,
+    category: "destructive",
+    tone: result.status,
+    count: result.matches,
+    found: sentences(FOUND, f),
+    now: sentences(NOW, f),
+    fixes: fixShapes(f),
+    codexCaveat: codexCaveat(context, allCalls(f).ran),
+    ...headline2 === void 0 ? {} : {
+      headline: {
+        basis: "unguarded-recursive-deletes",
+        count: n(f, "unguarded-variable"),
+        restsOnCodexRan: context.ranEvidence === "output-record",
+        sentence: headline2
+      }
+    }
+  };
+};
+var DESTRUCTIVE_TEMPLATES = [HEADLINE, CHIP, ...FOUND, ...NOW, ...FIX_STEPS];
+
+// src/core/verify/lost-work.ts
+import { resolve as resolve3, sep as sep3 } from "path";
+function folderOf(git, folder, home) {
+  return git.elsewhere ? void 0 : gitFolder(folder, git.folders, home);
+}
+function forceDeletesBranch(args2) {
+  let del = false;
+  let force = false;
+  let remote = false;
+  for (const word of args2) {
+    const value = word.value;
+    if (value === "--") break;
+    if (value === "--delete") del = true;
+    else if (value === "--force") force = true;
+    else if (value === "--remotes") remote = true;
+    else if (/^-[A-Za-z]+$/.test(value)) {
+      if (value.includes("D")) {
+        del = true;
+        force = true;
+      }
+      if (value.includes("d")) del = true;
+      if (value.includes("f")) force = true;
+      if (value.includes("r")) remote = true;
+    }
+  }
+  return del && force && !remote;
+}
+var branchDeletes = (text, cwd, home) => {
+  const out = [];
+  walkCommands(text, cwd, home, (command, folder) => {
+    const git = gitCommand(command.words);
+    if (git?.sub === "branch" && forceDeletesBranch(git.args)) {
+      out.push({ folder: folderOf(git, folder, home) });
+    }
+  });
+  return out;
+};
+var stashDrops = (text, cwd, home) => {
+  const out = [];
+  walkCommands(text, cwd, home, (command, folder) => {
+    const git = gitCommand(command.words);
+    if (git?.sub !== "stash") return;
+    const verb = git.args[0]?.value;
+    if (verb === "drop" || verb === "clear") {
+      out.push({ folder: folderOf(git, folder, home), clear: verb === "clear" });
+    }
+  });
+  return out;
+};
+var RESTORE_VALUE_OPTIONS = /* @__PURE__ */ new Set(["-s", "--source"]);
+function discardedPaths(sub, args2) {
+  if (sub === "reset") return args2.some((a) => a.value === "--hard") ? "all" : void 0;
+  if (sub === "checkout") {
+    const dash = args2.findIndex((a) => a.value === "--");
+    if (dash >= 0) {
+      const paths = args2.slice(dash + 1);
+      if (paths.length === 0) return void 0;
+      return paths.some((p) => p.value === ".") ? "all" : paths;
+    }
+    const rest = operands(args2);
+    return rest.length === 1 && rest[0]?.value === "." ? "all" : void 0;
+  }
+  if (sub === "restore") {
+    const values = args2.map((a) => a.value);
+    const staged = values.includes("--staged") || values.includes("-S");
+    const worktree = values.includes("--worktree") || values.includes("-W");
+    if (staged && !worktree) return void 0;
+    if (values.some((v) => v.startsWith("--pathspec-from-file"))) return "all";
+    const paths = operands(args2, RESTORE_VALUE_OPTIONS);
+    if (paths.length === 0) return void 0;
+    return paths.some((p) => p.value === ".") ? "all" : paths;
+  }
+  return void 0;
+}
+var discards = (text, cwd, home) => {
+  const out = [];
+  walkCommands(text, cwd, home, (command, folder) => {
+    const git = gitCommand(command.words);
+    if (git === void 0) return;
+    const paths = discardedPaths(git.sub, git.args);
+    if (paths !== void 0) out.push({ folder: folderOf(git, folder, home), paths });
+  });
+  return out;
+};
+var CLONE_VALUE_OPTIONS = /* @__PURE__ */ new Set([
+  "-b",
+  "--branch",
+  "-o",
+  "--origin",
+  "--depth",
+  "--reference",
+  "--separate-git-dir",
+  "-c",
+  "--config",
+  "--template",
+  "-u",
+  "--upload-pack",
+  "-j",
+  "--jobs",
+  "--filter",
+  "--shallow-since",
+  "--shallow-exclude",
+  "--server-option"
+]);
+var WORKTREE_VALUE_OPTIONS = /* @__PURE__ */ new Set(["-b", "-B", "--reason", "--orphan"]);
+var copies = (text, cwd, home) => {
+  const out = [];
+  const add = (folder, word) => {
+    if (word === void 0 || word.expands) return;
+    const path = resolvePath(folder, word.value, home);
+    if (path !== void 0) out.push(path);
+  };
+  walkCommands(text, cwd, home, (command, folder) => {
+    const git = gitCommand(command.words);
+    if (git !== void 0) {
+      const base = folderOf(git, folder, home);
+      if (git.sub === "worktree" && git.args[0]?.value === "add") {
+        add(base, operands(git.args.slice(1), WORKTREE_VALUE_OPTIONS)[0]);
+      } else if (git.sub === "clone") {
+        const [url, into] = operands(git.args, CLONE_VALUE_OPTIONS);
+        if (into !== void 0) add(base, into);
+        else if (url !== void 0 && !url.expands) {
+          const name = url.value.replace(/[\\/]+$/, "").split(/[\\/:]/).pop() ?? "";
+          const folderName = name.replace(/\.git$/, "");
+          if (folderName !== "") add(base, { raw: folderName, value: folderName, expands: false });
+        }
+      }
+      return;
+    }
+    const start = commandStart(command.words).index;
+    const program = command.words[start];
+    if (program === void 0 || programName2(program) !== "cp") return;
+    const args2 = command.words.slice(start + 1);
+    const recursive = args2.some(
+      (a) => /^-[A-Za-z]*[rRa]/.test(a.value) || a.value === "--recursive"
+    );
+    const rest = operands(args2);
+    if (recursive && rest.length >= 2) add(folder, rest[rest.length - 1]);
+  });
+  return out;
+};
+var DELETED_BRANCH = /^Deleted branch (\S+) \(was ([0-9a-f]{7,64})\)\.?\s*$/gm;
+var DROPPED_STASH = /^Dropped (?:refs\/)?stash@\{\d+\} \(([0-9a-f]{7,64})\)\s*$/gm;
+function reported(judged, pattern, read) {
+  const folders = new Set(judged.found.map((f) => f.folder));
+  const items = [...outputOf(judged.call).matchAll(pattern)].map(read);
+  if (folders.size !== 1 || items.length === 0) return void 0;
+  const [folder] = [...folders];
+  return items.map((item) => ({ ...item, folder }));
+}
+async function checkBranches(context, judged, fixes) {
+  const items = [];
+  let notIdentified = 0;
+  for (const j of judged) {
+    if (j.found.length === 0) continue;
+    const found = reported(j, DELETED_BRANCH, (m) => ({
+      name: m[1],
+      id: m[2]
+    }));
+    if (found === void 0) notIdentified += 1;
+    else items.push(...found);
+  }
+  let recoverable2 = 0;
+  let onAnotherRef = 0;
+  let gone = 0;
+  let couldNotCheck = 0;
+  const seen = /* @__PURE__ */ new Set();
+  for (const [index, item] of items.entries()) {
+    const looked = index < MAX_PROBED_ITEMS ? await lookUp(context, item, seen) : void 0;
+    if (looked === void 0) {
+      couldNotCheck += 1;
+      continue;
+    }
+    if (looked === "seen") continue;
+    if (looked === null) {
+      gone += 1;
+      continue;
+    }
+    const held = await context.probe.onAnyRef(looked.root, looked.full);
+    if (isFailure(held)) couldNotCheck += 1;
+    else if (held) onAnotherRef += 1;
+    else {
+      recoverable2 += 1;
+      pushFix(fixes, "lost-work", [
+        "git",
+        "-C",
+        { ref: looked.root },
+        "branch",
+        { branch: `recovered/${item.name ?? ""}` },
+        { sha: looked.full }
+      ]);
+    }
+  }
+  return {
+    calls: tallyOf(judged),
+    deleted: items.length,
+    notIdentified,
+    recoverable: recoverable2,
+    onAnotherRef,
+    gone,
+    couldNotCheck
+  };
+}
+async function lookUp(context, item, seen) {
+  if (item.folder === void 0) return void 0;
+  const root = await context.probe.toplevel(item.folder);
+  if (isFailure(root)) return void 0;
+  const full = await context.probe.commit(root, item.id);
+  if (isFailure(full)) return void 0;
+  if (full === null) return null;
+  const key = `${root}\0${full}`;
+  if (seen.has(key)) return "seen";
+  seen.add(key);
+  return { root, full };
+}
+async function checkStashes(context, judged, fixes) {
+  const items = [];
+  let cleared = 0;
+  let notIdentified = 0;
+  for (const j of judged) {
+    const drops = j.found.filter((f) => !f.clear);
+    cleared += j.found.length - drops.length;
+    if (drops.length === 0) continue;
+    const found = reported({ ...j, found: drops }, DROPPED_STASH, (m) => ({ id: m[1] }));
+    if (found === void 0) notIdentified += 1;
+    else items.push(...found);
+  }
+  let recoverable2 = 0;
+  let listed = 0;
+  let gone = 0;
+  let couldNotCheck = 0;
+  const seen = /* @__PURE__ */ new Set();
+  for (const [index, item] of items.entries()) {
+    const looked = index < MAX_PROBED_ITEMS ? await lookUp(context, item, seen) : void 0;
+    if (looked === void 0) {
+      couldNotCheck += 1;
+      continue;
+    }
+    if (looked === "seen") continue;
+    if (looked === null) {
+      gone += 1;
+      continue;
+    }
+    const list = await context.probe.stashes(looked.root);
+    if (isFailure(list)) couldNotCheck += 1;
+    else if (list.has(looked.full)) listed += 1;
+    else {
+      recoverable2 += 1;
+      pushFix(fixes, "lost-work", [
+        "git",
+        "-C",
+        { ref: looked.root },
+        "stash",
+        "store",
+        "-m",
+        "recovered",
+        { sha: looked.full }
+      ]);
+    }
+  }
+  return {
+    calls: tallyOf(judged),
+    dropped: items.length,
+    cleared,
+    notIdentified,
+    recoverable: recoverable2,
+    listed,
+    gone,
+    couldNotCheck
+  };
+}
+var AGENT_WORKTREES = [
+  `${sep3}.claude${sep3}worktrees${sep3}`,
+  `${sep3}.codex${sep3}worktrees${sep3}`,
+  `${sep3}.cursor${sep3}worktrees${sep3}`
+];
+function within(path, folder) {
+  return path === folder || path.startsWith(folder.endsWith(sep3) ? folder : `${folder}${sep3}`);
+}
+function checkDiscards(context, judged, own) {
+  const log = context.log;
+  let paths = 0;
+  let ownCopy = 0;
+  let agentEdited = 0;
+  let mainCheckout = 0;
+  let couldNotCheck = 0;
+  for (const j of judged) {
+    for (const found of j.found) {
+      const targets = found.paths === "all" ? [found.folder] : found.paths.map(
+        (p) => p.expands ? void 0 : resolvePath(found.folder, p.value, log.home)
+      );
+      for (const target of targets) {
+        paths += 1;
+        if (target === void 0 || found.folder === void 0) {
+          couldNotCheck += 1;
+          continue;
+        }
+        const folder = resolve3(found.folder);
+        if (own.some((copy) => within(folder, copy)) || isUnder(folder, context.scratchRoots) || AGENT_WORKTREES.some((marker) => `${folder}${sep3}`.includes(marker))) {
+          ownCopy += 1;
+          continue;
+        }
+        const edited = log.writes.some(
+          (w) => within(w.path, target) && (w.session !== j.call.session || w.id < j.call.id)
+        );
+        if (edited) agentEdited += 1;
+        else mainCheckout += 1;
+      }
+    }
+  }
+  return { calls: tallyOf(judged), paths, ownCopy, agentEdited, mainCheckout, couldNotCheck };
+}
+async function checkLostWork(context) {
+  const log = context.log;
+  const fixes = [];
+  const branchCalls = judgeAll(log, /branch/, branchDeletes);
+  const stashCalls = judgeAll(log, /stash/, stashDrops);
+  const discardCalls = judgeAll(log, /checkout|restore|reset/, discards);
+  const own = judgeAll(log, /worktree|clone|cp\s/, copies).flatMap((j) => j.found);
+  const branches = await checkBranches(context, branchCalls, fixes);
+  const stashes = await checkStashes(context, stashCalls, fixes);
+  const discarded = checkDiscards(context, discardCalls, own);
+  const facts = { branches, stashes, discards: discarded };
+  const calls = new Set([...branchCalls, ...stashCalls, ...discardCalls].map((j) => j.call.id));
+  const all = addTallies(branches.calls, stashes.calls, discarded.calls);
+  const status = statusOf({
+    sessions: log.sessions,
+    act: branches.recoverable + stashes.recoverable > 0,
+    review: discarded.mainCheckout > 0,
+    incomplete: branches.notIdentified + branches.couldNotCheck + stashes.notIdentified + stashes.cleared + stashes.couldNotCheck + discarded.couldNotCheck + all.unknown > 0
+  });
+  return { result: { status, matches: calls.size, facts }, localFixes: fixes };
+}
+function allCalls2(f) {
+  return addTallies(f.branches.calls, f.stashes.calls, f.discards.calls);
+}
+function recoverable(f) {
+  return f.branches.recoverable + f.stashes.recoverable;
+}
+var HEADLINE2 = {
+  id: "lost-work.headline",
+  render: (f) => recoverable(f) > 0 ? `${counted(recoverable(f), "deleted branch or stash", "deleted branches or stashes")} can still be recovered.` : void 0
+};
+var FOUND2 = [
+  {
+    id: "lost-work.branches",
+    render: (f) => f.branches.deleted > 0 ? `${counted(f.branches.deleted, "branch", "branches")} ${was(f.branches.deleted)} force-deleted.` : void 0
+  },
+  {
+    id: "lost-work.stashes",
+    render: (f) => f.stashes.dropped > 0 ? `${counted(f.stashes.dropped, "stash", "stashes")} ${was(f.stashes.dropped)} dropped.` : void 0
+  },
+  {
+    id: "lost-work.stashes-cleared",
+    render: (f) => f.stashes.cleared > 0 ? `${counted(f.stashes.cleared, "git stash clear command")} ran. It prints no ids, so what it removed could not be looked up.` : void 0
+  },
+  {
+    id: "lost-work.not-identified",
+    render: (f) => {
+      const n2 = f.branches.notIdentified + f.stashes.notIdentified;
+      return n2 > 0 ? `${counted(n2, "branch or stash deletion", "branch or stash deletions")} ran, but the commit id is not in the recorded output, so it could not be looked up.` : void 0;
+    }
+  },
+  {
+    id: "lost-work.discards",
+    render: (f) => f.discards.paths > 0 ? `Uncommitted changes to ${counted(f.discards.paths, "path")} were discarded with git checkout, git restore or git reset --hard.` : void 0
+  },
+  {
+    id: "lost-work.mentioned",
+    render: (f) => {
+      const n2 = allCalls2(f).mentioned;
+      return n2 > 0 ? `${counted(n2, "match", "matches")} only mentioned deleting work, and ${n2 === 1 ? "is" : "are"} not counted.` : void 0;
+    }
+  },
+  {
+    id: "lost-work.unknown",
+    render: (f) => {
+      const n2 = allCalls2(f).unknown;
+      return n2 > 0 ? `${counted(n2, "command")} could not be confirmed as run.` : void 0;
+    }
+  },
+  {
+    id: "lost-work.none",
+    render: (f) => allCalls2(f).ran === 0 ? "No command that ran deleted a branch or a stash, or discarded changes." : void 0
+  }
+];
+var NOW2 = [
+  {
+    id: "lost-work.now.recoverable-branches",
+    render: (f) => f.branches.recoverable > 0 ? `${counted(f.branches.recoverable, "deleted branch", "deleted branches")} ${is(f.branches.recoverable)} still in the repo and on no other branch: recoverable by commit id.` : void 0
+  },
+  {
+    id: "lost-work.now.recoverable-stashes",
+    render: (f) => f.stashes.recoverable > 0 ? `${counted(f.stashes.recoverable, "dropped stash", "dropped stashes")} ${is(f.stashes.recoverable)} still in the repo: recoverable by commit id.` : void 0
+  },
+  {
+    id: "lost-work.now.on-another-ref",
+    render: (f) => f.branches.onAnotherRef > 0 ? `${counted(f.branches.onAnotherRef, "deleted branch", "deleted branches")} ${is(f.branches.onAnotherRef)} still on another branch or tag, so nothing is lost.` : void 0
+  },
+  {
+    id: "lost-work.now.listed",
+    render: (f) => f.stashes.listed > 0 ? `${counted(f.stashes.listed, "dropped stash", "dropped stashes")} ${is(f.stashes.listed)} back in the stash list.` : void 0
+  },
+  {
+    id: "lost-work.now.gone",
+    render: (f) => {
+      const n2 = f.branches.gone + f.stashes.gone;
+      return n2 > 0 ? `${counted(n2, "deleted branch or stash", "deleted branches or stashes")} ${is(n2)} no longer in the repo.` : void 0;
+    }
+  },
+  {
+    id: "lost-work.now.discards-main",
+    render: (f) => f.discards.mainCheckout > 0 ? `${counted(f.discards.mainCheckout, "discarded path")} ${was(f.discards.mainCheckout)} in a main checkout with no agent edit on record, so ${f.discards.mainCheckout === 1 ? "it" : "they"} may have held someone's own changes. Git keeps no copy of those.` : void 0
+  },
+  {
+    id: "lost-work.now.discards-agent",
+    render: (f) => f.discards.agentEdited > 0 ? `${counted(f.discards.agentEdited, "discarded path")} held files the agent had edited.` : void 0
+  },
+  {
+    id: "lost-work.now.discards-own",
+    render: (f) => f.discards.ownCopy > 0 ? `${counted(f.discards.ownCopy, "discarded path")} ${was(f.discards.ownCopy)} in the agent's own worktree or a scratch copy.` : void 0
+  },
+  {
+    id: "lost-work.now.could-not-check",
+    render: (f) => {
+      const n2 = f.branches.couldNotCheck + f.stashes.couldNotCheck + f.discards.couldNotCheck;
+      return n2 > 0 ? `${counted(n2, "item")} could not be checked on this machine.` : void 0;
+    }
+  }
+];
+var CHIP2 = {
+  id: "lost-work.chip",
+  render: (f) => `${counted(recoverable(f), "deleted branch or stash", "deleted branches or stashes")} still recoverable`
+};
+var FIX_STEPS2 = [
+  {
+    id: "lost-work.fix.recover",
+    render: (f) => recoverable(f) > 0 ? "Recover each one by its commit id before git cleans unreachable commits away. The exact commands are in the local fixes file." : void 0
+  },
+  {
+    id: "lost-work.fix.discards",
+    render: (f) => f.discards.mainCheckout > 0 ? "Check whether the discarded paths held changes you still need. Git cannot bring them back, but an editor's local history may." : void 0
+  }
+];
+function fixShapes2(f) {
+  const out = [];
+  if (f.branches.recoverable > 0) out.push({ shape: "git branch recovered/<name> <sha>" });
+  if (f.stashes.recoverable > 0) out.push({ shape: "git stash store -m recovered <sha>" });
+  return out;
+}
+var lostWorkCard = (result, context) => {
+  const f = result.facts;
+  const headline2 = sentence(HEADLINE2, f);
+  const extras = cardExtras(
+    { count: recoverable(f), label: sentence(CHIP2, f) },
+    sentences(FIX_STEPS2, f)
+  );
+  return {
+    ...extras,
+    category: "lost-work",
+    tone: result.status,
+    count: result.matches,
+    found: sentences(FOUND2, f),
+    now: sentences(NOW2, f),
+    fixes: fixShapes2(f),
+    codexCaveat: codexCaveat(context, allCalls2(f).ran),
+    ...headline2 === void 0 ? {} : {
+      headline: {
+        basis: "recoverable-deleted-work",
+        count: recoverable(f),
+        restsOnCodexRan: context.ranEvidence === "output-record",
+        sentence: headline2
+      }
+    }
+  };
+};
+var LOST_WORK_TEMPLATES = [HEADLINE2, CHIP2, ...FOUND2, ...NOW2, ...FIX_STEPS2];
+
+// src/core/verify/copy.ts
+function countOf(n2, one, many = `${one}s`) {
+  return `${formatCount(n2)} ${n2 === 1 ? one : many}`;
+}
+var CATEGORY_TITLES = {
+  secrets: "Secrets in transcripts",
+  "skipped-checks": "Skipped safety checks",
+  "lost-work": "Lost work",
+  cloud: "Cloud and permissions",
+  "prod-infra": "Production infrastructure",
+  tests: "Gaming tests",
+  destructive: "Destructive commands",
+  unreviewed: "Unreviewed code",
+  egress: "Data leaving the machine"
+};
+var TONE_LABELS = {
+  act: "Act on this",
+  review: "Review",
+  clean: "Clean",
+  "could-not-check": "Could not check",
+  "not-checked": "Not checked"
+};
+var KIND_LABELS = {
+  "aws-access-key": "AWS access key",
+  "aws-secret-key": "AWS secret key",
+  "private-key": "Private key",
+  "github-token": "GitHub token",
+  "slack-token": "Slack token",
+  "api-key": "API key",
+  jwt: "JSON web token",
+  "bearer-token": "Bearer token",
+  "auth-header": "Authorization header",
+  "database-url": "Database URL with a password",
+  "url-credentials": "URL with a password",
+  password: "Password",
+  "named-secret": "A named secret",
+  "random-string": "Random-looking secret",
+  other: "Other credential"
+};
+var PROVENANCE_PHRASES = {
+  "pasted-into-prompt": "you pasted it into a prompt",
+  "typed-into-command": "typed into a command",
+  "printed-by-command": "printed by a command",
+  "in-agent-reply": "in an agent reply"
+};
+function evidenceRow(item) {
+  return {
+    kind: KIND_LABELS[item.kind] ?? KIND_LABELS.other,
+    how: item.via.map((via) => PROVENANCE_PHRASES[via]).filter((phrase) => phrase !== void 0).join(", "),
+    files: `in ${countOf(item.files, "transcript file")}`
+  };
+}
+var MORE_EVIDENCE = {
+  id: "evidence.more",
+  render: ({ more }) => more > 0 ? `And ${countOf(more, "more likely-real credential", "more likely-real credentials")}.` : void 0
+};
+var RAN_BASIS = {
+  id: "lead.ran-basis",
+  render: (v) => v.resultsRecorded ? "Checked against command output: a match counts only when the transcript records that its command ran." : void 0
+};
+var NO_RESULTS = {
+  id: "lead.no-results",
+  render: (v) => v.resultsRecorded ? void 0 : "These sessions record no command output, so no matched command could be confirmed as run. A count of commands that ran is zero here because nothing could be confirmed, not because nothing ran."
+};
+var MENTIONED = {
+  id: "lead.mentioned",
+  render: (v) => v.matchedCalls.mentioned > 0 ? `${countOf(v.matchedCalls.mentioned, "match", "matches")} only mentioned a command, in a search, a message or a file, and ${v.matchedCalls.mentioned === 1 ? "is" : "are"} left out.` : void 0
+};
+var UNCONFIRMED = {
+  id: "lead.unconfirmed",
+  render: (v) => v.resultsRecorded && v.matchedCalls.unknown > 0 ? `${countOf(v.matchedCalls.unknown, "matched call")} had no recorded output to show ${v.matchedCalls.unknown === 1 ? "it" : "they"} ran, and ${v.matchedCalls.unknown === 1 ? "is" : "are"} left out.` : void 0
+};
+var CODEX_RAN = {
+  id: "lead.codex-ran",
+  render: (v) => v.ranEvidence === "output-record" && v.matchedCalls.ran > 0 ? "A Codex call counts as ran when Codex recorded an output for it, which may include calls a hook blocked." : void 0
+};
+var CODEX_UNVERIFIED_TEXT = "The Codex reading is limited and unverified: it is tested on synthetic sessions only.";
+var CODEX_UNVERIFIED = {
+  id: "lead.codex-unverified",
+  render: (v) => v.ranEvidence === "output-record" ? `${CODEX_UNVERIFIED_TEXT} No Codex finding leads this page.` : void 0
+};
+var LEAD_NOTES = [
+  RAN_BASIS,
+  NO_RESULTS,
+  MENTIONED,
+  UNCONFIRMED,
+  CODEX_UNVERIFIED,
+  CODEX_RAN
+];
+function leadNotes(verification) {
+  return sentences(LEAD_NOTES, verification);
+}
+var CHIP_CANDIDATES = [
+  "secrets",
+  "skipped-checks",
+  "lost-work",
+  "cloud",
+  "prod-infra",
+  "destructive",
+  "egress"
+];
+var CHIP_COUNT = 6;
+function chipCategories(headline2) {
+  return CHIP_CANDIDATES.filter((c) => c !== headline2).slice(0, CHIP_COUNT);
+}
+var CHIP_TONE = {
+  id: "chip.tone",
+  render: ({ tone }) => TONE_LABELS[tone].toLowerCase()
+};
+function chipText(card) {
+  const counted5 = card.chip !== void 0 && (card.tone === "act" || card.tone === "review" || card.tone === "clean");
+  if (card.unconfirmed !== void 0 && (!counted5 || (card.chip?.count ?? 0) === 0)) {
+    return {
+      label: sentence(CHIP_UNCONFIRMED, card) ?? { template: CHIP_UNCONFIRMED.id, text: "" }
+    };
+  }
+  if (counted5 && card.chip !== void 0) {
+    return { count: card.chip.count, label: card.chip.label };
+  }
+  return { label: sentence(CHIP_TONE, card) ?? { template: CHIP_TONE.id, text: "" } };
+}
+var CHIP_UNCONFIRMED = {
+  id: "chip.could-not-confirm",
+  render: ({ unconfirmed }) => unconfirmed === void 0 ? void 0 : "could not confirm"
+};
+function toneLabel(card) {
+  return card.unconfirmed !== void 0 && card.tone === "could-not-check" ? "Could not confirm" : TONE_LABELS[card.tone];
+}
+var CODEX_CAVEAT = {
+  id: "card.codex-caveat",
+  render: ({ codexCaveat: codexCaveat2 }) => codexCaveat2 ? "Codex counts here include every call Codex recorded an output for, which may include calls a hook blocked." : void 0
+};
+var TONE_TALLY = {
+  id: "cards.tally",
+  render: (cards) => {
+    const parts = [];
+    const n2 = (tone) => cards.filter((c) => c.tone === tone).length;
+    if (n2("act") > 0) parts.push(`${formatCount(n2("act"))} to act on`);
+    if (n2("review") > 0) parts.push(`${formatCount(n2("review"))} to review`);
+    if (n2("clean") > 0) parts.push(`${formatCount(n2("clean"))} clean`);
+    if (n2("could-not-check") > 0)
+      parts.push(`${formatCount(n2("could-not-check"))} could not check`);
+    if (n2("not-checked") > 0) parts.push(`${formatCount(n2("not-checked"))} not checked`);
+    return parts.length === 0 ? void 0 : parts.join(" \xB7 ");
+  }
+};
+var FIXES_FILE_NOTE = {
+  id: "card.fixes-file",
+  render: ({ variant }) => variant === "artifact" ? `The exact commands, with real names and paths, are in ${FIXES_FILE} on the machine the scan ran on. That file was not published with this page.` : `The exact commands for this machine, with real names and paths, are in ${FIXES_FILE} next to this report. That file stays on this machine and is not part of this page.`
+};
+var FIXES_FILE = "agenttrail-guard-fixes.txt";
+function cardCount(card) {
+  if (card.tone === "not-checked" || card.tone === "could-not-check" && card.count === 0) {
+    return void 0;
+  }
+  return card.countLine ?? sentence(CARD_COUNT, card);
+}
+var CARD_COUNT = {
+  id: "card.count",
+  render: ({ tone, count: count2 }) => tone === "not-checked" || tone === "could-not-check" && count2 === 0 ? void 0 : countOf(count2, "match", "matches")
+};
+
+// src/core/verify/secrets-card.ts
+function likelyReal(n2) {
+  return countOf(n2, "likely-real credential");
+}
+function filesItRead(n2) {
+  return n2 === 1 ? "the one transcript file it read" : `the ${formatCount(n2)} transcript files it read`;
+}
+function be(n2) {
+  return n2 === 1 ? "is" : "are";
+}
+function anyFound(f) {
+  return f.classes["likely-real"] + f.classes["committed-fixture"] + f.classes.placeholder + f.classes["local-dev"] > 0;
+}
+var FOUND_LIKELY_REAL = {
+  id: "secrets.found.likely-real",
+  render: (f) => f.classes["likely-real"] > 0 ? `Found ${likelyReal(f.classes["likely-real"])} in ${filesItRead(f.filesRead)}.` : void 0
+};
+var FOUND_NO_LIKELY_REAL = {
+  id: "secrets.found.no-likely-real",
+  render: (f) => f.classes["likely-real"] === 0 && f.filesRead > 0 ? anyFound(f) ? `Found no likely-real credential in ${filesItRead(f.filesRead)}.` : `Found no credential-shaped value in ${filesItRead(f.filesRead)}.` : void 0
+};
+var FOUND_FIXTURES = {
+  id: "secrets.found.committed-fixtures",
+  render: (f) => {
+    const n2 = f.classes["committed-fixture"];
+    if (n2 === 0) return void 0;
+    return n2 === 1 ? "1 value is also in a git-tracked file, a committed fixture: it may be test data, or a real secret that was committed." : `${formatCount(n2)} values are also in git-tracked files, committed fixtures: each may be test data, or a real secret that was committed.`;
+  }
+};
+var FOUND_NOT_COUNTED = {
+  id: "secrets.found.not-counted",
+  render: (f) => {
+    const parts = [];
+    const placeholders = f.classes.placeholder;
+    const local = f.classes["local-dev"];
+    if (placeholders > 0) {
+      parts.push(
+        countOf(placeholders, "placeholder or false positive", "placeholders or false positives")
+      );
+    }
+    if (local > 0) {
+      parts.push(`${countOf(local, "local dev value")} for a database or service on this machine`);
+    }
+    return parts.length > 0 ? `Not counted as likely real: ${parts.join(", and ")}.` : void 0;
+  }
+};
+var FOUND_SET_ASIDE = {
+  id: "secrets.found.set-aside",
+  render: (f) => {
+    const { unnamedOutputOnly, namedNotCredentialShaped } = f.setAside;
+    const n2 = unnamedOutputOnly + namedNotCredentialShaped;
+    if (n2 === 0) return void 0;
+    const why = [];
+    if (unnamedOutputOnly > 0) {
+      why.push(`${formatCount(unnamedOutputOnly)} unnamed and seen only in output or replies`);
+    }
+    if (namedNotCredentialShaped > 0) {
+      why.push(`${formatCount(namedNotCredentialShaped)} named but not shaped like a credential`);
+    }
+    return `Of the placeholders or false positives, ${formatCount(n2)} ${n2 === 1 ? "was" : "were"} set aside by a rule that can miss a real credential: ${why.join(", and ")}.`;
+  }
+};
+var FOUND_FIXTURES_PARTIAL = {
+  id: "secrets.found.fixtures-partial",
+  render: (f) => f.classes["likely-real"] > 0 && f.fixtureCheck === "partial" ? `${countOf(f.reposNotChecked, "repo")} could not be searched for committed fixtures, so some of these may be fixtures.` : void 0
+};
+var FOUND_FIXTURES_UNAVAILABLE = {
+  id: "secrets.found.fixtures-unavailable",
+  render: (f) => f.classes["likely-real"] > 0 && f.fixtureCheck === "unavailable" ? "No repo could be searched for committed fixtures, so a fixture would be counted here as likely real." : void 0
+};
+var FOUND_UNREAD = {
+  id: "secrets.found.unread",
+  render: (f) => f.filesNotRead > 0 ? `${countOf(f.filesNotRead, "transcript file")} could not be read.` : void 0
+};
+var FOUND_UNPLACED = {
+  id: "secrets.found.unplaced",
+  render: (f) => f.unplaced > 0 ? `${countOf(f.unplaced, "redacted text")} could not be lined up with the original, so ${f.unplaced === 1 ? "it was" : "they were"} not classed.` : void 0
+};
+var FOUND_METHOD = {
+  id: "secrets.found.method",
+  render: (f) => f.filesRead > 0 ? "Each value was classed by its format and by where else it appears. None was checked with the service that issued it." : void 0
+};
+var SECRETS_FOUND = [
+  FOUND_LIKELY_REAL,
+  FOUND_NO_LIKELY_REAL,
+  FOUND_FIXTURES,
+  FOUND_NOT_COUNTED,
+  FOUND_SET_ASIDE,
+  FOUND_FIXTURES_PARTIAL,
+  FOUND_FIXTURES_UNAVAILABLE,
+  FOUND_UNREAD,
+  FOUND_UNPLACED,
+  FOUND_METHOD
+];
+var NOW_STILL_THERE = {
+  id: "secrets.now.still-there",
+  render: (f) => {
+    const n2 = f.classes["likely-real"];
+    if (n2 === 0) return void 0;
+    return n2 === 1 ? "It is still in the transcript files on this machine, where anything that can read those files can read it." : `All ${formatCount(n2)} are still in the transcript files on this machine, where anything that can read those files can read them.`;
+  }
+};
+var NOW_FIXTURES = {
+  id: "secrets.now.committed-fixtures",
+  render: (f) => {
+    const n2 = f.classes["committed-fixture"];
+    if (n2 === 0) return void 0;
+    return n2 === 1 ? "The committed fixture is in a git-tracked file today, and so in the repo's history." : `The ${formatCount(n2)} committed fixtures are in git-tracked files today, and so in the repo's history.`;
+  }
+};
+var NOW_NOTHING = {
+  id: "secrets.now.nothing",
+  render: (f) => f.classes["likely-real"] === 0 && f.classes["committed-fixture"] === 0 && f.filesRead > 0 ? "There is no likely-real credential to rotate." : void 0
+};
+var SECRETS_NOW = [
+  NOW_STILL_THERE,
+  NOW_FIXTURES,
+  NOW_NOTHING
+];
+var FIX_ROTATE = {
+  id: "secrets.fix.rotate",
+  render: (f) => {
+    const n2 = f.classes["likely-real"];
+    if (n2 === 0) return void 0;
+    return n2 === 1 ? "Rotate it first, with the service that issued it, so the copy in the transcripts no longer works." : "Rotate each one first, with the service that issued it, so the copies in the transcripts no longer work.";
+  }
+};
+var FIX_FIXTURES = {
+  id: "secrets.fix.committed-fixtures",
+  render: (f) => f.classes["committed-fixture"] > 0 ? "If a committed fixture is a real secret, rotate it as well: removing the file does not remove it from the repo's history." : void 0
+};
+var SECRETS_FIX = [FIX_ROTATE, FIX_FIXTURES];
+var SECRETS_HEADLINE = {
+  id: "secrets.headline",
+  render: (f) => {
+    const n2 = f.classes["likely-real"];
+    return n2 > 0 ? `${likelyReal(n2)} ${be(n2)} still in the agent's transcripts` : void 0;
+  }
+};
+var SECRETS_READ = {
+  id: "secrets.read",
+  render: (f) => {
+    if (f.filesRead === 0) return void 0;
+    let line = `Read ${countOf(f.filesRead, "transcript file")} again`;
+    if (f.reposChecked > 0) {
+      line += ` and searched the git-tracked files of ${countOf(f.reposChecked, "repo")} the sessions ran in, with read-only git`;
+    }
+    if (f.reposNotChecked > 0) {
+      line += `; ${countOf(f.reposNotChecked, "repo")} the sessions named could not be searched`;
+    }
+    return `${line}.`;
+  }
+};
+var SECRETS_COUNT = {
+  id: "secrets.count",
+  render: ({ matches }) => countOf(matches, "credential-shaped value")
+};
+var SECRETS_CHIP = {
+  id: "secrets.chip",
+  render: (f) => f.classes["likely-real"] === 1 ? "likely-real credential in transcripts" : "likely-real credentials in transcripts"
+};
+var secretsCard = (result) => {
+  const facts = result.facts;
+  const likely = facts.classes["likely-real"];
+  const headline2 = sentence(SECRETS_HEADLINE, facts);
+  const chip = sentence(SECRETS_CHIP, facts);
+  const countLine = sentence(SECRETS_COUNT, result);
+  const read = sentence(SECRETS_READ, facts);
+  return {
+    category: "secrets",
+    tone: result.status,
+    count: result.matches,
+    ...countLine === void 0 ? {} : { countLine },
+    found: sentences(SECRETS_FOUND, facts),
+    now: sentences(SECRETS_NOW, facts),
+    fixSteps: sentences(SECRETS_FIX, facts),
+    fixes: [],
+    codexCaveat: false,
+    ...headline2 === void 0 ? {} : {
+      headline: {
+        basis: "likely-real-credentials",
+        count: likely,
+        restsOnCodexRan: false,
+        sentence: headline2
+      }
+    },
+    ...chip === void 0 ? {} : { chip: { count: likely, label: chip } },
+    ...read === void 0 ? {} : { read }
+  };
+};
+
+// src/core/verify/skipped.ts
+import { dirname as dirname2, join as join5 } from "path";
+var COMMIT_VALUE_OPTIONS = /* @__PURE__ */ new Set([
+  "-m",
+  "--message",
+  "-F",
+  "--file",
+  "-C",
+  "--reuse-message",
+  "-c",
+  "--reedit-message",
+  "-t",
+  "--template",
+  "--author",
+  "--date",
+  "--fixup",
+  "--squash",
+  "--cleanup",
+  "--trailer",
+  "--pathspec-from-file"
+]);
+var COMMIT_VALUE_LETTERS = "mFCct";
+function commitSkipsHooks(args2) {
+  let k = 0;
+  while (k < args2.length) {
+    const value = args2[k].value;
+    if (value === "--") return false;
+    if (value === "--no-verify") return true;
+    let takesNext = false;
+    if (value.startsWith("--")) takesNext = COMMIT_VALUE_OPTIONS.has(value);
+    else if (value.startsWith("-") && value !== "-") {
+      for (let c = 1; c < value.length; c++) {
+        const letter = value[c];
+        if (letter === "n") return true;
+        if (COMMIT_VALUE_LETTERS.includes(letter)) {
+          takesNext = c === value.length - 1;
+          break;
+        }
+        if (letter === "S" || letter === "u") break;
+      }
+    }
+    const next = args2[k + 1];
+    const bareOption = next !== void 0 && next.raw === next.value && next.value.startsWith("-");
+    k += takesNext && next !== void 0 && !bareOption ? 2 : 1;
+  }
+  return false;
+}
+function commits(text, cwd, home) {
+  const out = [];
+  walkCommands(text, cwd, home, (command, folder) => {
+    const git = gitCommand(command.words);
+    if (git === void 0 || git.sub !== "commit") return;
+    out.push({
+      folder: git.elsewhere ? void 0 : gitFolder(folder, git.folders, home),
+      skips: commitSkipsHooks(git.args)
+    });
+  });
+  return out;
+}
+var noVerifyCommits = (text, cwd, home) => commits(text, cwd, home).filter((c) => c.skips);
+var otherNoVerify = (text, cwd, home) => {
+  const out = [];
+  walkCommands(text, cwd, home, (command, folder) => {
+    const git = gitCommand(command.words);
+    if (git === void 0 || git.sub === "commit") return;
+    if (git.args.some((a) => a.value === "--no-verify" && a.raw === a.value)) {
+      out.push({ folder: git.elsewhere ? void 0 : gitFolder(folder, git.folders, home) });
+    }
+  });
+  return out;
+};
+function huskyOff(word) {
+  const match = /^(HUSKY|HUSKY_SKIP_HOOKS)=(.*)$/.exec(word.value);
+  if (match === null) return false;
+  const value = match[2].toLowerCase();
+  return match[1] === "HUSKY" ? value === "0" || value === "false" : value === "1" || value === "true";
+}
+var huskyCommands = (text, cwd, home) => {
+  const out = [];
+  walkCommands(text, cwd, home, (command, folder) => {
+    const start = commandStart(command.words);
+    const program = command.words[start.index];
+    const exported = program !== void 0 && programName2(program) === "export" && command.words.slice(start.index + 1).some(huskyOff);
+    if (!start.assignments.some(huskyOff) && !exported) return;
+    const git = gitCommand(command.words);
+    out.push({
+      folder: git === void 0 ? folder : git.elsewhere ? void 0 : gitFolder(folder, git.folders, home)
+    });
+  });
+  return out;
+};
+var CONFIG_VALUE_OPTIONS = /* @__PURE__ */ new Set([
+  "-f",
+  "--file",
+  "--blob",
+  "--type",
+  "--default",
+  "--comment",
+  "--value"
+]);
+var CONFIG_READS = /* @__PURE__ */ new Set([
+  "--get",
+  "--get-all",
+  "--get-regexp",
+  "--get-urlmatch",
+  "-l",
+  "--list",
+  "get",
+  "list"
+]);
+var hooksPathChanges = (text, cwd, home) => {
+  const out = [];
+  walkCommands(text, cwd, home, (command, folder) => {
+    const git = gitCommand(command.words);
+    if (git === void 0 || git.sub !== "config") return;
+    if (git.args.some((a) => CONFIG_READS.has(a.value))) return;
+    const rest = operands(git.args, CONFIG_VALUE_OPTIONS);
+    const verb = rest[0]?.value;
+    const named = verb === "set" || verb === "unset" ? rest.slice(1) : rest;
+    if (named[0]?.value.toLowerCase() !== "core.hookspath") return;
+    const unset = verb === "unset" || git.args.some((a) => a.value === "--unset" || a.value === "--unset-all");
+    if (!unset && named.length < 2) return;
+    out.push({ folder: git.elsewhere ? void 0 : gitFolder(folder, git.folders, home) });
+  });
+  return out;
+};
+var INSTRUCTION_NAMES = /* @__PURE__ */ new Set([
+  "claude.md",
+  "claude.local.md",
+  "agents.md",
+  "agent.md",
+  "gemini.md",
+  ".cursorrules",
+  ".windsurfrules",
+  "copilot-instructions.md",
+  "memory.md"
+]);
+var REPO_INSTRUCTION_FILES = [
+  "CLAUDE.md",
+  "CLAUDE.local.md",
+  "AGENTS.md",
+  "GEMINI.md",
+  ".cursorrules",
+  ".windsurfrules",
+  ".github/copilot-instructions.md"
+];
+function isInstructionFile(path) {
+  const parts = path.split(/[\\/]/);
+  const base = (parts[parts.length - 1] ?? "").toLowerCase();
+  if (INSTRUCTION_NAMES.has(base)) return true;
+  return /\.mdc?$/.test(base) && parts.some((part) => part === ".claude" || part === ".codex" || part === ".cursor");
+}
+var SKIP_VERB = String.raw`(?:skip|skipping|bypass|bypassing|disable|disabling|ignore|ignoring|turn\s+off)`;
+var SKIP_OBJECT = String.raw`(?:the\s+|all\s+|any\s+)?(?:git\s+|pre-commit\s+|pre-push\s+|commit\s+|husky\s+|lint\s+|ci\s+)?(?:hooks?|checks?|pre-commit|pre-push|husky|linting|lint)`;
+var SKIP_LINE = new RegExp(
+  String.raw`--no-verify\b|\bHUSKY(?:_SKIP_HOOKS)?=|\bSKIP=[A-Za-z]|core\.hooksPath\b[^\n]{0,24}?(?:/dev/null|''|"")|\b${SKIP_VERB}\s+${SKIP_OBJECT}\b`,
+  "i"
+);
+var NEGATED = /\b(?:never|don'?t|do\s+not|does\s+not|must\s+not|mustn'?t|should\s+not|shouldn'?t|can'?t|cannot|avoid|forbidden|not\s+allowed|no\s+longer|refuse|instead\s+of|rather\s+than)\b/i;
+function tellsToSkip(text) {
+  return text.split(/\r?\n/).some((line) => SKIP_LINE.test(line) && !NEGATED.test(line));
+}
+var SKIP_GREP = "grep -n -i -E 'no-verify|HUSKY|SKIP=|hooks'";
+var SKIP_GREP_PARTS = [
+  "grep",
+  "-n",
+  "-i",
+  "-E",
+  "no-verify|HUSKY|SKIP=|hooks"
+];
+var COMMIT_LINE = /^\[[^\]\n]*? ([0-9a-f]{7,64})\] /gm;
+function noVerifyIds(context, judged) {
+  const toCheck = [];
+  let notIdentified = 0;
+  let noFolder = 0;
+  for (const j of judged) {
+    if (j.found.length === 0) continue;
+    const all = commits(j.call.view, j.call.cwd, context.log.home);
+    const folders = new Set(j.found.map((f) => f.folder));
+    const [folder] = [...folders];
+    const ids = [...outputOf(j.call).matchAll(COMMIT_LINE)].map((m) => m[1]);
+    if (all.length !== j.found.length || folders.size !== 1 || ids.length === 0) {
+      notIdentified += 1;
+      continue;
+    }
+    if (folder === void 0) {
+      noFolder += ids.length;
+      continue;
+    }
+    for (const id of ids) toCheck.push({ folder, id });
+  }
+  return { toCheck, notIdentified, noFolder };
+}
+async function checkCommits(context, judged, fixes) {
+  const { toCheck, notIdentified, noFolder } = noVerifyIds(context, judged);
+  const probe = context.probe;
+  let withoutHooks = 0;
+  let onMain = 0;
+  let offMain = 0;
+  let noMainToCheck = 0;
+  let gone = 0;
+  let couldNotCheck = noFolder;
+  const seen = /* @__PURE__ */ new Set();
+  for (const [index, item] of toCheck.entries()) {
+    if (index >= MAX_PROBED_ITEMS) {
+      couldNotCheck += 1;
+      continue;
+    }
+    const root = await probe.toplevel(item.folder);
+    if (isFailure(root)) {
+      couldNotCheck += 1;
+      continue;
+    }
+    const key = `${root}\0${item.id}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const hooks = await probe.hasHooks(root, COMMIT_HOOKS);
+    if (isFailure(hooks)) {
+      couldNotCheck += 1;
+      continue;
+    }
+    if (!hooks) {
+      withoutHooks += 1;
+      continue;
+    }
+    const full = await probe.commit(root, item.id);
+    if (isFailure(full)) {
+      couldNotCheck += 1;
+      continue;
+    }
+    if (full === null) {
+      gone += 1;
+      continue;
+    }
+    const defaults = await probe.defaultRefs(root);
+    if (isFailure(defaults)) {
+      couldNotCheck += 1;
+      continue;
+    }
+    if (defaults.length === 0) {
+      noMainToCheck += 1;
+      continue;
+    }
+    const reached = await probe.onDefaultBranch(root, full);
+    if (isFailure(reached)) {
+      couldNotCheck += 1;
+      continue;
+    }
+    if (reached) onMain += 1;
+    else offMain += 1;
+    pushFix(fixes, "skipped-checks", ["git", "-C", { ref: root }, "show", "--stat", { sha: full }]);
+  }
+  return {
+    calls: tallyOf(judged),
+    commits: toCheck.length,
+    notIdentified,
+    withoutHooks,
+    onMain,
+    offMain,
+    noMainToCheck,
+    gone,
+    couldNotCheck
+  };
+}
+async function checkHooksNow(context, changes, skips, fixes) {
+  const folders = /* @__PURE__ */ new Set();
+  let couldNotCheck = 0;
+  for (const j of [changes, ...skips].flat()) {
+    for (const found of j.found) {
+      if (found.folder === void 0) couldNotCheck += 1;
+      else folders.add(found.folder);
+    }
+  }
+  const roots = /* @__PURE__ */ new Set();
+  for (const folder of [...folders].slice(0, MAX_PROBED_ITEMS)) {
+    const root = await context.probe.toplevel(folder);
+    if (isFailure(root)) couldNotCheck += 1;
+    else roots.add(root);
+  }
+  couldNotCheck += Math.max(0, folders.size - MAX_PROBED_ITEMS);
+  let off = 0;
+  let on = 0;
+  let none = 0;
+  for (const root of roots) {
+    const state = await context.probe.hooksState(root, CHECK_HOOKS);
+    if (isFailure(state)) couldNotCheck += 1;
+    else if (state === "on") on += 1;
+    else if (state === "none") none += 1;
+    else {
+      off += 1;
+      pushFix(fixes, "skipped-checks", [
+        "git",
+        "-C",
+        { ref: root },
+        "config",
+        "--unset",
+        "core.hooksPath"
+      ]);
+    }
+  }
+  return { calls: tallyOf(changes), off, on, none, couldNotCheck };
+}
+function homeInstructions(context) {
+  const home = context.log.home;
+  switch (context.log.agent) {
+    case "claude":
+      return [join5(home, ".claude", "CLAUDE.md")];
+    case "codex":
+      return [join5(home, ".codex", "AGENTS.md")];
+    default:
+      return [];
+  }
+}
+async function checkInstructions(context, fixes) {
+  const files = /* @__PURE__ */ new Map();
+  for (const write of context.log.writes) {
+    if (!isInstructionFile(write.path)) continue;
+    const file2 = files.get(write.path) ?? { agentWrote: false, lookedFor: false };
+    if (write.texts.some(tellsToSkip)) file2.agentWrote = true;
+    files.set(write.path, file2);
+  }
+  for (const folder of context.log.folders.slice(0, MAX_PROBED_ITEMS)) {
+    const root = await context.probe.toplevel(folder);
+    if (isFailure(root)) continue;
+    for (const name of REPO_INSTRUCTION_FILES) {
+      const path = join5(root, name);
+      if (!files.has(path)) files.set(path, { agentWrote: false, lookedFor: true });
+    }
+  }
+  for (const path of homeInstructions(context)) {
+    if (!files.has(path)) files.set(path, { agentWrote: false, lookedFor: true });
+  }
+  let read = 0;
+  let sayToSkip = 0;
+  let agentWrote = 0;
+  let agentWroteStill = 0;
+  let agentWroteRemoved = 0;
+  let couldNotRead = 0;
+  for (const [index, [path, file2]] of [...files].entries()) {
+    if (file2.agentWrote) agentWrote += 1;
+    if (index >= MAX_PROBED_ITEMS) {
+      couldNotRead += 1;
+      continue;
+    }
+    if (!context.probe.exists(path)) {
+      if (file2.agentWrote) agentWroteRemoved += 1;
+      continue;
+    }
+    if (!file2.lookedFor) await context.probe.toplevel(dirname2(path));
+    const text = await context.probe.read(path);
+    if (!text.ok) {
+      couldNotRead += 1;
+      continue;
+    }
+    read += 1;
+    const says = tellsToSkip(text.text);
+    if (says) {
+      sayToSkip += 1;
+      pushFix(fixes, "skipped-checks", [...SKIP_GREP_PARTS, { ref: path }]);
+    }
+    if (file2.agentWrote) {
+      if (says) agentWroteStill += 1;
+      else agentWroteRemoved += 1;
+    }
+  }
+  return { read, sayToSkip, agentWrote, agentWroteStill, agentWroteRemoved, couldNotRead };
+}
+async function checkSkippedChecks(context) {
+  const log = context.log;
+  const fixes = [];
+  const commitCalls = judgeAll(log, /no-verify|commit[^\n]*\s-[A-Za-z]*n/, noVerifyCommits);
+  const otherCalls = judgeAll(log, /--no-verify/, otherNoVerify);
+  const huskyCalls = judgeAll(log, /HUSKY/, huskyCommands);
+  const configCalls = judgeAll(log, /hooksPath/i, hooksPathChanges);
+  const noVerify = await checkCommits(context, commitCalls, fixes);
+  const hooksPath = await checkHooksNow(
+    context,
+    configCalls,
+    [commitCalls, otherCalls, huskyCalls],
+    fixes
+  );
+  const instructions = await checkInstructions(context, fixes);
+  const facts = {
+    noVerify,
+    otherNoVerify: tallyOf(otherCalls),
+    husky: tallyOf(huskyCalls),
+    hooksPath,
+    instructions
+  };
+  const calls = new Set(
+    [...commitCalls, ...otherCalls, ...huskyCalls, ...configCalls].map((j) => j.call.id)
+  );
+  const all = addTallies(noVerify.calls, facts.otherNoVerify, facts.husky, hooksPath.calls);
+  const status = statusOf({
+    sessions: log.sessions,
+    act: noVerify.onMain > 0 || hooksPath.off > 0 || instructions.sayToSkip > 0,
+    review: noVerify.offMain + noVerify.noMainToCheck > 0 || facts.otherNoVerify.ran > 0 || facts.husky.ran > 0,
+    incomplete: noVerify.notIdentified + noVerify.couldNotCheck + hooksPath.couldNotCheck + instructions.couldNotRead + all.unknown > 0
+  });
+  return { result: { status, matches: calls.size, facts }, localFixes: fixes };
+}
+function withHooks(f) {
+  const n2 = f.noVerify;
+  return n2.onMain + n2.offMain + n2.noMainToCheck + n2.gone;
+}
+function allCalls3(f) {
+  return addTallies(f.noVerify.calls, f.otherNoVerify, f.husky, f.hooksPath.calls);
+}
+var HEADLINE3 = {
+  id: "skipped-checks.headline",
+  render: (f) => f.noVerify.onMain > 0 ? `${counted(f.noVerify.onMain, "commit")} reached main without ${f.noVerify.onMain === 1 ? "its" : "their"} checks.` : void 0
+};
+var FOUND3 = [
+  {
+    id: "skipped-checks.no-verify",
+    render: (f) => withHooks(f) > 0 ? `${counted(withHooks(f), "commit")} ${was(withHooks(f))} made with --no-verify in a repo with commit hooks.` : void 0
+  },
+  {
+    id: "skipped-checks.no-verify-no-hooks",
+    render: (f) => f.noVerify.withoutHooks > 0 ? `${counted(f.noVerify.withoutHooks, "commit")} used --no-verify in a repo with no commit hooks, so no check was skipped.` : void 0
+  },
+  {
+    id: "skipped-checks.no-verify-not-identified",
+    render: (f) => f.noVerify.notIdentified > 0 ? `${counted(f.noVerify.notIdentified, "commit command")} with --no-verify ran, but the commit id is not in the recorded output, so it could not be looked up.` : void 0
+  },
+  {
+    id: "skipped-checks.other-no-verify",
+    render: (f) => f.otherNoVerify.ran > 0 ? `${counted(f.otherNoVerify.ran, "push, merge or rebase", "pushes, merges or rebases")} ran with --no-verify.` : void 0
+  },
+  {
+    id: "skipped-checks.husky",
+    render: (f) => f.husky.ran > 0 ? `${counted(f.husky.ran, "command")} ran with Husky's hooks turned off for that one command (HUSKY=0).` : void 0
+  },
+  {
+    id: "skipped-checks.hooks-path",
+    render: (f) => f.hooksPath.calls.ran > 0 ? `${counted(f.hooksPath.calls.ran, "change")} to core.hooksPath ran, which switches hooks for every later command.` : void 0
+  },
+  {
+    id: "skipped-checks.instructions",
+    render: (f) => f.instructions.sayToSkip > 0 ? `${counted(f.instructions.sayToSkip, "agent instruction or memory file")} ${f.instructions.sayToSkip === 1 ? "tells" : "tell"} the agent to skip checks.` : void 0
+  },
+  {
+    id: "skipped-checks.instructions-written",
+    render: (f) => f.instructions.agentWrote > 0 ? `The agent wrote an instruction to skip checks into ${counted(f.instructions.agentWrote, "file")} itself.` : void 0
+  },
+  {
+    id: "skipped-checks.mentioned",
+    render: (f) => {
+      const n2 = allCalls3(f).mentioned;
+      return n2 > 0 ? `${counted(n2, "match", "matches")} only mentioned skipping a check, and ${n2 === 1 ? "is" : "are"} not counted.` : void 0;
+    }
+  },
+  {
+    id: "skipped-checks.unknown",
+    render: (f) => {
+      const n2 = allCalls3(f).unknown;
+      return n2 > 0 ? `${counted(n2, "command")} could not be confirmed as run.` : void 0;
+    }
+  },
+  {
+    id: "skipped-checks.none",
+    render: (f) => {
+      if (allCalls3(f).ran > 0 || f.instructions.sayToSkip > 0) return void 0;
+      return f.instructions.read > 0 ? `No command that ran skipped a hook, and none of the ${counted(f.instructions.read, "instruction file")} read says to.` : "No command that ran skipped a hook.";
+    }
+  }
+];
+var NOW3 = [
+  {
+    id: "skipped-checks.now.on-main",
+    render: (f) => f.noVerify.onMain > 0 ? `${counted(f.noVerify.onMain, "of those commits", "of those commits")} ${is(f.noVerify.onMain)} on origin/main or origin/master now.` : void 0
+  },
+  {
+    id: "skipped-checks.now.off-main",
+    render: (f) => f.noVerify.offMain > 0 ? `${counted(f.noVerify.offMain, "commit")} ${is(f.noVerify.offMain)} not on origin/main or origin/master.` : void 0
+  },
+  {
+    id: "skipped-checks.now.no-main",
+    render: (f) => f.noVerify.noMainToCheck > 0 ? `${counted(f.noVerify.noMainToCheck, "commit")} ${is(f.noVerify.noMainToCheck)} in a repo with no origin/main or origin/master to check against.` : void 0
+  },
+  {
+    id: "skipped-checks.now.gone",
+    render: (f) => f.noVerify.gone > 0 ? `${counted(f.noVerify.gone, "commit")} ${is(f.noVerify.gone)} no longer in the repo.` : void 0
+  },
+  {
+    id: "skipped-checks.now.hooks-off",
+    render: (f) => f.hooksPath.off > 0 ? `Hooks are switched off now in ${counted(f.hooksPath.off, "repo")} where a check was skipped: core.hooksPath points at a folder with no hook.` : void 0
+  },
+  {
+    id: "skipped-checks.now.hooks-on",
+    render: (f) => f.hooksPath.on > 0 ? `Hooks are on now in ${counted(f.hooksPath.on, "repo")} where a check was skipped.` : void 0
+  },
+  {
+    id: "skipped-checks.now.instructions-still",
+    render: (f) => f.instructions.agentWroteStill > 0 ? `${counted(f.instructions.agentWroteStill, "file")} still ${f.instructions.agentWroteStill === 1 ? "holds" : "hold"} the instruction the agent wrote.` : void 0
+  },
+  {
+    id: "skipped-checks.now.instructions-removed",
+    render: (f) => f.instructions.agentWroteRemoved > 0 ? `The instruction the agent wrote is gone from ${counted(f.instructions.agentWroteRemoved, "file")}.` : void 0
+  },
+  {
+    id: "skipped-checks.now.could-not-check",
+    render: (f) => {
+      const n2 = f.noVerify.couldNotCheck + f.hooksPath.couldNotCheck + f.instructions.couldNotRead;
+      return n2 > 0 ? `${counted(n2, "item")} could not be checked on this machine.` : void 0;
+    }
+  }
+];
+var CHIP3 = {
+  id: "skipped-checks.chip",
+  render: (f) => `${counted(f.noVerify.onMain, "commit")} reached main without ${f.noVerify.onMain === 1 ? "its" : "their"} checks`
+};
+var FIX_STEPS3 = [
+  {
+    id: "skipped-checks.fix.review-commits",
+    render: (f) => f.noVerify.onMain + f.noVerify.offMain > 0 ? "Review each commit that skipped its hooks, and run your checks on it." : void 0
+  },
+  {
+    id: "skipped-checks.fix.hooks-on",
+    render: (f) => f.hooksPath.off > 0 ? "Turn hooks back on where they are off. If a hook manager set core.hooksPath, run its install again." : void 0
+  },
+  {
+    id: "skipped-checks.fix.instructions",
+    render: (f) => f.instructions.sayToSkip > 0 ? "Remove the instruction to skip checks from each file the local fixes file names." : void 0
+  }
+];
+function fixShapes3(f) {
+  const out = [];
+  if (f.noVerify.onMain + f.noVerify.offMain > 0) out.push({ shape: "git show --stat <sha>" });
+  if (f.hooksPath.off > 0) out.push({ shape: "git config --unset core.hooksPath" });
+  if (f.instructions.sayToSkip > 0) out.push({ shape: `${SKIP_GREP} <path>` });
+  return out;
+}
+var skippedChecksCard = (result, context) => {
+  const f = result.facts;
+  const headline2 = sentence(HEADLINE3, f);
+  const extras = cardExtras(
+    { count: f.noVerify.onMain, label: sentence(CHIP3, f) },
+    sentences(FIX_STEPS3, f)
+  );
+  return {
+    ...extras,
+    category: "skipped-checks",
+    tone: result.status,
+    count: result.matches,
+    found: sentences(FOUND3, f),
+    now: sentences(NOW3, f),
+    fixes: fixShapes3(f),
+    codexCaveat: codexCaveat(context, allCalls3(f).ran),
+    ...headline2 === void 0 ? {} : {
+      headline: {
+        basis: "commits-on-main-without-checks",
+        count: f.noVerify.onMain,
+        restsOnCodexRan: context.ranEvidence === "output-record",
+        sentence: headline2
+      }
+    }
+  };
+};
+var SKIPPED_CHECKS_TEMPLATES = [
+  HEADLINE3,
+  CHIP3,
+  ...FOUND3,
+  ...NOW3,
+  ...FIX_STEPS3
+];
+
+// src/core/verify/builders.ts
+var CARD_BUILDERS = {
+  secrets: secretsCard,
+  "skipped-checks": skippedChecksCard,
+  "lost-work": lostWorkCard,
+  destructive: destructiveCard
+};
+
+// src/core/report.ts
+var REPOSITORY_URL = "https://github.com/agenttrailhq/guard";
+var SITE_URL = "https://www.agenttrail.sh";
+var REPORT_FILENAME = "agenttrail-guard-report.html";
+var ARTIFACT_FILENAME = "agenttrail-guard-artifact.html";
+var FIXES_FILENAME = FIXES_FILE;
+var PRODUCT_NOTE = {
+  eyebrow: "AgentTrail OS",
+  heading: "AgentTrail Guard stops the mistake. AgentTrail OS remembers it and turns it into a rule.",
+  body: "This report is one look at the transcripts on one machine. AgentTrail OS watches every agent session, turns each repeated mistake into a guardrail, and proves the fix on your own history. It is a separate product, and nothing in this report was sent to it.",
+  primary: { label: "Book a team demo", path: "/agenttrail-os", content: "os-demo" },
+  secondary: { label: "Guard vs OS", path: "/guard-vs-os", content: "os-compare" }
+};
+var SEVERITY_ORDER = ["critical", "high", "medium", "low", "info"];
+function knownSeverity(severity) {
+  return SEVERITY_ORDER.includes(severity) ? severity : "unknown";
+}
+function severityRank(severity) {
+  const index = SEVERITY_ORDER.indexOf(severity);
+  return index === -1 ? SEVERITY_ORDER.length : index;
+}
+var ACTION_ORDER = ["block", "require_approval", "warn"];
+function matchTally(result) {
+  const bySeverity = /* @__PURE__ */ new Map();
+  const byAction = /* @__PURE__ */ new Map();
+  for (const finding of result.findings) {
+    bySeverity.set(finding.severity, (bySeverity.get(finding.severity) ?? 0) + finding.count);
+    byAction.set(finding.action, (byAction.get(finding.action) ?? 0) + finding.count);
+  }
+  return {
+    bySeverity: [...bySeverity].map(([severity, count2]) => ({ severity, count: count2 })).sort(
+      (a, b) => severityRank(a.severity) - severityRank(b.severity) || b.count - a.count || a.severity.localeCompare(b.severity)
+    ),
+    byAction: ACTION_ORDER.flatMap((action) => {
+      const count2 = byAction.get(action) ?? 0;
+      return count2 > 0 ? [{ action, count: count2 }] : [];
+    })
+  };
+}
+function bySeverityThenCount(findings) {
+  return [...findings].sort(
+    (a, b) => severityRank(a.severity) - severityRank(b.severity) || b.count - a.count || a.ruleId.localeCompare(b.ruleId)
+  );
+}
+var MAX_ROWS = 50;
+var MAX_EXAMPLES = 3;
+var FIX_FIRST_MAX = 6;
+var TOP_PER_ACTION = 3;
+var DESCRIPTION_LINE = 160;
+var TUNING_MAX_GUARDRAILS = 3;
+var TUNING_MIN_SHARE = 0.6;
+var TUNING_MIN_ASKS = 5;
+function escapeHtml(value) {
+  return String(value).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+}
+function agentName(agent) {
+  return agentDisplayName(agent);
+}
+function counted2(n2, one, many) {
+  return `${formatCount(n2)} ${n2 === 1 ? one : many}`;
+}
+function ruleSlug(id) {
+  return id.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+}
+function siteLink(path, agent, content) {
+  const tags = `utm_source=guard&utm_medium=scan-report&utm_campaign=${agent}&utm_content=${content}`;
+  const hash = path.indexOf("#");
+  const base = hash === -1 ? path : path.slice(0, hash);
+  const fragment = hash === -1 ? "" : path.slice(hash);
+  return `${SITE_URL}${base}${base.includes("?") ? "&" : "?"}${tags}${fragment}`;
+}
+function sitePath(url) {
+  if (!url.startsWith(`${SITE_URL}/`)) throw new Error(`Not a page on the site: ${url}`);
+  return url.slice(SITE_URL.length);
+}
+function owaspRiskLink(id, agent) {
+  return siteLink(sitePath(owaspAnchorUrl(id)), agent, "owasp-risk");
+}
+function libraryLink(category, ruleId, agent) {
+  return siteLink(
+    `/guardrails/${encodeURIComponent(category)}/${encodeURIComponent(ruleSlug(ruleId))}`,
+    agent,
+    "guardrail"
+  );
+}
+var PACK_LABELS = {
+  "working-tree": "Working tree",
+  "destructive-data": "Destructive data",
+  "prod-infra": "Production infrastructure",
+  "secret-exposure": "Secret exposure",
+  "rce-supply-chain": "Remote code and supply chain",
+  "safety-bypass": "Safety bypass",
+  "privilege-supply-chain": "Privileges and supply chain",
+  "file-scope": "File scope",
+  "agent-context": "Agent context",
+  "test-integrity": "Test integrity",
+  exfiltration: "Data leaving the machine"
+};
+var YOUR_GUARDRAILS = "Your guardrails";
+var OWN_CARD_HEADING = "A guardrail you added";
+function packLabel(category) {
+  return PACK_LABELS[category] ?? category;
+}
+function wrapLines(text, width) {
+  const lines2 = [];
+  let line = "";
+  for (const word of text.split(/\s+/).filter(Boolean)) {
+    if (line === "") line = word;
+    else if (line.length + 1 + word.length <= width) line = `${line} ${word}`;
+    else {
+      lines2.push(line);
+      line = word;
+    }
+  }
+  if (line !== "") lines2.push(line);
+  return lines2;
+}
+var SECRET_KIND_SET = new Set(SECRET_KINDS);
+var PROVENANCE_SET = new Set(SECRET_PROVENANCES);
+var FIXTURE_CHECK_SET = new Set(FIXTURE_CHECKS);
+function payloadSecrets(check) {
+  const facts = check.facts;
+  return {
+    status: copyStatus(check.status),
+    matches: check.matches,
+    facts: {
+      classes: {
+        "likely-real": facts.classes["likely-real"],
+        "committed-fixture": facts.classes["committed-fixture"],
+        placeholder: facts.classes.placeholder,
+        "local-dev": facts.classes["local-dev"]
+      },
+      items: facts.items.slice(0, MAX_ROWS).map((item) => ({
+        kind: SECRET_KIND_SET.has(item.kind) ? item.kind : "other",
+        via: item.via.filter((way) => PROVENANCE_SET.has(way)),
+        files: item.files
+      })),
+      moreItems: facts.moreItems + Math.max(0, facts.items.length - MAX_ROWS),
+      filesRead: facts.filesRead,
+      filesNotRead: facts.filesNotRead,
+      unplaced: facts.unplaced,
+      setAside: {
+        unnamedOutputOnly: facts.setAside.unnamedOutputOnly,
+        namedNotCredentialShaped: facts.setAside.namedNotCredentialShaped
+      },
+      fixtureCheck: FIXTURE_CHECK_SET.has(facts.fixtureCheck) ? facts.fixtureCheck : "unavailable",
+      reposChecked: facts.reposChecked,
+      reposNotChecked: facts.reposNotChecked
+    }
+  };
+}
+var MAX_FACTS_DEPTH = 6;
+var FACT_VALUES = new Set(FACT_VALUE_ENUMS.flat());
+var FACT_KEY_SET = /* @__PURE__ */ new Set([...FACT_KEYS, ...FACT_VALUES]);
+function copyFacts(value, capLists, depth = 0) {
+  if (isLocalFix(value)) throw new Error(LOCAL_FIX_SERIALIZED);
+  if (typeof value === "number" || typeof value === "boolean") return value;
+  if (typeof value === "string") return FACT_VALUES.has(value) ? value : void 0;
+  if (depth >= MAX_FACTS_DEPTH) return void 0;
+  if (Array.isArray(value)) {
+    const items = capLists ? value.slice(0, MAX_ROWS) : value;
+    return items.map((item) => copyFacts(item, capLists, depth + 1)).filter((item) => item !== void 0);
+  }
+  if (value !== null && typeof value === "object" && Object.getPrototypeOf(value) === Object.prototype) {
+    const out = {};
+    for (const [key, item] of Object.entries(value)) {
+      if (!FACT_KEY_SET.has(key)) continue;
+      const copied = copyFacts(item, capLists, depth + 1);
+      if (copied !== void 0) out[key] = copied;
+    }
+    return out;
+  }
+  return void 0;
+}
+var STATUS_SET = new Set(VERIFY_STATUSES);
+function copyStatus(status) {
+  return typeof status === "string" && STATUS_SET.has(status) ? status : "could-not-check";
+}
+function copyCategory(result, capLists) {
+  const out = {
+    status: copyStatus(result.status)
+  };
+  const matches = result.matches;
+  if (typeof matches === "number") out.matches = matches;
+  if ("facts" in result) {
+    out.facts = copyFacts(result.facts, capLists);
+  }
+  return out;
+}
+function copyVerification(verification, capLists) {
+  const categories = verification.categories;
+  return {
+    matchedCalls: {
+      ran: verification.matchedCalls.ran,
+      mentioned: verification.matchedCalls.mentioned,
+      unknown: verification.matchedCalls.unknown
+    },
+    resultsRecorded: verification.resultsRecorded,
+    ranEvidence: verification.ranEvidence,
+    categories: {
+      secrets: capLists ? payloadSecrets(categories.secrets) : copyCategory(categories.secrets, false),
+      "skipped-checks": copyCategory(categories["skipped-checks"], capLists),
+      "lost-work": copyCategory(categories["lost-work"], capLists),
+      cloud: copyCategory(categories.cloud, capLists),
+      "prod-infra": copyCategory(categories["prod-infra"], capLists),
+      tests: copyCategory(categories.tests, capLists),
+      destructive: copyCategory(categories.destructive, capLists),
+      unreviewed: copyCategory(categories.unreviewed, capLists),
+      egress: copyCategory(categories.egress, capLists)
+    }
+  };
+}
+function honestVerification(verification) {
+  const recorded = verification.resultsRecorded;
+  const categories = {};
+  for (const category of VERIFY_CATEGORIES) {
+    const result = verification.categories[category];
+    categories[category] = {
+      ...result,
+      status: honestStatus(category, result.status, result.facts, recorded)
+    };
+  }
+  return { ...verification, categories };
+}
+function boundaryVerification(verification, capLists) {
+  return honestVerification(copyVerification(verification, capLists));
+}
+function tokenCopy(t) {
+  return {
+    input: t.input,
+    output: t.output,
+    cacheRead: t.cacheRead,
+    cacheCreation: t.cacheCreation,
+    cacheCreation5m: t.cacheCreation5m,
+    cacheCreation1h: t.cacheCreation1h,
+    turnsWithSplit: t.turnsWithSplit,
+    turns: t.turns
+  };
+}
+function payloadFinding(finding) {
+  const base = {
+    ruleId: finding.ruleId,
+    title: finding.title,
+    severity: knownSeverity(finding.severity),
+    action: finding.action,
+    count: finding.count,
+    examples: finding.examples.slice(0, MAX_EXAMPLES).map((e) => ({ text: e.text, count: e.count })),
+    moreShapes: Math.max(0, finding.examples.length - MAX_EXAMPLES),
+    owasp: finding.owasp.filter((id) => isOwaspId(id))
+  };
+  if (finding.source !== "library") return { ...base, source: "yours" };
+  return {
+    ...base,
+    source: "library",
+    ...finding.category === void 0 ? {} : { category: finding.category },
+    ...finding.description === void 0 ? {} : { descriptionLines: wrapLines(finding.description, DESCRIPTION_LINE) }
+  };
+}
+function reportPayload(result, meta, builders = CARD_BUILDERS) {
+  const ordered = bySeverityThenCount(result.findings);
+  const payload = {
+    tool: "agenttrail-guard",
+    version: meta.version,
+    generatedAt: meta.generatedAt.toISOString(),
+    catalog: formatCatalogStamp(catalogStamp(), meta.generatedAt),
+    agent: result.agent,
+    sessions: result.sessions,
+    projects: result.projects,
+    quarantined: result.quarantined,
+    notRead: result.notRead,
+    skippedLines: result.skippedLines,
+    toolCalls: result.toolCalls,
+    riskyActions: result.riskyActions,
+    riskyByAction: {
+      block: result.riskyByAction.block,
+      require_approval: result.riskyByAction.require_approval,
+      warn: result.riskyByAction.warn
+    },
+    findings: ordered.slice(0, MAX_ROWS).map(payloadFinding),
+    moreFindings: Math.max(0, result.findings.length - MAX_ROWS),
+    recurring: result.recurring.slice(0, MAX_ROWS).map((r) => ({
+      text: r.text,
+      count: r.count,
+      calls: r.calls,
+      ruleId: r.ruleId,
+      title: r.title
+    })),
+    moreRecurring: Math.max(0, result.recurring.length - MAX_ROWS),
+    tokens: result.tokens === null ? null : tokenCopy(result.tokens),
+    shareText: shareText(result),
+    owasp: result.owasp.filter((t) => isOwaspId(t.id)).map((t) => ({
+      id: t.id,
+      callCount: t.callCount,
+      ruleMatches: t.ruleMatches,
+      guardrailCount: t.guardrailCount
+    }))
+  };
+  const copied = result.verification === void 0 ? void 0 : copyVerification(result.verification, true);
+  const withVerification = copied === void 0 ? payload : {
+    ...payload,
+    verification: honestVerification(copied),
+    // A scan that read no tool calls shows no cards, so the file carries none either.
+    ...result.toolCalls === 0 ? {} : { cards: cardsFor(copied, builders) }
+  };
+  const skipped = result.skipped;
+  if (skipped === void 0) return withVerification;
+  return {
+    ...withVerification,
+    skipped: {
+      unreadableFiles: skipped.unreadableFiles,
+      truncatedLastLines: skipped.truncatedLastLines,
+      unparseableLines: skipped.unparseableLines,
+      unknownRecords: skipped.unknownRecords,
+      turnsEndedWithError: skipped.turnsEndedWithError,
+      notActions: skipped.notActions,
+      unmappedTools: skipped.unmappedTools.map((t) => ({ name: t.name, count: t.count }))
+    }
+  };
+}
+function postLength(text) {
+  let n2 = 0;
+  for (const ch of text) {
+    const code2 = ch.codePointAt(0) ?? 0;
+    const light = code2 <= 4351 || code2 >= 8192 && code2 <= 8205 || code2 >= 8208 && code2 <= 8223 || code2 >= 8242 && code2 <= 8247;
+    n2 += light ? 1 : 2;
+  }
+  return n2 + 1 + 23 + 1 + "#agenttrail".length;
+}
+function topLibraryBlocker(result) {
+  return result.findings.filter((f) => f.action === "block" && f.source === "library").sort(
+    (a, b) => b.count - a.count || severityRank(a.severity) - severityRank(b.severity) || a.ruleId.localeCompare(b.ruleId)
+  )[0];
+}
+function shareText(result) {
+  const { block, require_approval: ask, warn } = result.riskyByAction;
+  const calls = counted2(result.toolCalls, "tool call", "tool calls");
+  const head = `I scanned ${calls} from ${agentName(result.agent)} with AgentTrail Guard`;
+  const tail = ". Checked locally, nothing uploaded.";
+  const top = topLibraryBlocker(result);
+  const compose = (withTitle) => {
+    const parts = [];
+    if (block > 0) {
+      const detail = withTitle && top !== void 0 ? ` (${formatCount(top.count)} of those: ${top.title.replace(/`/g, "")})` : "";
+      parts.push(`${formatCount(block)} would block${detail}`);
+    }
+    if (ask > 0) parts.push(`${formatCount(ask)} would ask`);
+    if (warn > 0) parts.push(`${formatCount(warn)} would warn`);
+    const body = parts.length === 0 ? ": nothing matched a guardrail" : `: ${parts.join(" \xB7 ")}`;
+    return `${head}${body}${tail}`;
+  };
+  const full = compose(true);
+  return postLength(full) <= POST_LIMIT ? full : compose(false);
+}
+function shareLink(text, agent) {
+  const url = siteLink("/agenttrail-guard", agent, "share");
+  return `https://x.com/intent/post?text=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}&hashtags=agenttrail`;
+}
+function skippedPhrases(skipped) {
+  const unrecognized = skipped.unmappedTools.reduce((sum, tool) => sum + tool.count, 0);
+  const kinds = [
+    [skipped.unreadableFiles, "file that could not be read", "files that could not be read"],
+    [
+      skipped.truncatedLastLines,
+      "file whose last line was cut off",
+      "files whose last line was cut off"
+    ],
+    [skipped.unparseableLines, "line that is not JSON", "lines that are not JSON"],
+    [
+      skipped.unknownRecords,
+      "record of a kind this reader does not know",
+      "records of a kind this reader does not know"
+    ],
+    [
+      unrecognized,
+      "tool call of a kind this reader does not recognize",
+      "tool calls of a kind this reader does not recognize"
+    ]
+  ];
+  return kinds.filter(([n2]) => n2 > 0).map(([n2, one, many]) => counted2(n2, one, many));
+}
+function severityClass(severity) {
+  switch (severity) {
+    case "critical":
+      return "sev-critical";
+    case "high":
+      return "sev-high";
+    case "medium":
+      return "sev-medium";
+    case "low":
+      return "sev-low";
+    case "info":
+      return "sev-info";
+    default:
+      return "sev-unknown";
+  }
+}
+function actionLabel(action) {
+  switch (action) {
+    case "block":
+      return "would block";
+    case "require_approval":
+      return "would ask";
+    default:
+      return "would warn";
+  }
+}
+function actionClass(action) {
+  switch (action) {
+    case "block":
+      return "act-block";
+    case "require_approval":
+      return "act-ask";
+    default:
+      return "act-warn";
+  }
+}
+function severityBadge(severity) {
+  return `<span class="badge ${severityClass(severity)}">${escapeHtml(severity)}</span>`;
+}
+function actionChip(action) {
+  return `<span class="chip ${actionClass(action)}">${escapeHtml(actionLabel(action))}</span>`;
+}
+function inlineTitle(title) {
+  return escapeHtml(title).replace(/`([^`\n]+)`/g, "<code>$1</code>");
+}
+function outLink(url, text, className) {
+  const cls = className === void 0 ? "" : ` class="${className}"`;
+  return `<a${cls} href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${text}</a>`;
+}
+function copyable(id, command, name) {
+  return `<div class="command"><code id="${escapeHtml(id)}">${escapeHtml(command)}</code><button type="button" class="copy js-only" data-copy="${escapeHtml(id)}" data-label="Copy" aria-label="${escapeHtml(name)}" hidden>Copy</button></div>`;
+}
+function stat(value, label, note) {
+  const noteHtml = note === void 0 ? "" : `<div class="stat-note">${escapeHtml(note)}</div>`;
+  return `<div class="stat"><div class="stat-value">${escapeHtml(value)}</div><div class="stat-label">${escapeHtml(label)}</div>${noteHtml}</div>`;
+}
+function firstSentence(lines2) {
+  const text = lines2.join(" ");
+  const end = text.search(/\.(\s|$)/);
+  return end === -1 ? text : text.slice(0, end + 1);
+}
+function libraryText(text, className = "library-text") {
+  const html = wrapLines(inlineTitle(text), DESCRIPTION_LINE).join("\n");
+  return `<p class="${className}">${html}</p>`;
+}
+var MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+function readableTime(at) {
+  const two = (n2) => String(n2).padStart(2, "0");
+  return `${at.getUTCDate()} ${MONTHS[at.getUTCMonth()]} ${at.getUTCFullYear()}, ${two(at.getUTCHours())}:${two(at.getUTCMinutes())} UTC`;
+}
+function headline(result) {
+  if (result.toolCalls === 0) {
+    return result.sessions === 0 ? "No sessions found to scan" : "No tool calls found to scan";
+  }
+  const { block, require_approval: ask, warn } = result.riskyByAction;
+  const actions = (n2) => counted2(n2, "action", "actions");
+  if (block > 0 && ask > 0) {
+    return `AgentTrail Guard would have stopped ${actions(block)} and asked you about ${formatCount(ask)} more`;
+  }
+  if (block > 0) return `AgentTrail Guard would have stopped ${actions(block)}`;
+  if (ask > 0) return `AgentTrail Guard would have asked you about ${actions(ask)}`;
+  if (warn > 0) return `AgentTrail Guard would have warned you about ${actions(warn)}`;
+  return "Nothing in these sessions matched a guardrail";
+}
+function topBar(payload) {
+  const scanned = payload.toolCalls > 0;
+  const links = [
+    ["overview", "Overview"],
+    ...scanned && payload.cards !== void 0 ? [["what-happened", "What happened"]] : [],
+    ...scanned ? [["fix-first", "Fix first"]] : [],
+    ...payload.owasp.length > 0 ? [["owasp", "OWASP"]] : [],
+    ...scanned ? [["findings", "All findings"]] : [],
+    ["next-steps", "Next steps"],
+    ...scanned ? [["share", "Share"]] : [],
+    ["privacy", "Privacy"]
+  ];
+  const nav = links.map(([id, label]) => `<li><a href="#${id}">${label}</a></li>`).join("\n");
+  const controls = `<div class="toolbar">
+<button type="button" id="print-button" class="tool js-only" hidden>PDF</button>
+<button type="button" id="export-button" class="tool js-only" hidden>JSON</button>
+<button type="button" id="theme-toggle" class="tool js-only" hidden>Theme</button>
+</div>`;
+  return `<header class="masthead">
+<div class="brand" role="img" aria-label="AgentTrail">${LOGO_LOCKUP_SVG}</div>
+<span class="product-tag">Guard</span>
+<nav class="sections" aria-label="Report sections"><ul>
+${nav}
+</ul></nav>
+${controls}
+</header>`;
+}
+function provenance(result, meta, variant) {
+  const iso = meta.generatedAt.toISOString();
+  const stamp = `Generated <time datetime="${escapeHtml(iso)}">${escapeHtml(readableTime(meta.generatedAt))}</time> by agenttrail-guard ${escapeHtml(meta.version)}`;
+  if (variant === "artifact") {
+    return `${stamp} on the publisher&#39;s own machine, from their own ${escapeHtml(agentName(result.agent))} transcripts. The scan itself made no network call &mdash; crash reporting is the one exception anywhere in this tool, off unless turned on, and a scan never uses it. This copy was published to claude.ai by the person who ran it, through Claude Code.`;
+  }
+  return `${stamp}. Produced entirely on this machine from transcripts already on disk &mdash; no account, nothing uploaded, and no network call: the one exception anywhere in this tool is crash reporting, which is off unless you turn it on and which a scan never uses.`;
+}
+function mostSerious(payload) {
+  if (payload.findings.length === 0) return void 0;
+  const library = payload.findings.find((f) => f.source === "library");
+  if (library === void 0) {
+    return `<p class="top-match">Most serious match: a guardrail you added</p>`;
+  }
+  return `<p class="top-match">Most serious match: ${severityBadge(library.severity)} <span class="top-title">${inlineTitle(library.title)}</span></p>`;
+}
+function emptyLead(result) {
+  const read = result.sessions === 0 ? `The scan found no ${agentName(result.agent)} sessions to read` : `The scan read ${counted2(result.sessions, "session", "sessions")} with no tool calls in them`;
+  return `${read}, so nothing was checked. This is not a clean result: check that the folder and the agent are the ones you meant, then scan again.`;
+}
+function heroSection(result, payload, meta, variant, lead) {
+  const origin = variant === "artifact" ? "Scanned locally &middot; published by the person who ran it" : "Scanned locally &middot; nothing uploaded";
+  const fixTarget = payload.findings.some((f) => f.action === "block") ? "fix-first" : "findings";
+  const top = mostSerious(payload);
+  const claim = lead?.headline;
+  const leadLine = claim === void 0 ? "What your coding agent actually did, and which guardrails would have fired." : `${escapeHtml(headline(result))}.`;
+  const next = result.toolCalls === 0 ? `<p class="lead">${escapeHtml(emptyLead(result))}</p>
+<p class="provenance">${provenance(result, meta, variant)}</p>
+${copyable("cmd-scan-hero", `agenttrail-guard scan --agent ${result.agent}`, "Copy the scan command")}
+<p class="note">This reads the folder ${escapeHtml(agentName(result.agent))} uses by default. To read another folder, add <code>--dir</code> and its path.</p>` : `<p class="lead${claim === void 0 ? "" : " totals"}">${leadLine}</p>
+<p class="provenance">${provenance(result, meta, variant)}</p>${top === void 0 ? "" : `
+${top}`}
+<div class="actions">${payload.findings.length > 0 ? `
+<a class="button" href="#${fixTarget}">See what to fix first</a>` : ""}
+${outLink(shareLink(payload.shareText, result.agent), "Share on X", "button secondary")}
+</div>
+${copyable("cmd-init-hero", `agenttrail-guard init --agent ${result.agent}`, "Copy the init command")}`;
+  const h1 = claim === void 0 ? `<h1>${escapeHtml(headline(result))}</h1>` : `<h1 data-template="${escapeHtml(claim.sentence.template)}">${escapeHtml(claim.sentence.text)}</h1>`;
+  return `<section class="intro" id="overview">
+<p class="origin">${origin}</p>
+<p class="agent">Agent: ${escapeHtml(agentName(result.agent))}</p>
+${h1}
+${next}
+</section>`;
+}
+function statsSection(result) {
+  const t = result.tokens;
+  const repeatedShapes = new Set(result.recurring.map((r) => r.text)).size;
+  const cells = [
+    stat(formatCount(result.sessions), result.sessions === 1 ? "session" : "sessions"),
+    stat(formatCount(result.toolCalls), "tool calls"),
+    stat(formatCount(result.riskyActions), "risky actions"),
+    stat(
+      formatCount(repeatedShapes),
+      repeatedShapes === 1 ? "repeated command shape" : "repeated command shapes"
+    )
+  ];
+  if (result.toolCalls > 0) {
+    const clean = Math.floor((result.toolCalls - result.riskyActions) / result.toolCalls * 100);
+    cells.push(stat(`${clean}%`, "matched no guardrail"));
+  }
+  if (t !== null && result.toolCalls > 0) {
+    cells.push(
+      stat(
+        formatTokens(totalTokens(t)),
+        "tokens",
+        `${formatTokens(t.cacheRead)} cache reads (cumulative)`
+      )
+    );
+  }
+  return `<section class="stats" aria-label="Summary">
+${cells.join("\n")}
+</section>`;
+}
+function sentenceHtml(line, className) {
+  const cls = className === void 0 ? "" : ` class="${className}"`;
+  return `<p${cls} data-template="${escapeHtml(line.template)}">${escapeHtml(line.text)}</p>`;
+}
+function cardId(category) {
+  return `check-${category}`;
+}
+function evidenceSection(payload) {
+  const facts = payload.verification?.categories.secrets.facts;
+  if (facts === void 0 || facts.items.length === 0) return "";
+  const rows = facts.items.map((item) => {
+    const row = evidenceRow(item);
+    return `<li><span class="evidence-kind">${escapeHtml(row.kind)}</span><span class="evidence-how">${escapeHtml(row.how)}</span><span class="times">${escapeHtml(row.files)}</span></li>`;
+  }).join("\n");
+  const more = MORE_EVIDENCE.render({ more: facts.moreItems });
+  return `<section class="evidence" id="found" aria-labelledby="found-heading">
+<h2 id="found-heading">What it found, never the values</h2>
+<p class="note">Each credential that looks real, by its kind and how it got into the transcripts. Never the value, and never the name it was given.</p>
+<ul class="evidence-list">
+${rows}
+</ul>${more === void 0 ? "" : `
+${sentenceHtml({ template: MORE_EVIDENCE.id, text: more }, "note")}`}
+<p class="note"><a href="#${cardId("secrets")}">What checking found, and how to fix it</a></p>
+</section>`;
+}
+function chipsFor(cards, lead) {
+  return chipCategories(lead?.category).flatMap((category) => {
+    const card = cards.find((c) => c.category === category);
+    if (card === void 0) return [];
+    const chip = chipText(card);
+    const text = chip.count === void 0 ? chip.label.text : `${formatCount(chip.count)} ${chip.label.text}`;
+    return [
+      {
+        category,
+        tone: card.tone,
+        title: CATEGORY_TITLES[category],
+        text,
+        template: chip.label.template
+      }
+    ];
+  });
+}
+function alsoCheckedSection(payload, cards, lead) {
+  const verification = payload.verification;
+  if (verification === void 0) return "";
+  const chips = chipsFor(cards, lead).map(
+    (chip) => `<li><a class="check-chip v-${chip.tone}" href="#${cardId(chip.category)}"><span class="chip-title">${escapeHtml(chip.title)}</span><span class="chip-text" data-template="${escapeHtml(chip.template)}">${escapeHtml(chip.text)}</span></a></li>`
+  ).join("\n");
+  const notes = leadNotes(verification).map((line) => sentenceHtml(line, "note")).join("\n");
+  return `<section class="also-checked" id="also-checked" aria-labelledby="also-checked-heading">
+<h2 id="also-checked-heading">Also checked on this machine</h2>
+${notes}
+<ul class="check-chips">
+${chips}
+</ul>
+</section>`;
+}
+function verifiedCard(card, variant, localFixes) {
+  const title = CATEGORY_TITLES[card.category];
+  const id = cardId(card.category);
+  const count2 = cardCount(card);
+  const block = (lines2) => lines2.map((line) => sentenceHtml(line)).join("\n");
+  const fields = [];
+  if (card.found.length > 0) {
+    fields.push(`<div><dt>What checking found</dt><dd>
+${block(card.found)}
+</dd></div>`);
+  }
+  if (card.now.length > 0) {
+    fields.push(`<div><dt>Now</dt><dd>
+${block(card.now)}
+</dd></div>`);
+  }
+  const steps = card.fixSteps ?? [];
+  const fileNote = localFixes && card.tone !== "not-checked" ? FIXES_FILE_NOTE.render({ variant }) : void 0;
+  if (steps.length > 0 || card.fixes.length > 0 || fileNote !== void 0) {
+    const shapes = card.fixes.map(
+      (fix, i) => copyable(
+        `fix-${card.category}-${i + 1}`,
+        fix.shape,
+        `Copy fix command ${i + 1} for ${title.toLowerCase()}`
+      )
+    );
+    const parts = [
+      ...steps.map((line) => sentenceHtml(line)),
+      ...shapes,
+      ...fileNote === void 0 ? [] : [
+        `<p class="note fixes-file" data-template="${FIXES_FILE_NOTE.id}">${escapeHtml(fileNote).replace(FIXES_FILENAME, `<code>${FIXES_FILENAME}</code>`)}</p>`
+      ]
+    ];
+    fields.push(`<div><dt>Fix</dt><dd>
+${parts.join("\n")}
+</dd></div>`);
+  }
+  const caveat = sentence(CODEX_CAVEAT, card);
+  return `<article class="card verified v-${card.tone}" id="${id}" aria-labelledby="${id}-title" aria-describedby="${id}-tone">
+<div class="card-head"><span class="tone tone-${card.tone}" id="${id}-tone">${escapeHtml(toneLabel(card))}</span>${count2 === void 0 ? "" : `<span class="times" data-template="${escapeHtml(count2.template)}">${escapeHtml(count2.text)}</span>`}</div>
+<h3 id="${id}-title">${escapeHtml(title)}</h3>
+<dl class="verified-facts">
+${fields.join("\n")}
+</dl>${caveat === void 0 ? "" : `
+${sentenceHtml(caveat, "note codex-caveat")}`}
+</article>`;
+}
+function whatHappenedSection(cards, variant, localFixCategories) {
+  const tally = sentence(TONE_TALLY, cards);
+  const reads = cards.filter((card) => card.read !== void 0).map(
+    (card) => `<li><span class="read-title">${escapeHtml(CATEGORY_TITLES[card.category])}:</span> <span data-template="${escapeHtml(card.read?.template ?? "")}">${escapeHtml(card.read?.text ?? "")}</span></li>`
+  );
+  const readList = reads.length === 0 ? "" : `
+<p class="note">What the checks read on this machine:</p>
+<ul class="read-list">
+${reads.join("\n")}
+</ul>`;
+  const rows = cards.map((card) => verifiedCard(card, variant, localFixCategories.includes(card.category))).join("\n");
+  return `<section id="what-happened" class="what-happened" aria-labelledby="what-happened-heading">
+<div class="section-head"><h2 id="what-happened-heading">What actually happened</h2>${tally === void 0 ? "" : `<p class="section-meta" data-template="${escapeHtml(tally.template)}">${escapeHtml(tally.text)}</p>`}</div>
+<p class="note">A match means a guardrail fired on a command. Each card says what checking that on this machine found, how things stand now, and how to fix it. The checks only read: they changed nothing on this machine.</p>${readList}
+<div class="verified-cards">
+${rows}
+</div>
+</section>`;
+}
+var ACTION_MEANING = {
+  block: "The command does not run, and the agent is told which guardrail stopped it.",
+  require_approval: "The command waits until you allow or deny it.",
+  warn: "The command runs, and the agent is shown which guardrail it matched."
+};
+function askOnCodexNote(result, byAction) {
+  if (result.agent !== "codex") return "";
+  if (!byAction.some((a) => a.action === "require_approval")) return "";
+  return `
+<p class="note"><strong>On Codex, &ldquo;would ask&rdquo; means the action would have been stopped.</strong> Codex gives a guardrail no way to ask you, so AgentTrail Guard sends those as a block. The label above is the guardrail&#39;s own decision, kept the same across apps so one guardrail reads the same way everywhere.</p>`;
+}
+function decidedBy(decided, action) {
+  const out = /* @__PURE__ */ new Map();
+  for (const group of decided) {
+    if (group.action !== action) continue;
+    for (const id of group.ruleIds) out.set(id, (out.get(id) ?? 0) + group.calls);
+  }
+  return out;
+}
+function tuningHint(decided, carried2) {
+  const asks = decided.filter((group) => group.action === "require_approval");
+  const total = asks.reduce((sum, group) => sum + group.calls, 0);
+  if (total < TUNING_MIN_ASKS) return void 0;
+  const askers = new Set(
+    carried2.filter((f) => f.action === "require_approval").map((f) => f.ruleId)
+  );
+  const own = new Map([...decidedBy(asks, "require_approval")].filter(([id]) => askers.has(id)));
+  const removed = (ids) => asks.reduce((sum, g) => g.ruleIds.every((id) => ids.has(id)) ? sum + g.calls : sum, 0);
+  const chosen = /* @__PURE__ */ new Set();
+  while (chosen.size < TUNING_MAX_GUARDRAILS && removed(chosen) / total < TUNING_MIN_SHARE) {
+    let best;
+    for (const [id, calls] of own) {
+      if (chosen.has(id)) continue;
+      const gain = removed(/* @__PURE__ */ new Set([...chosen, id]));
+      if (best === void 0 || gain > best.gain || gain === best.gain && (calls > best.calls || calls === best.calls && id < best.id)) {
+        best = { id, gain, calls };
+      }
+    }
+    if (best === void 0) break;
+    chosen.add(best.id);
+  }
+  const drop = removed(chosen);
+  if (drop / total < TUNING_MIN_SHARE) return void 0;
+  return {
+    ids: [...chosen].sort((a, b) => (own.get(b) ?? 0) - (own.get(a) ?? 0) || a.localeCompare(b)),
+    share: drop / total,
+    asks: total,
+    remaining: total - drop
+  };
+}
+var SHELL_SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+function tuningSection(result, payload) {
+  const hint = tuningHint(result.decided, payload.findings);
+  if (hint === void 0) return "";
+  const n2 = hint.ids.length;
+  const pct = Math.round(hint.share * 100);
+  const commands = hint.ids.map(
+    (id, i) => SHELL_SAFE_ID.test(id) ? copyable(
+      `cmd-tune-${i}`,
+      `agenttrail-guard guardrails set-action ${id} warn`,
+      `Copy set-action command ${i + 1}`
+    ) : `<p class="note">Set <code>${escapeHtml(id)}</code> to warn with <code>agenttrail-guard guardrails set-action</code>. Its id has characters a shell would read, so no command is offered to copy.</p>`
+  ).join("\n");
+  return `<div class="hint">
+<p><strong>${escapeHtml(counted2(n2, "guardrail accounts", "guardrails account"))} for ${pct}% of the asks.</strong> Setting ${n2 === 1 ? "it" : "them"} to warn would take the tool calls you are asked about from ${escapeHtml(formatCount(hint.asks))} to ${escapeHtml(formatCount(hint.remaining))}, and the agent would be shown a warning on those calls instead.</p>
+${commands}
+</div>`;
+}
+function wouldHaveDoneSection(result, payload) {
+  if (result.findings.length === 0) return "";
+  const columns = ACTION_ORDER.map((action) => {
+    const count2 = result.riskyByAction[action];
+    const calls = decidedBy(result.decided, action);
+    const top = payload.findings.filter((f) => f.action === action && (calls.get(f.ruleId) ?? 0) > 0).map((f) => ({ f, n: calls.get(f.ruleId) ?? 0 })).sort((a, b) => b.n - a.n || a.f.ruleId.localeCompare(b.f.ruleId)).slice(0, TOP_PER_ACTION).map(
+      ({ f, n: n2 }) => `<li><span class="col-title">${inlineTitle(f.title)}</span><span class="times">${escapeHtml(formatCount(n2))}&times;</span></li>`
+    ).join("\n");
+    const label = { block: "Blocked", require_approval: "Asked you first", warn: "Warned" }[action];
+    return `<div class="col ${actionClass(action)}-col">
+<p class="col-label">${label}</p>
+<p class="col-count">${escapeHtml(formatCount(count2))}</p>
+<p class="note">${escapeHtml(ACTION_MEANING[action])}</p>${top === "" ? "" : `
+<ul class="col-list">
+${top}
+</ul>`}
+</div>`;
+  }).join("\n");
+  const { byAction } = matchTally(result);
+  const severityCounts = /* @__PURE__ */ new Map();
+  for (const s of matchTally(result).bySeverity) {
+    const key = knownSeverity(s.severity);
+    severityCounts.set(key, (severityCounts.get(key) ?? 0) + s.count);
+  }
+  const bySeverity = [...severityCounts].map(([severity, count2]) => ({ severity, count: count2 }));
+  const item = (label, count2) => `<li>${label}<span class="tally-count">${escapeHtml(formatCount(count2))}</span></li>`;
+  const severities = bySeverity.map((s) => item(severityBadge(s.severity), s.count)).join("\n");
+  const actions = byAction.map((a) => item(actionChip(a.action), a.count)).join("\n");
+  return `<section id="would-do">
+<h2>What AgentTrail Guard would have done</h2>
+<p class="note">Tool calls, each counted once under the strictest guardrail it matched.</p>
+<div class="columns">
+${columns}
+</div>${askOnCodexNote(result, byAction)}
+${tuningSection(result, payload)}
+<div class="tally" role="group" aria-label="Guardrail matches">
+<div class="tally-group"><p class="tally-label">Matches by severity</p><ul class="pills">
+${severities}
+</ul></div>
+<div class="tally-group"><p class="tally-label">Matches by action</p><ul class="pills">
+${actions}
+</ul></div>
+<p class="note">Each guardrail counts its own matches, so a tool call that matched two guardrails is counted under both, and these totals can be larger than the number of risky actions.</p>
+</div>
+</section>`;
+}
+function fixFirstSection(payload) {
+  const blocking = payload.findings.filter((f) => f.action === "block").slice(0, FIX_FIRST_MAX);
+  if (blocking.length === 0) {
+    return `<section id="fix-first"><h2>Fix these first</h2><p class="empty">No guardrail would have blocked anything in these sessions.</p></section>`;
+  }
+  const cards = blocking.map((f) => {
+    const index = payload.findings.indexOf(f);
+    const yours = f.source !== "library";
+    const heading = yours ? OWN_CARD_HEADING : inlineTitle(f.title);
+    const why = yours ? `
+<p class="own-title">${inlineTitle(f.title)}</p>` : f.descriptionLines === void 0 ? "" : `
+${libraryText(firstSentence(f.descriptionLines), "library-text note")}`;
+    const example = f.examples[0];
+    const exampleHtml = example === void 0 ? "" : `
+<p class="example"><code>${escapeHtml(example.text)}</code></p>`;
+    const group = f.category === void 0 ? YOUR_GUARDRAILS : packLabel(f.category);
+    const link = f.category === void 0 ? "" : `
+<p>${outLink(libraryLink(f.category, f.ruleId, payload.agent), "How this guardrail works")}</p>`;
+    return `<article class="card">
+<div class="card-head">${severityBadge(f.severity)} ${actionChip(f.action)}<span class="times">${escapeHtml(formatCount(f.count))}&times;</span></div>
+<h3><a href="#finding-${index}">${heading}</a></h3>${why}${exampleHtml}
+<p class="card-meta">${escapeHtml(group)} &middot; <code>${escapeHtml(f.ruleId)}</code></p>${link}
+</article>`;
+  }).join("\n");
+  return `<section id="fix-first">
+<h2>Fix these first</h2>
+<p class="note">The guardrails that would have stopped a command outright, most serious first.</p>
+<div class="cards">
+${cards}
+</div>
+</section>`;
+}
+var OWASP_EDITION = "2026 edition";
+function riskLabel(id) {
+  return `<span class="risk-id">${escapeHtml(id)}</span> ${escapeHtml(owaspTitle(id))}`;
+}
+function owaspSection(payload) {
+  if (payload.owasp.length === 0) return "";
+  const touched = (list) => payload.owasp.filter((t) => list.some((risk) => risk.id === t.id)).length;
+  const summary = `These matches touched ${touched(OWASP_AGENTIC)} of ${OWASP_AGENTIC.length} agentic and ${touched(OWASP_LLM)} of ${OWASP_LLM.length} LLM risks, in the ${OWASP_EDITION} lists.`;
+  const risks = payload.owasp.map(
+    (t) => `<li class="risk" id="risk-${escapeHtml(t.id.toLowerCase())}">
+<p class="risk-name">${outLink(owaspRiskLink(t.id, payload.agent), riskLabel(t.id))}</p>
+<p class="risk-counts">${escapeHtml(counted2(t.callCount, "tool call", "tool calls"))} &middot; ${escapeHtml(counted2(t.guardrailCount, "guardrail", "guardrails"))}</p>
+<button type="button" class="tool js-only" data-risk="${escapeHtml(t.id)}" aria-label="Show its findings: ${escapeHtml(t.id)}" hidden>Show its findings</button>
+</li>`
+  ).join("\n");
+  return `<section id="owasp">
+<h2>OWASP risks</h2>
+<p class="lead">${escapeHtml(summary)}</p>
+<ul class="risks">
+${risks}
+</ul>
+<p class="note">A guardrail can name more than one risk, and a tool call can match more than one guardrail, so one tool call can count under several risks. These counts can add up to more than the totals above.</p>
+<p class="note">Covers coding-agent actions only, not full OWASP coverage. Each id names a risk where it becomes a command or a file change, and is never a claim that a guardrail covers the whole risk.</p>
+<p class="risk-sources">${outLink(siteLink(sitePath(OWASP_PAGE_URL), payload.agent, "owasp"), "How the guardrails map to OWASP")} &middot; ${outLink(OWASP_SOURCES.agentic, `OWASP Top 10 for Agentic Applications (${OWASP_EDITION})`)} &middot; ${outLink(OWASP_SOURCES.llm, `OWASP Top 10 for LLM Applications (${OWASP_EDITION})`)}</p>
+</section>`;
+}
+function ranks(findings) {
+  const yours = (f) => f.category === void 0 ? 1 : 0;
+  const pack = (f) => f.category === void 0 ? YOUR_GUARDRAILS : packLabel(f.category);
+  const rankBy = (cmp) => new Map([...findings].sort(cmp).map((f, i) => [f, i]));
+  return {
+    category: rankBy(
+      (a, b) => yours(a) - yours(b) || pack(a).localeCompare(pack(b), "en") || findings.indexOf(a) - findings.indexOf(b)
+    ),
+    count: rankBy((a, b) => b.count - a.count || findings.indexOf(a) - findings.indexOf(b)),
+    name: rankBy(
+      (a, b) => a.title.localeCompare(b.title, "en") || a.ruleId.localeCompare(b.ruleId, "en")
+    )
+  };
+}
+function findingRow(f, index, r, agent) {
+  const group = f.category === void 0 ? YOUR_GUARDRAILS : packLabel(f.category);
+  const examples = f.examples.map(
+    (example) => `<li><code>${escapeHtml(example.text)}</code><span class="times">${escapeHtml(formatCount(example.count))}&times;</span></li>`
+  ).join("\n");
+  const more = f.moreShapes > 0 ? `
+<li class="more">and ${escapeHtml(formatCount(f.moreShapes))} more shapes</li>` : "";
+  const shapeCount = f.examples.length + f.moreShapes;
+  const shapes = shapeCount === 1 ? "command shape" : `${formatCount(shapeCount)} command shapes`;
+  const how = f.descriptionLines === void 0 ? "" : `
+<details class="how"><summary>How this guardrail decides, and what it misses</summary>
+${libraryText(f.descriptionLines.join(" "))}
+<p>${outLink(libraryLink(f.category ?? "", f.ruleId, agent), "Open it in the guardrail library")}</p>
+</details>`;
+  const risks = f.owasp.length === 0 ? "" : `
+<ul class="owasp-ids" aria-label="OWASP risks">
+${f.owasp.map((id) => `<li>${outLink(owaspRiskLink(id, agent), riskLabel(id))}</li>`).join("\n")}
+</ul>`;
+  const riskData = f.owasp.length === 0 ? "" : ` data-owasp="${escapeHtml(f.owasp.join(" "))}"`;
+  return `<li class="finding" id="finding-${index}" data-action="${escapeHtml(f.action)}"${riskData} data-rank-serious="${index}" data-rank-category="${r.category.get(f) ?? index}" data-rank-count="${r.count.get(f) ?? index}" data-rank-name="${r.name.get(f) ?? index}">
+<div class="finding-head">
+<div class="guardrail-title">${inlineTitle(f.title)}</div>
+<div class="finding-meta">${severityBadge(f.severity)} ${actionChip(f.action)}<span class="num" data-label="Matches">${escapeHtml(formatCount(f.count))}&times;</span></div>
+</div>
+<div class="guardrail-id"><code>${escapeHtml(f.ruleId)}</code> &middot; <span class="group">${escapeHtml(group)}</span></div>${risks}
+<details class="commands"><summary>The ${escapeHtml(shapes)} behind it</summary>
+<ul class="shapes">
+${examples}${more}
+</ul>
+</details>${how}
+</li>`;
+}
+function riskFilter(payload) {
+  if (payload.owasp.length === 0) return "";
+  const options = payload.owasp.map(
+    (t) => `<option value="${escapeHtml(t.id)}">${escapeHtml(`${t.id} ${owaspTitle(t.id)}`)}</option>`
+  ).join("\n");
+  return `
+<label class="sort">OWASP risk <select id="risk-filter">
+<option value="">Any risk</option>
+${options}
+</select></label>`;
+}
+function findingsSection(payload, variant) {
+  if (payload.findings.length === 0) {
+    return `<section id="findings"><h2>All findings</h2><p class="empty">No guardrail matched anything in these sessions.</p></section>`;
+  }
+  const r = ranks(payload.findings);
+  const rows = payload.findings.map((f, i) => findingRow(f, i, r, payload.agent)).join("\n");
+  const truncated = payload.moreFindings > 0 ? `
+<p class="note">${escapeHtml(formatCount(payload.moreFindings))} further guardrails matched and are not listed here.</p>` : "";
+  const filters = [
+    ["all", "All"],
+    ["block", "Would block"],
+    ["require_approval", "Would ask"],
+    ["warn", "Would warn"]
+  ].map(
+    ([value, label]) => `<button type="button" class="filter" data-filter="${value}" aria-pressed="${value === "all" ? "true" : "false"}">${label}</button>`
+  ).join("\n");
+  const matched = counted2(
+    payload.findings.length + payload.moreFindings,
+    "guardrail matched",
+    "guardrails matched"
+  );
+  return `<section id="findings" class="findings-section">
+<div class="section-head"><h2>All findings</h2><p class="section-meta" id="findings-count">${escapeHtml(matched)}</p></div>${variant === "artifact" ? `
+<p class="note artifact-note">Filters, sort and export are in the report file itself, <code>${REPORT_FILENAME}</code>. To make one from your own sessions, run <code>agenttrail-guard scan</code>.</p>` : ""}
+<div class="controls js-only" hidden>
+<div class="filters" role="group" aria-label="Show findings">
+${filters}
+</div>
+<label class="sort">Sort <select id="sort">
+<option value="serious">Most serious</option>
+<option value="category">Category</option>
+<option value="count">Most matches</option>
+<option value="name">Name</option>
+</select></label>${riskFilter(payload)}
+</div>
+<p id="findings-status" class="sr-only" role="status" aria-live="polite"></p>
+<ol class="finding-list">
+${rows}
+</ol>
+<div class="filter-empty" id="findings-empty" hidden><p>No findings match these filters.</p><button type="button" class="tool" id="clear-filters">Show all findings</button></div>${truncated}
+</section>`;
+}
+function recurringSection(payload) {
+  if (payload.recurring.length === 0) {
+    return `<section id="repeats"><h2>Repeat offenders</h2><p class="empty">Nothing matched more than once.</p></section>`;
+  }
+  const byShape = /* @__PURE__ */ new Map();
+  for (const item of payload.recurring) {
+    byShape.set(item.text, [...byShape.get(item.text) ?? [], item]);
+  }
+  const rows = [...byShape].map(([text, items]) => {
+    const times = Math.max(...items.map((item) => item.calls));
+    const names = items.map((item) => {
+      const index = payload.findings.findIndex((f) => f.ruleId === item.ruleId);
+      const title = inlineTitle(item.title);
+      const named = index === -1 ? title : `<a href="#finding-${index}">${title}</a>`;
+      return item.count === times ? named : `${named} (${escapeHtml(formatCount(item.count))}&times;)`;
+    }).join("<br>");
+    return `<tr role="row"><td class="shape" role="cell"><code>${escapeHtml(text)}</code></td><td class="num" role="cell">${escapeHtml(formatCount(times))}&times;</td><td class="rule-name" role="cell">${names}</td></tr>`;
+  }).join("\n");
+  return `<section id="repeats"><h2>Repeat offenders</h2>
+<p class="note">The same shape, seen more than once. Paths are redacted before counting, so many different paths under one command become one repeat.</p>
+<div class="table-wrap"><table class="recurring" role="table">
+<thead role="rowgroup"><tr role="row"><th scope="col" role="columnheader">Command shape</th><th scope="col" class="num" role="columnheader">Times</th><th scope="col" role="columnheader">Guardrail</th></tr></thead>
+<tbody role="rowgroup">
+${rows}
+</tbody>
+</table></div>${payload.moreRecurring > 0 ? `
+<p class="note">${escapeHtml(counted2(payload.moreRecurring, "further repeat is", "further repeats are"))} not listed here.</p>` : ""}
+</section>`;
+}
+var OTHER_AGENTS = {
+  claude: "Cursor or Codex",
+  cursor: "Claude Code or Codex",
+  codex: "Claude Code or Cursor"
+};
+function nextStepsSection(result) {
+  const a = result.agent;
+  return `<section id="next-steps">
+<h2>Next steps</h2>
+<ol class="steps">
+<li><p><strong>Turn on AgentTrail Guard</strong> so these guardrails run before each command.</p>
+${copyable("cmd-init", `agenttrail-guard init --agent ${a}`, "Copy the step 1 command")}</li>
+<li><p><strong>See what it is doing</strong>: whether it is on, and what it decided recently.</p>
+${copyable("cmd-status", "agenttrail-guard status", "Copy the step 2 command")}</li>
+<li><p><strong>Scan again next week</strong>, and read every line before the report is written.</p>
+${copyable("cmd-scan-again", `agenttrail-guard scan --agent ${a} --review`, "Copy the step 3 command")}</li>
+</ol>
+<ul class="links">
+<li>${outLink(siteLink("/get-started/guard", a, "next-commands"), "Every command")}</li>
+<li>${outLink(siteLink("/guardrails", a, "next-library"), "The guardrail library")}</li>
+<li>${outLink(siteLink("/get-started/guard", a, "next-agents"), `Set up ${OTHER_AGENTS[a]}`)}</li>
+</ul>
+</section>`;
+}
+function shareSectionHtml(result, payload, variant) {
+  const length = postLength(payload.shareText);
+  const editable = variant === "document";
+  const edit = editable ? "Edit it before posting." : "This published copy cannot change the post. In the report file it was made from, the post can be edited before posting.";
+  return `<section id="share" class="share">
+<h2>Share your result</h2>
+<p class="note share-note">Totals and at most one library guardrail&#39;s name: no commands, paths, project names or guardrails you wrote. ${edit}</p>
+<label class="share-label" for="share-text">Post preview</label>
+<textarea id="share-text" rows="4"${editable ? "" : " readonly"}>${escapeHtml(payload.shareText)}</textarea>
+<p class="share-actions"><span id="share-count" class="share-count" data-over="${length > POST_LIMIT ? "true" : "false"}">${escapeHtml(`${length} / ${POST_LIMIT}`)}</span>
+<a id="share-link" class="button" href="${escapeHtml(shareLink(payload.shareText, result.agent))}" target="_blank" rel="noopener noreferrer">Post on X</a>
+<button type="button" class="copy js-only" data-copy="share-text" data-label="Copy text" aria-label="Copy text of the post" hidden>Copy text</button></p>
+</section>`;
+}
+function beforeYouShareSection(result, variant) {
+  const review = `<code>agenttrail-guard scan --agent ${escapeHtml(result.agent)} --review</code>`;
+  const check = variant === "artifact" ? `Redaction is thorough but not a guarantee. Read the findings before passing this page on; the person who published it can check every line with ${review} before the file is written.` : `Redaction is thorough but not a guarantee. Read the findings before posting this anywhere public, and run ${review} to see every line before the file is written.`;
+  const warning = result.toolCalls === 0 ? "" : `
+<p class="warning">${check}</p>`;
+  return `<section class="callout" id="privacy">
+<h2>Before you share this</h2>
+<p class="note">This report was made on one machine from transcripts already on its disk, and the scan sent nothing anywhere.</p>
+<p class="note">Every command in this report has been through a secret scrubber, a path redactor, a pass for secret-named values and long random-looking strings, and an identifier redactor, and every MCP tool call has had its payload values structurally redacted. Redaction runs before anything is written, so this file has never held the original text.</p>
+<dl class="legend">
+<div><dt><code>&lt;path&gt;</code></dt><dd>stands for a redacted filesystem path or URL</dd></div>
+<div><dt><code>&lt;name&gt;</code> <code>&lt;host&gt;</code> <code>&lt;user&gt;</code> <code>&lt;message&gt;</code> <code>&lt;comment&gt;</code></dt><dd>stand for an identifying operand of a command &mdash; a container, a namespace, a machine, a login, a commit message or heredoc body, a shell comment</dd></div>
+<div><dt><code>&lt;value&gt;</code></dt><dd>stands for a redacted MCP payload value</dd></div>
+<div><dt><code>[REDACTED:&hellip;]</code></dt><dd>stands for a redacted secret; <code>[REDACTED:secret:generic]</code> marks a long random-looking string masked on a best guess</dd></div>
+<div><dt><code>&hellip;</code></dt><dd>marks where a long command was shortened for display</dd></div>
+</dl>${warning}
+<p class="note pdf-tip"><strong>Saving as PDF?</strong> Turn off headers and footers in the print dialog, so the file&rsquo;s location on your disk is not printed on every page.</p>
+</section>`;
+}
+function redactionSection() {
+  return `<section id="redaction"><h2>How redaction works and where it can miss</h2>
+<p class="note">Working directories and file paths appear nowhere in this file, and the projects these sessions came from are carried as a count and never as names.</p>
+<p class="note"><strong>Identifying names are a weaker claim than paths, and the difference is worth knowing.</strong> Shell commands go through an identifier redactor keyed to a fixed list of tools &mdash; container runtimes, <code>kubectl</code> (including resource names), the database clients (host, database, and the SQL handed to <code>-c</code> / <code>-e</code>), <code>ssh</code>, <code>git</code> commit messages and identity settings, 1Password&#39;s <code>op</code> (item and vault names), and <code>gh</code> titles and bodies &mdash; plus, in any command, a secret passed as a flag value (<code>--token</code>, <code>--password</code>, <code>--key</code>), a UUID, the body of a heredoc, and the text of a <code>#</code> comment. That list is a deny-list and will miss the tool nobody thought of, so a bare operand naming a resource for a tool not on it can survive.</p>
+<p class="note">Cloud account identifiers are redacted where a name or flag gives them away: <code>CLOUDFLARE_ACCOUNT_ID</code> and <code>--account-id</code>, <code>wrangler</code> commands, AWS account numbers after <code>--account</code> or inside an ARN, and <code>--project</code> for <code>gcloud</code>, <code>gsutil</code>, <code>bq</code> and <code>firebase</code>.</p>
+<p class="note"><strong>Secrets without a known format are caught by name and by shape, and both are guesses.</strong> A value after a name ending in <code>_KEY</code> or <code>-key</code>, an <code>Authorization</code> header, and any long random-looking string of 32 or more characters is masked. A secret that is shorter, that is only hexadecimal and has no revealing name, that is split by punctuation, or that has no name and is followed by a <code>.</code>, ends in <code>=</code> or is written as short dashed groups can survive. Branch names, folder names and git branch operands are kept readable and are not redacted.</p>
+<p class="note"><strong>MCP tool calls are handled the other way round:</strong> a call to an MCP server arrives as a structured payload, and rather than deny-listing known-sensitive fields, every value in it is redacted to <code>&lt;value&gt;</code> by default and only the field names and the shape are kept.</p>
+<p class="note">Guardrail ids and titles are shown as their author wrote them &mdash; which for any guardrail you added yourself means your own words, unredacted. Redaction is thorough but not a guarantee. Read the commands and guardrail names above before posting this anywhere public.</p>
+</section>`;
+}
+function coverageNote(result) {
+  if (result.notRead === 0) return "";
+  const notRead = `${escapeHtml(formatCount(result.notRead))} further transcript file${result.notRead === 1 ? "" : "s"}`;
+  const was2 = result.notRead === 1 ? "was" : "were";
+  const tail = `Every count above is of what was read, not of everything that exists.`;
+  const open = `<p class="note"><strong>Coverage limit.</strong>`;
+  switch (result.agent) {
+    case "cursor":
+      return `${open} This reader opens each session&#39;s file, and the files of the sub-agents that session started, in each project&#39;s <code>agent-transcripts</code> folder. ${notRead} in those folders ${was2} not read. ${tail}</p>`;
+    case "codex":
+      return `${open} This reader opens the session files Codex files by date, in <code>~/.codex/sessions/&lt;year&gt;/&lt;month&gt;/&lt;day&gt;/</code>. ${notRead} elsewhere under the sessions root ${was2} not read. ${tail}</p>`;
+    case "claude":
+      return `${open} This reader opens each session&#39;s transcript and the sub-agent transcripts in its <code>subagents</code> folder, folding a sub-agent&#39;s actions into the session that started it. ${notRead} elsewhere under the projects root &mdash; a stray file, or one nested somewhere it does not walk &mdash; ${was2} not read. ${tail}</p>`;
+    default:
+      return unhandledAgent(result.agent);
+  }
+}
+function corpusSection(result) {
+  const lines2 = [];
+  lines2.push(
+    `Read ${escapeHtml(formatCount(result.sessions))} session${result.sessions === 1 ? "" : "s"} across ${escapeHtml(formatCount(result.projects))} project${result.projects === 1 ? "" : "s"}.`
+  );
+  if (result.quarantined > 0) {
+    lines2.push(
+      `${escapeHtml(formatCount(result.quarantined))} file${result.quarantined === 1 ? "" : "s"} yielded no session and ${result.quarantined === 1 ? "was" : "were"} skipped &mdash; a transcript holding no messages, such as a session started and abandoned, has nothing to report.`
+    );
+  }
+  if (result.skippedLines > 0 && result.skipped === void 0) {
+    lines2.push(
+      `${escapeHtml(formatCount(result.skippedLines))} individual line${result.skippedLines === 1 ? "" : "s"} could not be parsed and ${result.skippedLines === 1 ? "was" : "were"} skipped.`
+    );
+  }
+  if (result.tokens === null) {
+    lines2.push(
+      `${escapeHtml(agentName(result.agent))}&#39;s session files record no token counts, so this report shows none.`
+    );
+  }
+  const coverage = coverageNote(result);
+  const codex = result.agent === "codex" ? `
+<p class="note codex-reading">${escapeHtml(CODEX_UNVERIFIED_TEXT)}</p>` : "";
+  return `<section id="scanned"><h2>What was scanned</h2>
+<p class="note">${lines2.join(" ")}</p>${coverage === "" ? "" : `
+${coverage}`}${codex}
+</section>`;
+}
+function skippedSection(payload) {
+  const skipped = payload.skipped;
+  if (skipped === void 0) return "";
+  const phrases = skippedPhrases(skipped);
+  const kinds = phrases.length === 0 ? `<p class="empty">Every line of every session file that was opened was read.</p>` : `<ul class="list">
+${phrases.map((phrase) => `<li>${escapeHtml(phrase)}</li>`).join("\n")}
+</ul>`;
+  const tools = skipped.unmappedTools.length === 0 ? "" : `
+<p class="note">Tool calls this reader does not recognize, by name:</p>
+<ul class="shapes">
+${skipped.unmappedTools.map(
+    (tool) => `<li><code>${escapeHtml(tool.name)}</code><span class="times">${escapeHtml(formatCount(tool.count))}&times;</span></li>`
+  ).join("\n")}
+</ul>`;
+  const notes = [];
+  if (skipped.notActions > 0) {
+    notes.push(
+      `${counted2(skipped.notActions, "tool call was", "tool calls were")} not evaluated because no guardrail checks that kind of call: plans, to-do lists, questions, and starting a sub-agent, whose own tool calls are read from its file.`
+    );
+  }
+  if (skipped.turnsEndedWithError > 0) {
+    notes.push(
+      `${counted2(skipped.turnsEndedWithError, "turn", "turns")} ended with an error; the tool calls made before it were read.`
+    );
+  }
+  return `<section id="not-evaluated"><h2>What was not evaluated</h2>
+<p class="note">None of this stopped the scan. Each line of a session file is read on its own, and whatever could not be used is counted here.</p>
+${kinds}${tools}${notes.map((note) => `
+<p class="note">${escapeHtml(note)}</p>`).join("")}
+</section>`;
+}
+function tokensSection(result) {
+  const t = result.tokens;
+  if (t === null) return "";
+  const rows = [
+    ["Input", formatCount(t.input)],
+    ["Output", formatCount(t.output)],
+    ["Read from cache (cumulative)", formatCount(t.cacheRead)],
+    ["Written to cache", formatCount(t.cacheCreation)]
+  ];
+  if (t.turnsWithSplit > 0) {
+    rows.push([
+      "\u2026of which 5-minute / 1-hour",
+      `${formatCount(t.cacheCreation5m)} / ${formatCount(t.cacheCreation1h)}`
+    ]);
+  }
+  const body = rows.map(
+    ([label, value]) => `<tr><th scope="row">${escapeHtml(label ?? "")}</th><td class="num">${escapeHtml(value ?? "")}</td></tr>`
+  ).join("\n");
+  const splitNote = t.turnsWithSplit > 0 ? `<p class="note">The 5-minute / 1-hour split is reported separately by the model and is not derived from the total above; on real sessions the two do not always agree, so both are shown as reported.</p>` : `<p class="note">None of these sessions reported a 5-minute / 1-hour cache-write split, so that row is omitted rather than shown as zero.</p>`;
+  const cacheReadNote = t.cacheRead > 0 ? `<p class="note">"Read from cache" is cumulative \u2014 the cached prefix is re-read and re-charged every turn, so this counts the same tokens many times over a session. It is a total of what the model billed for, not of distinct input.</p>` : "";
+  return `<section id="tokens"><h2>Tokens</h2>
+<p class="note">Read straight from the transcripts, so these are exact counts and not estimates.</p>
+<div class="table-wrap"><table class="kv">
+${body}
+</table></div>
+${cacheReadNote}${splitNote}</section>`;
+}
+function productNoteSection(result) {
+  if (result.agent !== "claude") return "";
+  const a = result.agent;
+  const { primary, secondary } = PRODUCT_NOTE;
+  return `<aside class="product-note" id="os" aria-label="About AgentTrail OS">
+<p class="eyebrow">${escapeHtml(PRODUCT_NOTE.eyebrow)}</p>
+<h2>${escapeHtml(PRODUCT_NOTE.heading)}</h2>
+<p>${escapeHtml(PRODUCT_NOTE.body)}</p>
+<p class="product-note-action">${outLink(siteLink(primary.path, a, primary.content), escapeHtml(primary.label), "button")}
+${outLink(siteLink(secondary.path, a, secondary.content), escapeHtml(secondary.label), "text-link")}</p>
+</aside>`;
+}
+function pageTitle(result, meta) {
+  return `AgentTrail Guard scan report \xB7 ${agentName(result.agent)} \xB7 ${meta.generatedAt.toISOString().slice(0, 10)}`;
+}
+function dataBlockText(payload) {
+  return JSON.stringify(payload, null, 1).replace(/</g, "\\u003c");
+}
+function contentSecurityPolicy() {
+  const hash = createHash("sha256").update(REPORT_SCRIPT, "utf8").digest("base64");
+  return `default-src 'none'; script-src 'sha256-${hash}'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; require-trusted-types-for 'script'`;
+}
+function renderReport(result, meta, options = {}) {
+  const variant = options.variant ?? "document";
+  const payload = reportPayload(result, meta, options.cardBuilders);
+  const scanned = result.toolCalls > 0;
+  const cards = scanned ? payload.cards : void 0;
+  const lead = cards === void 0 || payload.verification === void 0 ? void 0 : pickHeadline(cards, { ranEvidence: payload.verification.ranEvidence });
+  const head = `<title>${escapeHtml(pageTitle(result, meta))}</title>
+<style>${REPORT_STYLES}</style>`;
+  const sections = [
+    topBar(payload),
+    heroSection(result, payload, meta, variant, lead),
+    ...cards === void 0 ? [] : [evidenceSection(payload), alsoCheckedSection(payload, cards, lead)],
+    statsSection(result),
+    ...cards === void 0 ? [] : [whatHappenedSection(cards, variant, options.localFixCategories ?? [])],
+    ...scanned ? [
+      wouldHaveDoneSection(result, payload),
+      fixFirstSection(payload),
+      owaspSection(payload),
+      findingsSection(payload, variant),
+      recurringSection(payload)
+    ] : [],
+    nextStepsSection(result),
+    scanned ? shareSectionHtml(result, payload, variant) : "",
+    beforeYouShareSection(result, variant),
+    redactionSection(),
+    corpusSection(result),
+    skippedSection(payload),
+    scanned ? tokensSection(result) : "",
+    productNoteSection(result)
+  ].filter((section) => section !== "");
+  const body = `<main class="page" lang="en">
+${sections.join("\n")}
+<footer>
+<p class="footer-brand">${LOGO_MARK_SVG}<span>agenttrail-guard ${escapeHtml(meta.version)} &middot; ${escapeHtml(payload.catalog)}</span></p>
+<p>Source: ${escapeHtml(REPOSITORY_URL)}</p>
+<p>A finding is a guardrail that matched. It is not proof that anything went wrong, and the guardrails state their own coverage limits.</p>
+<ul class="footer-links">
+<li>${outLink(siteLink("/agenttrail-guard", result.agent, "footer-guard"), "AgentTrail Guard")}</li>
+<li>${outLink(siteLink("/guardrails", result.agent, "footer-library"), "Guardrail library")}</li>
+<li>${outLink(siteLink("/security", result.agent, "footer-security"), "Security")}</li>
+</ul>
+</footer>
+<p id="page-status" class="sr-only" role="status" aria-live="polite"></p>
+<textarea id="copy-buffer" class="sr-only" tabindex="-1" aria-hidden="true" readonly></textarea>
+</main>`;
+  if (variant === "artifact") return `${head}
+${body}
+`;
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta http-equiv="Content-Security-Policy" content="${contentSecurityPolicy()}">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+${head}
+</head>
+<body>
+${body}
+<script type="application/json" id="report-data">
+${dataBlockText(payload)}
+</script>
+<script>${REPORT_SCRIPT}</script>
+</body>
+</html>
+`;
+}
+function reviewStrings(result, builders = CARD_BUILDERS) {
+  const payload = reportPayload(result, { version: "", generatedAt: /* @__PURE__ */ new Date(0) }, builders);
+  const seen = /* @__PURE__ */ new Set();
+  const take = (value) => {
+    if (seen.has(value)) return [];
+    seen.add(value);
+    return [value];
+  };
+  const guardrails = [];
+  const commands = [];
+  for (const finding of payload.findings) {
+    guardrails.push(...take(`${finding.ruleId}  ${finding.title}`));
+    for (const example of finding.examples) commands.push(...take(example.text));
+  }
+  for (const item of payload.recurring) {
+    guardrails.push(...take(`${item.ruleId}  ${item.title}`));
+    commands.push(...take(item.text));
+  }
+  const tools = (payload.skipped?.unmappedTools ?? []).flatMap((tool) => take(tool.name));
+  const groups = [];
+  if (guardrails.length > 0)
+    groups.push({ label: "Guardrails named in the report", lines: guardrails });
+  if (commands.length > 0) groups.push({ label: "Command shapes in the report", lines: commands });
+  if (tools.length > 0) groups.push({ label: "Tool names in the report", lines: tools });
+  const verified = verifiedLines(payload).flatMap(take);
+  if (verified.length > 0) {
+    groups.push({
+      label: "What the checks found on this machine, by count and kind, never a value",
+      lines: verified
+    });
+  }
+  if (payload.findings.length > 0) {
+    groups.push({ label: "The suggested post, which you can edit", lines: [payload.shareText] });
+  }
+  return groups;
+}
+function verifiedLines(payload) {
+  const cards = payload.toolCalls > 0 ? payload.cards : void 0;
+  if (cards === void 0 || payload.verification === void 0) return [];
+  const lines2 = [];
+  const lead = pickHeadline(cards, { ranEvidence: payload.verification.ranEvidence });
+  if (lead?.headline !== void 0) lines2.push(lead.headline.sentence.text);
+  const facts = payload.verification.categories.secrets.facts;
+  for (const item of facts.items) {
+    const row = evidenceRow(item);
+    lines2.push(`${row.kind}  ${row.how}  ${row.files}`);
+  }
+  const more = MORE_EVIDENCE.render({ more: facts.moreItems });
+  if (more !== void 0) lines2.push(more);
+  for (const note of leadNotes(payload.verification)) lines2.push(note.text);
+  for (const chip of chipsFor(cards, lead)) lines2.push(`${chip.title}  ${chip.text}`);
+  const tally = sentence(TONE_TALLY, cards);
+  if (tally !== void 0) lines2.push(tally.text);
+  for (const card of cards) {
+    if (card.read !== void 0)
+      lines2.push(`${CATEGORY_TITLES[card.category]}:  ${card.read.text}`);
+  }
+  for (const card of cards) {
+    const title = CATEGORY_TITLES[card.category];
+    const count2 = cardCount(card);
+    if (count2 !== void 0) lines2.push(`${title}  ${count2.text}`);
+    for (const line of [...card.found, ...card.now, ...card.fixSteps ?? []]) {
+      lines2.push(`${title}  ${line.text}`);
+    }
+    for (const fix of card.fixes) lines2.push(`${title}  ${fix.shape}`);
+    const caveat = sentence(CODEX_CAVEAT, card);
+    if (caveat !== void 0) lines2.push(`${title}  ${caveat.text}`);
+  }
+  return lines2;
+}
+function renderJson(result, meta) {
+  const safe = result.verification === void 0 ? result : { ...result, verification: boundaryVerification(result.verification, false) };
+  return `${JSON.stringify(
+    {
+      tool: "agenttrail-guard",
+      version: meta.version,
+      generatedAt: meta.generatedAt.toISOString(),
+      catalog: formatCatalogStamp(catalogStamp(), meta.generatedAt),
+      // A Codex scan says, in --json too, how far its reading can be trusted.
+      ...result.agent === "codex" ? { notes: [CODEX_UNVERIFIED_TEXT] } : {},
+      result: safe
+    },
+    null,
+    2
+  )}
+`;
+}
+
+// src/core/fixes-file.ts
+var CONTROL = (
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: control characters are what it finds.
+  /[\u0000-\u0008\u000a-\u001f\u007f-\u009f\u2028\u2029\u200e\u200f\u202a-\u202e\u2066-\u2069]/
+);
+function writable(fixes) {
+  return fixes.filter(
+    (fix) => isLocalFix(fix) && fix.command.trim() !== "" && !CONTROL.test(fix.command)
+  );
+}
+function unsafe(fixes) {
+  return fixes.filter((fix) => !isLocalFix(fix) && "unsafe" in fix);
+}
+function exactFixCount(fixes) {
+  return writable(fixes).length;
+}
+function unsafeFixCount(fixes) {
+  return unsafe(fixes).length;
+}
+function fixCategories(fixes) {
+  const kept = writable(fixes);
+  return VERIFY_CATEGORIES.filter((category) => kept.some((fix) => fix.category === category));
+}
+function hasFileFixes(fixes) {
+  return writable(fixes).length + unsafe(fixes).length > 0;
+}
+function fixesFileText(fixes, meta) {
+  const kept = writable(fixes);
+  const notes = unsafe(fixes);
+  const left = fixes.length - kept.length - notes.length;
+  const out = [
+    "AgentTrail Guard: fix commands for this machine",
+    "",
+    `Written by agenttrail-guard ${meta.version} on ${readableTime(meta.generatedAt)}, with ${meta.reportName}.`,
+    "",
+    "These are the exact commands behind the redacted shapes in the report, with real",
+    "branch names and paths. Keep this file on this machine: it is not part of the",
+    "report, and it is written for your user account only (mode 0600, where the system",
+    "honours it). Read each command before you run it. Nothing here has been run."
+  ];
+  if (left > 0) {
+    out.push(
+      "",
+      `${left === 1 ? "1 command was" : `${left} commands were`} left out because ${left === 1 ? "it does" : "they do"} not fit on one line.`
+    );
+  }
+  for (const category of VERIFY_CATEGORIES) {
+    const commands = kept.filter((fix) => fix.category === category);
+    const unsafeHere = notes.filter((fix) => fix.category === category).length;
+    if (commands.length + unsafeHere === 0) continue;
+    out.push("", CATEGORY_TITLES[category]);
+    for (const fix of commands) out.push(fix.command);
+    if (unsafeHere > 0) {
+      out.push(
+        `(${unsafeHere === 1 ? "1 fix here: could not make a safe command" : `${unsafeHere} fixes here: could not make a safe command`}, so none is written for ${unsafeHere === 1 ? "it" : "them"}.)`
+      );
+    }
+  }
+  return `${out.join("\n")}
+`;
+}
+
+// src/core/paths.ts
+import { join as join6 } from "path";
+function guardDir(homedir4) {
+  return join6(homedir4, ".agenttrail", "guard");
+}
+function configPath(homedir4) {
+  return join6(guardDir(homedir4), "config.json");
+}
+function userRulesPath(homedir4) {
+  return join6(guardDir(homedir4), "guardrails.json");
+}
+function productLineStatePath(homedir4) {
+  return join6(guardDir(homedir4), ".product-line");
+}
+
+// src/core/product-line.ts
+var SUPPORTED_AGENTS = /* @__PURE__ */ new Set(["claude", "cursor"]);
+var plural = (n2, one, many) => `${formatCount(n2)} ${n2 === 1 ? one : many}`;
+var PRODUCT_LINE = {
+  destination: "https://agenttrail.sh/agenttrail-os",
+  utm: "utm_source=guard&utm_medium=cli",
+  /** `config.json` key. Only `false` turns the line off. */
+  configKey: "productLine",
+  /** At most one showing per command in this many hours. */
+  intervalHours: 24,
+  /** How far back `status` counts decisions. */
+  statusWindowDays: 7,
+  text: {
+    init: (url) => `Want a teammate to approve risky actions, and every session on record? AgentTrail OS (Team plan): ${url}`,
+    statusAsks: (asks, url) => `This week guard asked about ${plural(asks, "action", "actions")}. In AgentTrail OS a teammate approves them from the app (Team plan): ${url}`,
+    statusBlocks: (blocks, url) => `Guard blocked ${plural(blocks, "action", "actions")} this week. AgentTrail OS finds the failures agents repeat and suggests the guardrail that stops them: ${url}`,
+    scanAsks: (asks, url) => `${formatCount(asks)} of these would have waited for a teammate's approval in AgentTrail OS (Team plan), not a prompt: ${url}`,
+    scanMatches: (url) => `AgentTrail OS finds the failures agents repeat and suggests the guardrail that stops them: ${url}`,
+    add: (id, url) => `Share it: with everyone, run agenttrail-guard guardrails export ${id}; with your team, AgentTrail OS syncs guardrails to every teammate (Team plan): ${url}`
+  }
+};
+function productLineUrl(surface) {
+  return `${PRODUCT_LINE.destination}?${PRODUCT_LINE.utm}&utm_content=${surface}`;
+}
+function productLineText(facts) {
+  const url = productLineUrl(facts.surface);
+  const t = PRODUCT_LINE.text;
+  switch (facts.surface) {
+    case "init":
+      return SUPPORTED_AGENTS.has(facts.agent) ? t.init(url) : void 0;
+    case "status":
+      if (facts.asks > 0) return t.statusAsks(facts.asks, url);
+      if (facts.blocks > 0) return t.statusBlocks(facts.blocks, url);
+      return void 0;
+    case "scan":
+      if (!SUPPORTED_AGENTS.has(facts.agent) || facts.matches === 0) return void 0;
+      return facts.asks > 0 ? t.scanAsks(facts.asks, url) : t.scanMatches(url);
+    case "add":
+      return t.add(facts.guardrailId, url);
+    default:
+      return void 0;
+  }
+}
+function productLineEnabled(configText) {
+  if (configText === void 0) return true;
+  try {
+    const raw = JSON.parse(configText);
+    if (raw === null || typeof raw !== "object" || Array.isArray(raw)) return true;
+    return raw[PRODUCT_LINE.configKey] !== false;
+  } catch {
+    return true;
+  }
+}
+function readState(text) {
+  if (text === void 0) return {};
+  try {
+    const raw = JSON.parse(text);
+    return raw !== null && typeof raw === "object" && !Array.isArray(raw) ? { ...raw } : {};
+  } catch {
+    return {};
+  }
+}
+function productLineDue(stateText, surface, now) {
+  const last = readState(stateText)[surface];
+  if (typeof last !== "string") return true;
+  const at = Date.parse(last);
+  if (Number.isNaN(at) || at > now.getTime()) return true;
+  return now.getTime() - at >= PRODUCT_LINE.intervalHours * 36e5;
+}
+function recordProductLine(stateText, surface, now) {
+  const state = readState(stateText);
+  state[surface] = now.toISOString();
+  return `${JSON.stringify(state, null, 2)}
+`;
+}
+function takeProductLine(ctx, facts) {
+  if (!ctx.interactive || !productLineEnabled(ctx.configText)) return void 0;
+  const text = productLineText(facts);
+  if (text === void 0) return void 0;
+  const state = ctx.readFile(ctx.statePath);
+  if (!productLineDue(state, facts.surface, ctx.now)) return void 0;
+  if (!ctx.writeFile(ctx.statePath, recordProductLine(state, facts.surface, ctx.now))) {
+    return void 0;
+  }
+  return text;
+}
+
+// src/engine/matchers.ts
+var import_picomatch2 = __toESM(require_picomatch2(), 1);
+var DETAIL_ATTR = "detail";
+var FILE_PATH_ATTR = "file_path";
+var FILE_GLOB_OPTIONS = { dot: true, nocase: true };
+var LABEL_GLOB_OPTIONS = { dot: true, nocase: true };
+function matchKind(conditionKind, span) {
+  const matched = span.kind.toLowerCase() === conditionKind.toLowerCase();
+  return {
+    matched,
+    reason: matched ? `kind: "${conditionKind}" matched` : `kind: expected "${conditionKind}", got "${span.kind}"`
+  };
+}
+function matchLabel(conditionLabel, span) {
+  const matched = createCompiledLabelMatcher(conditionLabel)(span.label);
+  return {
+    matched,
+    reason: matched ? `label: "${conditionLabel}" matched` : `label: expected "${conditionLabel}", got "${span.label}"`
+  };
+}
+function matchDetailContains(requiredSubstrings, span) {
+  const detail = span.attributes[DETAIL_ATTR];
+  if (detail === void 0) {
+    return { matched: false, reason: "detail_contains: detail attribute missing" };
+  }
+  const missing = [];
+  for (const substring of requiredSubstrings) {
+    if (!detail.includes(substring)) {
+      missing.push(substring);
+    }
+  }
+  if (missing.length > 0) {
+    return {
+      matched: false,
+      reason: `detail_contains: missing substrings: ${JSON.stringify(missing)}`
+    };
+  }
+  return {
+    matched: true,
+    reason: `detail_contains: all ${requiredSubstrings.length} substring(s) found`
+  };
+}
+function matchDetailMatches(patterns, span) {
+  const detail = span.attributes[DETAIL_ATTR];
+  if (detail === void 0) {
+    return { matched: false, reason: "detail_matches: detail attribute missing" };
+  }
+  for (const pattern of patterns) {
+    if (createCompiledDetailMatcher(pattern)(detail)) {
+      return { matched: true, reason: `detail_matches: "${pattern}" matched` };
+    }
+  }
+  return {
+    matched: false,
+    reason: `detail_matches: no pattern of ${patterns.length} matched`
+  };
+}
+function matchFileGlob(pattern, span) {
+  const filePath = span.attributes[FILE_PATH_ATTR];
+  if (filePath === void 0) {
+    return { matched: false, reason: "file_glob: file_path attribute missing" };
+  }
+  try {
+    const isMatch = (0, import_picomatch2.default)(pattern, FILE_GLOB_OPTIONS);
+    const matched = isMatch(filePath);
+    return {
+      matched,
+      reason: matched ? `file_glob: "${pattern}" matched "${filePath}"` : `file_glob: "${pattern}" did not match "${filePath}"`
+    };
+  } catch {
+    return {
+      matched: false,
+      reason: `file_glob: invalid pattern: "${pattern}"`
+    };
+  }
+}
+function resolveNumericField(field, span) {
+  switch (field) {
+    case "tokens":
+      return span.tokens;
+    case "cached_tokens":
+      return span.cachedTokens;
+    case "duration_ms":
+      return span.durationMs;
+    default: {
+      const _exhaustive = field;
+      throw new Error(`unmapped numeric field: ${String(_exhaustive)}`);
+    }
+  }
+}
+function matchNumeric(comparison, span) {
+  const actual = resolveNumericField(comparison.field, span);
+  const { op, value, field } = comparison;
+  let matched;
+  switch (op) {
+    case "gt":
+      matched = actual > value;
+      break;
+    case "gte":
+      matched = actual >= value;
+      break;
+    case "lt":
+      matched = actual < value;
+      break;
+    case "lte":
+      matched = actual <= value;
+      break;
+    default: {
+      const _exhaustive = op;
+      throw new Error(`unmapped numeric op: ${String(_exhaustive)}`);
+    }
+  }
+  return {
+    matched,
+    reason: matched ? `numeric: ${field} (${actual}) ${op} ${value} matched` : `numeric: ${field} (${actual}) not ${op} ${value}`
+  };
+}
+var compiledGlobCache = /* @__PURE__ */ new Map();
+var compiledLabelCache = /* @__PURE__ */ new Map();
+var compiledDetailCache = /* @__PURE__ */ new Map();
+function createCompiledLabelMatcher(pattern) {
+  let matcher = compiledLabelCache.get(pattern);
+  if (matcher === void 0) {
+    try {
+      matcher = (0, import_picomatch2.default)(pattern, LABEL_GLOB_OPTIONS);
+    } catch {
+      matcher = () => false;
+    }
+    compiledLabelCache.set(pattern, matcher);
+  }
+  const cached = matcher;
+  return (label) => cached(label);
+}
+function createCompiledDetailMatcher(pattern) {
+  let compiled = compiledDetailCache.get(pattern);
+  if (compiled === void 0) {
+    try {
+      compiled = new RegExp(pattern, "i");
+    } catch {
+      compiled = null;
+    }
+    compiledDetailCache.set(pattern, compiled);
+  }
+  const cached = compiled;
+  return cached === null ? () => false : (detail) => cached.test(detail);
+}
+function createCompiledFileGlobMatcher(pattern) {
+  let matcher = compiledGlobCache.get(pattern);
+  if (!matcher) {
+    try {
+      matcher = (0, import_picomatch2.default)(pattern, FILE_GLOB_OPTIONS);
+      compiledGlobCache.set(pattern, matcher);
+    } catch {
+      return (_span) => ({
+        matched: false,
+        reason: `file_glob: invalid pattern: "${pattern}"`
+      });
+    }
+  }
+  const cachedMatcher = matcher;
+  return (span) => {
+    const filePath = span.attributes[FILE_PATH_ATTR];
+    if (filePath === void 0) {
+      return { matched: false, reason: "file_glob: file_path attribute missing" };
+    }
+    const matched = cachedMatcher(filePath);
+    return {
+      matched,
+      reason: matched ? `file_glob: "${pattern}" matched "${filePath}"` : `file_glob: "${pattern}" did not match "${filePath}"`
+    };
+  };
+}
+
+// src/engine/scope.ts
+function isInScopeArray(scopeArray, value) {
+  return scopeArray.includes("*") || scopeArray.includes(value);
+}
+function matchScope(scope, context) {
+  if (scope === void 0) {
+    return { matched: true, reason: "scope: no scope filter (applies globally)" };
+  }
+  const failures = [];
+  if (scope.agent_in !== void 0) {
+    if (!isInScopeArray(scope.agent_in, context.agentId)) {
+      failures.push(`agent_in: "${context.agentId}" not in [${scope.agent_in.join(", ")}]`);
+    }
+  }
+  if (scope.project_in !== void 0) {
+    if (!isInScopeArray(scope.project_in, context.projectId)) {
+      failures.push(`project_in: "${context.projectId}" not in [${scope.project_in.join(", ")}]`);
+    }
+  }
+  if (failures.length > 0) {
+    return {
+      matched: false,
+      reason: `scope: ${failures.join("; ")}`
+    };
+  }
+  return { matched: true, reason: "scope: all scope filters matched" };
+}
+
+// src/engine/evaluator.ts
+function evaluateConditionCompiled(condition, span, compiledGlobMatcher) {
+  const kindResult = matchKind(condition.kind, span);
+  if (!kindResult.matched) {
+    return kindResult;
+  }
+  const reasons = [kindResult.reason];
+  if (condition.label !== void 0) {
+    const labelResult = matchLabel(condition.label, span);
+    if (!labelResult.matched) {
+      return labelResult;
+    }
+    reasons.push(labelResult.reason);
+  }
+  if (condition.detail_contains !== void 0) {
+    const detailResult = matchDetailContains(condition.detail_contains, span);
+    if (!detailResult.matched) {
+      return detailResult;
+    }
+    reasons.push(detailResult.reason);
+  }
+  if (condition.detail_matches !== void 0) {
+    const regexResult = matchDetailMatches(condition.detail_matches, span);
+    if (!regexResult.matched) {
+      return regexResult;
+    }
+    reasons.push(regexResult.reason);
+  }
+  if (condition.file_glob !== void 0) {
+    if (compiledGlobMatcher) {
+      const globResult = compiledGlobMatcher(span);
+      if (!globResult.matched) {
+        return globResult;
+      }
+      reasons.push(globResult.reason);
+    } else {
+      const globResult = matchFileGlob(condition.file_glob, span);
+      if (!globResult.matched) {
+        return globResult;
+      }
+      reasons.push(globResult.reason);
+    }
+  }
+  if (condition.numeric !== void 0) {
+    for (const comparison of condition.numeric) {
+      const numericResult = matchNumeric(comparison, span);
+      if (!numericResult.matched) {
+        return numericResult;
+      }
+      reasons.push(numericResult.reason);
+    }
+  }
+  return {
+    matched: true,
+    reason: reasons.join("; ")
+  };
+}
+function compilePolicy(predicate) {
+  function compileConditions(conditions) {
+    if (conditions === void 0) return void 0;
+    return conditions.map((condition) => {
+      const globMatcher = condition.file_glob ? createCompiledFileGlobMatcher(condition.file_glob) : void 0;
+      return globMatcher ? { condition, globMatcher } : { condition };
+    });
+  }
+  const compiledAnyOf = compileConditions(predicate.match.any_of);
+  const compiledAllOf = compileConditions(predicate.match.all_of);
+  const compiledNoneOf = compileConditions(predicate.match.none_of);
+  const scope = predicate.scope;
+  return (context) => {
+    const scopeResult = matchScope(scope, context);
+    if (!scopeResult.matched) {
+      return { matched: false, reasons: [scopeResult.reason] };
+    }
+    const reasons = [];
+    const span = context.span;
+    if (compiledAllOf !== void 0) {
+      for (const { condition, globMatcher } of compiledAllOf) {
+        const result = evaluateConditionCompiled(condition, span, globMatcher);
+        if (!result.matched) {
+          return {
+            matched: false,
+            reasons: [`all_of: condition failed \u2014 ${result.reason}`]
+          };
+        }
+        reasons.push(`all_of: ${result.reason}`);
+      }
+    }
+    if (compiledAnyOf !== void 0) {
+      let anyMatched = false;
+      const anyOfReasons = [];
+      for (const { condition, globMatcher } of compiledAnyOf) {
+        const result = evaluateConditionCompiled(condition, span, globMatcher);
+        if (result.matched) {
+          anyMatched = true;
+          anyOfReasons.push(`any_of: ${result.reason}`);
+        }
+      }
+      if (!anyMatched) {
+        return { matched: false, reasons: ["any_of: no conditions matched"] };
+      }
+      reasons.push(...anyOfReasons);
+    }
+    if (compiledNoneOf !== void 0) {
+      for (const { condition, globMatcher } of compiledNoneOf) {
+        const result = evaluateConditionCompiled(condition, span, globMatcher);
+        if (result.matched) {
+          return {
+            matched: false,
+            reasons: [`none_of: excluded condition matched \u2014 ${result.reason}`]
+          };
+        }
+      }
+      reasons.push(`none_of: no excluded condition matched (${compiledNoneOf.length} checked)`);
+    }
+    return { matched: true, reasons };
+  };
+}
+
+// src/core/rules.ts
+function compileCatalog(rules12, config) {
+  const compiled = [];
+  const overrides = config?.guardrailActionOverrides ?? {};
+  const disabled = new Set(config?.disabledGuardrails ?? []);
+  const disabledPacks = new Set(config?.disabledPacks ?? []);
+  for (const rule of rules12) {
+    if (disabledPacks.has(rule.category)) continue;
+    if (disabled.has(rule.id)) continue;
+    const action = overrides[rule.id] ?? rule.defaultAction;
+    const predicate = {
+      version: 1,
+      match: rule.match,
+      action
+    };
+    try {
+      compiled.push({ rule, action, evaluate: compilePolicy(predicate) });
+    } catch {
+    }
+  }
+  return compiled;
+}
+
+// src/core/transcript/parse.ts
+import { createReadStream } from "fs";
+import { createInterface } from "readline";
+var QuarantineError = class extends Error {
+  constructor(message, sessionId) {
+    super(message);
+    this.sessionId = sessionId;
+    this.name = "QuarantineError";
+  }
+  sessionId;
+};
+var fileLineSource = {
+  async *readLines(path) {
+    const rl = createInterface({
+      input: createReadStream(path, { encoding: "utf8" }),
+      crlfDelay: Number.POSITIVE_INFINITY
+    });
+    try {
+      for await (const line of rl) yield line;
+    } finally {
+      rl.close();
+    }
+  }
+};
+function str(v) {
+  return typeof v === "string" && v.length > 0 ? v : null;
+}
+function toBlocks(content) {
+  if (typeof content === "string") return [{ type: "text", text: content }];
+  if (Array.isArray(content)) return content;
+  return [];
+}
+function joinText(blocks) {
+  return blocks.filter((b) => b.type === "text" && typeof b.text === "string").map((b) => b.text).join("\n");
+}
+function resultToString(content) {
+  if (typeof content === "string") return content;
+  if (Array.isArray(content)) {
+    return content.map(
+      (b) => b && typeof b === "object" && "text" in b ? String(b.text) : ""
+    ).join("\n");
+  }
+  return content === void 0 || content === null ? "" : JSON.stringify(content);
+}
+async function parseSession(path, fallbackSessionId, source = fileLineSource) {
+  let sessionId = null;
+  let version = null;
+  let gitBranch = null;
+  let cwd = null;
+  let firstTimestamp = null;
+  let lastTimestamp = null;
+  let skippedLines = 0;
+  const turns = [];
+  const userPrompts = [];
+  const toolResults = /* @__PURE__ */ new Map();
+  let currentPromptUuid = "";
+  for await (const raw of source.readLines(path)) {
+    const line = raw.trim();
+    if (line.length === 0) continue;
+    let obj;
+    try {
+      obj = JSON.parse(line);
+    } catch {
+      skippedLines++;
+      continue;
+    }
+    if (obj === null || typeof obj !== "object") {
+      skippedLines++;
+      continue;
+    }
+    sessionId ??= str(obj.sessionId);
+    version ??= str(obj.version);
+    gitBranch ??= str(obj.gitBranch);
+    cwd ??= str(obj.cwd);
+    const ts = str(obj.timestamp);
+    const uuid = str(obj.uuid) ?? "";
+    const isSidechain = obj.isSidechain === true;
+    const type = obj.type;
+    if (ts && (type === "user" || type === "assistant")) {
+      firstTimestamp ??= ts;
+      lastTimestamp = ts;
+    }
+    if (type === "assistant" && obj.message) {
+      const blocks = toBlocks(obj.message.content);
+      const toolUses = [];
+      for (const b of blocks) {
+        if (b.type === "tool_use" && str(b.id) && str(b.name)) {
+          toolUses.push({
+            toolUseId: b.id,
+            name: b.name,
+            input: b.input ?? {}
+          });
+        }
+      }
+      turns.push({
+        messageUuid: uuid,
+        timestamp: ts ?? lastTimestamp ?? "",
+        model: str(obj.message.model) ?? "",
+        usage: obj.message.usage ?? {},
+        text: joinText(blocks),
+        toolUses,
+        isSidechain,
+        promptUuid: currentPromptUuid
+      });
+    } else if (type === "user" && obj.message) {
+      const blocks = toBlocks(obj.message.content);
+      let sawToolResult = false;
+      for (const b of blocks) {
+        if (b.type === "tool_result" && str(b.tool_use_id)) {
+          sawToolResult = true;
+          toolResults.set(b.tool_use_id, {
+            toolUseId: b.tool_use_id,
+            isError: b.is_error === true,
+            content: resultToString(b.content),
+            timestamp: ts ?? lastTimestamp ?? ""
+          });
+        }
+      }
+      if (!sawToolResult) {
+        const text = joinText(blocks);
+        if (text.length > 0) {
+          userPrompts.push({ messageUuid: uuid, timestamp: ts ?? "", text, isSidechain });
+          if (!isSidechain) currentPromptUuid = uuid;
+        }
+      }
+    }
+  }
+  const resolvedSessionId = sessionId ?? fallbackSessionId;
+  if (turns.length === 0 && userPrompts.length === 0) {
+    throw new QuarantineError(
+      `no coherent message spine (${skippedLines} unparseable line(s))`,
+      resolvedSessionId
+    );
+  }
+  const first = firstTimestamp ?? turns[0]?.timestamp ?? userPrompts[0]?.timestamp ?? "";
+  const last = lastTimestamp ?? first;
+  return {
+    sessionId: resolvedSessionId,
+    version,
+    gitBranch,
+    cwd,
+    turns,
+    userPrompts,
+    toolResults,
+    firstTimestamp: first,
+    lastTimestamp: last,
+    skippedLines
+  };
+}
+
+// src/core/transcript/scan.ts
+import { readdirSync, statSync } from "fs";
+import { homedir } from "os";
+import { basename as basename2, isAbsolute as isAbsolute3, join as join7, relative as relative3 } from "path";
+function defaultProjectsRoot(home = homedir()) {
+  return join7(home, ".claude", "projects");
+}
+var SNIFF_LINE_CAP = 40;
+async function sniff(path, source) {
+  const id = { cwd: null, gitBranch: null, version: null, sessionId: null };
+  let messageCount = 0;
+  let sniffed = 0;
+  for await (const line of source.readLines(path)) {
+    const trimmed = line.trim();
+    if (trimmed.length === 0) continue;
+    messageCount++;
+    const complete = id.cwd && id.gitBranch && id.version && id.sessionId;
+    if (sniffed < SNIFF_LINE_CAP && !complete) {
+      sniffed++;
+      try {
+        const obj = JSON.parse(trimmed);
+        id.sessionId ??= typeof obj.sessionId === "string" ? obj.sessionId : null;
+        id.cwd ??= typeof obj.cwd === "string" ? obj.cwd : null;
+        id.gitBranch ??= typeof obj.gitBranch === "string" ? obj.gitBranch : null;
+        id.version ??= typeof obj.version === "string" ? obj.version : null;
+      } catch {
+      }
+    }
+  }
+  return { ...id, messageCount };
+}
+function isSessionInProject(cwd, projectRoot) {
+  if (cwd === null) return false;
+  const rel = relative3(projectRoot, cwd);
+  return rel === "" || !rel.startsWith("..") && !isAbsolute3(rel);
+}
+async function scanTranscripts(projectsRoot = defaultProjectsRoot(), projectRoot, io = {}) {
+  const readdir = io.readdir ?? ((p) => readdirSync(p));
+  const stat2 = io.stat ?? ((p) => statSync(p));
+  const source = io.lineSource ?? fileLineSource;
+  const scoped = projectRoot !== void 0;
+  let excludedOtherProject = 0;
+  let excludedUnknownCwd = 0;
+  const finalize = (projects2, totalSessions2) => scoped ? { projectsRoot, projects: projects2, totalSessions: totalSessions2, excludedOtherProject, excludedUnknownCwd } : { projectsRoot, projects: projects2, totalSessions: totalSessions2 };
+  let projectDirs;
+  try {
+    projectDirs = readdir(projectsRoot);
+  } catch {
+    return finalize([], 0);
+  }
+  const projects = [];
+  let totalSessions = 0;
+  for (const project of projectDirs.sort()) {
+    const dir = join7(projectsRoot, project);
+    let entries2;
+    try {
+      if (!stat2(dir).isDirectory()) continue;
+      entries2 = readdir(dir);
+    } catch {
+      continue;
+    }
+    const sessions = [];
+    for (const entry of entries2.sort()) {
+      if (!entry.endsWith(".jsonl")) continue;
+      const file2 = join7(dir, entry);
+      let size = 0;
+      let mtimeMs = 0;
+      try {
+        const s = stat2(file2);
+        size = s.size;
+        mtimeMs = s.mtimeMs;
+      } catch {
+        continue;
+      }
+      let identity;
+      try {
+        identity = await sniff(file2, source);
+      } catch {
+        identity = { cwd: null, gitBranch: null, version: null, sessionId: null, messageCount: 0 };
+      }
+      if (scoped && !isSessionInProject(identity.cwd, projectRoot)) {
+        if (identity.cwd === null) excludedUnknownCwd++;
+        else excludedOtherProject++;
+        continue;
+      }
+      sessions.push({
+        sessionId: identity.sessionId ?? basename2(entry, ".jsonl"),
+        file: file2,
+        project,
+        cwd: identity.cwd,
+        gitBranch: identity.gitBranch,
+        version: identity.version,
+        sizeBytes: size,
+        modifiedAt: new Date(mtimeMs).toISOString(),
+        messageCount: identity.messageCount
+      });
+    }
+    if (sessions.length > 0) {
+      projects.push({ project, sessions });
+      totalSessions += sessions.length;
+    }
+  }
+  return finalize(projects, totalSessions);
+}
+
+// src/core/user-rules-data.ts
+var VALID_ACTIONS2 = /* @__PURE__ */ new Set(["block", "require_approval", "warn"]);
+function hasSelectableMatch(match) {
+  if (match === null || typeof match !== "object" || Array.isArray(match)) return false;
+  const m = match;
+  const populated = (arm) => Array.isArray(arm) && arm.length > 0;
+  return populated(m.any_of) || populated(m.all_of);
+}
+function parseUserRulesData(text) {
+  if (text === void 0 || text.trim().length === 0) return [];
+  let parsed2;
+  try {
+    parsed2 = JSON.parse(text);
+  } catch {
+    return [];
+  }
+  if (!Array.isArray(parsed2)) return [];
+  const out = [];
+  for (const raw of parsed2) {
+    if (raw === null || typeof raw !== "object" || Array.isArray(raw)) continue;
+    const rec = raw;
+    const { id, category, defaultAction, match } = rec;
+    if (typeof id !== "string" || id.length === 0) continue;
+    if (typeof category !== "string" || category.length === 0) continue;
+    if (typeof defaultAction !== "string" || !VALID_ACTIONS2.has(defaultAction)) continue;
+    if (!hasSelectableMatch(match)) continue;
+    out.push({
+      id,
+      category,
+      severity: typeof rec.severity === "string" ? rec.severity : "medium",
+      defaultAction,
+      title: typeof rec.title === "string" ? rec.title : id,
+      description: typeof rec.description === "string" ? rec.description : "",
+      match
+    });
+  }
+  return out;
+}
+
+// src/core/verify/verify.ts
+import { homedir as homedir2 } from "os";
+
+// src/core/verify/fingerprint.ts
+import { createHmac, randomBytes } from "crypto";
+var FINGERPRINT_HEX = 32;
+var KEY_BYTES = 32;
+function createFingerprinter(key = randomBytes(KEY_BYTES)) {
+  const own = Buffer.from(key);
+  return (value) => createHmac("sha256", own).update(value, "utf8").digest("hex").slice(0, FINGERPRINT_HEX);
+}
+
+// src/core/verify/git-checks.ts
+var NONE = { ran: 0, mentioned: 0, unknown: 0 };
+var FAILED_SKIPPED = {
+  status: "could-not-check",
+  matches: 0,
+  facts: {
+    noVerify: {
+      calls: NONE,
+      commits: 0,
+      notIdentified: 0,
+      withoutHooks: 0,
+      onMain: 0,
+      offMain: 0,
+      noMainToCheck: 0,
+      gone: 0,
+      couldNotCheck: 0
+    },
+    otherNoVerify: NONE,
+    husky: NONE,
+    hooksPath: { calls: NONE, off: 0, on: 0, none: 0, couldNotCheck: 0 },
+    instructions: {
+      read: 0,
+      sayToSkip: 0,
+      agentWrote: 0,
+      agentWroteStill: 0,
+      agentWroteRemoved: 0,
+      couldNotRead: 0
+    }
+  }
+};
+var FAILED_LOST_WORK = {
+  status: "could-not-check",
+  matches: 0,
+  facts: {
+    branches: {
+      calls: NONE,
+      deleted: 0,
+      notIdentified: 0,
+      recoverable: 0,
+      onAnotherRef: 0,
+      gone: 0,
+      couldNotCheck: 0
+    },
+    stashes: {
+      calls: NONE,
+      dropped: 0,
+      cleared: 0,
+      notIdentified: 0,
+      recoverable: 0,
+      listed: 0,
+      gone: 0,
+      couldNotCheck: 0
+    },
+    discards: {
+      calls: NONE,
+      paths: 0,
+      ownCopy: 0,
+      agentEdited: 0,
+      mainCheckout: 0,
+      couldNotCheck: 0
+    }
+  }
+};
+var FAILED_DESTRUCTIVE = {
+  status: "could-not-check",
+  matches: 0,
+  facts: {
+    rm: {
+      calls: NONE,
+      targets: 0,
+      classes: Object.fromEntries(
+        RM_TARGET_CLASSES.map((c) => [c, 0])
+      ),
+      trackedBack: 0,
+      trackedGone: 0,
+      trackedPartlyBack: 0,
+      couldNotCheck: 0
+    },
+    databases: {
+      calls: NONE,
+      classes: Object.fromEntries(
+        DATABASE_CLASSES.map((c) => [c, 0])
+      )
+    }
+  }
+};
+async function guarded2(run, failed) {
+  try {
+    return await run();
+  } catch {
+    return { result: failed, localFixes: [] };
+  }
+}
+async function checkGitBacked(input) {
+  let context;
+  try {
+    context = {
+      log: readCalls(input.corpus, input.home),
+      probe: new RepoProbe(input.io),
+      scratchRoots: input.scratchRoots ?? TEMP_ROOTS
+    };
+  } catch {
+    return {
+      "skipped-checks": FAILED_SKIPPED,
+      "lost-work": FAILED_LOST_WORK,
+      destructive: FAILED_DESTRUCTIVE,
+      localFixes: []
+    };
+  }
+  const skipped = await guarded2(() => checkSkippedChecks(context), FAILED_SKIPPED);
+  const lost = await guarded2(() => checkLostWork(context), FAILED_LOST_WORK);
+  const destructive = await guarded2(() => checkDestructive(context), FAILED_DESTRUCTIVE);
+  return {
+    "skipped-checks": skipped.result,
+    "lost-work": lost.result,
+    destructive: destructive.result,
+    localFixes: [...skipped.localFixes, ...lost.localFixes, ...destructive.localFixes]
+  };
+}
+
 // src/core/verify/paths.ts
 function isNetworkPath(path) {
   return /^[\\/]{2}/.test(path) || /^\/(?:net|Network)(?:\/|$)/.test(path);
@@ -13671,13 +16175,13 @@ function isNetworkPath(path) {
 
 // src/core/verify/sources.ts
 var EMPTY = { pieces: [], workingDirs: [] };
-var MAX_DEPTH = 32;
+var MAX_DEPTH2 = 32;
 var MAX_LEAVES = 1e4;
 function isRecord4(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 function stringLeaves(value, out = [], depth = 0) {
-  if (out.length >= MAX_LEAVES || depth > MAX_DEPTH) return out;
+  if (out.length >= MAX_LEAVES || depth > MAX_DEPTH2) return out;
   if (typeof value === "string") {
     if (value !== "") out.push(value);
   } else if (Array.isArray(value)) {
@@ -13982,7 +16486,7 @@ function placeholderReason(found) {
   if (NAMED_KINDS.has(found.kind) && !credentialShaped(bare)) return "named-not-credential-shaped";
   return void 0;
 }
-var LOCAL_HOST = /^(?:localhost|127(?:\.\d{1,3}){3}|0\.0\.0\.0|::1|host\.docker\.internal|[a-z0-9-]+\.localhost)$/i;
+var LOCAL_HOST2 = /^(?:localhost|127(?:\.\d{1,3}){3}|0\.0\.0\.0|::1|host\.docker\.internal|[a-z0-9-]+\.localhost)$/i;
 function hostOf(found) {
   let rest;
   if (found.kind === "database-url") {
@@ -13997,7 +16501,7 @@ function hostOf(found) {
 }
 function isLocalDev(found) {
   const host = hostOf(found);
-  return host !== void 0 && LOCAL_HOST.test(host);
+  return host !== void 0 && LOCAL_HOST2.test(host);
 }
 var MAX_HELD_VALUES = 5e3;
 var MIN_REMEMBERED_TEXT = 256;
@@ -14007,7 +16511,7 @@ var MAX_TRACKED_FILES = 2e4;
 var MAX_FIXTURE_BYTES = 256 * 1024 * 1024;
 var TOKEN_VALUE = /^[A-Za-z0-9_-]+$/;
 var TOKEN_SEPARATORS = /[^A-Za-z0-9_-]+/;
-var MAX_PARENT_STEPS = 8;
+var MAX_PARENT_STEPS2 = 8;
 function parentOf(path) {
   const trimmed = path.replace(/[\\/]+$/, "");
   const cut = Math.max(trimmed.lastIndexOf("/"), trimmed.lastIndexOf("\\"));
@@ -14024,7 +16528,7 @@ async function findRepos(io, workingDirs) {
     }
     let dir = cwd;
     let steps = 0;
-    while (dir !== void 0 && io.isDirectory(dir) !== true && steps < MAX_PARENT_STEPS) {
+    while (dir !== void 0 && io.isDirectory(dir) !== true && steps < MAX_PARENT_STEPS2) {
       dir = parentOf(dir);
       steps += 1;
     }
@@ -14081,13 +16585,13 @@ async function searchFixtures(io, workingDirs, held, now) {
     }
     const tracked = listing.stdout.split("\0").filter((p) => p !== "");
     let complete = tracked.length <= MAX_TRACKED_FILES;
-    for (const relative4 of tracked.slice(0, MAX_TRACKED_FILES)) {
+    for (const relative6 of tracked.slice(0, MAX_TRACKED_FILES)) {
       if (held.size === 0) break;
       if (bytes >= MAX_FIXTURE_BYTES) {
         complete = false;
         break;
       }
-      const read = await io.readFile(`${root}/${relative4}`);
+      const read = await io.readFile(`${root}/${relative6}`);
       if (!read.ok) {
         if (read.reason === "budget") {
           exhausted = true;
@@ -14293,23 +16797,28 @@ async function verifyScan(input) {
     io: input.io,
     fingerprint: input.fingerprint ?? createFingerprinter()
   });
+  const git = await checkGitBacked({
+    corpus: input.corpus,
+    io: input.io,
+    home: input.home ?? homedir2()
+  });
   const verification = {
     matchedCalls: matched.tally,
     resultsRecorded: matched.resultsRecorded,
     ranEvidence: matched.ranEvidence,
     categories: {
       secrets,
-      "skipped-checks": NOT_CHECKED,
-      "lost-work": NOT_CHECKED,
+      "skipped-checks": git["skipped-checks"],
+      "lost-work": git["lost-work"],
       cloud: NOT_CHECKED,
       "prod-infra": NOT_CHECKED,
       tests: NOT_CHECKED,
-      destructive: NOT_CHECKED,
+      destructive: git.destructive,
       unreviewed: NOT_CHECKED,
       egress: NOT_CHECKED
     }
   };
-  return { verification, localFixes: [] };
+  return { verification, localFixes: git.localFixes };
 }
 
 // src/core/version.ts
@@ -14327,17 +16836,17 @@ function agentList() {
 }
 function agentChoiceMessage(command) {
   const width = Math.max(...AGENTS.map((name) => name.length));
-  const lines = AGENTS.map(
+  const lines2 = AGENTS.map(
     (name) => `  agenttrail-guard ${command} --agent ${name.padEnd(width)}   for ${agentDisplayName(name)}
 `
   );
   return `agenttrail-guard ${command}: choose ${agentList()}.
 
-${lines.join("")}`;
+${lines2.join("")}`;
 }
 
 // src/commands/scan-scrub.ts
-import { join as join5, relative as relative2 } from "path";
+import { join as join8, relative as relative4 } from "path";
 
 // src/core/scrub-transcripts.ts
 import { createHash as createHash2 } from "crypto";
@@ -14475,11 +16984,11 @@ function planFileScrub(text, targets, held = []) {
     };
   }
   const values = [...new Set(targets.map((t) => t.value).filter((v) => v !== ""))];
-  const lines = text.split("\n");
+  const lines2 = text.split("\n");
   let linesChanged = 0;
   let linesLeft = 0;
   let linesIncomplete = 0;
-  for (const [index, line] of lines.entries()) {
+  for (const [index, line] of lines2.entries()) {
     if (!forms.some((form) => line.includes(form.raw))) {
       if (heldValues.length > 0 && line.includes("\\")) {
         const decoded = parsed(line);
@@ -14499,20 +17008,20 @@ function planFileScrub(text, targets, held = []) {
       linesLeft += 1;
       continue;
     }
-    lines[index] = next;
+    lines2[index] = next;
     linesChanged += 1;
-    for (const [kind, n] of lineCounts) counts.set(kind, (counts.get(kind) ?? 0) + n);
+    for (const [kind, n2] of lineCounts) counts.set(kind, (counts.get(kind) ?? 0) + n2);
     if (holdsValue(after.value, values)) linesIncomplete += 1;
   }
   const replaced = {};
   let total = 0;
-  for (const [kind, n] of [...counts].sort(([a], [b]) => a.localeCompare(b))) {
-    replaced[kind] = n;
-    total += n;
+  for (const [kind, n2] of [...counts].sort(([a], [b]) => a.localeCompare(b))) {
+    replaced[kind] = n2;
+    total += n2;
   }
   const changed = linesChanged > 0;
   return {
-    text: changed ? lines.join("\n") : text,
+    text: changed ? lines2.join("\n") : text,
     changed,
     replaced,
     total,
@@ -14528,7 +17037,7 @@ var RECENT_WRITE_WINDOW_MS = 5 * 60 * 1e3;
 var MAX_SCRUB_VALUES = 5e4;
 var MAX_RESTORE_LINES_SHOWN = 10;
 function scrubBackupsRoot(home) {
-  return join5(home, ".agenttrail", "scrub-backups");
+  return join8(home, ".agenttrail", "scrub-backups");
 }
 function backupFolderName(now) {
   return now.toISOString().replace(/[:.]/g, "-");
@@ -14655,11 +17164,11 @@ function planFiles(files, found, held, scrubIO) {
 }
 function replacementText(plan) {
   const kinds = Object.entries(plan.replaced);
-  const parts = kinds.map(([kind, n]) => `${formatCount(n)} ${kind}`).join(", ");
+  const parts = kinds.map(([kind, n2]) => `${formatCount(n2)} ${kind}`).join(", ");
   return `${formatCount(plan.total)} ${plan.total === 1 ? "replacement" : "replacements"}: ${parts}`;
 }
-function counted2(n, singular, plural2 = `${singular}s`) {
-  return `${formatCount(n)} ${n === 1 ? singular : plural2}`;
+function counted3(n2, singular, plural2 = `${singular}s`) {
+  return `${formatCount(n2)} ${n2 === 1 ? singular : plural2}`;
 }
 function sessionFilesName(agent) {
   switch (agent) {
@@ -14678,22 +17187,22 @@ async function runScrub(input) {
   const c = createColors(input.colors);
   const app = agentName(agent);
   const shown = (path) => {
-    const rel = relative2(input.root, path);
+    const rel = relative4(input.root, path);
     return displayPath(rel === "" || rel.startsWith("..") ? path : rel);
   };
-  const lines = [];
+  const lines2 = [];
   const flush = () => {
-    if (lines.length > 0) io.writeStdout(`${lines.join("\n")}
+    if (lines2.length > 0) io.writeStdout(`${lines2.join("\n")}
 `);
-    lines.length = 0;
+    lines2.length = 0;
   };
-  lines.push(
+  lines2.push(
     c.bold(
       `${input.apply ? "Scrub" : "Scrub, dry run"}: ${sessionFilesName(agent)} in ${displayPath(input.root)}`
     )
   );
-  if (!input.apply) lines.push("Nothing is changed without --apply.");
-  if (agent === "codex") lines.push(c.yellow(CODEX_SCRUB_NOTE));
+  if (!input.apply) lines2.push("Nothing is changed without --apply.");
+  if (agent === "codex") lines2.push(c.yellow(CODEX_SCRUB_NOTE));
   const files = [...new Set(input.corpus.files ?? [])];
   const found = await findLikelyReal({
     agent,
@@ -14708,18 +17217,18 @@ async function runScrub(input) {
   const planning = planFiles(files, found, held, scrubIO);
   const heldSkips = planning.skipped.filter((skip) => held.has(skip.path));
   const skipLine = (skip) => `  ${shown(skip.path)}: ${skipText(skip.reason)}${held.has(skip.path) ? HOLDS_VALUE : ""}`;
-  lines.push("");
+  lines2.push("");
   const likely = facts.classes["likely-real"];
-  lines.push(
-    `${counted2(likely, "likely-real credential")} in ${counted2(facts.filesRead, "transcript file")}.`
+  lines2.push(
+    `${counted3(likely, "likely-real credential")} in ${counted3(facts.filesRead, "transcript file")}.`
   );
   const leftAlone = [];
   if (facts.classes["committed-fixture"] > 0) {
-    leftAlone.push(counted2(facts.classes["committed-fixture"], "committed fixture"));
+    leftAlone.push(counted3(facts.classes["committed-fixture"], "committed fixture"));
   }
   if (facts.classes.placeholder > 0) {
     leftAlone.push(
-      counted2(
+      counted3(
         facts.classes.placeholder,
         "placeholder or false positive",
         "placeholders or false positives"
@@ -14727,27 +17236,27 @@ async function runScrub(input) {
     );
   }
   if (facts.classes["local-dev"] > 0) {
-    leftAlone.push(counted2(facts.classes["local-dev"], "local dev value"));
+    leftAlone.push(counted3(facts.classes["local-dev"], "local dev value"));
   }
-  if (leftAlone.length > 0) lines.push(c.dim(`Left alone: ${leftAlone.join(", ")}.`));
+  if (leftAlone.length > 0) lines2.push(c.dim(`Left alone: ${leftAlone.join(", ")}.`));
   const gaps = [];
   const notRead = input.corpus.notRead + input.corpus.quarantined + facts.filesNotRead;
-  if (notRead > 0) gaps.push(`${counted2(notRead, "transcript file")} could not be read or checked`);
+  if (notRead > 0) gaps.push(`${counted3(notRead, "transcript file")} could not be read or checked`);
   if (facts.unplaced > 0)
-    gaps.push(`${counted2(facts.unplaced, "redacted text")} could not be classed`);
+    gaps.push(`${counted3(facts.unplaced, "redacted text")} could not be classed`);
   if (found.notHeld > 0) {
     gaps.push(
-      `${counted2(found.notHeld, "likely-real value")} past the limit of ${formatCount(input.maxValues ?? MAX_SCRUB_VALUES)} cannot be replaced in this run`
+      `${counted3(found.notHeld, "likely-real value")} past the limit of ${formatCount(input.maxValues ?? MAX_SCRUB_VALUES)} cannot be replaced in this run`
     );
   }
   if (facts.reposNotChecked > 0) {
-    lines.push(
+    lines2.push(
       c.dim(
-        `${counted2(facts.reposNotChecked, "repo")} could not be searched for committed fixtures, so a fixture there counts as likely real.`
+        `${counted3(facts.reposNotChecked, "repo")} could not be searched for committed fixtures, so a fixture there counts as likely real.`
       )
     );
   } else if (likely > 0 && facts.fixtureCheck === "unavailable") {
-    lines.push(
+    lines2.push(
       c.dim(
         "No repo was found to search for committed fixtures, so a fixture counts as likely real."
       )
@@ -14755,40 +17264,40 @@ async function runScrub(input) {
   }
   for (const entry of planning.stuck) {
     gaps.push(
-      `${shown(entry.path)}: ${counted2(entry.plan.linesLeft, "line")} holding a value could not be edited (not JSON, or in a form this command does not edit)`
+      `${shown(entry.path)}: ${counted3(entry.plan.linesLeft, "line")} holding a value could not be edited (not JSON, or in a form this command does not edit)`
     );
   }
   for (const path of planning.notFound) {
     gaps.push(`${shown(path)}: holds a likely-real value this command could not find to replace`);
   }
   if (planning.changes.length === 0) {
-    lines.push("");
-    lines.push(
+    lines2.push("");
+    lines2.push(
       likely === 0 ? "Nothing to scrub." : "Nothing could be replaced: no file holds these values in a form this command can edit."
     );
-    for (const skip of planning.skipped) lines.push(skipLine(skip));
-    for (const gap of gaps) lines.push(c.yellow(`  ${gap}.`));
+    for (const skip of planning.skipped) lines2.push(skipLine(skip));
+    for (const gap of gaps) lines2.push(c.yellow(`  ${gap}.`));
     flush();
     return likely === 0 && gaps.length === 0 && heldSkips.length === 0 ? 0 : input.apply ? 1 : 0;
   }
-  lines.push("");
-  lines.push(input.apply ? "To scrub:" : "Would scrub:");
+  lines2.push("");
+  lines2.push(input.apply ? "To scrub:" : "Would scrub:");
   for (const entry of planning.changes) {
-    lines.push(`  ${shown(entry.path)}  ${replacementText(entry.plan)}`);
+    lines2.push(`  ${shown(entry.path)}  ${replacementText(entry.plan)}`);
   }
-  for (const skip of planning.skipped) lines.push(skipLine(skip));
-  for (const gap of gaps) lines.push(c.yellow(`  ${gap}.`));
-  lines.push(c.dim(`Each value becomes [${SCRUB_MARKER}:<kind>].`));
+  for (const skip of planning.skipped) lines2.push(skipLine(skip));
+  for (const gap of gaps) lines2.push(c.yellow(`  ${gap}.`));
+  lines2.push(c.dim(`Each value becomes [${SCRUB_MARKER}:<kind>].`));
   const advice = () => {
-    lines.push("");
-    lines.push(c.bold("Before you scrub"));
-    lines.push(
+    lines2.push("");
+    lines2.push(c.bold("Before you scrub"));
+    lines2.push(
       "  1. Rotate each credential first. Taking it out of the transcripts does not undo the exposure."
     );
-    lines.push(
+    lines2.push(
       `  2. Close every ${app} session. A running session keeps appending to its transcript.`
     );
-    lines.push(
+    lines2.push(
       c.dim(
         `Not scrubbed by this command: anything ${app} keeps outside these session files (such as its prompt history and caches), your shell history, and the backup --apply makes.`
       )
@@ -14798,50 +17307,50 @@ async function runScrub(input) {
   const nowMs = input.now.getTime();
   const recent = planning.changes.filter((f) => isRecentlyModified(f.stat.mtimeMs, nowMs));
   if (!input.apply) {
-    lines.push("");
-    lines.push("With --apply:");
-    lines.push(
+    lines2.push("");
+    lines2.push("With --apply:");
+    lines2.push(
       `  every file above is first copied to a new private folder under ${displayPath(scrubBackupsRoot(io.homedir()))},`
     );
-    lines.push("  and then each one is replaced in a single step.");
-    lines.push(`  It refuses while ${app} is running, which it finds by process name.`);
-    lines.push(`  ${PROCESS_NAME_GAP}`);
+    lines2.push("  and then each one is replaced in a single step.");
+    lines2.push(`  It refuses while ${app} is running, which it finds by process name.`);
+    lines2.push(`  ${PROCESS_NAME_GAP}`);
     if (running.state === "running") {
-      lines.push(c.yellow(`  It would refuse to run now: ${app} is running.`));
+      lines2.push(c.yellow(`  It would refuse to run now: ${app} is running.`));
     } else if (running.state === "could-not-check") {
-      lines.push(
+      lines2.push(
         c.yellow(
           "  It would refuse to run now: the list of running programs could not be read in full."
         )
       );
     }
     for (const entry of recent) {
-      lines.push(c.yellow(`  It would skip ${shown(entry.path)}: ${skipText("recent")}.`));
+      lines2.push(c.yellow(`  It would skip ${shown(entry.path)}: ${skipText("recent")}.`));
     }
     advice();
     flush();
     return 0;
   }
   if (running.state !== "not-running") {
-    lines.push("");
-    lines.push(
+    lines2.push("");
+    lines2.push(
       c.yellow(
         running.state === "running" ? `Refused: ${app} is running. Nothing was changed.` : "Refused: the list of running programs could not be read in full, so a running session cannot be ruled out. Nothing was changed."
       )
     );
-    lines.push(`Close every ${app} session, then run this again.`);
+    lines2.push(`Close every ${app} session, then run this again.`);
     advice();
     flush();
     return 1;
   }
-  lines.push("");
-  lines.push(c.dim(`No ${app} process was found by name. ${PROCESS_NAME_GAP}`));
+  lines2.push("");
+  lines2.push(c.dim(`No ${app} process was found by name. ${PROCESS_NAME_GAP}`));
   const outcomes = recent.map((f) => ({ path: f.path, reason: "recent" }));
   const targets = planning.changes.filter((f) => !isRecentlyModified(f.stat.mtimeMs, nowMs));
   if (targets.length === 0) {
-    lines.push("");
-    for (const o of outcomes) lines.push(c.yellow(`  ${shown(o.path)}: ${skipText(o.reason)}.`));
-    lines.push("Nothing was changed.");
+    lines2.push("");
+    for (const o of outcomes) lines2.push(c.yellow(`  ${shown(o.path)}: ${skipText(o.reason)}.`));
+    lines2.push("Nothing was changed.");
     advice();
     flush();
     return 1;
@@ -14851,8 +17360,8 @@ async function runScrub(input) {
     backupFolderName(input.now)
   );
   if (backupDir === void 0) {
-    lines.push("");
-    lines.push(
+    lines2.push("");
+    lines2.push(
       c.yellow(
         `Refused: a private backup folder could not be made under ${displayPath(scrubBackupsRoot(io.homedir()))}. Nothing was changed.`
       )
@@ -14871,7 +17380,7 @@ async function runScrub(input) {
     }
     const text = new TextDecoder("utf-8", { ignoreBOM: true }).decode(read.bytes);
     const name = backupFileName(i + 1, targets.length, file2.path);
-    const backup = join5(backupDir, name);
+    const backup = join8(backupDir, name);
     if (!scrubIO.writeBackupFile(backup, read.bytes)) {
       backupFailed = true;
       break;
@@ -14903,8 +17412,8 @@ async function runScrub(input) {
     (b) => restoreCommand(input.platform, b.backup, b.file.path) ?? `# could not make a safe restore command for ${displayPath(b.file.path)}; copy ${displayPath(b.backup)} back by hand`
   );
   const encoder = new TextEncoder();
-  const manifestPath = join5(backupDir, "manifest.json");
-  const restorePath = join5(backupDir, "restore.txt");
+  const manifestPath = join8(backupDir, "manifest.json");
+  const restorePath = join8(backupDir, "restore.txt");
   if (!backupFailed && backedUp.length > 0) {
     if (scrubIO.writeBackupFile(
       manifestPath,
@@ -14922,9 +17431,9 @@ async function runScrub(input) {
   }
   if (backupFailed || backedUp.length === 0) {
     scrubIO.discardBackup(backupDir, written);
-    lines.push("");
-    for (const o of outcomes) lines.push(c.yellow(`  ${shown(o.path)}: ${skipText(o.reason)}.`));
-    lines.push(
+    lines2.push("");
+    for (const o of outcomes) lines2.push(c.yellow(`  ${shown(o.path)}: ${skipText(o.reason)}.`));
+    lines2.push(
       c.yellow(
         backupFailed ? "Refused: the backup could not be written in full. Nothing was changed, and the partial backup was removed." : "Nothing was changed."
       )
@@ -14932,11 +17441,11 @@ async function runScrub(input) {
     flush();
     return 1;
   }
-  lines.push("");
-  lines.push(
-    `Backed up ${counted2(backedUp.length, "file")} to ${displayPath(backupDir)} (readable only by you).`
+  lines2.push("");
+  lines2.push(
+    `Backed up ${counted3(backedUp.length, "file")} to ${displayPath(backupDir)} (readable only by you).`
   );
-  lines.push(
+  lines2.push(
     c.yellow(
       "That backup still holds the credentials. Delete it once you have checked the scrubbed files."
     )
@@ -14959,43 +17468,43 @@ async function runScrub(input) {
     }
     scrubbed.push(b);
   }
-  lines.push("");
+  lines2.push("");
   if (scrubbed.length > 0) {
-    lines.push("Scrubbed:");
+    lines2.push("Scrubbed:");
     for (const b of scrubbed) {
-      lines.push(`  ${shown(b.file.path)}  ${replacementText(b.file.plan)}`);
+      lines2.push(`  ${shown(b.file.path)}  ${replacementText(b.file.plan)}`);
       if (b.file.plan.linesIncomplete > 0) {
-        lines.push(
+        lines2.push(
           c.yellow(
-            `    ${counted2(b.file.plan.linesIncomplete, "line")} still ${b.file.plan.linesIncomplete === 1 ? "holds" : "hold"} a value written in a form this command does not edit`
+            `    ${counted3(b.file.plan.linesIncomplete, "line")} still ${b.file.plan.linesIncomplete === 1 ? "holds" : "hold"} a value written in a form this command does not edit`
           )
         );
       }
       if (b.file.plan.linesLeft > 0) {
-        lines.push(
+        lines2.push(
           c.yellow(
-            `    ${counted2(b.file.plan.linesLeft, "line")} holding a value could not be edited (not JSON, or in a form this command does not edit), and ${b.file.plan.linesLeft === 1 ? "was" : "were"} left as ${b.file.plan.linesLeft === 1 ? "it was" : "they were"}`
+            `    ${counted3(b.file.plan.linesLeft, "line")} holding a value could not be edited (not JSON, or in a form this command does not edit), and ${b.file.plan.linesLeft === 1 ? "was" : "were"} left as ${b.file.plan.linesLeft === 1 ? "it was" : "they were"}`
           )
         );
       }
     }
   }
   if (outcomes.length > 0 || heldSkips.length > 0) {
-    lines.push("Not scrubbed:");
+    lines2.push("Not scrubbed:");
     for (const o of outcomes)
-      lines.push(c.yellow(`  ${shown(o.path)}: ${skipText(o.reason, o.code)}.`));
-    for (const skip of heldSkips) lines.push(c.yellow(`${skipLine(skip)}.`));
+      lines2.push(c.yellow(`  ${shown(o.path)}: ${skipText(o.reason, o.code)}.`));
+    for (const skip of heldSkips) lines2.push(c.yellow(`${skipLine(skip)}.`));
   }
-  lines.push("");
-  lines.push("To put a file back as it was:");
-  for (const line of restoreLines.slice(0, MAX_RESTORE_LINES_SHOWN)) lines.push(`  ${line}`);
+  lines2.push("");
+  lines2.push("To put a file back as it was:");
+  for (const line of restoreLines.slice(0, MAX_RESTORE_LINES_SHOWN)) lines2.push(`  ${line}`);
   if (restoreLines.length > MAX_RESTORE_LINES_SHOWN) {
-    lines.push(c.dim(`  and ${formatCount(restoreLines.length - MAX_RESTORE_LINES_SHOWN)} more`));
+    lines2.push(c.dim(`  and ${formatCount(restoreLines.length - MAX_RESTORE_LINES_SHOWN)} more`));
   }
-  lines.push(c.dim(`Every restore command is in ${displayPath(restorePath)}.`));
-  lines.push("");
-  lines.push("Rotate each credential if you have not: scrubbing does not undo the exposure.");
-  lines.push(
+  lines2.push(c.dim(`Every restore command is in ${displayPath(restorePath)}.`));
+  lines2.push("");
+  lines2.push("Rotate each credential if you have not: scrubbing does not undo the exposure.");
+  lines2.push(
     c.dim(
       `Not scrubbed by this command: anything ${app} keeps outside these session files (such as its prompt history and caches), your shell history, and the backup above.`
     )
@@ -15137,10 +17646,10 @@ function shouldOpen(flags, env) {
   return (env.CI ?? "") === "";
 }
 function reportPathFor(out, filename, io) {
-  if (out === void 0) return join6(io.cwd(), filename);
-  const target = resolve(io.cwd(), out);
+  if (out === void 0) return join9(io.cwd(), filename);
+  const target = resolve4(io.cwd(), out);
   try {
-    if (io.stat(target).isDirectory()) return join6(target, filename);
+    if (io.stat(target).isDirectory()) return join9(target, filename);
   } catch {
   }
   return target;
@@ -15148,14 +17657,14 @@ function reportPathFor(out, filename, io) {
 var MAX_WALK_DEPTH3 = 8;
 function countTranscriptFiles(io, dir, depth = 0) {
   if (depth > MAX_WALK_DEPTH3) return 0;
-  let entries;
+  let entries2;
   try {
-    entries = io.readdir(dir);
+    entries2 = io.readdir(dir);
   } catch {
     return 0;
   }
   let total = 0;
-  for (const entry of entries) {
+  for (const entry of entries2) {
     const path = `${dir}/${entry}`;
     try {
       if (io.stat(path).isDirectory()) total += countTranscriptFiles(io, path, depth + 1);
@@ -15175,7 +17684,7 @@ async function readClaudeSession(io, item) {
   }
   let opened = 1;
   const files = [item.file];
-  const subDir = join6(dirname(item.file), basename3(item.file, ".jsonl"), "subagents");
+  const subDir = join9(dirname3(item.file), basename3(item.file, ".jsonl"), "subagents");
   let names;
   try {
     names = io.readdir(subDir);
@@ -15189,7 +17698,7 @@ async function readClaudeSession(io, item) {
   let skippedLines = session.skippedLines;
   for (const name of [...names].sort()) {
     if (!name.endsWith(".jsonl")) continue;
-    const subPath = join6(subDir, name);
+    const subPath = join9(subDir, name);
     try {
       if (io.stat(subPath).isDirectory()) continue;
     } catch {
@@ -15293,8 +17802,8 @@ function renderSummary(result, colorsEnabled, reportPath, fixesPath, checksFaile
     }
   };
   const actionTone = (action, text) => action === "block" ? c.red(text) : action === "require_approval" ? c.yellow(text) : c.dim(text);
-  const plural2 = (n, word) => `${formatCount(n)} ${word}${n === 1 ? "" : "s"}`;
-  const was = (n) => n === 1 ? "was" : "were";
+  const plural2 = (n2, word) => `${formatCount(n2)} ${word}${n2 === 1 ? "" : "s"}`;
+  const was2 = (n2) => n2 === 1 ? "was" : "were";
   out.push(
     [
       agentName(result.agent),
@@ -15326,14 +17835,14 @@ function renderSummary(result, colorsEnabled, reportPath, fixesPath, checksFaile
   if (result.quarantined > 0) {
     out.push(
       c.yellow(
-        `${plural2(result.quarantined, "file")} yielded no session and ${was(result.quarantined)} skipped.`
+        `${plural2(result.quarantined, "file")} yielded no session and ${was2(result.quarantined)} skipped.`
       )
     );
   }
   if (result.notRead > 0) {
     out.push(
       c.dim(
-        `${plural2(result.notRead, "further transcript file")} ${was(result.notRead)} not read; see the report for why.`
+        `${plural2(result.notRead, "further transcript file")} ${was2(result.notRead)} not read; see the report for why.`
       )
     );
   }
@@ -15401,8 +17910,8 @@ function samePath(a, b, platform) {
   return platform === "darwin" || platform === "win32" ? a.toLowerCase() === b.toLowerCase() : a === b;
 }
 var CHECKS_FAILED_LINE = "Checked on this machine: the checks could not run, so this report shows no verified results.";
-function counted3(n, singular, plural2 = `${singular}s`) {
-  return `${formatCount(n)} ${n === 1 ? singular : plural2}`;
+function counted4(n2, singular, plural2 = `${singular}s`) {
+  return `${formatCount(n2)} ${n2 === 1 ? singular : plural2}`;
 }
 function verificationSummary(verification) {
   const secrets = verification.categories.secrets;
@@ -15410,18 +17919,18 @@ function verificationSummary(verification) {
   const parts = [];
   if (secrets.status === "not-checked") parts.push("no transcript files to check for secrets");
   else {
-    let line = `${counted3(facts.classes["likely-real"], "likely-real credential")} in ${counted3(facts.filesRead, "transcript file")}`;
+    let line = `${counted4(facts.classes["likely-real"], "likely-real credential")} in ${counted4(facts.filesRead, "transcript file")}`;
     const also = [];
     const fixtures = facts.classes["committed-fixture"];
     const placeholders = facts.classes.placeholder;
     const local = facts.classes["local-dev"];
-    if (fixtures > 0) also.push(counted3(fixtures, "committed fixture"));
+    if (fixtures > 0) also.push(counted4(fixtures, "committed fixture"));
     if (placeholders > 0) {
       also.push(
-        counted3(placeholders, "placeholder or false positive", "placeholders or false positives")
+        counted4(placeholders, "placeholder or false positive", "placeholders or false positives")
       );
     }
-    if (local > 0) also.push(counted3(local, "local dev value"));
+    if (local > 0) also.push(counted4(local, "local dev value"));
     if (also.length > 0) line += ` (and ${also.join(", ")})`;
     parts.push(line);
     const { unnamedOutputOnly, namedNotCredentialShaped } = facts.setAside;
@@ -15434,18 +17943,18 @@ function verificationSummary(verification) {
         why.push(`${formatCount(namedNotCredentialShaped)} named but not shaped like a credential`);
       }
       parts.push(
-        `${counted3(unnamedOutputOnly + namedNotCredentialShaped, "value")} not counted as likely real: ${why.join(", ")}`
+        `${counted4(unnamedOutputOnly + namedNotCredentialShaped, "value")} not counted as likely real: ${why.join(", ")}`
       );
     }
     if (facts.filesNotRead > 0) {
-      parts.push(`${counted3(facts.filesNotRead, "transcript file")} could not be read`);
+      parts.push(`${counted4(facts.filesNotRead, "transcript file")} could not be read`);
     }
     if (facts.unplaced > 0) {
-      parts.push(`${counted3(facts.unplaced, "redacted text")} could not be classed`);
+      parts.push(`${counted4(facts.unplaced, "redacted text")} could not be classed`);
     }
     if (facts.reposNotChecked > 0) {
       parts.push(
-        `${counted3(facts.reposNotChecked, "repo")} could not be searched for committed fixtures`
+        `${counted4(facts.reposNotChecked, "repo")} could not be searched for committed fixtures`
       );
     } else if (facts.fixtureCheck === "unavailable") {
       parts.push("no repo was found to search for committed fixtures");
@@ -15454,11 +17963,11 @@ function verificationSummary(verification) {
   const calls = verification.matchedCalls;
   if (!verification.resultsRecorded) {
     parts.push(
-      "this app records no command output, so no matched call could be confirmed as run" + (calls.mentioned > 0 ? ` (${counted3(calls.mentioned, "match", "matches")} only mentioned a command)` : "")
+      "this app records no command output, so no matched call could be confirmed as run" + (calls.mentioned > 0 ? ` (${counted4(calls.mentioned, "match", "matches")} only mentioned a command)` : "")
     );
   } else {
     parts.push(
-      `${counted3(calls.ran, "matched call")} ran, ${formatCount(calls.mentioned)} only mentioned a command, ${formatCount(calls.unknown)} could not be confirmed`
+      `${counted4(calls.ran, "matched call")} ran, ${formatCount(calls.mentioned)} only mentioned a command, ${formatCount(calls.unknown)} could not be confirmed`
     );
     if (verification.ranEvidence === "output-record" && calls.ran > 0) {
       parts.push(
@@ -15566,7 +18075,7 @@ ${SCAN_USAGE}`);
   const shipped = deps.catalog ?? SHIPPED_CATALOG;
   const catalog = compileCatalog([...shipped, ...userRules], config);
   const allowlist = compileAllowlist(config.allowlist);
-  const readRoot = flags.scrub ? resolve(io.cwd(), root) : root;
+  const readRoot = flags.scrub ? resolve4(io.cwd(), root) : root;
   const corpus = await readCorpusFor(agent, readRoot, io);
   if (flags.scrub) {
     const scrubIO = deps.createScrubIO?.();
@@ -15616,7 +18125,7 @@ ${SCAN_USAGE}`);
   );
   const colors = createColors(shouldUseColor({ env: io.env, isTTY: io.isTTY() }));
   const fixes = outcome?.localFixes ?? [];
-  const fixesTarget = join6(dirname(reportPath), FIXES_FILENAME);
+  const fixesTarget = join9(dirname3(reportPath), FIXES_FILENAME);
   const fixesIsReport = samePath(fixesTarget, reportPath, deps.platform ?? process.platform);
   const writesFixes = hasFileFixes(fixes) && !fixesIsReport;
   if (flags.review) {
@@ -15738,8 +18247,8 @@ import {
   unlinkSync,
   writeFileSync
 } from "fs";
-import { homedir as homedir2 } from "os";
-import { basename as basename4, dirname as dirname2, join as join7 } from "path";
+import { homedir as homedir3 } from "os";
+import { basename as basename4, dirname as dirname4, join as join10 } from "path";
 import { createInterface as createInterface2 } from "readline";
 function openCommand(platform, path) {
   if (platform === "darwin") return ["open", path];
@@ -15747,8 +18256,8 @@ function openCommand(platform, path) {
   return ["xdg-open", path];
 }
 function writePrivateFile(path, text) {
-  const temporary = join7(
-    dirname2(path),
+  const temporary = join10(
+    dirname4(path),
     `.${basename4(path)}.${process.pid}.${randomBytes2(6).toString("hex")}.tmp`
   );
   let fd;
@@ -15806,7 +18315,7 @@ function createRealScanIO() {
       }
     },
     homedir() {
-      return homedir2();
+      return homedir3();
     },
     cwd() {
       return process.cwd();
@@ -15815,7 +18324,7 @@ function createRealScanIO() {
       process.stdout.write(text);
     },
     readLine() {
-      return new Promise((resolve2) => {
+      return new Promise((resolve5) => {
         const rl = createInterface2({ input: process.stdin });
         let settled = false;
         const done = (value) => {
@@ -15823,7 +18332,7 @@ function createRealScanIO() {
           settled = true;
           rl.close();
           process.stdin.pause();
-          resolve2(value);
+          resolve5(value);
         };
         rl.once("line", (line) => done(line));
         rl.once("close", () => done(void 0));
@@ -15870,7 +18379,7 @@ import {
   unlinkSync as unlinkSync2,
   writeSync
 } from "fs";
-import { basename as basename5, dirname as dirname3, join as join8 } from "path";
+import { basename as basename5, dirname as dirname5, join as join11 } from "path";
 var MAX_SCRUB_FILE_BYTES = 256 * 1024 * 1024;
 var BACKUP_DIR_MODE = 448;
 var BACKUP_FILE_MODE = 384;
@@ -15895,18 +18404,18 @@ function readAll(fs, fd, size) {
   const bytes = new Uint8Array(size);
   let at = 0;
   while (at < size) {
-    const n = fs.readSync(fd, bytes, at, size - at, at);
-    if (n <= 0) return void 0;
-    at += n;
+    const n2 = fs.readSync(fd, bytes, at, size - at, at);
+    if (n2 <= 0) return void 0;
+    at += n2;
   }
   return bytes;
 }
 function writeAll(fs, fd, bytes) {
   let at = 0;
   while (at < bytes.length) {
-    const n = fs.writeSync(fd, bytes, at, bytes.length - at);
-    if (n <= 0) throw new Error("write made no progress");
-    at += n;
+    const n2 = fs.writeSync(fd, bytes, at, bytes.length - at);
+    if (n2 <= 0) throw new Error("write made no progress");
+    at += n2;
   }
 }
 function closeQuietly(fs, fd) {
@@ -15996,7 +18505,7 @@ function createRealScrubIO(options = {}) {
     createBackupDir(root, name) {
       try {
         fs.mkdirSync(root, { recursive: true, mode: BACKUP_DIR_MODE });
-        for (const folder of [dirname3(root), root]) {
+        for (const folder of [dirname5(root), root]) {
           const stat2 = fs.lstatSync(folder);
           if (stat2.isSymbolicLink() || !stat2.isDirectory()) return void 0;
         }
@@ -16004,7 +18513,7 @@ function createRealScrubIO(options = {}) {
         return void 0;
       }
       for (let attempt = 0; attempt < MAX_BACKUP_DIR_ATTEMPTS; attempt++) {
-        const dir = join8(root, attempt === 0 ? name : `${name}-${attempt}`);
+        const dir = join11(root, attempt === 0 ? name : `${name}-${attempt}`);
         try {
           fs.mkdirSync(dir, { mode: BACKUP_DIR_MODE });
         } catch (error) {
@@ -16039,12 +18548,12 @@ function createRealScrubIO(options = {}) {
         removeQuietly(fs, path);
         return false;
       }
-      syncFolder(fs, dirname3(path));
+      syncFolder(fs, dirname5(path));
       return true;
     },
     replaceFile(path, bytes, expected) {
-      const folder = dirname3(path);
-      const temp = join8(folder, `.${basename5(path)}.${randomBytes3(6).toString("hex")}.scrub-tmp`);
+      const folder = dirname5(path);
+      const temp = join11(folder, `.${basename5(path)}.${randomBytes3(6).toString("hex")}.scrub-tmp`);
       let fd;
       try {
         fd = fs.openSync(temp, "wx", expected.stat.mode);
@@ -16096,11 +18605,54 @@ import {
   realpathSync,
   statSync as statSync3
 } from "fs";
-import { isAbsolute as isAbsolute2, posix, relative as relative3, win32 } from "path";
+import { isAbsolute as isAbsolute4, join as join12, posix, relative as relative5, win32 } from "path";
+var SHA2 = { slot: "sha" };
+var LITERAL_PATH = { slot: "literal-path" };
 var GIT_ALLOW_LIST = [
   ["rev-parse", "--show-toplevel"],
-  ["ls-files", "-z"]
+  ["ls-files", "-z"],
+  // The git-backed checks: skipped hooks, lost work, deleted files.
+  // The hooks folder in effect, after `core.hooksPath`, and the folder git keeps for the
+  // repository, whose `hooks` folder is the default one.
+  ["rev-parse", "--git-path", "hooks"],
+  ["rev-parse", "--git-common-dir"],
+  // Whether a commit is still in the object store, and its full id. Exit 0 either way: a
+  // missing id prints nothing.
+  ["log", "--no-walk", "--ignore-missing", "--format=%H", SHA2],
+  // Which of origin/main and origin/master exist.
+  ["for-each-ref", "--format=%(refname)", "refs/remotes/origin/main", "refs/remotes/origin/master"],
+  // Whether a commit is on origin/main or origin/master.
+  [
+    "for-each-ref",
+    "--contains",
+    SHA2,
+    "--format=%(refname)",
+    "refs/remotes/origin/main",
+    "refs/remotes/origin/master"
+  ],
+  // Whether a commit is on any branch or tag.
+  [
+    "for-each-ref",
+    "--contains",
+    SHA2,
+    "--format=%(refname)",
+    "refs/heads",
+    "refs/remotes",
+    "refs/tags"
+  ],
+  // The commits in the stash list now.
+  ["stash", "list", "--format=%H"],
+  // The tracked files under a path, and those of them missing from the working tree.
+  ["ls-files", "-z", "--", LITERAL_PATH],
+  ["ls-files", "--deleted", "-z", "--", LITERAL_PATH]
 ];
+var LITERAL_PATHSPEC = ":(literal)";
+function slotAccepts(slot, value) {
+  if (slot.slot === "sha") return /^[0-9a-f]{7,64}$/.test(value);
+  if (!value.startsWith(LITERAL_PATHSPEC)) return false;
+  const path = value.slice(LITERAL_PATHSPEC.length);
+  return path !== "" && !path.startsWith("-") && !path.startsWith("/") && !/^[A-Za-z]:/.test(path) && !/[\0\r\n\\]/.test(path) && !path.split("/").includes("..");
+}
 var GIT_SAFETY_ARGS = [
   "-c",
   "core.fsmonitor=false",
@@ -16119,7 +18671,10 @@ var MAX_FILE_BYTES = 1024 * 1024;
 var MAX_PROCESS_ENTRIES = 65536;
 function isAllowedGitCall(args2) {
   return GIT_ALLOW_LIST.some(
-    (allowed) => allowed.length === args2.length && allowed.every((arg, i) => arg === args2[i])
+    (allowed) => allowed.length === args2.length && allowed.every((arg, i) => {
+      const value = args2[i];
+      return typeof arg === "string" ? arg === value : slotAccepts(arg, value);
+    })
   );
 }
 var KEPT_VARIABLES = [
@@ -16146,23 +18701,23 @@ function gitEnvironment(env) {
   }
   return out;
 }
-var realExec = (file2, args2, options) => new Promise((resolve2) => {
+var realExec = (file2, args2, options) => new Promise((resolve5) => {
   try {
     execFile(file2, [...args2], options, (error, stdout, stderr) => {
       if (error === null) {
-        resolve2({ kind: "ok", stdout: String(stdout) });
+        resolve5({ kind: "ok", stdout: String(stdout) });
         return;
       }
       const failure = error;
-      if (failure.code === "ERR_CHILD_PROCESS_STDIO_MAXBUFFER") resolve2({ kind: "too-large" });
-      else if (failure.code === "ENOENT") resolve2({ kind: "missing" });
-      else if (failure.killed === true) resolve2({ kind: "timeout" });
+      if (failure.code === "ERR_CHILD_PROCESS_STDIO_MAXBUFFER") resolve5({ kind: "too-large" });
+      else if (failure.code === "ENOENT") resolve5({ kind: "missing" });
+      else if (failure.killed === true) resolve5({ kind: "timeout" });
       else if (typeof failure.code === "number") {
-        resolve2({ kind: "exit", code: failure.code, stderr: String(stderr) });
-      } else resolve2({ kind: "failed" });
+        resolve5({ kind: "exit", code: failure.code, stderr: String(stderr) });
+      } else resolve5({ kind: "failed" });
     });
   } catch {
-    resolve2({ kind: "failed" });
+    resolve5({ kind: "failed" });
   }
 });
 function watchedProcessOf(entry) {
@@ -16175,11 +18730,11 @@ function watchedProcessOf(entry) {
   }
   return void 0;
 }
-function watchedIn(lines, entryOf) {
-  const entries = lines.filter((line) => line.trim() !== "");
-  if (entries.length > MAX_PROCESS_ENTRIES) return { ok: false, reason: "too-large" };
+function watchedIn(lines2, entryOf) {
+  const entries2 = lines2.filter((line) => line.trim() !== "");
+  if (entries2.length > MAX_PROCESS_ENTRIES) return { ok: false, reason: "too-large" };
   const seen = /* @__PURE__ */ new Set();
-  for (const entry of entries) {
+  for (const entry of entries2) {
     const id = watchedProcessOf(entryOf(entry));
     if (id !== void 0) seen.add(id);
   }
@@ -16191,7 +18746,7 @@ function watchedInPs(stdout) {
 function watchedInTasklist(stdout) {
   return watchedIn(stdout.split(/\r?\n/), (line) => /^"([^"]*)"/.exec(line.trim())?.[1] ?? "");
 }
-function isInside(root, path, paths = { relative: relative3, isAbsolute: isAbsolute2 }) {
+function isInside(root, path, paths = { relative: relative5, isAbsolute: isAbsolute4 }) {
   const rel = paths.relative(root, path);
   return rel !== "" && !rel.startsWith("..") && !paths.isAbsolute(rel);
 }
@@ -16216,10 +18771,24 @@ function resolveProgram(name, env, platform, isExecutable) {
   }
   return void 0;
 }
+var AGENT_FOLDERS = [".claude", ".codex", ".cursor"];
+var AGENT_FILE = /\.mdc?$/i;
+function agentRoots(home) {
+  if (home === void 0 || home === "" || isNetworkPath(home)) return [];
+  const roots = [];
+  for (const folder of AGENT_FOLDERS) {
+    try {
+      roots.push(realpathSync(join12(home, folder)));
+    } catch {
+    }
+  }
+  return roots;
+}
 function createRealVerifyIO(options = {}) {
   const exec = options.exec ?? realExec;
   const callerEnv = options.env ?? process.env;
   const env = gitEnvironment(callerEnv);
+  let agents;
   const platform = options.platform ?? process.platform;
   const isExecutable = options.isExecutable ?? defaultIsExecutable(platform);
   const programs = /* @__PURE__ */ new Map();
@@ -16278,7 +18847,7 @@ function createRealVerifyIO(options = {}) {
       const result = await run(git, [...GIT_SAFETY_ARGS, ...args2], cwd);
       if (typeof result === "string") return { ok: false, reason: result };
       if (result.kind !== "ok") return { ok: false, reason: failureOf(result) };
-      if (args2[0] === "rev-parse") {
+      if (args2[0] === "rev-parse" && args2[1] === "--show-toplevel") {
         try {
           roots.add(realpathSync(result.stdout.trim()));
         } catch {
@@ -16302,8 +18871,11 @@ function createRealVerifyIO(options = {}) {
       let fd;
       try {
         const real = realpathSync(path);
-        if (![...roots].some((root) => isInside(root, real))) {
-          return Promise.resolve({ ok: false, reason: "refused" });
+        const inRepo = [...roots].some((root) => isInside(root, real));
+        if (!inRepo) {
+          agents ??= agentRoots(callerEnv.HOME ?? callerEnv.USERPROFILE);
+          const inAgentFolder = AGENT_FILE.test(real) && agents.some((root) => isInside(root, real));
+          if (!inAgentFolder) return Promise.resolve({ ok: false, reason: "refused" });
         }
         fd = openSync3(
           real,

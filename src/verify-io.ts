@@ -1,12 +1,14 @@
-// cspell:words fsmonitor tasklist SYSTEMROOT automount Statting textconv
+// cspell:words fsmonitor tasklist SYSTEMROOT automount Statting textconv pathspec PATHSPEC
 /**
  * `VerifyIO` — the read-only seam `scan --verify` checks this machine through.
  *
  * ── What it can do, and nothing else ─────────────────────────────────────────
- *  - run `git` with an argument list from `GIT_ALLOW_LIST`, exactly;
+ *  - run `git` with an argument list from `GIT_ALLOW_LIST`, exactly, or with a slot filled by
+ *    a value of the slot's one shape (a hex commit id, a `:(literal)` relative path);
  *  - say which agent apps are running, by id, from a process list reduced to those ids here;
  *  - tell whether a path is a folder;
- *  - read one file of at most `MAX_FILE_BYTES`, inside a repo a `git rev-parse` call returned.
+ *  - read one file of at most `MAX_FILE_BYTES`, inside a repo a `git rev-parse` call returned,
+ *    or a Markdown instruction or memory file inside an agent's own folder (`AGENT_FOLDERS`).
  *
  * It writes nothing, and it reaches no network: the allow-listed `git` calls read the local
  * repository only.
@@ -19,8 +21,8 @@
  * its own `git` could have it run. A program found inside the folder a call runs in is refused,
  * and a program not found reads as missing. Every call carries `GIT_SAFETY_ARGS`, which stop a
  * repository's own config from starting a program: no file-system monitor, no pager, no
- * external diff tool. (The two allowed subcommands consult only the first; the other two are
- * there for the read-only commands later checks add.) The environment is built fresh rather
+ * external diff tool, no signature program for a signed commit that `log` or `stash list`
+ * reads. The environment is built fresh rather
  * than inherited, so a `GIT_DIR`, `GIT_CONFIG_*` or `GIT_SSH_COMMAND` in the caller's shell
  * never reaches it, and it sets `GIT_OPTIONAL_LOCKS=0` (no index refresh is written) and
  * `GIT_TERMINAL_PROMPT=0` (nothing waits for a password).
@@ -56,7 +58,7 @@ import {
   realpathSync,
   statSync,
 } from "node:fs";
-import { isAbsolute, posix, relative, win32 } from "node:path";
+import { isAbsolute, join, posix, relative, win32 } from "node:path";
 import { isNetworkPath } from "./core/verify/paths.js";
 import {
   type CheckFailure,
@@ -68,11 +70,88 @@ import {
   type WatchedProcess,
 } from "./core/verify/types.js";
 
-/** The `git` argument lists verification may run, exactly as written. */
-export const GIT_ALLOW_LIST: readonly (readonly string[])[] = [
+/**
+ * A place in an allow-listed argument list that takes a value from a check, and the one shape
+ * that value may have.
+ *
+ * - `sha`: a commit id read from a command's output: 7 to 64 lower-case hex digits.
+ * - `literal-path`: a path inside the folder `git` runs in, as a `:(literal)` pathspec, so no
+ *   character in it is a wildcard or a pathspec option. Relative, with no `..` part, no line
+ *   break and no NUL, and never starting with `-`.
+ */
+export interface GitArgSlot {
+  readonly slot: "sha" | "literal-path";
+}
+
+/** One argument of an allow-listed call: a fixed word, or a slot. */
+export type GitAllowedArg = string | GitArgSlot;
+
+/** A commit id slot. */
+const SHA: GitArgSlot = { slot: "sha" };
+
+/** A literal path slot. */
+const LITERAL_PATH: GitArgSlot = { slot: "literal-path" };
+
+/**
+ * The `git` argument lists verification may run. A fixed word must match exactly, and a slot
+ * only a value of its shape (`slotAccepts`). Every one reads, and none writes.
+ */
+export const GIT_ALLOW_LIST: readonly (readonly GitAllowedArg[])[] = [
   ["rev-parse", "--show-toplevel"],
   ["ls-files", "-z"],
+  // The git-backed checks: skipped hooks, lost work, deleted files.
+  // The hooks folder in effect, after `core.hooksPath`, and the folder git keeps for the
+  // repository, whose `hooks` folder is the default one.
+  ["rev-parse", "--git-path", "hooks"],
+  ["rev-parse", "--git-common-dir"],
+  // Whether a commit is still in the object store, and its full id. Exit 0 either way: a
+  // missing id prints nothing.
+  ["log", "--no-walk", "--ignore-missing", "--format=%H", SHA],
+  // Which of origin/main and origin/master exist.
+  ["for-each-ref", "--format=%(refname)", "refs/remotes/origin/main", "refs/remotes/origin/master"],
+  // Whether a commit is on origin/main or origin/master.
+  [
+    "for-each-ref",
+    "--contains",
+    SHA,
+    "--format=%(refname)",
+    "refs/remotes/origin/main",
+    "refs/remotes/origin/master",
+  ],
+  // Whether a commit is on any branch or tag.
+  [
+    "for-each-ref",
+    "--contains",
+    SHA,
+    "--format=%(refname)",
+    "refs/heads",
+    "refs/remotes",
+    "refs/tags",
+  ],
+  // The commits in the stash list now.
+  ["stash", "list", "--format=%H"],
+  // The tracked files under a path, and those of them missing from the working tree.
+  ["ls-files", "-z", "--", LITERAL_PATH],
+  ["ls-files", "--deleted", "-z", "--", LITERAL_PATH],
 ];
+
+/** The `:(literal)` pathspec magic a `literal-path` slot starts with. */
+export const LITERAL_PATHSPEC = ":(literal)";
+
+/** Does `value` have the one shape `slot` allows? */
+export function slotAccepts(slot: GitArgSlot, value: string): boolean {
+  if (slot.slot === "sha") return /^[0-9a-f]{7,64}$/.test(value);
+  if (!value.startsWith(LITERAL_PATHSPEC)) return false;
+  const path = value.slice(LITERAL_PATHSPEC.length);
+  return (
+    path !== "" &&
+    !path.startsWith("-") &&
+    !path.startsWith("/") &&
+    !/^[A-Za-z]:/.test(path) &&
+    !/[\0\r\n\\]/.test(path) &&
+    !path.split("/").includes("..")
+  );
+}
 
 /**
  * Put before every allow-listed call, so a repository's config, or the user's own, cannot
@@ -118,10 +197,18 @@ export const MAX_FILE_BYTES = 1024 * 1024;
  */
 export const MAX_PROCESS_ENTRIES = 65_536;
 
-/** Is `args` exactly one of the allow-listed argument lists? */
+/**
+ * Is `args` one of the allow-listed argument lists: the same length, every fixed word equal,
+ * and every slot filled by a value of its shape?
+ */
 export function isAllowedGitCall(args: readonly string[]): boolean {
   return GIT_ALLOW_LIST.some(
-    (allowed) => allowed.length === args.length && allowed.every((arg, i) => arg === args[i]),
+    (allowed) =>
+      allowed.length === args.length &&
+      allowed.every((arg, i) => {
+        const value = args[i] as string;
+        return typeof arg === "string" ? arg === value : slotAccepts(arg, value);
+      }),
   );
 }
 
@@ -301,6 +388,29 @@ export function resolveProgram(
   return undefined;
 }
 
+/**
+ * The agents' own folders under the home folder. `readFile` may read an instruction or memory
+ * file in one of these (`AGENT_FILE`), and nothing else in them.
+ */
+export const AGENT_FOLDERS: readonly string[] = [".claude", ".codex", ".cursor"];
+
+/** The files `readFile` may read in an agent's own folder: Markdown instructions and memory. */
+export const AGENT_FILE = /\.mdc?$/i;
+
+/** The real paths of the agents' own folders that exist under `home`. */
+function agentRoots(home: string | undefined): string[] {
+  if (home === undefined || home === "" || isNetworkPath(home)) return [];
+  const roots: string[] = [];
+  for (const folder of AGENT_FOLDERS) {
+    try {
+      roots.push(realpathSync(join(home, folder)));
+    } catch {
+      // Not there: nothing to read in it.
+    }
+  }
+  return roots;
+}
+
 /** What `createRealVerifyIO` may be given. Production passes nothing. */
 export interface VerifyIOOptions {
   readonly exec?: Exec;
@@ -319,6 +429,8 @@ export function createRealVerifyIO(options: VerifyIOOptions = {}): VerifyIO {
   const exec = options.exec ?? realExec;
   const callerEnv = options.env ?? process.env;
   const env = gitEnvironment(callerEnv);
+  // Found on the first read that needs them.
+  let agents: string[] | undefined;
   const platform = options.platform ?? process.platform;
   const isExecutable = options.isExecutable ?? defaultIsExecutable(platform);
   // Each program's absolute path, found once. `null` when it is not on `PATH`.
@@ -393,7 +505,7 @@ export function createRealVerifyIO(options: VerifyIOOptions = {}): VerifyIO {
       const result = await run(git, [...GIT_SAFETY_ARGS, ...args], cwd);
       if (typeof result === "string") return { ok: false, reason: result };
       if (result.kind !== "ok") return { ok: false, reason: failureOf(result) };
-      if (args[0] === "rev-parse") {
+      if (args[0] === "rev-parse" && args[1] === "--show-toplevel") {
         try {
           roots.add(realpathSync(result.stdout.trim()));
         } catch {
@@ -421,8 +533,12 @@ export function createRealVerifyIO(options: VerifyIOOptions = {}): VerifyIO {
         // The REAL path is what is checked, so a link inside a repo that points out of it is
         // refused rather than followed.
         const real = realpathSync(path);
-        if (![...roots].some((root) => isInside(root, real))) {
-          return Promise.resolve({ ok: false, reason: "refused" });
+        const inRepo = [...roots].some((root) => isInside(root, real));
+        if (!inRepo) {
+          agents ??= agentRoots(callerEnv.HOME ?? callerEnv.USERPROFILE);
+          const inAgentFolder =
+            AGENT_FILE.test(real) && agents.some((root) => isInside(root, real));
+          if (!inAgentFolder) return Promise.resolve({ ok: false, reason: "refused" });
         }
         // Opened once, then checked through the descriptor: what was swapped in after the
         // path was resolved is what gets checked, a final link is not followed, and a pipe

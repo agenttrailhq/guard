@@ -6,7 +6,14 @@
  */
 
 import { formatCount } from "../tokens.js";
-import type { CardContext, CardSentence } from "./cards.js";
+import {
+  type CardContext,
+  type CardSentence,
+  type CommandPart,
+  isLocalFix,
+  type LocalFix,
+  localFixCommand,
+} from "./cards.js";
 import type { RepoProbe } from "./repo-probe.js";
 import type { CallLog } from "./shell-calls.js";
 import type { RunTally, VerifyStatus } from "./types.js";
@@ -83,6 +90,19 @@ export function cardExtras(
     ...(chip.label === undefined ? {} : { chip: { count: chip.count, label: chip.label } }),
     ...(fixSteps.length === 0 ? {} : { fixSteps }),
   };
+}
+
+/**
+ * Add an exact fix command, built from quoted parts, to `fixes`. A part that is not safe for
+ * its kind makes no command at all.
+ */
+export function pushFix(
+  fixes: LocalFix[],
+  category: Parameters<typeof localFixCommand>[0],
+  parts: readonly CommandPart[],
+): void {
+  const fix = localFixCommand(category, parts);
+  if (isLocalFix(fix)) fixes.push(fix);
 }
 
 /** Most items one check asks the repositories about. Past it, the rest are could-not-check. */

@@ -1,4 +1,4 @@
-// cspell:words fsmonitor tasklist mkfifo statted secretdb cursorless gpgsig lnbm
+// cspell:words fsmonitor tasklist mkfifo statted secretdb cursorless gpgsig lnbm gpgsign icase objectname PATHSPEC reflogs
 /**
  * The read-only seam `scan --verify` uses (`src/verify-io.ts`).
  *
@@ -21,6 +21,7 @@ import { tmpdir } from "node:os";
 import { isAbsolute, join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+  AGENT_FOLDERS,
   createRealVerifyIO,
   type Exec,
   type ExecOptions,
@@ -29,10 +30,12 @@ import {
   gitEnvironment,
   isAllowedGitCall,
   isNetworkPath,
+  LITERAL_PATHSPEC,
   MAX_FILE_BYTES,
   MAX_PROCESS_ENTRIES,
   realExec,
   resolveProgram,
+  slotAccepts,
   watchedInPs,
   watchedInTasklist,
   watchedProcessOf,
@@ -66,10 +69,41 @@ function repo(files: Record<string, string> = { "a.txt": "alpha" }): string {
 }
 
 describe("the git allow-list", () => {
-  it("is exactly the two read-only calls the checks make", () => {
+  it("is exactly the read-only calls the checks make", () => {
+    const sha = { slot: "sha" };
+    const path = { slot: "literal-path" };
     expect(GIT_ALLOW_LIST).toEqual([
       ["rev-parse", "--show-toplevel"],
       ["ls-files", "-z"],
+      ["rev-parse", "--git-path", "hooks"],
+      ["rev-parse", "--git-common-dir"],
+      ["log", "--no-walk", "--ignore-missing", "--format=%H", sha],
+      [
+        "for-each-ref",
+        "--format=%(refname)",
+        "refs/remotes/origin/main",
+        "refs/remotes/origin/master",
+      ],
+      [
+        "for-each-ref",
+        "--contains",
+        sha,
+        "--format=%(refname)",
+        "refs/remotes/origin/main",
+        "refs/remotes/origin/master",
+      ],
+      [
+        "for-each-ref",
+        "--contains",
+        sha,
+        "--format=%(refname)",
+        "refs/heads",
+        "refs/remotes",
+        "refs/tags",
+      ],
+      ["stash", "list", "--format=%H"],
+      ["ls-files", "-z", "--", path],
+      ["ls-files", "--deleted", "-z", "--", path],
     ]);
   });
 
@@ -679,5 +713,242 @@ describe("process names: agent ids only, never arguments or titles", () => {
     if (result.ok) {
       for (const id of result.running) expect(["claude", "cursor", "codex"]).toContain(id);
     }
+  });
+});
+
+describe("slots: a value from a check, in one shape only", () => {
+  const SHA = "0123abc";
+  const FULL = "0123456789abcdef0123456789abcdef01234567";
+
+  it.each([
+    [["log", "--no-walk", "--ignore-missing", "--format=%H", SHA]],
+    [["log", "--no-walk", "--ignore-missing", "--format=%H", FULL]],
+    [["rev-parse", "--git-path", "hooks"]],
+    [["stash", "list", "--format=%H"]],
+    [
+      [
+        "for-each-ref",
+        "--format=%(refname)",
+        "refs/remotes/origin/main",
+        "refs/remotes/origin/master",
+      ],
+    ],
+    [
+      [
+        "for-each-ref",
+        "--contains",
+        FULL,
+        "--format=%(refname)",
+        "refs/remotes/origin/main",
+        "refs/remotes/origin/master",
+      ],
+    ],
+    [
+      [
+        "for-each-ref",
+        "--contains",
+        FULL,
+        "--format=%(refname)",
+        "refs/heads",
+        "refs/remotes",
+        "refs/tags",
+      ],
+    ],
+    [["ls-files", "-z", "--", ":(literal)src/a b.ts"]],
+    [["ls-files", "--deleted", "-z", "--", ":(literal)."]],
+  ])("allows %j", (args) => {
+    expect(isAllowedGitCall(args)).toBe(true);
+  });
+
+  it.each([
+    // A commit slot takes hex only: no ref name, no option, no upper case, 7 to 64 digits.
+    ["log", "--no-walk", "--ignore-missing", "--format=%H", "HEAD"],
+    ["log", "--no-walk", "--ignore-missing", "--format=%H", "--all"],
+    ["log", "--no-walk", "--ignore-missing", "--format=%H", "-p"],
+    ["log", "--no-walk", "--ignore-missing", "--format=%H", "ABCDEF1"],
+    ["log", "--no-walk", "--ignore-missing", "--format=%H", "abc123"],
+    ["log", "--no-walk", "--ignore-missing", "--format=%H", "a".repeat(65)],
+    ["log", "--no-walk", "--ignore-missing", "--format=%H", `${SHA} --all`],
+    ["log", "--no-walk", "--ignore-missing", "--format=%H", `${SHA}^`],
+    // A path slot takes a relative `:(literal)` path inside the folder, and nothing else.
+    ["ls-files", "-z", "--", "src/a.ts"],
+    ["ls-files", "-z", "--", ":(literal)"],
+    ["ls-files", "-z", "--", ":(literal)-rf"],
+    ["ls-files", "-z", "--", ":(literal)/etc/passwd"],
+    ["ls-files", "-z", "--", ":(literal)C:/x"],
+    ["ls-files", "-z", "--", ":(literal)../outside"],
+    ["ls-files", "-z", "--", ":(literal)a/../../b"],
+    ["ls-files", "-z", "--", ":(literal)a\nb"],
+    ["ls-files", "-z", "--", ":(literal)a\\b"],
+    ["ls-files", "-z", "--", ":(glob)**"],
+    ["ls-files", "-z", "--", ":(literal,icase)a"],
+    // Fixed words stay fixed: a slot is not a wildcard for the rest of the list.
+    [
+      "for-each-ref",
+      "--contains",
+      FULL,
+      "--format=%(objectname)",
+      "refs/heads",
+      "refs/remotes",
+      "refs/tags",
+    ],
+    ["for-each-ref", "--contains", FULL, "--format=%(refname)", "refs/heads"],
+    [
+      "for-each-ref",
+      "--contains",
+      "HEAD",
+      "--format=%(refname)",
+      "refs/heads",
+      "refs/remotes",
+      "refs/tags",
+    ],
+    ["for-each-ref", "--format=%(refname)", "refs/heads", "refs/remotes/origin/master"],
+    ["stash", "drop"],
+    ["stash", "clear"],
+    ["stash", "list"],
+    ["branch", "-D", "x"],
+    ["config", "--unset", "core.hooksPath"],
+    ["config", "--get", "core.hooksPath"],
+    ["rev-parse", "--git-path", "config"],
+    ["merge-base", "--is-ancestor", SHA, "origin/main"],
+    ["cat-file", "-e", SHA],
+    ["fsck", "--unreachable", "--no-reflogs"],
+  ])("refuses %j without starting a process", async (...args) => {
+    expect(isAllowedGitCall(args)).toBe(false);
+    const { exec, calls } = recorder();
+    expect(await createRealVerifyIO({ exec }).git("/repo", args)).toEqual({
+      ok: false,
+      reason: "refused",
+    });
+    expect(calls).toEqual([]);
+  });
+
+  it("slotAccepts names the one shape of each slot", () => {
+    expect(slotAccepts({ slot: "sha" }, FULL)).toBe(true);
+    expect(slotAccepts({ slot: "sha" }, "z123456")).toBe(false);
+    expect(slotAccepts({ slot: "literal-path" }, `${LITERAL_PATHSPEC}docs/guide.md`)).toBe(true);
+    expect(slotAccepts({ slot: "literal-path" }, "docs/guide.md")).toBe(false);
+  });
+
+  it("the new calls run against a real repository", async () => {
+    const root = repo({ "src/a.ts": "a" });
+    execFileSync(
+      "git",
+      [
+        "-c",
+        "user.name=T",
+        "-c",
+        "user.email=t@example.invalid",
+        "-c",
+        "commit.gpgsign=false",
+        "commit",
+        "-q",
+        "-m",
+        "first",
+      ],
+      { cwd: root },
+    );
+    const io = createRealVerifyIO();
+    const head = execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).trim();
+    const hooks = await io.git(root, ["rev-parse", "--git-path", "hooks"]);
+    expect(hooks.ok && hooks.stdout.trim()).toBe(".git/hooks");
+    const found = await io.git(root, [
+      "log",
+      "--no-walk",
+      "--ignore-missing",
+      "--format=%H",
+      head.slice(0, 7),
+    ]);
+    expect(found).toEqual({ ok: true, stdout: `${head}\n` });
+    // A missing commit is an empty answer, not a failure.
+    const missing = await io.git(root, [
+      "log",
+      "--no-walk",
+      "--ignore-missing",
+      "--format=%H",
+      "0123456789ab",
+    ]);
+    expect(missing).toEqual({ ok: true, stdout: "" });
+    const refs = await io.git(root, [
+      "for-each-ref",
+      "--contains",
+      head,
+      "--format=%(refname)",
+      "refs/heads",
+      "refs/remotes",
+      "refs/tags",
+    ]);
+    expect(refs.ok && refs.stdout.trim().split("\n").length).toBe(1);
+    const tracked = await io.git(root, ["ls-files", "-z", "--", ":(literal)src"]);
+    expect(tracked).toEqual({ ok: true, stdout: "src/a.ts\0" });
+    expect(await io.git(root, ["stash", "list", "--format=%H"])).toEqual({ ok: true, stdout: "" });
+  });
+
+  it("only --show-toplevel makes a folder readable", async () => {
+    const root = repo({ "a.txt": "alpha" });
+    const io = createRealVerifyIO();
+    await io.git(root, ["rev-parse", "--git-path", "hooks"]);
+    expect(await io.readFile(join(root, "a.txt"))).toEqual({ ok: false, reason: "refused" });
+    await io.git(root, ["rev-parse", "--show-toplevel"]);
+    expect(await io.readFile(join(root, "a.txt"))).toEqual({ ok: true, text: "alpha" });
+  });
+});
+
+describe("reads in the agents' own folders", () => {
+  /** A home folder with an agent's files in it. */
+  function home(): string {
+    const dir = realpathSync(mkdtempSync(join(tmpdir(), "agenttrail-verify-home-")));
+    mkdirSync(join(dir, ".claude", "projects", "p", "memory"), { recursive: true });
+    mkdirSync(join(dir, ".codex"), { recursive: true });
+    writeFileSync(join(dir, ".claude", "CLAUDE.md"), "instructions");
+    writeFileSync(join(dir, ".claude", "projects", "p", "memory", "m.md"), "memory");
+    writeFileSync(join(dir, ".claude", "settings.json"), "{}");
+    writeFileSync(join(dir, ".codex", "AGENTS.md"), "codex instructions");
+    writeFileSync(join(dir, "notes.md"), "not an agent folder");
+    return dir;
+  }
+
+  it("reads a Markdown instruction or memory file there, and nothing else", async () => {
+    const dir = home();
+    const io = createRealVerifyIO({ env: { HOME: dir } });
+    expect(await io.readFile(join(dir, ".claude", "CLAUDE.md"))).toEqual({
+      ok: true,
+      text: "instructions",
+    });
+    expect(await io.readFile(join(dir, ".claude", "projects", "p", "memory", "m.md"))).toEqual({
+      ok: true,
+      text: "memory",
+    });
+    expect(await io.readFile(join(dir, ".codex", "AGENTS.md"))).toEqual({
+      ok: true,
+      text: "codex instructions",
+    });
+    expect(await io.readFile(join(dir, ".claude", "settings.json"))).toEqual({
+      ok: false,
+      reason: "refused",
+    });
+    expect(await io.readFile(join(dir, "notes.md"))).toEqual({ ok: false, reason: "refused" });
+  });
+
+  it("refuses a link in an agent folder that points out of it", async () => {
+    const dir = home();
+    const outside = join(mkdtempSync(join(tmpdir(), "agenttrail-outside-")), "secret.md");
+    writeFileSync(outside, "outside");
+    symlinkSync(outside, join(dir, ".claude", "link.md"));
+    const io = createRealVerifyIO({ env: { HOME: dir } });
+    expect(await io.readFile(join(dir, ".claude", "link.md"))).toEqual({
+      ok: false,
+      reason: "refused",
+    });
+  });
+
+  it("with no home folder, reads nothing there", async () => {
+    const dir = home();
+    const io = createRealVerifyIO({ env: {} });
+    expect(await io.readFile(join(dir, ".claude", "CLAUDE.md"))).toEqual({
+      ok: false,
+      reason: "refused",
+    });
+    expect(AGENT_FOLDERS).toEqual([".claude", ".codex", ".cursor"]);
   });
 });

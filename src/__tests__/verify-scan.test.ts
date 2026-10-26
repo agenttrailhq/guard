@@ -83,7 +83,7 @@ describe("the --verify flag", () => {
     expect(v.resultsRecorded).toBe(recorded);
   });
 
-  it("every category without a check reads not-checked", async () => {
+  it("every category without a check reads not-checked, and the git-backed ones ran", async () => {
     const { root } = await writeCorpus("claude", [[{ kind: "prompt", text: "hello" }]]);
     const { stdout } = await scan(["--agent", "claude", "--dir", root, "--verify", "--json"]);
     const categories = JSON.parse(stdout).result.verification.categories;
@@ -98,9 +98,14 @@ describe("the --verify flag", () => {
       "unreviewed",
       "egress",
     ]);
+    // The git-backed checks ran over a session with no commands: clean, with counts.
+    const git = ["skipped-checks", "lost-work", "destructive"];
     for (const [name, value] of Object.entries(categories)) {
-      if (name !== "secrets") expect(value).toEqual({ status: "not-checked" });
+      if (name !== "secrets" && !git.includes(name)) {
+        expect(value).toEqual({ status: "not-checked" });
+      }
     }
+    for (const name of git) expect(categories[name].status).toBe("clean");
     expect(categories.secrets.status).toBe("clean");
   });
 });
