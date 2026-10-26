@@ -16,6 +16,7 @@ import {
   reportPayload,
   reviewStrings,
 } from "../core/report.js";
+import { REPORT_STYLES } from "../core/report-brand.js";
 import { REPORT_SCRIPT } from "../core/report-script.js";
 import { CARD_BUILDERS } from "../core/verify/builders.js";
 import { TONE_ORDER } from "../core/verify/cards.js";
@@ -451,5 +452,43 @@ describe("scan --review lists every line the verified sections write", () => {
     expect(
       labels({ ...VERIFIED_RESULT, toolCalls: 0 }).some((l) => l.startsWith("What the checks")),
     ).toBe(false);
+  });
+});
+
+describe("the verified sections print", () => {
+  const print = REPORT_STYLES.slice(REPORT_STYLES.indexOf("@media print"));
+  const rules = [...print.matchAll(/([^{}]+)\{([^}]*)\}/g)].map((m) => ({
+    selectors: (m[1] ?? "").split(",").map((s) => s.trim()),
+    body: m[2] ?? "",
+  }));
+  const where = (pattern: RegExp): string[] =>
+    rules.filter((r) => pattern.test(r.body)).flatMap((r) => r.selectors);
+
+  it("a long card breaks between its fields, never inside one, and keeps its head with its title", () => {
+    expect(where(/break-inside: auto/)).toContain(".verified");
+    expect(where(/break-inside: avoid/)).toEqual(
+      expect.arrayContaining([".verified-facts > div", ".check-chip", ".evidence-list li"]),
+    );
+    expect(where(/break-after: avoid/)).toEqual(
+      expect.arrayContaining([".verified .card-head", ".verified-facts dt"]),
+    );
+  });
+
+  it("keeps the tones' colors on paper", () => {
+    expect(where(/print-color-adjust: exact/)).toEqual(
+      expect.arrayContaining([".tone", ".verified", ".check-chip"]),
+    );
+  });
+
+  it("defines every tone for both themes", () => {
+    for (const tone of ["act", "review", "clean", "none"]) {
+      for (const part of ["fg", "bg", "bd"]) {
+        expect(REPORT_STYLES).toContain(`--tone-${tone}-${part}:`);
+      }
+    }
+    for (const tone of TONE_ORDER) {
+      expect(REPORT_STYLES).toContain(`.tone-${tone} {`);
+      expect(REPORT_STYLES).toContain(`.v-${tone} {`);
+    }
   });
 });

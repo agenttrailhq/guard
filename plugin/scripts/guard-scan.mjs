@@ -7526,6 +7526,8 @@ ${vars(LIGHT_TOKENS)}
   .button, .button.secondary { display: inline; background: none; color: var(--brand-text); border: 0; padding: 0; }
   .stat, .tally, .product-note, tr, .card, .col, .risk, .finding-head, .shapes li { break-inside: avoid; }
   .evidence-list li, .check-chip, .verified-facts > div { break-inside: avoid; }
+  .verified { break-inside: auto; }
+  .verified .card-head { break-after: avoid; }
   h1, h2, h3, .section-head, summary, h2 + .note, h2 + .lead, .verified-facts dt { break-after: avoid; }
   .chip::before { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
   .tone, .verified, .check-chip, .evidence-list { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
