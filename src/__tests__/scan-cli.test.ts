@@ -1354,6 +1354,6 @@ describe("the AgentTrail OS line after the summary", () => {
 
   it("the skill entry turns the line off", () => {
     const entry = readFileSync(join(SRC, "scan-entry.ts"), "utf8");
-    expect(entry).toContain("{ productLine: false }");
+    expect(entry).toMatch(/\{\s*productLine: false[,\s]/);
   });
 });

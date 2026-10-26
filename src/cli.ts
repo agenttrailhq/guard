@@ -56,6 +56,7 @@ import type { CursorFileIO } from "./cursor/cursor-io.js";
 import { createRealIO, type GuardIO } from "./io.js";
 import { createRealScanIO, type ScanIO } from "./scan-io.js";
 import { createRealSetupIO, type SetupIO } from "./setup-io.js";
+import { createRealVerifyIO } from "./verify-io.js";
 
 const USAGE = `agenttrail-guard — local guardrails for Claude Code, Cursor and Codex CLI
 
@@ -176,7 +177,9 @@ export async function runCli(
   // Same exception, same reason — see the docblock. Also lazily constructed, so `hook`
   // never pays to build the scan IO and its process spawner.
   if (command === "scan") {
-    return await runScan(argv.slice(1), scanIo ?? createRealScanIO());
+    return await runScan(argv.slice(1), scanIo ?? createRealScanIO(), {
+      createVerifyIO: () => createRealVerifyIO(),
+    });
   }
 
   if (values.version === true) {

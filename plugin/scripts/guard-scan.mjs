@@ -6804,13 +6804,13 @@ function evaluateCall(catalog, context, mapped, allowlist) {
       titles.set(entry.rule.id, entry.rule.title);
     }
   }
-  const { verdict, policyId } = strongestVerdict(
+  const { verdict: verdict2, policyId } = strongestVerdict(
     matches.map((m) => ({ policyId: m.ruleId, action: m.action }))
   );
-  if (verdict === "deny") {
+  if (verdict2 === "deny") {
     return { decision: "deny", reason: `${BLOCK_LEAD}${describeRule(policyId, titles)}`, matches };
   }
-  if (verdict === "require_approval") {
+  if (verdict2 === "require_approval") {
     return {
       decision: "ask",
       reason: `${APPROVAL_LEAD}${describeRule(policyId, titles)}`,
@@ -8091,6 +8091,52 @@ function wrapLines(text, width) {
   if (line !== "") lines.push(line);
   return lines;
 }
+function payloadSecrets(check) {
+  const facts = check.facts;
+  return {
+    status: check.status,
+    matches: check.matches,
+    facts: {
+      classes: {
+        "likely-real": facts.classes["likely-real"],
+        "committed-fixture": facts.classes["committed-fixture"],
+        placeholder: facts.classes.placeholder,
+        "local-dev": facts.classes["local-dev"]
+      },
+      items: facts.items.slice(0, MAX_ROWS).map((item) => ({ kind: item.kind, via: [...item.via], files: item.files })),
+      moreItems: facts.moreItems + Math.max(0, facts.items.length - MAX_ROWS),
+      filesRead: facts.filesRead,
+      filesNotRead: facts.filesNotRead,
+      unplaced: facts.unplaced,
+      fixtureCheck: facts.fixtureCheck,
+      reposChecked: facts.reposChecked,
+      reposNotChecked: facts.reposNotChecked
+    }
+  };
+}
+function payloadVerification(verification) {
+  const categories = verification.categories;
+  return {
+    matchedCalls: {
+      ran: verification.matchedCalls.ran,
+      mentioned: verification.matchedCalls.mentioned,
+      unknown: verification.matchedCalls.unknown
+    },
+    resultsRecorded: verification.resultsRecorded,
+    ranEvidence: verification.ranEvidence,
+    categories: {
+      secrets: payloadSecrets(categories.secrets),
+      "skipped-checks": { status: categories["skipped-checks"].status },
+      "lost-work": { status: categories["lost-work"].status },
+      cloud: { status: categories.cloud.status },
+      "prod-infra": { status: categories["prod-infra"].status },
+      tests: { status: categories.tests.status },
+      destructive: { status: categories.destructive.status },
+      unreviewed: { status: categories.unreviewed.status },
+      egress: { status: categories.egress.status }
+    }
+  };
+}
 function tokenCopy(t) {
   return {
     input: t.input,
@@ -8161,10 +8207,11 @@ function reportPayload(result, meta) {
       guardrailCount: t.guardrailCount
     }))
   };
+  const withVerification = result.verification === void 0 ? payload : { ...payload, verification: payloadVerification(result.verification) };
   const skipped = result.skipped;
-  if (skipped === void 0) return payload;
+  if (skipped === void 0) return withVerification;
   return {
-    ...payload,
+    ...withVerification,
     skipped: {
       unreadableFiles: skipped.unreadableFiles,
       truncatedLastLines: skipped.truncatedLastLines,
@@ -11181,6 +11228,18 @@ function evaluateAction(catalog, allowlist, candidates) {
   const [first, ...rest] = candidates;
   return strictestCandidate([evaluate(first), ...rest.map(evaluate)]);
 }
+function toolUseCalls(agent, use) {
+  switch (agent) {
+    case "claude":
+      return [{ kind: "action", candidates: [mapToolCall(toolCallPayload(use))] }];
+    case "cursor":
+      return [mapCursorSessionTool(use)];
+    case "codex":
+      return mapCodexSessionTool(use);
+    default:
+      return unhandledAgent(agent);
+  }
+}
 function* claudeSessionCalls(session) {
   for (const payload of toolCallsOf(session)) {
     yield { kind: "action", candidates: [mapToolCall(payload)] };
@@ -11655,6 +11714,1072 @@ function parseUserRulesData(text) {
   return out;
 }
 
+// src/core/verify/fingerprint.ts
+import { createHmac, randomBytes } from "crypto";
+var FINGERPRINT_HEX = 32;
+var KEY_BYTES = 32;
+function createFingerprinter(key = randomBytes(KEY_BYTES)) {
+  const own = Buffer.from(key);
+  return (value) => createHmac("sha256", own).update(value, "utf8").digest("hex").slice(0, FINGERPRINT_HEX);
+}
+
+// src/core/verify/ran.ts
+function skipQuoted(text, at, quote) {
+  let i = at + 1;
+  while (i < text.length) {
+    const ch = text[i];
+    if (quote !== "'" && ch === "\\") {
+      i += 2;
+      continue;
+    }
+    if (ch === quote) return i + 1;
+    i += 1;
+  }
+  return text.length;
+}
+function skipSubstitution(text, at) {
+  let depth = 0;
+  let i = at;
+  while (i < text.length) {
+    const ch = text[i];
+    if (ch === "'" || ch === '"' || ch === "`") {
+      i = skipQuoted(text, i, ch);
+      continue;
+    }
+    if (ch === "\\") {
+      i += 2;
+      continue;
+    }
+    if (ch === "(") depth += 1;
+    else if (ch === ")") {
+      depth -= 1;
+      if (depth === 0) return i + 1;
+    }
+    i += 1;
+  }
+  return text.length;
+}
+function parseShell(text) {
+  const segments = [];
+  const comments = [];
+  const pending = [];
+  let segment = { words: [], inputs: [] };
+  let next = "word";
+  let wordStart = -1;
+  let value = "";
+  let runs = false;
+  const endWord = (end) => {
+    if (wordStart < 0) return;
+    const word = { start: wordStart, end, value, runs };
+    if (next === "word") segment.words.push(word);
+    else if (next === "heredoc" || next === "heredoc-tabs") {
+      pending.push({ delimiter: value, stripTabs: next === "heredoc-tabs", segment });
+    } else if (next === "herestring") segment.inputs.push({ start: word.start, end: word.end });
+    next = "word";
+    wordStart = -1;
+    value = "";
+    runs = false;
+  };
+  const endSegment = (end) => {
+    endWord(end);
+    if (segment.words.length > 0 || segment.inputs.length > 0) segments.push(segment);
+    segment = { words: [], inputs: [] };
+  };
+  const startWord = (at) => {
+    if (wordStart < 0) wordStart = at;
+  };
+  let i = 0;
+  while (i < text.length) {
+    const ch = text[i];
+    if (ch === "\n") {
+      endSegment(i);
+      i += 1;
+      while (pending.length > 0 && i <= text.length) {
+        const doc = pending.shift();
+        const start = i;
+        let end = text.length;
+        let after = text.length;
+        while (i < text.length) {
+          const lineEnd = text.indexOf("\n", i);
+          const stop = lineEnd < 0 ? text.length : lineEnd;
+          const line = text.slice(i, stop);
+          if ((doc.stripTabs ? line.replace(/^\t+/, "") : line) === doc.delimiter) {
+            end = i;
+            after = lineEnd < 0 ? text.length : lineEnd + 1;
+            break;
+          }
+          i = lineEnd < 0 ? text.length : lineEnd + 1;
+        }
+        doc.segment.inputs.push({ start, end });
+        i = after;
+      }
+      continue;
+    }
+    if (ch === " " || ch === "	" || ch === "\r") {
+      endWord(i);
+      i += 1;
+      continue;
+    }
+    if (ch === "#" && wordStart < 0) {
+      const lineEnd = text.indexOf("\n", i);
+      const stop = lineEnd < 0 ? text.length : lineEnd;
+      comments.push({ start: i, end: stop });
+      i = stop;
+      continue;
+    }
+    if (ch === "'" || ch === '"') {
+      startWord(i);
+      const end = skipQuoted(text, i, ch);
+      const inner = text.slice(i + 1, Math.max(i + 1, end - 1));
+      if (ch === '"' && (inner.includes("$(") || inner.includes("`"))) runs = true;
+      value += ch === '"' ? inner.replace(/\\(["\\$`])/g, "$1") : inner;
+      i = end;
+      continue;
+    }
+    if (ch === "\\") {
+      startWord(i);
+      if (text[i + 1] !== "\n") value += text[i + 1] ?? "";
+      i += 2;
+      continue;
+    }
+    if (ch === "$" && text[i + 1] === "(") {
+      startWord(i);
+      const end = skipSubstitution(text, i + 1);
+      value += text.slice(i, end);
+      runs = true;
+      i = end;
+      continue;
+    }
+    if (ch === "`") {
+      startWord(i);
+      const end = skipQuoted(text, i, "`");
+      value += text.slice(i, end);
+      runs = true;
+      i = end;
+      continue;
+    }
+    if (ch === "<" || ch === ">") {
+      if (wordStart >= 0 && /^\d+$/.test(value)) {
+        wordStart = -1;
+        value = "";
+      } else endWord(i);
+      if (text.startsWith("<<<", i)) {
+        next = "herestring";
+        i += 3;
+      } else if (text.startsWith("<<-", i)) {
+        next = "heredoc-tabs";
+        i += 3;
+      } else if (text.startsWith("<<", i)) {
+        next = "heredoc";
+        i += 2;
+      } else {
+        i += 1;
+        while (i < text.length && /[>|&<]/.test(text[i])) i += 1;
+        next = "target";
+      }
+      continue;
+    }
+    if (ch === "&" && text[i + 1] === ">") {
+      endWord(i);
+      i += 2;
+      if (text[i] === ">") i += 1;
+      next = "target";
+      continue;
+    }
+    if (ch === ";" || ch === "&" || ch === "|" || ch === "(" || ch === ")") {
+      endSegment(i);
+      i += 1;
+      if ((ch === "&" || ch === "|" || ch === ";") && /[&|;]/.test(text[i] ?? "")) i += 1;
+      continue;
+    }
+    startWord(i);
+    value += ch;
+    i += 1;
+  }
+  endSegment(text.length);
+  return { segments, comments };
+}
+var PREFIX_WORDS = /* @__PURE__ */ new Set([
+  "sudo",
+  "env",
+  "command",
+  "builtin",
+  "exec",
+  "time",
+  "nohup",
+  "nice",
+  "stdbuf",
+  "timeout",
+  "!",
+  "{",
+  "}",
+  "if",
+  "then",
+  "else",
+  "elif",
+  "do",
+  "while",
+  "until"
+]);
+var PREFIX_VALUE_OPTIONS = /* @__PURE__ */ new Set(["-u", "-g", "-n", "-s", "-k"]);
+var ASSIGNMENT3 = /^[A-Za-z_][A-Za-z0-9_]*=/;
+function programName(word) {
+  const base = word.value.split(/[\\/]/).pop() ?? "";
+  return base.toLowerCase().replace(/\.exe$/, "");
+}
+function programIndex(words2) {
+  let k = 0;
+  while (k < words2.length) {
+    const word = words2[k];
+    if (ASSIGNMENT3.test(word.value)) {
+      k += 1;
+      continue;
+    }
+    const name = programName(word);
+    if (!PREFIX_WORDS.has(name)) return k;
+    k += 1;
+    while (k < words2.length && words2[k].value.startsWith("-")) {
+      const option = words2[k].value;
+      k += PREFIX_VALUE_OPTIONS.has(option) ? 2 : 1;
+    }
+    if (name === "timeout" && k < words2.length) k += 1;
+  }
+  return k;
+}
+var PRINTERS = /* @__PURE__ */ new Set(["echo", "printf"]);
+var LOOKUPS = /* @__PURE__ */ new Set([
+  "man",
+  "which",
+  "type",
+  "apropos",
+  "whatis",
+  "tldr",
+  "whereis",
+  "help"
+]);
+var SEARCHERS = /* @__PURE__ */ new Set([
+  "grep",
+  "egrep",
+  "fgrep",
+  "zgrep",
+  "rg",
+  "ag",
+  "ack"
+]);
+var SEARCH_VALUE_OPTIONS = /* @__PURE__ */ new Set([
+  "-A",
+  "-B",
+  "-C",
+  "-m",
+  "-f",
+  "-d",
+  "-D",
+  "-g",
+  "-t",
+  "-T",
+  "-j",
+  "-M",
+  "-E",
+  "--glob",
+  "--iglob",
+  "--type",
+  "--type-not",
+  "--max-count",
+  "--file",
+  "--context",
+  "--after-context",
+  "--before-context",
+  "--max-columns",
+  "--encoding"
+]);
+var INPUT_SINKS = /* @__PURE__ */ new Set(["cat", "tee", "echo", "printf"]);
+var TEST_RUNNERS = /* @__PURE__ */ new Set(["vitest", "jest", "mocha", "pytest", "test"]);
+var LAUNCHERS = /* @__PURE__ */ new Set(["npx", "pnpm", "npm", "yarn", "bun", "bunx"]);
+var TEST_FILTER_OPTIONS = /* @__PURE__ */ new Set([
+  "-t",
+  "--testNamePattern",
+  "-k",
+  "--grep",
+  "-g"
+]);
+var GIT_GLOBAL_VALUE_OPTIONS = /* @__PURE__ */ new Set(["-C", "-c"]);
+var GIT_HISTORY = /* @__PURE__ */ new Set([
+  "log",
+  "show",
+  "whatchanged",
+  "shortlog",
+  "rev-list"
+]);
+var GIT_MESSAGE = /* @__PURE__ */ new Set(["commit", "tag", "merge", "notes", "stash"]);
+var GH_TEXT_GROUPS = /* @__PURE__ */ new Set([
+  "pr",
+  "issue",
+  "release",
+  "api",
+  "gist",
+  "repo"
+]);
+var GH_TEXT_OPTIONS = /* @__PURE__ */ new Set([
+  "-t",
+  "--title",
+  "-b",
+  "--body",
+  "-n",
+  "--notes",
+  "-f",
+  "-F",
+  "--field",
+  "--raw-field",
+  "-d",
+  "--description"
+]);
+function optionValues(words2, options) {
+  const out = [];
+  for (let k = 0; k < words2.length; k++) {
+    const word = words2[k];
+    if (options.has(word.value)) {
+      const value = words2[k + 1];
+      if (value !== void 0 && !value.runs) out.push(value);
+      k += 1;
+      continue;
+    }
+    if (word.runs) continue;
+    const eq = word.value.indexOf("=");
+    if (word.value.startsWith("--") && eq > 0 && options.has(word.value.slice(0, eq))) {
+      out.push(word);
+      continue;
+    }
+    if (/^-[A-Za-z]./.test(word.value) && !word.value.startsWith("--")) {
+      if (options.has(word.value.slice(0, 2))) out.push(word);
+    }
+  }
+  return out;
+}
+function searchPatterns(words2) {
+  const explicit = optionValues(words2, /* @__PURE__ */ new Set(["-e", "--regexp"]));
+  if (explicit.length > 0) return explicit;
+  for (let k = 0; k < words2.length; k++) {
+    const word = words2[k];
+    if (word.value === "--") {
+      const operand = words2[k + 1];
+      return operand === void 0 || operand.runs ? [] : [operand];
+    }
+    if (word.value.startsWith("-")) {
+      if (SEARCH_VALUE_OPTIONS.has(word.value)) k += 1;
+      continue;
+    }
+    return word.runs ? [] : [word];
+  }
+  return [];
+}
+function segmentRegions(segment) {
+  const words2 = segment.words;
+  const at = programIndex(words2);
+  const program = words2[at];
+  if (program === void 0) return [];
+  const name = programName(program);
+  const rest = words2.slice(at + 1);
+  const regions = [];
+  const blank = (list, kind) => {
+    for (const word of list) regions.push({ start: word.start, end: word.end, kind });
+  };
+  if (PRINTERS.has(name))
+    blank(
+      rest.filter((w) => !w.runs),
+      "doc"
+    );
+  else if (LOOKUPS.has(name))
+    blank(
+      rest.filter((w) => !w.runs),
+      "search"
+    );
+  else if (SEARCHERS.has(name)) blank(searchPatterns(rest), "search");
+  else if (name === "git") {
+    let k = 0;
+    while (k < rest.length && rest[k].value.startsWith("-")) {
+      k += GIT_GLOBAL_VALUE_OPTIONS.has(rest[k].value) ? 2 : 1;
+    }
+    const sub = rest[k]?.value ?? "";
+    const args2 = rest.slice(k + 1);
+    if (sub === "grep") blank(searchPatterns(args2), "search");
+    else if (GIT_HISTORY.has(sub)) {
+      blank(optionValues(args2, /* @__PURE__ */ new Set(["-S", "-G", "--grep"])), "search");
+    } else if (GIT_MESSAGE.has(sub)) {
+      blank(optionValues(args2, /* @__PURE__ */ new Set(["-m", "--message"])), "doc");
+    }
+  } else if (name === "gh" && GH_TEXT_GROUPS.has(rest[0]?.value ?? "")) {
+    blank(optionValues(rest, GH_TEXT_OPTIONS), "doc");
+  }
+  const startsTests = TEST_RUNNERS.has(name) || LAUNCHERS.has(name) && rest.some((w) => TEST_RUNNERS.has(w.value));
+  if (startsTests && name !== "test") {
+    blank(optionValues(rest, TEST_FILTER_OPTIONS), "test-string");
+  }
+  if (INPUT_SINKS.has(name)) {
+    for (const input of segment.inputs) regions.push({ ...input, kind: "heredoc" });
+  }
+  return regions;
+}
+function executedView(command) {
+  const parsed = parseShell(command);
+  const regions = parsed.comments.map((c) => ({ ...c, kind: "doc" }));
+  for (const segment of parsed.segments) regions.push(...segmentRegions(segment));
+  if (regions.length === 0) return { text: command, kinds: [] };
+  regions.sort((a, b) => a.start - b.start);
+  let out = "";
+  let cursor = 0;
+  for (const region of regions) {
+    if (region.end <= cursor) continue;
+    const start = Math.max(region.start, cursor);
+    out += command.slice(cursor, start);
+    out += command.slice(start, region.end).replace(/[^\n]/g, " ");
+    cursor = region.end;
+  }
+  out += command.slice(cursor);
+  const kinds = [];
+  for (const region of regions) if (!kinds.includes(region.kind)) kinds.push(region.kind);
+  return { text: out, kinds };
+}
+function ranEvidenceOf(agent) {
+  switch (agent) {
+    case "claude":
+      return "tool-result";
+    case "codex":
+      return "output-record";
+    case "cursor":
+      return "none";
+    default:
+      return unhandledAgent(agent);
+  }
+}
+function recordsToolResults(agent) {
+  return ranEvidenceOf(agent) !== "none";
+}
+var EXIT_CODE = /^\s*Exit code -?\d+/;
+var SHELL_TOOLS2 = /* @__PURE__ */ new Set(["Bash"]);
+function verdict(state, why) {
+  return { state, why };
+}
+function runVerdict(agent, mapped, result, stillMatches) {
+  if (mapped.tool === "WebSearch") return verdict("mentioned", "search");
+  const command = mapped.args.full_command;
+  if (SHELL_TOOLS2.has(mapped.tool) && command !== void 0) {
+    const view = executedView(command);
+    const first = view.kinds[0];
+    if (first !== void 0 && !stillMatches({ ...mapped, args: { ...mapped.args, full_command: view.text } })) {
+      return verdict("mentioned", first);
+    }
+  }
+  if (!recordsToolResults(agent)) return verdict("unknown", "not-recorded");
+  if (result === void 0) return verdict("unknown", "no-result");
+  if (result.isError) {
+    return EXIT_CODE.test(result.content) ? verdict("ran", "exit-code") : verdict("unknown", "error-result");
+  }
+  return verdict("ran", "result");
+}
+var AGENT_REPLY = verdict("mentioned", "agent-reply");
+function tallyMatchedCalls(corpus, catalog, allowlist) {
+  const agent = corpus.agent ?? "claude";
+  const tally = { ran: 0, mentioned: 0, unknown: 0 };
+  const stillMatches = (call) => evaluateAction(catalog, allowlist, [call]).decision.matches.length > 0;
+  for (const session of corpus.sessions) {
+    const seen = /* @__PURE__ */ new Set();
+    for (const turn of session.turns) {
+      for (const use of turn.toolUses) {
+        if (agent === "claude" && use.toolUseId !== "") {
+          if (seen.has(use.toolUseId)) continue;
+          seen.add(use.toolUseId);
+        }
+        const result = session.toolResults.get(use.toolUseId);
+        for (const call of toolUseCalls(agent, use)) {
+          if (call.kind !== "action") continue;
+          const { mapped, decision } = evaluateAction(catalog, allowlist, call.candidates);
+          if (decision.matches.length === 0) continue;
+          tally[runVerdict(agent, mapped, result, stillMatches).state] += 1;
+        }
+      }
+    }
+  }
+  return {
+    tally,
+    resultsRecorded: recordsToolResults(agent),
+    ranEvidence: ranEvidenceOf(agent)
+  };
+}
+
+// src/core/verify/sources.ts
+var EMPTY = { pieces: [], workingDirs: [] };
+var MAX_DEPTH = 32;
+var MAX_LEAVES = 1e4;
+function isRecord4(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+function stringLeaves(value, out = [], depth = 0) {
+  if (out.length >= MAX_LEAVES || depth > MAX_DEPTH) return out;
+  if (typeof value === "string") {
+    if (value !== "") out.push(value);
+  } else if (Array.isArray(value)) {
+    for (const item of value) stringLeaves(item, out, depth + 1);
+  } else if (isRecord4(value)) {
+    for (const item of Object.values(value)) stringLeaves(item, out, depth + 1);
+  }
+  return out;
+}
+function contentText(content) {
+  if (typeof content === "string") return content === "" ? [] : [content];
+  if (!Array.isArray(content)) return [];
+  const out = [];
+  for (const item of content) {
+    if (typeof item === "string") {
+      if (item !== "") out.push(item);
+    } else if (isRecord4(item) && typeof item.text === "string" && item.text !== "") {
+      out.push(item.text);
+    }
+  }
+  return out;
+}
+function collector() {
+  const pieces = [];
+  return {
+    add: (via, texts) => {
+      for (const text of texts) pieces.push({ text, via });
+    },
+    pieces
+  };
+}
+function nonEmpty3(value) {
+  return typeof value === "string" && value !== "" ? [value] : [];
+}
+function claudeLine(record) {
+  const { add, pieces } = collector();
+  const message = isRecord4(record.message) ? record.message : void 0;
+  const content = message?.content;
+  if (record.type === "user") {
+    if (typeof content === "string") add("pasted-into-prompt", contentText(content));
+    else if (Array.isArray(content)) {
+      for (const block of content) {
+        if (!isRecord4(block)) continue;
+        if (block.type === "text" && typeof block.text === "string") {
+          add("pasted-into-prompt", [block.text]);
+        } else if (block.type === "tool_result") {
+          add("printed-by-command", contentText(block.content));
+        }
+      }
+    }
+    if (record.toolUseResult !== void 0) {
+      add("printed-by-command", stringLeaves(record.toolUseResult));
+    }
+  } else if (record.type === "assistant" && Array.isArray(content)) {
+    for (const block of content) {
+      if (!isRecord4(block)) continue;
+      if (block.type === "text" && typeof block.text === "string") {
+        add("in-agent-reply", [block.text]);
+      } else if (block.type === "thinking" && typeof block.thinking === "string") {
+        add("in-agent-reply", [block.thinking]);
+      } else if (block.type === "tool_use") {
+        add("typed-into-command", stringLeaves(block.input));
+      }
+    }
+  }
+  return { pieces, workingDirs: nonEmpty3(record.cwd) };
+}
+function codexLine(record) {
+  const payload = isRecord4(record.payload) ? record.payload : {};
+  if (record.type === "session_meta" || record.type === "turn_context") {
+    return { pieces: [], workingDirs: nonEmpty3(payload.cwd) };
+  }
+  const { add, pieces } = collector();
+  if (record.type === "response_item") {
+    switch (payload.type) {
+      case "message":
+        if (payload.role === "user") add("pasted-into-prompt", contentText(payload.content));
+        else if (payload.role === "assistant") add("in-agent-reply", contentText(payload.content));
+        break;
+      case "reasoning":
+        add("in-agent-reply", [...contentText(payload.summary), ...contentText(payload.content)]);
+        break;
+      case "custom_tool_call":
+        add("typed-into-command", stringLeaves(payload.input));
+        break;
+      case "function_call":
+        add("typed-into-command", stringLeaves(payload.arguments));
+        break;
+      case "custom_tool_call_output":
+      case "function_call_output":
+        add("printed-by-command", stringLeaves(payload.output));
+        break;
+    }
+  } else if (record.type === "event_msg") {
+    switch (payload.type) {
+      case "user_message":
+        add("pasted-into-prompt", nonEmpty3(payload.message));
+        break;
+      case "agent_message":
+        add("in-agent-reply", nonEmpty3(payload.message));
+        break;
+      case "exec_command_end":
+        add("printed-by-command", [
+          ...nonEmpty3(payload.aggregated_output),
+          ...nonEmpty3(payload.stdout),
+          ...nonEmpty3(payload.stderr)
+        ]);
+        break;
+      case "item_completed": {
+        const item = isRecord4(payload.item) ? payload.item : {};
+        if (item.type === "CommandExecution") {
+          add("printed-by-command", nonEmpty3(item.aggregated_output));
+        }
+        break;
+      }
+    }
+  }
+  return { pieces, workingDirs: [] };
+}
+function cursorLine(record) {
+  const message = isRecord4(record.message) ? record.message : void 0;
+  if (message === void 0) return EMPTY;
+  const { add, pieces } = collector();
+  if (record.role === "user") add("pasted-into-prompt", contentText(message.content));
+  else if (record.role === "assistant" && Array.isArray(message.content)) {
+    for (const item of message.content) {
+      if (!isRecord4(item)) continue;
+      if (item.type === "text" && typeof item.text === "string") {
+        add("in-agent-reply", [item.text]);
+      } else if (item.type === "tool_use") {
+        add("typed-into-command", stringLeaves(item.input));
+      }
+    }
+  }
+  return { pieces, workingDirs: [] };
+}
+function lineText(agent, line) {
+  const trimmed = line.trim();
+  if (trimmed === "") return EMPTY;
+  let record;
+  try {
+    record = JSON.parse(trimmed);
+  } catch {
+    return EMPTY;
+  }
+  if (!isRecord4(record)) return EMPTY;
+  switch (agent) {
+    case "claude":
+      return claudeLine(record);
+    case "codex":
+      return codexLine(record);
+    case "cursor":
+      return cursorLine(record);
+    default:
+      return unhandledAgent(agent);
+  }
+}
+
+// src/core/verify/types.ts
+var SECRET_PROVENANCES = [
+  "pasted-into-prompt",
+  "typed-into-command",
+  "printed-by-command",
+  "in-agent-reply"
+];
+var MAX_SECRET_ITEMS = 200;
+
+// src/core/verify/secrets.ts
+var CONTEXT = 256;
+var MAX_ALIGN_STEPS = 5e3;
+var PLACEHOLDER = /\[REDACTED:([a-z0-9-]+(?::[a-z0-9-]+)?)(?::[a-z0-9-]+)?\]/g;
+var SCRUB_SENTINEL = String.fromCharCode(57344);
+var KIND_OF_LABEL = /* @__PURE__ */ new Map([
+  ["secret:aws", "aws-access-key"],
+  ["secret:aws-secret", "aws-secret-key"],
+  ["secret:private-key", "private-key"],
+  ["secret:github", "github-token"],
+  ["secret:slack", "slack-token"],
+  ["secret:api-key", "api-key"],
+  ["secret:jwt", "jwt"],
+  ["secret:bearer", "bearer-token"],
+  ["secret:auth", "auth-header"],
+  ["secret:connection-string", "database-url"],
+  ["secret:basic-auth", "url-credentials"],
+  ["secret:password", "password"],
+  ["secret:env", "named-secret"],
+  ["secret:generic", "random-string"]
+]);
+function kindOf(label) {
+  const known = KIND_OF_LABEL.get(label);
+  if (known !== void 0) return known;
+  return label.startsWith("secret:") ? "other" : void 0;
+}
+function alignValues(text, literals) {
+  const count2 = literals.length - 1;
+  if (count2 <= 0) return [];
+  const head = literals[0];
+  const tail = literals[count2];
+  const tailStart = text.length - tail.length;
+  if (!text.startsWith(head) || !text.endsWith(tail) || tailStart <= head.length) return void 0;
+  const spans = [];
+  let steps = 0;
+  const place = (index, start) => {
+    steps += 1;
+    if (steps > MAX_ALIGN_STEPS) return false;
+    if (index === count2 - 1) {
+      if (tailStart <= start) return false;
+      spans[index] = [start, tailStart];
+      return true;
+    }
+    const literal = literals[index + 1];
+    let from = start + 1;
+    for (; ; ) {
+      const at = text.indexOf(literal, from);
+      if (at < 0 || at + literal.length >= tailStart) return false;
+      spans[index] = [start, at];
+      if (place(index + 1, at + literal.length)) return true;
+      if (steps > MAX_ALIGN_STEPS) return false;
+      from = at + 1;
+    }
+  };
+  return place(0, head.length) ? spans : void 0;
+}
+function findValues(text) {
+  const clean = text.includes(SCRUB_SENTINEL) ? text.split(SCRUB_SENTINEL).join("") : text;
+  const redacted2 = redactSecrets(scrubText(clean).text);
+  if (redacted2 === clean) return { values: [], unaligned: false };
+  const literals = [];
+  const labels = [];
+  let last = 0;
+  for (const match of redacted2.matchAll(PLACEHOLDER)) {
+    literals.push(redacted2.slice(last, match.index));
+    labels.push(match[1]);
+    last = match.index + match[0].length;
+  }
+  literals.push(redacted2.slice(last));
+  if (labels.length === 0) return { values: [], unaligned: false };
+  const spans = alignValues(clean, literals);
+  if (spans === void 0) return { values: [], unaligned: true };
+  const values = [];
+  labels.forEach((label, i) => {
+    const kind = kindOf(label);
+    const span = spans[i];
+    if (kind === void 0 || span === void 0) return;
+    values.push({
+      value: clean.slice(span[0], span[1]),
+      kind,
+      after: clean.slice(span[1], span[1] + CONTEXT)
+    });
+  });
+  return { values, unaligned: false };
+}
+var PLACEHOLDER_SHAPE = /example|placeholder|changeme|change[-_]?me|dummy|fake|sample|redacted|replace[-_]?me|xxxx|your[-_ ]|<[^>]*>|\{\{|\$\{|^\$[A-Za-z_]|%[A-Za-z_]+%|process\.env|os\.environ|\*{3,}|\.\.\.|…|lorem|foobar|^test[-_]|[-_]test$|^todo|0123456|123456789|abcdefgh/i;
+var COMMON_WORDS = /* @__PURE__ */ new Set([
+  "password",
+  "passwd",
+  "secret",
+  "token",
+  "apikey",
+  "api_key",
+  "admin",
+  "root",
+  "postgres",
+  "mysql",
+  "guest",
+  "letmein",
+  "qwerty",
+  "pass",
+  "string",
+  "required",
+  "optional",
+  "value",
+  "default",
+  "none",
+  "null",
+  "undefined",
+  "true",
+  "false",
+  "tbd"
+]);
+function secretPart(found) {
+  if (found.kind === "database-url") {
+    const scheme = found.value.indexOf("://");
+    const userinfo = found.value.slice(scheme + 3, found.value.lastIndexOf("@"));
+    return userinfo.slice(userinfo.indexOf(":") + 1);
+  }
+  if (found.kind === "url-credentials") return found.value.slice(found.value.indexOf(":") + 1);
+  return found.value;
+}
+var NAMED_KINDS = /* @__PURE__ */ new Set([
+  "named-secret",
+  "password",
+  "auth-header",
+  "bearer-token",
+  "url-credentials",
+  "database-url"
+]);
+var MIN_CREDENTIAL_LENGTH = 8;
+var CODE_CHARACTERS = /[\s()[\]{}<>;,`'"]/;
+var MEMBER_PATH = /^[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)+$/;
+function credentialShaped(secret) {
+  return secret.length >= MIN_CREDENTIAL_LENGTH && !CODE_CHARACTERS.test(secret) && !/^[~.]{0,2}\//.test(secret) && !MEMBER_PATH.test(secret) && /[^A-Za-z_-]/.test(secret);
+}
+function looksLikePlaceholder(found) {
+  const secret = secretPart(found);
+  const bare = secret.replace(/^["']|["']$/g, "");
+  if (PLACEHOLDER_SHAPE.test(found.value) || COMMON_WORDS.has(bare.toLowerCase())) return true;
+  if (NAMED_KINDS.has(found.kind) && !credentialShaped(bare)) return true;
+  return bare.length >= 6 && new Set(bare).size <= 3;
+}
+var LOCAL_HOST = /^(?:localhost|127(?:\.\d{1,3}){3}|0\.0\.0\.0|\[?::1\]?|host\.docker\.internal|[a-z0-9-]+\.localhost)$/i;
+function hostOf(found) {
+  if (found.kind === "database-url") {
+    return found.value.slice(found.value.lastIndexOf("@") + 1).match(/^[^\s/:?#]+/)?.[0];
+  }
+  if (found.kind === "url-credentials" && found.after.startsWith("@")) {
+    return found.after.slice(1).match(/^[^\s/:?#@]+/)?.[0];
+  }
+  return void 0;
+}
+function isLocalDev(found) {
+  const host = hostOf(found);
+  return host !== void 0 && LOCAL_HOST.test(host);
+}
+var MAX_HELD_VALUES = 5e3;
+var MIN_REMEMBERED_TEXT = 256;
+var MAX_EMPTY_TEXTS = 1e5;
+var MAX_WORKING_DIRS = 200;
+var MAX_TRACKED_FILES = 2e4;
+var MAX_FIXTURE_BYTES = 256 * 1024 * 1024;
+var MAX_PARENT_STEPS = 8;
+function parentOf(path) {
+  const trimmed = path.replace(/[\\/]+$/, "");
+  const cut = Math.max(trimmed.lastIndexOf("/"), trimmed.lastIndexOf("\\"));
+  if (cut <= 0) return void 0;
+  return trimmed.slice(0, cut);
+}
+async function findRepos(io, workingDirs) {
+  const roots = /* @__PURE__ */ new Set();
+  const gone = /* @__PURE__ */ new Set();
+  for (const cwd of [...workingDirs].slice(0, MAX_WORKING_DIRS)) {
+    let dir = cwd;
+    let steps = 0;
+    while (dir !== void 0 && io.isDirectory(dir) !== true && steps < MAX_PARENT_STEPS) {
+      dir = parentOf(dir);
+      steps += 1;
+    }
+    if (dir === void 0 || io.isDirectory(dir) !== true) {
+      gone.add(cwd);
+      continue;
+    }
+    const top = await io.git(dir, ["rev-parse", "--show-toplevel"]);
+    if (top.ok) {
+      const root = top.stdout.trim();
+      if (root !== "") roots.add(root);
+    } else if (top.reason !== "not-a-repo" || dir !== cwd) {
+      gone.add(dir === cwd ? cwd : dir);
+    }
+  }
+  return { roots: [...roots].sort(), notChecked: gone.size };
+}
+async function searchFixtures(io, workingDirs, held) {
+  if (held.size === 0) return { check: "not-needed", reposChecked: 0, reposNotChecked: 0 };
+  const repos = await findRepos(io, workingDirs);
+  let checked = 0;
+  let notChecked = repos.notChecked;
+  let bytes = 0;
+  for (const root of repos.roots) {
+    if (held.size === 0) {
+      checked += 1;
+      continue;
+    }
+    const listing = await io.git(root, ["ls-files", "-z"]);
+    if (!listing.ok) {
+      notChecked += 1;
+      continue;
+    }
+    const tracked = listing.stdout.split("\0").filter((p) => p !== "");
+    let complete = tracked.length <= MAX_TRACKED_FILES;
+    for (const relative3 of tracked.slice(0, MAX_TRACKED_FILES)) {
+      if (held.size === 0) break;
+      if (bytes >= MAX_FIXTURE_BYTES) {
+        complete = false;
+        break;
+      }
+      const read = await io.readFile(`${root}/${relative3}`);
+      if (!read.ok) {
+        if (read.reason === "budget") {
+          complete = false;
+          break;
+        }
+        continue;
+      }
+      bytes += read.text.length;
+      if (read.text.includes("\0")) continue;
+      for (const [key, candidate] of held) {
+        if (candidate.value !== void 0 && read.text.includes(candidate.value)) {
+          candidate.decided = "committed-fixture";
+          candidate.value = void 0;
+          held.delete(key);
+        }
+      }
+    }
+    if (complete) checked += 1;
+    else notChecked += 1;
+  }
+  const check = checked === 0 ? "unavailable" : notChecked === 0 ? "complete" : "partial";
+  return { check, reposChecked: checked, reposNotChecked: notChecked };
+}
+function randomStringIsCredential(via) {
+  return via.has("pasted-into-prompt") || via.has("typed-into-command");
+}
+function itemsOf(candidates) {
+  const items = [];
+  for (const candidate of candidates) {
+    if (candidate.decided !== "likely-real") continue;
+    items.push({
+      kind: candidate.kind,
+      via: SECRET_PROVENANCES.filter((p) => candidate.via.has(p)),
+      files: candidate.files.size
+    });
+  }
+  return items.sort(
+    (a, b) => b.files - a.files || a.kind.localeCompare(b.kind) || a.via.join(" ").localeCompare(b.via.join(" "))
+  );
+}
+async function checkSecrets(input) {
+  const candidates = /* @__PURE__ */ new Map();
+  const workingDirs = /* @__PURE__ */ new Set();
+  let filesRead = 0;
+  let filesNotRead = 0;
+  let unplaced = 0;
+  let held = 0;
+  const empty = /* @__PURE__ */ new Set();
+  for (const [index, path] of input.files.entries()) {
+    try {
+      for await (const line of input.readLines(path)) {
+        const { pieces, workingDirs: named } = lineText(input.agent, line);
+        for (const cwd of named) workingDirs.add(cwd);
+        for (const piece of pieces) {
+          const remember = piece.text.length >= MIN_REMEMBERED_TEXT;
+          const textKey = remember ? input.fingerprint(piece.text) : "";
+          if (remember && empty.has(textKey)) continue;
+          const result = findValues(piece.text);
+          if (result.unaligned) unplaced += 1;
+          if (remember && result.values.length === 0 && !result.unaligned && empty.size < MAX_EMPTY_TEXTS) {
+            empty.add(textKey);
+          }
+          for (const found of result.values) {
+            const key = input.fingerprint(found.value);
+            let candidate = candidates.get(key);
+            if (candidate === void 0) {
+              const decided = looksLikePlaceholder(found) ? "placeholder" : isLocalDev(found) ? "local-dev" : void 0;
+              const keep = decided === void 0 && held < (input.maxHeldValues ?? MAX_HELD_VALUES);
+              if (keep) held += 1;
+              candidate = {
+                kind: found.kind,
+                via: /* @__PURE__ */ new Set(),
+                files: /* @__PURE__ */ new Set(),
+                decided,
+                // Past the cap a value is not held, so it cannot be searched for in the repos.
+                value: keep ? found.value : void 0
+              };
+              candidates.set(key, candidate);
+            }
+            candidate.via.add(piece.via);
+            candidate.files.add(index);
+          }
+        }
+      }
+      filesRead += 1;
+    } catch {
+      filesNotRead += 1;
+    }
+  }
+  for (const candidate of candidates.values()) {
+    if (candidate.kind === "random-string" && candidate.decided === void 0 && !randomStringIsCredential(candidate.via)) {
+      candidate.decided = "placeholder";
+      candidate.value = void 0;
+    }
+  }
+  const pending = /* @__PURE__ */ new Map();
+  let notSearched = 0;
+  for (const [key, candidate] of candidates) {
+    if (candidate.decided !== void 0) continue;
+    if (candidate.value === void 0) notSearched += 1;
+    else pending.set(key, candidate);
+  }
+  const searched = await searchFixtures(input.io, workingDirs, pending);
+  const fixtures = notSearched === 0 ? searched : {
+    ...searched,
+    check: searched.check === "complete" ? "partial" : searched.check === "not-needed" ? "unavailable" : searched.check
+  };
+  for (const candidate of candidates.values()) {
+    candidate.decided ??= "likely-real";
+    candidate.value = void 0;
+  }
+  const classes = {
+    "likely-real": 0,
+    "committed-fixture": 0,
+    placeholder: 0,
+    "local-dev": 0
+  };
+  for (const candidate of candidates.values()) {
+    classes[candidate.decided] += 1;
+  }
+  const items = itemsOf(candidates.values());
+  let status;
+  if (filesRead === 0 && filesNotRead === 0) status = "not-checked";
+  else if (classes["likely-real"] > 0) status = "act";
+  else if (filesNotRead > 0 || unplaced > 0) status = "could-not-check";
+  else status = "clean";
+  return {
+    status,
+    matches: candidates.size,
+    facts: {
+      classes,
+      items: items.slice(0, MAX_SECRET_ITEMS),
+      moreItems: Math.max(0, items.length - MAX_SECRET_ITEMS),
+      filesRead,
+      filesNotRead,
+      unplaced,
+      fixtureCheck: fixtures.check,
+      reposChecked: fixtures.reposChecked,
+      reposNotChecked: fixtures.reposNotChecked
+    }
+  };
+}
+
+// src/core/verify/verify.ts
+var NOT_CHECKED = { status: "not-checked" };
+var UNAVAILABLE_VERIFY_IO = {
+  git: () => Promise.resolve({ ok: false, reason: "missing" }),
+  isDirectory: () => void 0,
+  readFile: () => Promise.resolve({ ok: false, reason: "missing" }),
+  processNames: () => Promise.resolve({ ok: false, reason: "missing" })
+};
+async function verifyScan(input) {
+  const agent = input.corpus.agent ?? "claude";
+  const matched = tallyMatchedCalls(input.corpus, input.catalog, input.allowlist);
+  const secrets = await checkSecrets({
+    agent,
+    files: input.corpus.files ?? [],
+    readLines: input.readLines,
+    io: input.io,
+    fingerprint: input.fingerprint ?? createFingerprinter()
+  });
+  return {
+    matchedCalls: matched.tally,
+    resultsRecorded: matched.resultsRecorded,
+    ranEvidence: matched.ranEvidence,
+    categories: {
+      secrets,
+      "skipped-checks": NOT_CHECKED,
+      "lost-work": NOT_CHECKED,
+      cloud: NOT_CHECKED,
+      "prod-infra": NOT_CHECKED,
+      tests: NOT_CHECKED,
+      destructive: NOT_CHECKED,
+      unreviewed: NOT_CHECKED,
+      egress: NOT_CHECKED
+    }
+  };
+}
+
 // src/core/version.ts
 var VERSION = "0.4.14";
 
@@ -11687,6 +12812,7 @@ var SCAN_USAGE = `agenttrail-guard scan \u2014 what your agent has been doing
 Usage:
   agenttrail-guard scan --agent <claude|cursor|codex> [--dir <root>] [--out <file>]
                         [--artifact] [--no-open] [--review] [--json] [--quiet]
+                        [--verify]
 
   --agent <app>  Whose sessions to read, and it is required: claude reads Claude Code's
                  transcripts in ~/.claude/projects, cursor reads Cursor's session files
@@ -11704,6 +12830,12 @@ Usage:
   --review       Print every command and guardrail the report will contain, and ask
                  before writing it. Redaction is thorough but not a guarantee; this
                  is how you check it yourself before the file exists.
+  --verify       Preview: also check the matches against this machine, read-only.
+                 Says which matched commands ran and which were only mentioned, and
+                 sorts credentials found in the transcripts into likely real,
+                 committed fixtures, placeholders and local dev data, by kind, never
+                 by value. Reads the transcripts again and the git-tracked files of
+                 the repos they ran in, runs read-only git, and works offline.
 
 Reads transcripts already on your disk. No account, nothing uploaded, and no network
 call: the one exception anywhere in this tool is crash reporting, which is off unless
@@ -11721,6 +12853,7 @@ function parseScanFlags(argv) {
   let out;
   let help = false;
   let review = false;
+  let verify = false;
   let unknown;
   const takeAgent = (value) => {
     const app = chosenAgent(value);
@@ -11742,6 +12875,7 @@ function parseScanFlags(argv) {
     else if (arg === "--no-open") noOpen = true;
     else if (arg === "--artifact") artifact = true;
     else if (arg === "--review") review = true;
+    else if (arg === "--verify") verify = true;
     else if (arg === "--out") {
       const next = argv[i + 1];
       if (next === void 0 || next === "" || next.startsWith("-")) {
@@ -11775,6 +12909,7 @@ function parseScanFlags(argv) {
     out,
     help,
     review,
+    verify,
     unknown
   };
 }
@@ -12019,6 +13154,10 @@ function renderSummary(result, colorsEnabled, reportPath) {
     out.push("");
     out.push(c.dim("No sessions found. Nothing to report yet."));
   }
+  if (result.verification !== void 0) {
+    out.push("");
+    out.push(verificationSummary(result.verification));
+  }
   if (reportPath !== void 0) {
     out.push("");
     out.push(
@@ -12027,6 +13166,60 @@ function renderSummary(result, colorsEnabled, reportPath) {
   }
   return `${out.join("\n")}
 `;
+}
+function counted2(n, singular, plural2 = `${singular}s`) {
+  return `${formatCount(n)} ${n === 1 ? singular : plural2}`;
+}
+function verificationSummary(verification) {
+  const secrets = verification.categories.secrets;
+  const facts = secrets.facts;
+  const parts = [];
+  if (secrets.status === "not-checked") parts.push("no transcript files to check for secrets");
+  else {
+    let line = `${counted2(facts.classes["likely-real"], "likely-real credential")} in ${counted2(facts.filesRead, "transcript file")}`;
+    const also = [];
+    const fixtures = facts.classes["committed-fixture"];
+    const placeholders = facts.classes.placeholder;
+    const local = facts.classes["local-dev"];
+    if (fixtures > 0) also.push(counted2(fixtures, "committed fixture"));
+    if (placeholders > 0) {
+      also.push(
+        counted2(placeholders, "placeholder or false positive", "placeholders or false positives")
+      );
+    }
+    if (local > 0) also.push(counted2(local, "local dev value"));
+    if (also.length > 0) line += ` (and ${also.join(", ")})`;
+    parts.push(line);
+    if (facts.filesNotRead > 0) {
+      parts.push(`${counted2(facts.filesNotRead, "transcript file")} could not be read`);
+    }
+    if (facts.unplaced > 0) {
+      parts.push(`${counted2(facts.unplaced, "redacted text")} could not be classed`);
+    }
+    if (facts.reposNotChecked > 0) {
+      parts.push(
+        `${counted2(facts.reposNotChecked, "repo")} could not be searched for committed fixtures`
+      );
+    } else if (facts.fixtureCheck === "unavailable") {
+      parts.push("no repo was found to search for committed fixtures");
+    }
+  }
+  const calls = verification.matchedCalls;
+  if (!verification.resultsRecorded) {
+    parts.push(
+      "this app records no command output, so no matched call could be confirmed as run" + (calls.mentioned > 0 ? ` (${counted2(calls.mentioned, "match", "matches")} only mentioned a command)` : "")
+    );
+  } else {
+    parts.push(
+      `${counted2(calls.ran, "matched call")} ran, ${formatCount(calls.mentioned)} only mentioned a command, ${formatCount(calls.unknown)} could not be confirmed`
+    );
+    if (verification.ranEvidence === "output-record" && calls.ran > 0) {
+      parts.push(
+        "a Codex call with an output record counts as ran, which may include blocked calls"
+      );
+    }
+  }
+  return `Checked on this machine (read-only, offline): ${parts.join("; ")}.`;
 }
 function renderReview(result, colorsEnabled, reportPath, mcpDisclosures = []) {
   const c = createColors(colorsEnabled);
@@ -12105,7 +13298,14 @@ ${SCAN_USAGE}`);
   const catalog = compileCatalog([...shipped, ...userRules], config);
   const allowlist = compileAllowlist(config.allowlist);
   const corpus = await readCorpusFor(agent, root, io);
-  const result = aggregateScan(corpus, catalog, allowlist, new Set(shipped));
+  const verification = flags.verify ? await verifyScan({
+    corpus,
+    catalog,
+    allowlist,
+    readLines: (path) => io.readLines(path),
+    io: deps.createVerifyIO?.() ?? UNAVAILABLE_VERIFY_IO
+  }) : void 0;
+  const result = aggregateScan(corpus, catalog, allowlist, new Set(shipped), verification);
   const meta = { version: VERSION, generatedAt: now };
   if (flags.json) {
     io.writeStdout(renderJson(result, meta));
@@ -12261,8 +13461,188 @@ function createRealScanIO() {
   };
 }
 
+// src/verify-io.ts
+import { execFile } from "child_process";
+import { readFileSync as readFileSync2, realpathSync, statSync as statSync3 } from "fs";
+import { isAbsolute as isAbsolute2, relative as relative2 } from "path";
+var GIT_ALLOW_LIST = [
+  ["rev-parse", "--show-toplevel"],
+  ["ls-files", "-z"]
+];
+var GIT_SAFETY_ARGS = [
+  "-c",
+  "core.fsmonitor=false",
+  "-c",
+  "core.pager=cat",
+  "-c",
+  "diff.external=",
+  "--no-pager"
+];
+var CALL_TIMEOUT_MS = 5e3;
+var TOTAL_BUDGET_MS = 6e4;
+var MAX_OUTPUT_BYTES = 1024 * 1024;
+var MAX_FILE_BYTES = 1024 * 1024;
+var MAX_PROCESS_NAMES = 4096;
+function isAllowedGitCall(args2) {
+  return GIT_ALLOW_LIST.some(
+    (allowed) => allowed.length === args2.length && allowed.every((arg, i) => arg === args2[i])
+  );
+}
+var KEPT_VARIABLES = [
+  "PATH",
+  "Path",
+  "HOME",
+  "USERPROFILE",
+  "SystemRoot",
+  "SYSTEMROOT",
+  "TMPDIR",
+  "TEMP",
+  "TMP"
+];
+function gitEnvironment(env) {
+  const out = {
+    GIT_OPTIONAL_LOCKS: "0",
+    GIT_TERMINAL_PROMPT: "0",
+    LC_ALL: "C",
+    LANG: "C"
+  };
+  for (const key of KEPT_VARIABLES) {
+    const value = env[key];
+    if (value !== void 0) out[key] = value;
+  }
+  return out;
+}
+var realExec = (file2, args2, options) => new Promise((resolve2) => {
+  try {
+    execFile(file2, [...args2], options, (error, stdout, stderr) => {
+      if (error === null) {
+        resolve2({ kind: "ok", stdout: String(stdout) });
+        return;
+      }
+      const failure = error;
+      if (failure.code === "ERR_CHILD_PROCESS_STDIO_MAXBUFFER") resolve2({ kind: "too-large" });
+      else if (failure.code === "ENOENT") resolve2({ kind: "missing" });
+      else if (failure.killed === true) resolve2({ kind: "timeout" });
+      else if (typeof failure.code === "number") {
+        resolve2({ kind: "exit", code: failure.code, stderr: String(stderr) });
+      } else resolve2({ kind: "failed" });
+    });
+  } catch {
+    resolve2({ kind: "failed" });
+  }
+});
+function parsePsNames(stdout) {
+  return stdout.split(/\r?\n/).map((line) => line.trim()).filter((line) => line !== "").map((line) => line.split("/").pop() ?? line).slice(0, MAX_PROCESS_NAMES);
+}
+function parseTasklistNames(stdout) {
+  const names = [];
+  for (const line of stdout.split(/\r?\n/)) {
+    const match = /^"([^"]*)"/.exec(line.trim());
+    if (match?.[1] !== void 0 && match[1] !== "") names.push(match[1]);
+  }
+  return names.slice(0, MAX_PROCESS_NAMES);
+}
+function isInside(root, path) {
+  const rel = relative2(root, path);
+  return rel !== "" && !rel.startsWith("..") && !isAbsolute2(rel);
+}
+function createRealVerifyIO(options = {}) {
+  const exec = options.exec ?? realExec;
+  const env = gitEnvironment(options.env ?? process.env);
+  const platform = options.platform ?? process.platform;
+  const now = options.now ?? (() => Date.now());
+  const callTimeout = options.callTimeoutMs ?? CALL_TIMEOUT_MS;
+  const budget = options.totalBudgetMs ?? TOTAL_BUDGET_MS;
+  const roots = /* @__PURE__ */ new Set();
+  let spent = 0;
+  const run = async (file2, args2, cwd) => {
+    const left = budget - spent;
+    if (left <= 0) return "budget";
+    const started = now();
+    const result = await exec(file2, args2, {
+      ...cwd === void 0 ? {} : { cwd },
+      env,
+      timeout: Math.min(callTimeout, left),
+      maxBuffer: MAX_OUTPUT_BYTES,
+      shell: false,
+      windowsHide: true,
+      encoding: "utf8"
+    });
+    spent += Math.max(0, now() - started);
+    return result;
+  };
+  const failureOf = (result) => {
+    switch (result.kind) {
+      case "timeout":
+        return "timeout";
+      case "too-large":
+        return "too-large";
+      case "missing":
+        return "missing";
+      case "exit":
+        return result.code === 128 && /not a git repository/i.test(result.stderr) ? "not-a-repo" : "failed";
+      default:
+        return "failed";
+    }
+  };
+  return {
+    async git(cwd, args2) {
+      if (!isAllowedGitCall(args2)) return { ok: false, reason: "refused" };
+      const result = await run("git", [...GIT_SAFETY_ARGS, ...args2], cwd);
+      if (typeof result === "string") return { ok: false, reason: result };
+      if (result.kind !== "ok") return { ok: false, reason: failureOf(result) };
+      if (args2[0] === "rev-parse") {
+        try {
+          roots.add(realpathSync(result.stdout.trim()));
+        } catch {
+          return { ok: false, reason: "failed" };
+        }
+      }
+      return { ok: true, stdout: result.stdout };
+    },
+    isDirectory(path) {
+      try {
+        return statSync3(path).isDirectory();
+      } catch {
+        return void 0;
+      }
+    },
+    readFile(path) {
+      if (spent >= budget) return Promise.resolve({ ok: false, reason: "budget" });
+      const started = now();
+      try {
+        const real = realpathSync(path);
+        if (![...roots].some((root) => isInside(root, real))) {
+          return Promise.resolve({ ok: false, reason: "refused" });
+        }
+        const stat2 = statSync3(real);
+        if (!stat2.isFile()) return Promise.resolve({ ok: false, reason: "failed" });
+        if (stat2.size > MAX_FILE_BYTES) return Promise.resolve({ ok: false, reason: "too-large" });
+        return Promise.resolve({ ok: true, text: readFileSync2(real, "utf8") });
+      } catch {
+        return Promise.resolve({ ok: false, reason: "missing" });
+      } finally {
+        spent += Math.max(0, now() - started);
+      }
+    },
+    async processNames() {
+      const windows = platform === "win32";
+      const result = windows ? await run("tasklist", ["/fo", "csv", "/nh"], void 0) : await run("ps", ["-axo", "comm="], void 0);
+      if (typeof result === "string") return { ok: false, reason: result };
+      if (result.kind !== "ok") return { ok: false, reason: failureOf(result) };
+      return {
+        ok: true,
+        names: windows ? parseTasklistNames(result.stdout) : parsePsNames(result.stdout)
+      };
+    }
+  };
+}
+
 // src/scan-entry.ts
-var code = await runScan(process.argv.slice(2), createRealScanIO(), { productLine: false });
+var code = await runScan(process.argv.slice(2), createRealScanIO(), {
+  productLine: false,
+  createVerifyIO: () => createRealVerifyIO()
+});
 if (code !== 0) {
   process.exitCode = code;
 }

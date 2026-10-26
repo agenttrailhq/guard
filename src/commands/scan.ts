@@ -80,6 +80,8 @@ import { defaultProjectsRoot, scanTranscripts } from "../core/transcript/scan.js
 import type { ParsedSession } from "../core/transcript/transcript-types.js";
 import type { AgentSource, GuardRule } from "../core/types.js";
 import { parseUserRulesData } from "../core/user-rules-data.js";
+import type { Verification, VerifyIO } from "../core/verify/types.js";
+import { UNAVAILABLE_VERIFY_IO, verifyScan } from "../core/verify/verify.js";
 import { VERSION } from "../core/version.js";
 import type { ScanIO } from "../scan-io.js";
 import { agentChoiceMessage, chosenAgent } from "./agent-choice.js";
@@ -95,6 +97,7 @@ export const SCAN_USAGE = `agenttrail-guard scan — what your agent has been do
 Usage:
   agenttrail-guard scan --agent <claude|cursor|codex> [--dir <root>] [--out <file>]
                         [--artifact] [--no-open] [--review] [--json] [--quiet]
+                        [--verify]
 
   --agent <app>  Whose sessions to read, and it is required: claude reads Claude Code's
                  transcripts in ~/.claude/projects, cursor reads Cursor's session files
@@ -112,6 +115,12 @@ Usage:
   --review       Print every command and guardrail the report will contain, and ask
                  before writing it. Redaction is thorough but not a guarantee; this
                  is how you check it yourself before the file exists.
+  --verify       Preview: also check the matches against this machine, read-only.
+                 Says which matched commands ran and which were only mentioned, and
+                 sorts credentials found in the transcripts into likely real,
+                 committed fixtures, placeholders and local dev data, by kind, never
+                 by value. Reads the transcripts again and the git-tracked files of
+                 the repos they ran in, runs read-only git, and works offline.
 
 Reads transcripts already on your disk. No account, nothing uploaded, and no network
 call: the one exception anywhere in this tool is crash reporting, which is off unless
@@ -140,6 +149,8 @@ export interface ScanFlags {
   readonly help: boolean;
   /** Show everything the report will contain and ask before writing it. */
   readonly review: boolean;
+  /** `--verify`: check the matches against this machine, read-only. Off unless asked for. */
+  readonly verify: boolean;
   /** The first unrecognized argument, if any. Named back to the user. */
   readonly unknown?: string | undefined;
 }
@@ -165,6 +176,7 @@ export function parseScanFlags(argv: readonly string[]): ScanFlags {
   let out: string | undefined;
   let help = false;
   let review = false;
+  let verify = false;
   let unknown: string | undefined;
 
   /** One `--agent` value. Refused unless it names the same app as any earlier one. */
@@ -189,6 +201,7 @@ export function parseScanFlags(argv: readonly string[]): ScanFlags {
     else if (arg === "--no-open") noOpen = true;
     else if (arg === "--artifact") artifact = true;
     else if (arg === "--review") review = true;
+    else if (arg === "--verify") verify = true;
     else if (arg === "--out") {
       const next = argv[i + 1];
       // Same rule as `--dir`: a flag after it is a typo, not a file named `--json`.
@@ -226,6 +239,7 @@ export function parseScanFlags(argv: readonly string[]): ScanFlags {
     out,
     help,
     review,
+    verify,
     unknown,
   };
 }
@@ -272,6 +286,12 @@ export interface ScanDeps {
    * (`scan-entry.ts`) passes it, so the line never lands in an agent's context.
    */
   readonly productLine?: boolean;
+  /**
+   * Makes the read-only seam `--verify` checks the machine through. The CLI entries pass the
+   * real one (`verify-io.ts`); with none, every check that needs the machine reads as
+   * could-not-check.
+   */
+  readonly createVerifyIO?: () => VerifyIO;
 }
 
 /** Deepest directory nesting the file tally will descend. */
@@ -618,6 +638,11 @@ export function renderSummary(
     out.push(c.dim("No sessions found. Nothing to report yet."));
   }
 
+  if (result.verification !== undefined) {
+    out.push("");
+    out.push(verificationSummary(result.verification));
+  }
+
   if (reportPath !== undefined) {
     out.push("");
     out.push(
@@ -626,6 +651,74 @@ export function renderSummary(
   }
 
   return `${out.join("\n")}\n`;
+}
+
+/** `n` and a noun, with the noun's plural when `n` is not 1. */
+function counted(n: number, singular: string, plural = `${singular}s`): string {
+  return `${formatCount(n)} ${n === 1 ? singular : plural}`;
+}
+
+/**
+ * The one line `--verify` adds to the terminal summary: what was checked, by count. Built only
+ * from the verification's counts and states, so it can carry no value and no name.
+ */
+export function verificationSummary(verification: Verification): string {
+  const secrets = verification.categories.secrets;
+  const facts = secrets.facts;
+  const parts: string[] = [];
+
+  if (secrets.status === "not-checked") parts.push("no transcript files to check for secrets");
+  else {
+    let line = `${counted(facts.classes["likely-real"], "likely-real credential")} in ${counted(facts.filesRead, "transcript file")}`;
+    const also: string[] = [];
+    const fixtures = facts.classes["committed-fixture"];
+    const placeholders = facts.classes.placeholder;
+    const local = facts.classes["local-dev"];
+    if (fixtures > 0) also.push(counted(fixtures, "committed fixture"));
+    if (placeholders > 0) {
+      also.push(
+        counted(placeholders, "placeholder or false positive", "placeholders or false positives"),
+      );
+    }
+    if (local > 0) also.push(counted(local, "local dev value"));
+    if (also.length > 0) line += ` (and ${also.join(", ")})`;
+    parts.push(line);
+    if (facts.filesNotRead > 0) {
+      parts.push(`${counted(facts.filesNotRead, "transcript file")} could not be read`);
+    }
+    if (facts.unplaced > 0) {
+      parts.push(`${counted(facts.unplaced, "redacted text")} could not be classed`);
+    }
+    if (facts.reposNotChecked > 0) {
+      parts.push(
+        `${counted(facts.reposNotChecked, "repo")} could not be searched for committed fixtures`,
+      );
+    } else if (facts.fixtureCheck === "unavailable") {
+      parts.push("no repo was found to search for committed fixtures");
+    }
+  }
+
+  const calls = verification.matchedCalls;
+  if (!verification.resultsRecorded) {
+    parts.push(
+      "this app records no command output, so no matched call could be confirmed as run" +
+        (calls.mentioned > 0
+          ? ` (${counted(calls.mentioned, "match", "matches")} only mentioned a command)`
+          : ""),
+    );
+  } else {
+    parts.push(
+      `${counted(calls.ran, "matched call")} ran, ${formatCount(calls.mentioned)} only mentioned a command, ${formatCount(calls.unknown)} could not be confirmed`,
+    );
+    // Codex's output record may also be written for a call a hook blocked.
+    if (verification.ranEvidence === "output-record" && calls.ran > 0) {
+      parts.push(
+        "a Codex call with an output record counts as ran, which may include blocked calls",
+      );
+    }
+  }
+
+  return `Checked on this machine (read-only, offline): ${parts.join("; ")}.`;
 }
 
 /**
@@ -762,9 +855,19 @@ export async function runScan(
   const allowlist = compileAllowlist(config.allowlist);
 
   const corpus: ScanCorpus = await readCorpusFor(agent, root, io);
+  // Only when asked for: until every category has a check, verification is a preview.
+  const verification: Verification | undefined = flags.verify
+    ? await verifyScan({
+        corpus,
+        catalog,
+        allowlist,
+        readLines: (path) => io.readLines(path),
+        io: deps.createVerifyIO?.() ?? UNAVAILABLE_VERIFY_IO,
+      })
+    : undefined;
   // The shipped rule OBJECTS, so a finding is labelled `library` by identity: a user rule
   // that reuses a shipped id is still the user's own rule.
-  const result = aggregateScan(corpus, catalog, allowlist, new Set(shipped));
+  const result = aggregateScan(corpus, catalog, allowlist, new Set(shipped), verification);
   const meta: ReportMeta = { version: VERSION, generatedAt: now };
 
   if (flags.json) {

@@ -31,9 +31,10 @@
  * ── What the file carries is one capped projection ───────────────────────────
  * `reportPayload` copies, field by field, the first `MAX_ROWS` findings (most serious first),
  * the first `MAX_EXAMPLES` shapes of each, the first `MAX_ROWS` repeats, the counts and the
- * share text. The rows, the data block, the export and `scan --review` all read it, so the
- * review lists exactly what the file holds, and a field added to `ScanResult` reaches the file
- * only when it is added here. `--json` on stdout stays the whole result.
+ * share text, and with `--verify` the verification, its list capped at `MAX_ROWS`. The rows, the
+ * data block, the export and `scan --review` all read it, so the review lists exactly what the
+ * file holds, and a field added to `ScanResult` reaches the file only when it is added here.
+ * `--json` on stdout stays the whole result.
  *
  * ── Links ────────────────────────────────────────────────────────────────────
  * Every link to the site is built by `siteLink`, which adds `utm_source`, `utm_medium`,
@@ -88,6 +89,7 @@ import type {
 } from "./scan-report.js";
 import { formatCount, formatTokens, type TokenTotals, totalTokens } from "./tokens.js";
 import type { AgentSource, GuardAction } from "./types.js";
+import type { SecretsCheck, Verification } from "./verify/types.js";
 
 /** Where the source lives. Rendered as text. */
 export const REPOSITORY_URL = "https://github.com/agenttrailhq/guard";
@@ -378,6 +380,63 @@ export interface ReportPayload {
   readonly shareText: string;
   /** Per OWASP risk, over every finding, not only the rows the file lists. */
   readonly owasp: readonly OwaspTally[];
+  /**
+   * What `scan --verify` found, absent without it. Counts and fixed enums only, and its list of
+   * likely-real credentials capped at `MAX_ROWS`.
+   */
+  readonly verification?: Verification;
+}
+
+/** The secrets check, copied field by field, its list capped at `MAX_ROWS`. */
+function payloadSecrets(check: SecretsCheck): SecretsCheck {
+  const facts = check.facts;
+  return {
+    status: check.status,
+    matches: check.matches,
+    facts: {
+      classes: {
+        "likely-real": facts.classes["likely-real"],
+        "committed-fixture": facts.classes["committed-fixture"],
+        placeholder: facts.classes.placeholder,
+        "local-dev": facts.classes["local-dev"],
+      },
+      items: facts.items
+        .slice(0, MAX_ROWS)
+        .map((item) => ({ kind: item.kind, via: [...item.via], files: item.files })),
+      moreItems: facts.moreItems + Math.max(0, facts.items.length - MAX_ROWS),
+      filesRead: facts.filesRead,
+      filesNotRead: facts.filesNotRead,
+      unplaced: facts.unplaced,
+      fixtureCheck: facts.fixtureCheck,
+      reposChecked: facts.reposChecked,
+      reposNotChecked: facts.reposNotChecked,
+    },
+  };
+}
+
+/** The verification, copied field by field. */
+function payloadVerification(verification: Verification): Verification {
+  const categories = verification.categories;
+  return {
+    matchedCalls: {
+      ran: verification.matchedCalls.ran,
+      mentioned: verification.matchedCalls.mentioned,
+      unknown: verification.matchedCalls.unknown,
+    },
+    resultsRecorded: verification.resultsRecorded,
+    ranEvidence: verification.ranEvidence,
+    categories: {
+      secrets: payloadSecrets(categories.secrets),
+      "skipped-checks": { status: categories["skipped-checks"].status },
+      "lost-work": { status: categories["lost-work"].status },
+      cloud: { status: categories.cloud.status },
+      "prod-infra": { status: categories["prod-infra"].status },
+      tests: { status: categories.tests.status },
+      destructive: { status: categories.destructive.status },
+      unreviewed: { status: categories.unreviewed.status },
+      egress: { status: categories.egress.status },
+    },
+  };
 }
 
 /** Token totals, copied field by field. */
@@ -466,10 +525,14 @@ export function reportPayload(result: ScanResult, meta: ReportMeta): ReportPaylo
         guardrailCount: t.guardrailCount,
       })),
   };
+  const withVerification: ReportPayload =
+    result.verification === undefined
+      ? payload
+      : { ...payload, verification: payloadVerification(result.verification) };
   const skipped = result.skipped;
-  if (skipped === undefined) return payload;
+  if (skipped === undefined) return withVerification;
   return {
-    ...payload,
+    ...withVerification,
     skipped: {
       unreadableFiles: skipped.unreadableFiles,
       truncatedLastLines: skipped.truncatedLastLines,
