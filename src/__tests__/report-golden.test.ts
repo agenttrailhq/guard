@@ -14,10 +14,10 @@
 import { describe, expect, it } from "vitest";
 import { catalogStamp, formatCatalogStamp } from "../core/catalog-stamp.js";
 import { compileAllowlist } from "../core/evaluate.js";
-import { escapeHtml, type ReportMeta, renderReport } from "../core/report.js";
+import { escapeHtml, type RenderOptions, type ReportMeta, renderReport } from "../core/report.js";
 import { LOGO_LOCKUP_SVG, LOGO_MARK_SVG } from "../core/report-brand.js";
 import { compileCatalog } from "../core/rules.js";
-import { aggregateScan } from "../core/scan-report.js";
+import { aggregateScan, type ScanResult } from "../core/scan-report.js";
 import type { GuardRule } from "../core/types.js";
 import { LEAKS, scanned } from "./fixture-hygiene.js";
 import {
@@ -30,6 +30,12 @@ import {
   toolUse,
   turn,
 } from "./scan-fixtures.js";
+import {
+  LOCAL_FIX_CATEGORIES,
+  TEST_ONLY_BUILDERS,
+  VERIFIED_META,
+  VERIFIED_RESULT,
+} from "./verified-corpus.js";
 
 const META: ReportMeta = { version: "9.9.9", generatedAt: new Date("2026-10-01T09:00:00.000Z") };
 
@@ -113,9 +119,13 @@ const RESULT = aggregateScan(
  * (`report.test.ts` for the styles and logo, the policy hash for the script). What is left
  * is the markup this corpus produces.
  */
-function render(variant: "document" | "artifact"): string {
+function render(
+  variant: "document" | "artifact",
+  result: ScanResult = RESULT,
+  options: RenderOptions = {},
+): string {
   const line = formatCatalogStamp(catalogStamp(), META.generatedAt);
-  return renderReport(RESULT, META, { variant })
+  return renderReport(result, META, { ...options, variant })
     .split(line)
     .join("guardrail library vX.Y.Z")
     .split(escapeHtml(line))
@@ -184,5 +194,55 @@ describe("the golden report", () => {
   it.each(LEAKS)("the golden pages carry no $name", ({ pattern }) => {
     expect(scanned(render("document"))).not.toMatch(pattern);
     expect(scanned(render("artifact"))).not.toMatch(pattern);
+  });
+});
+
+/**
+ * The verified report, from the synthetic verified corpus: the real secrets card, and test-only
+ * cards for the categories with no check in this build. Rendered at the golden pages' own time.
+ */
+describe("the golden verified report", () => {
+  const OPTIONS: RenderOptions = {
+    cardBuilders: TEST_ONLY_BUILDERS,
+    localFixCategories: LOCAL_FIX_CATEGORIES,
+  };
+  const verified = (variant: "document" | "artifact"): string =>
+    render(variant, VERIFIED_RESULT, OPTIONS);
+
+  it("the corpus reaches every verified section, at the golden pages' time", () => {
+    expect(VERIFIED_META.generatedAt).toEqual(META.generatedAt);
+    const html = verified("document");
+    for (const part of [
+      'data-template="secrets.headline"',
+      'class="lead totals"',
+      'id="found"',
+      'id="also-checked"',
+      'id="what-happened"',
+      'class="card verified v-act"',
+      'class="card verified v-review"',
+      'class="card verified v-clean"',
+      'class="card verified v-could-not-check"',
+      'class="card verified v-not-checked"',
+      'class="note fixes-file"',
+    ]) {
+      expect(html, part).toContain(part);
+    }
+  });
+
+  it("the standalone page matches the golden file", async () => {
+    await expect(verified("document")).toMatchFileSnapshot(
+      "__snapshots__/report-verified.golden.html",
+    );
+  });
+
+  it("the artifact matches its golden file", async () => {
+    await expect(verified("artifact")).toMatchFileSnapshot(
+      "__snapshots__/report-verified-artifact.golden.html",
+    );
+  });
+
+  it.each(LEAKS)("the verified golden pages carry no $name", ({ pattern }) => {
+    expect(scanned(verified("document"))).not.toMatch(pattern);
+    expect(scanned(verified("artifact"))).not.toMatch(pattern);
   });
 });

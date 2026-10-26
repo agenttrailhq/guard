@@ -1,0 +1,456 @@
+<title>AgentTrail Guard scan report · Claude Code · 2026-10-01</title>
+<style>(stylesheet)</style>
+<main class="page" lang="en">
+<header class="masthead">
+<div class="brand" role="img" aria-label="AgentTrail"><svg class="lockup">(logo)</svg></div>
+<span class="product-tag">Guard</span>
+<nav class="sections" aria-label="Report sections"><ul>
+<li><a href="#overview">Overview</a></li>
+<li><a href="#what-happened">What happened</a></li>
+<li><a href="#fix-first">Fix first</a></li>
+<li><a href="#owasp">OWASP</a></li>
+<li><a href="#findings">All findings</a></li>
+<li><a href="#next-steps">Next steps</a></li>
+<li><a href="#share">Share</a></li>
+<li><a href="#privacy">Privacy</a></li>
+</ul></nav>
+<div class="toolbar">
+<button type="button" id="print-button" class="tool js-only" hidden>PDF</button>
+<button type="button" id="export-button" class="tool js-only" hidden>JSON</button>
+<button type="button" id="theme-toggle" class="tool js-only" hidden>Theme</button>
+</div>
+</header>
+<section class="intro" id="overview">
+<p class="origin">Scanned locally &middot; published by the person who ran it</p>
+<p class="agent">Agent: Claude Code</p>
+<h1 data-template="secrets.headline">3 likely-real credentials are still in the agent&#39;s transcripts</h1>
+<p class="lead totals">AgentTrail Guard would have stopped 2 actions and asked you about 2 more.</p>
+<p class="provenance">Generated <time datetime="2026-10-01T09:00:00.000Z">1 Oct 2026, 09:00 UTC</time> by agenttrail-guard 9.9.9 on the publisher&#39;s own machine, from their own Claude Code transcripts. The scan itself made no network call &mdash; crash reporting is the one exception anywhere in this tool, off unless turned on, and a scan never uses it. This copy was published to claude.ai by the person who ran it, through Claude Code.</p>
+<p class="top-match">Most serious match: <span class="badge sev-critical">critical</span> <span class="top-title">Recursive delete</span></p>
+<div class="actions">
+<a class="button" href="#fix-first">See what to fix first</a>
+<a class="button secondary" href="https://x.com/intent/post?text=I%20scanned%207%20tool%20calls%20from%20Claude%20Code%20with%20AgentTrail%20Guard%3A%202%20would%20block%20(2%20of%20those%3A%20Recursive%20delete)%20%C2%B7%202%20would%20ask%20%C2%B7%201%20would%20warn.%20Checked%20locally%2C%20nothing%20uploaded.&amp;url=https%3A%2F%2Fwww.agenttrail.sh%2Fagenttrail-guard%3Futm_source%3Dguard%26utm_medium%3Dscan-report%26utm_campaign%3Dclaude%26utm_content%3Dshare&amp;hashtags=agenttrail" target="_blank" rel="noopener noreferrer">Share on X</a>
+</div>
+<div class="command"><code id="cmd-init-hero">agenttrail-guard init --agent claude</code><button type="button" class="copy js-only" data-copy="cmd-init-hero" data-label="Copy" aria-label="Copy the init command" hidden>Copy</button></div>
+</section>
+<section class="evidence" id="found" aria-labelledby="found-heading">
+<h2 id="found-heading">What it found, never the values</h2>
+<p class="note">Each credential that looks real, by its kind and how it got into the transcripts. Never the value, and never the name it was given.</p>
+<ul class="evidence-list">
+<li><span class="evidence-kind">GitHub token</span><span class="evidence-how">you pasted it into a prompt</span><span class="times">in 4 transcript files</span></li>
+<li><span class="evidence-kind">AWS access key</span><span class="evidence-how">printed by a command</span><span class="times">in 2 transcript files</span></li>
+<li><span class="evidence-kind">A named secret</span><span class="evidence-how">typed into a command, in an agent reply</span><span class="times">in 1 transcript file</span></li>
+</ul>
+<p class="note"><a href="#check-secrets">What checking found, and how to fix it</a></p>
+</section>
+<section class="also-checked" id="also-checked" aria-labelledby="also-checked-heading">
+<h2 id="also-checked-heading">Also checked on this machine</h2>
+<p class="note" data-template="lead.ran-basis">Checked against command output: a match counts only when the transcript records that its command ran.</p>
+<p class="note" data-template="lead.mentioned">4 matches only mentioned a command, in a search, a message or a file, and are left out.</p>
+<p class="note" data-template="lead.unconfirmed">1 matched call had no recorded output to show it ran, and is left out.</p>
+<ul class="check-chips">
+<li><a class="check-chip v-act" href="#check-skipped-checks"><span class="chip-title">Skipped safety checks</span><span class="chip-text" data-template="test-only.skipped.chip">3 commits reached main without their checks</span></a></li>
+<li><a class="check-chip v-act" href="#check-lost-work"><span class="chip-title">Lost work</span><span class="chip-text" data-template="test-only.lost.chip">3 deleted branches and stashes still recoverable</span></a></li>
+<li><a class="check-chip v-review" href="#check-cloud"><span class="chip-title">Cloud and permissions</span><span class="chip-text" data-template="test-only.cloud.chip">2 IAM changes ran, to review</span></a></li>
+<li><a class="check-chip v-clean" href="#check-prod-infra"><span class="chip-title">Production infrastructure</span><span class="chip-text" data-template="test-only.prod.chip">0 production databases touched</span></a></li>
+<li><a class="check-chip v-clean" href="#check-destructive"><span class="chip-title">Destructive commands</span><span class="chip-text" data-template="test-only.destructive.chip">0 unguarded recursive deletes</span></a></li>
+<li><a class="check-chip v-clean" href="#check-egress"><span class="chip-title">Data leaving the machine</span><span class="chip-text" data-template="test-only.egress.chip">0 files sent off this machine</span></a></li>
+</ul>
+</section>
+<section class="stats" aria-label="Summary">
+<div class="stat"><div class="stat-value">1</div><div class="stat-label">session</div></div>
+<div class="stat"><div class="stat-value">7</div><div class="stat-label">tool calls</div></div>
+<div class="stat"><div class="stat-value">5</div><div class="stat-label">risky actions</div></div>
+<div class="stat"><div class="stat-value">2</div><div class="stat-label">repeated command shapes</div></div>
+<div class="stat"><div class="stat-value">28%</div><div class="stat-label">matched no guardrail</div></div>
+<div class="stat"><div class="stat-value">1.1K</div><div class="stat-label">tokens</div><div class="stat-note">0 cache reads (cumulative)</div></div>
+</section>
+<section id="what-happened" class="what-happened">
+<div class="section-head"><h2>What actually happened</h2><p class="section-meta" data-template="cards.tally">3 to act on · 1 to review · 3 clean · 1 could not check · 1 not checked</p></div>
+<p class="note">A match means a guardrail fired on a command. Each card says what checking that on this machine found, how things stand now, and how to fix it. The checks only read: they changed nothing on this machine.</p>
+<p class="note" data-template="lead.read">To check these, AgentTrail Guard read 18 transcript files again and searched the git-tracked files of 2 repos the sessions ran in, with read-only git.</p>
+<div class="verified-cards">
+<article class="card verified v-act" id="check-secrets" aria-labelledby="check-secrets-title">
+<div class="card-head"><span class="tone tone-act">Act on this</span><span class="times">11 matches</span></div>
+<h3 id="check-secrets-title">Secrets in transcripts</h3>
+<dl class="verified-facts">
+<div><dt>What checking found</dt><dd>
+<p data-template="secrets.found.likely-real">Found 3 likely-real credentials in 18 transcript files.</p>
+<p data-template="secrets.found.committed-fixtures">1 value is also in a git-tracked file, a committed fixture: it may be test data, or a real secret that was committed.</p>
+<p data-template="secrets.found.not-counted">Not counted as likely real: 5 placeholders or false positives, and 2 local dev values for a database or service on this machine.</p>
+<p data-template="secrets.found.method">Each value was classed by its format and by where else it appears. None was checked with the service that issued it.</p>
+</dd></div>
+<div><dt>Now</dt><dd>
+<p data-template="secrets.now.still-there">All 3 are still in the transcript files on this machine, where anything that can read those files can read them.</p>
+<p data-template="secrets.now.committed-fixtures">The committed fixture is in a git-tracked file today, and so in the repo&#39;s history.</p>
+</dd></div>
+<div><dt>Fix</dt><dd>
+<p data-template="secrets.fix.rotate">Rotate each one first, with the service that issued it, so the copies in the transcripts no longer work.</p>
+<p data-template="secrets.fix.committed-fixtures">If a committed fixture is a real secret, rotate it as well: removing the file does not remove it from the repo&#39;s history.</p>
+</dd></div>
+</dl>
+</article>
+<article class="card verified v-act" id="check-skipped-checks" aria-labelledby="check-skipped-checks-title">
+<div class="card-head"><span class="tone tone-act">Act on this</span><span class="times">6 matches</span></div>
+<h3 id="check-skipped-checks-title">Skipped safety checks</h3>
+<dl class="verified-facts">
+<div><dt>What checking found</dt><dd>
+<p data-template="test-only.skipped.no-verify">4 commits skipped the repo&#39;s hooks, and 3 of them reached main.</p>
+<p data-template="test-only.skipped.one-off">1 command turned hooks off for that command only.</p>
+<p data-template="test-only.skipped.memory">1 agent memory file tells the agent to skip hooks.</p>
+</dd></div>
+<div><dt>Now</dt><dd>
+<p data-template="test-only.skipped.hooks-on">Hooks are on in every repo checked today.</p>
+<p data-template="test-only.skipped.memory-present">The memory file is still there.</p>
+</dd></div>
+<div><dt>Fix</dt><dd>
+<p data-template="test-only.skipped.fix">Remove the line in the memory file that tells the agent to skip hooks, then review the commits that reached main.</p>
+<div class="command"><code id="fix-skipped-checks-1">git show --stat &lt;sha&gt;</code><button type="button" class="copy js-only" data-copy="fix-skipped-checks-1" data-label="Copy" aria-label="Copy fix command 1 for skipped safety checks" hidden>Copy</button></div>
+<p class="note fixes-file" data-template="card.fixes-file">The exact commands, with real names and paths, are in <code>agenttrail-guard-fixes.txt</code> on the machine the scan ran on. That file was not published with this page.</p>
+</dd></div>
+</dl>
+</article>
+<article class="card verified v-act" id="check-lost-work" aria-labelledby="check-lost-work-title">
+<div class="card-head"><span class="tone tone-act">Act on this</span><span class="times">3 matches</span></div>
+<h3 id="check-lost-work-title">Lost work</h3>
+<dl class="verified-facts">
+<div><dt>What checking found</dt><dd>
+<p data-template="test-only.lost.branches">2 force-deleted branches still have their commits in the object store, on no other branch.</p>
+<p data-template="test-only.lost.stashes">1 dropped stash still exists.</p>
+<p data-template="test-only.lost.scratch">4 discarded paths were in the agent&#39;s own scratch copy.</p>
+</dd></div>
+<div><dt>Now</dt><dd>
+<p data-template="test-only.lost.recoverable">All 3 can be recovered by hash today.</p>
+</dd></div>
+<div><dt>Fix</dt><dd>
+<div class="command"><code id="fix-lost-work-1">git branch recovered/&lt;name&gt; &lt;sha&gt;</code><button type="button" class="copy js-only" data-copy="fix-lost-work-1" data-label="Copy" aria-label="Copy fix command 1 for lost work" hidden>Copy</button></div>
+<div class="command"><code id="fix-lost-work-2">git stash store -m recovered &lt;sha&gt;</code><button type="button" class="copy js-only" data-copy="fix-lost-work-2" data-label="Copy" aria-label="Copy fix command 2 for lost work" hidden>Copy</button></div>
+<p class="note fixes-file" data-template="card.fixes-file">The exact commands, with real names and paths, are in <code>agenttrail-guard-fixes.txt</code> on the machine the scan ran on. That file was not published with this page.</p>
+</dd></div>
+</dl>
+</article>
+<article class="card verified v-review" id="check-cloud" aria-labelledby="check-cloud-title">
+<div class="card-head"><span class="tone tone-review">Review</span><span class="times">4 matches</span></div>
+<h3 id="check-cloud-title">Cloud and permissions</h3>
+<dl class="verified-facts">
+<div><dt>What checking found</dt><dd>
+<p data-template="test-only.cloud.ran">2 IAM changes, 1 S3 change and 1 Terraform run ran.</p>
+</dd></div>
+<div><dt>Now</dt><dd>
+<p data-template="test-only.cloud.review">Cloud changes cannot be checked from this machine, so these need a review by hand.</p>
+</dd></div>
+<div><dt>Fix</dt><dd>
+<div class="command"><code id="fix-cloud-1">aws iam list-access-keys --user-name &lt;name&gt;</code><button type="button" class="copy js-only" data-copy="fix-cloud-1" data-label="Copy" aria-label="Copy fix command 1 for cloud and permissions" hidden>Copy</button></div>
+<div class="command"><code id="fix-cloud-2">aws iam list-attached-user-policies --user-name &lt;name&gt;</code><button type="button" class="copy js-only" data-copy="fix-cloud-2" data-label="Copy" aria-label="Copy fix command 2 for cloud and permissions" hidden>Copy</button></div>
+</dd></div>
+</dl>
+</article>
+<article class="card verified v-clean" id="check-prod-infra" aria-labelledby="check-prod-infra-title">
+<div class="card-head"><span class="tone tone-clean">Clean</span><span class="times">2 matches</span></div>
+<h3 id="check-prod-infra-title">Production infrastructure</h3>
+<dl class="verified-facts">
+<div><dt>What checking found</dt><dd>
+<p data-template="test-only.prod.none">No database or infrastructure command that ran reached a target off this machine.</p>
+<p data-template="test-only.prod.local">2 commands ran against local databases.</p>
+</dd></div>
+</dl>
+</article>
+<article class="card verified v-clean" id="check-destructive" aria-labelledby="check-destructive-title">
+<div class="card-head"><span class="tone tone-clean">Clean</span><span class="times">7 matches</span></div>
+<h3 id="check-destructive-title">Destructive commands</h3>
+<dl class="verified-facts">
+<div><dt>What checking found</dt><dd>
+<p data-template="test-only.destructive.scratch">7 recursive deletes ran, all on scratch, temp or build output.</p>
+<p data-template="test-only.destructive.tracked">No tracked file is missing.</p>
+</dd></div>
+</dl>
+</article>
+<article class="card verified v-clean" id="check-egress" aria-labelledby="check-egress-title">
+<div class="card-head"><span class="tone tone-clean">Clean</span><span class="times">3 matches</span></div>
+<h3 id="check-egress-title">Data leaving the machine</h3>
+<dl class="verified-facts">
+<div><dt>What checking found</dt><dd>
+<p data-template="test-only.egress.false-positive">3 matches were not uploads: health checks on localhost and text in tests.</p>
+</dd></div>
+<div><dt>Now</dt><dd>
+<p data-template="test-only.egress.tunnels">No tunnel or relay is running now.</p>
+</dd></div>
+</dl>
+</article>
+<article class="card verified v-could-not-check" id="check-tests" aria-labelledby="check-tests-title">
+<div class="card-head"><span class="tone tone-could-not-check">Could not check</span><span class="times">2 matches</span></div>
+<h3 id="check-tests-title">Gaming tests</h3>
+<dl class="verified-facts">
+<div><dt>What checking found</dt><dd>
+<p data-template="could-not-check">Could not be checked on this machine, so this is not a clean result.</p>
+</dd></div>
+</dl>
+</article>
+<article class="card verified v-not-checked" id="check-unreviewed" aria-labelledby="check-unreviewed-title">
+<div class="card-head"><span class="tone tone-not-checked">Not checked</span></div>
+<h3 id="check-unreviewed-title">Unreviewed code</h3>
+<dl class="verified-facts">
+<div><dt>What checking found</dt><dd>
+<p data-template="not-checked">Not checked yet.</p>
+</dd></div>
+</dl>
+</article>
+</div>
+</section>
+<section id="would-do">
+<h2>What AgentTrail Guard would have done</h2>
+<p class="note">Tool calls, each counted once under the strictest guardrail it matched.</p>
+<div class="columns">
+<div class="col act-block-col">
+<p class="col-label">Blocked</p>
+<p class="col-count">2</p>
+<p class="note">The command does not run, and the agent is told which guardrail stopped it.</p>
+<ul class="col-list">
+<li><span class="col-title">Recursive delete</span><span class="times">2&times;</span></li>
+</ul>
+</div>
+<div class="col act-ask-col">
+<p class="col-label">Asked you first</p>
+<p class="col-count">2</p>
+<p class="note">The command waits until you allow or deny it.</p>
+<ul class="col-list">
+<li><span class="col-title">Reading a .env file</span><span class="times">2&times;</span></li>
+</ul>
+</div>
+<div class="col act-warn-col">
+<p class="col-label">Warned</p>
+<p class="col-count">1</p>
+<p class="note">The command runs, and the agent is shown which guardrail it matched.</p>
+<ul class="col-list">
+<li><span class="col-title">Discards uncommitted work</span><span class="times">1&times;</span></li>
+</ul>
+</div>
+</div>
+
+<div class="tally" role="group" aria-label="Guardrail matches">
+<div class="tally-group"><p class="tally-label">Matches by severity</p><ul class="pills">
+<li><span class="badge sev-critical">critical</span><span class="tally-count">2</span></li>
+<li><span class="badge sev-high">high</span><span class="tally-count">2</span></li>
+<li><span class="badge sev-medium">medium</span><span class="tally-count">1</span></li>
+</ul></div>
+<div class="tally-group"><p class="tally-label">Matches by action</p><ul class="pills">
+<li><span class="chip act-block">would block</span><span class="tally-count">2</span></li>
+<li><span class="chip act-ask">would ask</span><span class="tally-count">2</span></li>
+<li><span class="chip act-warn">would warn</span><span class="tally-count">1</span></li>
+</ul></div>
+<p class="note">Each guardrail counts its own matches, so a tool call that matched two guardrails is counted under both, and these totals can be larger than the number of risky actions.</p>
+</div>
+</section>
+<section id="fix-first">
+<h2>Fix these first</h2>
+<p class="note">The guardrails that would have stopped a command outright, most serious first.</p>
+<div class="cards">
+<article class="card">
+<div class="card-head"><span class="badge sev-critical">critical</span> <span class="chip act-block">would block</span><span class="times">2&times;</span></div>
+<h3><a href="#finding-0">Recursive delete</a></h3>
+<p class="library-text note">Fires on <code>rm -rf</code>.</p>
+<p class="example"><code>rm -rf &lt;path&gt;</code></p>
+<p class="card-meta">Destructive data &middot; <code>t.rm-rf</code></p>
+<p><a href="https://www.agenttrail.sh/guardrails/destructive-data/t-rm-rf?utm_source=guard&amp;utm_medium=scan-report&amp;utm_campaign=claude&amp;utm_content=guardrail" target="_blank" rel="noopener noreferrer">How this guardrail works</a></p>
+</article>
+</div>
+</section>
+<section id="owasp">
+<h2>OWASP risks</h2>
+<p class="lead">These matches touched 1 of 10 agentic and 2 of 10 LLM risks, in the 2026 edition lists.</p>
+<ul class="risks">
+<li class="risk" id="risk-asi02">
+<p class="risk-name"><a href="https://www.agenttrail.sh/security/owasp?utm_source=guard&amp;utm_medium=scan-report&amp;utm_campaign=claude&amp;utm_content=owasp-risk#asi02" target="_blank" rel="noopener noreferrer"><span class="risk-id">ASI02</span> Tool Misuse and Exploitation</a></p>
+<p class="risk-counts">3 tool calls &middot; 2 guardrails</p>
+<button type="button" class="tool js-only" data-risk="ASI02" aria-label="Show its findings: ASI02" hidden>Show its findings</button>
+</li>
+<li class="risk" id="risk-llm02">
+<p class="risk-name"><a href="https://www.agenttrail.sh/security/owasp?utm_source=guard&amp;utm_medium=scan-report&amp;utm_campaign=claude&amp;utm_content=owasp-risk#llm02" target="_blank" rel="noopener noreferrer"><span class="risk-id">LLM02</span> Sensitive Information Disclosure</a></p>
+<p class="risk-counts">2 tool calls &middot; 1 guardrail</p>
+<button type="button" class="tool js-only" data-risk="LLM02" aria-label="Show its findings: LLM02" hidden>Show its findings</button>
+</li>
+<li class="risk" id="risk-llm03">
+<p class="risk-name"><a href="https://www.agenttrail.sh/security/owasp?utm_source=guard&amp;utm_medium=scan-report&amp;utm_campaign=claude&amp;utm_content=owasp-risk#llm03" target="_blank" rel="noopener noreferrer"><span class="risk-id">LLM03</span> Excessive Agency</a></p>
+<p class="risk-counts">2 tool calls &middot; 1 guardrail</p>
+<button type="button" class="tool js-only" data-risk="LLM03" aria-label="Show its findings: LLM03" hidden>Show its findings</button>
+</li>
+</ul>
+<p class="note">A guardrail can name more than one risk, and a tool call can match more than one guardrail, so one tool call can count under several risks. These counts can add up to more than the totals above.</p>
+<p class="note">Covers coding-agent actions only, not full OWASP coverage. Each id names a risk where it becomes a command or a file change, and is never a claim that a guardrail covers the whole risk.</p>
+<p class="risk-sources"><a href="https://www.agenttrail.sh/security/owasp?utm_source=guard&amp;utm_medium=scan-report&amp;utm_campaign=claude&amp;utm_content=owasp" target="_blank" rel="noopener noreferrer">How the guardrails map to OWASP</a> &middot; <a href="https://genai.owasp.org/resource/owasp-top-10-for-agentic-applications-for-2026/" target="_blank" rel="noopener noreferrer">OWASP Top 10 for Agentic Applications (2026 edition)</a> &middot; <a href="https://genai.owasp.org/resource/owasp-genai-llm-top-10-2026/" target="_blank" rel="noopener noreferrer">OWASP Top 10 for LLM Applications (2026 edition)</a></p>
+</section>
+<section id="findings" class="findings-section">
+<div class="section-head"><h2>All findings</h2><p class="section-meta" id="findings-count">3 guardrails matched</p></div>
+<p class="note artifact-note">Filters, sort and export are in the report file itself, <code>agenttrail-guard-report.html</code>. To make one from your own sessions, run <code>agenttrail-guard scan</code>.</p>
+<div class="controls js-only" hidden>
+<div class="filters" role="group" aria-label="Show findings">
+<button type="button" class="filter" data-filter="all" aria-pressed="true">All</button>
+<button type="button" class="filter" data-filter="block" aria-pressed="false">Would block</button>
+<button type="button" class="filter" data-filter="require_approval" aria-pressed="false">Would ask</button>
+<button type="button" class="filter" data-filter="warn" aria-pressed="false">Would warn</button>
+</div>
+<label class="sort">Sort <select id="sort">
+<option value="serious">Most serious</option>
+<option value="category">Category</option>
+<option value="count">Most matches</option>
+<option value="name">Name</option>
+</select></label>
+<label class="sort">OWASP risk <select id="risk-filter">
+<option value="">Any risk</option>
+<option value="ASI02">ASI02 Tool Misuse and Exploitation</option>
+<option value="LLM02">LLM02 Sensitive Information Disclosure</option>
+<option value="LLM03">LLM03 Excessive Agency</option>
+</select></label>
+</div>
+<p id="findings-status" class="sr-only" role="status" aria-live="polite"></p>
+<ol class="finding-list">
+<li class="finding" id="finding-0" data-action="block" data-owasp="ASI02 LLM03" data-rank-serious="0" data-rank-category="0" data-rank-count="0" data-rank-name="2">
+<div class="finding-head">
+<div class="guardrail-title">Recursive delete</div>
+<div class="finding-meta"><span class="badge sev-critical">critical</span> <span class="chip act-block">would block</span><span class="num" data-label="Matches">2&times;</span></div>
+</div>
+<div class="guardrail-id"><code>t.rm-rf</code> &middot; <span class="group">Destructive data</span></div>
+<ul class="owasp-ids" aria-label="OWASP risks">
+<li><a href="https://www.agenttrail.sh/security/owasp?utm_source=guard&amp;utm_medium=scan-report&amp;utm_campaign=claude&amp;utm_content=owasp-risk#asi02" target="_blank" rel="noopener noreferrer"><span class="risk-id">ASI02</span> Tool Misuse and Exploitation</a></li>
+<li><a href="https://www.agenttrail.sh/security/owasp?utm_source=guard&amp;utm_medium=scan-report&amp;utm_campaign=claude&amp;utm_content=owasp-risk#llm03" target="_blank" rel="noopener noreferrer"><span class="risk-id">LLM03</span> Excessive Agency</a></li>
+</ul>
+<details class="commands"><summary>The command shape behind it</summary>
+<ul class="shapes">
+<li><code>rm -rf &lt;path&gt;</code><span class="times">2&times;</span></li>
+</ul>
+</details>
+<details class="how"><summary>How this guardrail decides, and what it misses</summary>
+<p class="library-text">Fires on <code>rm -rf</code>. Does not match the long forms.</p>
+<p><a href="https://www.agenttrail.sh/guardrails/destructive-data/t-rm-rf?utm_source=guard&amp;utm_medium=scan-report&amp;utm_campaign=claude&amp;utm_content=guardrail" target="_blank" rel="noopener noreferrer">Open it in the guardrail library</a></p>
+</details>
+</li>
+<li class="finding" id="finding-1" data-action="require_approval" data-owasp="LLM02" data-rank-serious="1" data-rank-category="1" data-rank-count="1" data-rank-name="1">
+<div class="finding-head">
+<div class="guardrail-title">Reading a .env file</div>
+<div class="finding-meta"><span class="badge sev-high">high</span> <span class="chip act-ask">would ask</span><span class="num" data-label="Matches">2&times;</span></div>
+</div>
+<div class="guardrail-id"><code>t.env-file</code> &middot; <span class="group">Secret exposure</span></div>
+<ul class="owasp-ids" aria-label="OWASP risks">
+<li><a href="https://www.agenttrail.sh/security/owasp?utm_source=guard&amp;utm_medium=scan-report&amp;utm_campaign=claude&amp;utm_content=owasp-risk#llm02" target="_blank" rel="noopener noreferrer"><span class="risk-id">LLM02</span> Sensitive Information Disclosure</a></li>
+</ul>
+<details class="commands"><summary>The command shape behind it</summary>
+<ul class="shapes">
+<li><code>Read &lt;path&gt;</code><span class="times">2&times;</span></li>
+</ul>
+</details>
+<details class="how"><summary>How this guardrail decides, and what it misses</summary>
+<p class="library-text">Matches the path only; it cannot tell whether the file holds a secret.</p>
+<p><a href="https://www.agenttrail.sh/guardrails/secret-exposure/t-env-file?utm_source=guard&amp;utm_medium=scan-report&amp;utm_campaign=claude&amp;utm_content=guardrail" target="_blank" rel="noopener noreferrer">Open it in the guardrail library</a></p>
+</details>
+</li>
+<li class="finding" id="finding-2" data-action="warn" data-owasp="ASI02" data-rank-serious="2" data-rank-category="2" data-rank-count="2" data-rank-name="0">
+<div class="finding-head">
+<div class="guardrail-title">Discards uncommitted work</div>
+<div class="finding-meta"><span class="badge sev-medium">medium</span> <span class="chip act-warn">would warn</span><span class="num" data-label="Matches">1&times;</span></div>
+</div>
+<div class="guardrail-id"><code>t.git-checkout</code> &middot; <span class="group">Working tree</span></div>
+<ul class="owasp-ids" aria-label="OWASP risks">
+<li><a href="https://www.agenttrail.sh/security/owasp?utm_source=guard&amp;utm_medium=scan-report&amp;utm_campaign=claude&amp;utm_content=owasp-risk#asi02" target="_blank" rel="noopener noreferrer"><span class="risk-id">ASI02</span> Tool Misuse and Exploitation</a></li>
+</ul>
+<details class="commands"><summary>The command shape behind it</summary>
+<ul class="shapes">
+<li><code>git checkout -- &lt;path&gt;</code><span class="times">1&times;</span></li>
+</ul>
+</details>
+<details class="how"><summary>How this guardrail decides, and what it misses</summary>
+<p class="library-text">Matches <code>git checkout --</code>. Does not match <code>git restore</code>.</p>
+<p><a href="https://www.agenttrail.sh/guardrails/working-tree/t-git-checkout?utm_source=guard&amp;utm_medium=scan-report&amp;utm_campaign=claude&amp;utm_content=guardrail" target="_blank" rel="noopener noreferrer">Open it in the guardrail library</a></p>
+</details>
+</li>
+</ol>
+<div class="filter-empty" id="findings-empty" hidden><p>No findings match these filters.</p><button type="button" class="tool" id="clear-filters">Show all findings</button></div>
+</section>
+<section id="repeats"><h2>Repeat offenders</h2>
+<p class="note">The same shape, seen more than once. Paths are redacted before counting, so many different paths under one command become one repeat.</p>
+<div class="table-wrap"><table class="recurring" role="table">
+<thead role="rowgroup"><tr role="row"><th scope="col" role="columnheader">Command shape</th><th scope="col" class="num" role="columnheader">Times</th><th scope="col" role="columnheader">Guardrail</th></tr></thead>
+<tbody role="rowgroup">
+<tr role="row"><td class="shape" role="cell"><code>Read &lt;path&gt;</code></td><td class="num" role="cell">2&times;</td><td class="rule-name" role="cell"><a href="#finding-1">Reading a .env file</a></td></tr>
+<tr role="row"><td class="shape" role="cell"><code>rm -rf &lt;path&gt;</code></td><td class="num" role="cell">2&times;</td><td class="rule-name" role="cell"><a href="#finding-0">Recursive delete</a></td></tr>
+</tbody>
+</table></div>
+</section>
+<section id="next-steps">
+<h2>Next steps</h2>
+<ol class="steps">
+<li><p><strong>Turn on AgentTrail Guard</strong> so these guardrails run before each command.</p>
+<div class="command"><code id="cmd-init">agenttrail-guard init --agent claude</code><button type="button" class="copy js-only" data-copy="cmd-init" data-label="Copy" aria-label="Copy the step 1 command" hidden>Copy</button></div></li>
+<li><p><strong>See what it is doing</strong>: whether it is on, and what it decided recently.</p>
+<div class="command"><code id="cmd-status">agenttrail-guard status</code><button type="button" class="copy js-only" data-copy="cmd-status" data-label="Copy" aria-label="Copy the step 2 command" hidden>Copy</button></div></li>
+<li><p><strong>Scan again next week</strong>, and read every line before the report is written.</p>
+<div class="command"><code id="cmd-scan-again">agenttrail-guard scan --agent claude --review</code><button type="button" class="copy js-only" data-copy="cmd-scan-again" data-label="Copy" aria-label="Copy the step 3 command" hidden>Copy</button></div></li>
+</ol>
+<ul class="links">
+<li><a href="https://www.agenttrail.sh/get-started/guard?utm_source=guard&amp;utm_medium=scan-report&amp;utm_campaign=claude&amp;utm_content=next-commands" target="_blank" rel="noopener noreferrer">Every command</a></li>
+<li><a href="https://www.agenttrail.sh/guardrails?utm_source=guard&amp;utm_medium=scan-report&amp;utm_campaign=claude&amp;utm_content=next-library" target="_blank" rel="noopener noreferrer">The guardrail library</a></li>
+<li><a href="https://www.agenttrail.sh/get-started/guard?utm_source=guard&amp;utm_medium=scan-report&amp;utm_campaign=claude&amp;utm_content=next-agents" target="_blank" rel="noopener noreferrer">Set up Cursor or Codex</a></li>
+</ul>
+</section>
+<section id="share" class="share">
+<h2>Share your result</h2>
+<p class="note share-note">Totals and at most one library guardrail&#39;s name: no commands, paths, project names or guardrails you wrote. This published copy cannot change the post. In the report file it was made from, the post can be edited before posting.</p>
+<label class="share-label" for="share-text">Post preview</label>
+<textarea id="share-text" rows="4" readonly>I scanned 7 tool calls from Claude Code with AgentTrail Guard: 2 would block (2 of those: Recursive delete) · 2 would ask · 1 would warn. Checked locally, nothing uploaded.</textarea>
+<p class="share-actions"><span id="share-count" class="share-count" data-over="false">208 / 280</span>
+<a id="share-link" class="button" href="https://x.com/intent/post?text=I%20scanned%207%20tool%20calls%20from%20Claude%20Code%20with%20AgentTrail%20Guard%3A%202%20would%20block%20(2%20of%20those%3A%20Recursive%20delete)%20%C2%B7%202%20would%20ask%20%C2%B7%201%20would%20warn.%20Checked%20locally%2C%20nothing%20uploaded.&amp;url=https%3A%2F%2Fwww.agenttrail.sh%2Fagenttrail-guard%3Futm_source%3Dguard%26utm_medium%3Dscan-report%26utm_campaign%3Dclaude%26utm_content%3Dshare&amp;hashtags=agenttrail" target="_blank" rel="noopener noreferrer">Post on X</a>
+<button type="button" class="copy js-only" data-copy="share-text" data-label="Copy text" aria-label="Copy text of the post" hidden>Copy text</button></p>
+</section>
+<section class="callout" id="privacy">
+<h2>Before you share this</h2>
+<p class="note">This report was made on one machine from transcripts already on its disk, and the scan sent nothing anywhere.</p>
+<p class="note">Every command in this report has been through a secret scrubber, a path redactor, a pass for secret-named values and long random-looking strings, and an identifier redactor, and every MCP tool call has had its payload values structurally redacted. Redaction runs before anything is written, so this file has never held the original text.</p>
+<dl class="legend">
+<div><dt><code>&lt;path&gt;</code></dt><dd>stands for a redacted filesystem path or URL</dd></div>
+<div><dt><code>&lt;name&gt;</code> <code>&lt;host&gt;</code> <code>&lt;user&gt;</code> <code>&lt;message&gt;</code> <code>&lt;comment&gt;</code></dt><dd>stand for an identifying operand of a command &mdash; a container, a namespace, a machine, a login, a commit message or heredoc body, a shell comment</dd></div>
+<div><dt><code>&lt;value&gt;</code></dt><dd>stands for a redacted MCP payload value</dd></div>
+<div><dt><code>[REDACTED:&hellip;]</code></dt><dd>stands for a redacted secret; <code>[REDACTED:secret:generic]</code> marks a long random-looking string masked on a best guess</dd></div>
+<div><dt><code>&hellip;</code></dt><dd>marks where a long command was shortened for display</dd></div>
+</dl>
+<p class="warning">Redaction is thorough but not a guarantee. Read the findings before passing this page on; the person who published it can check every line with <code>agenttrail-guard scan --agent claude --review</code> before the file is written.</p>
+<p class="note pdf-tip"><strong>Saving as PDF?</strong> Turn off headers and footers in the print dialog, so the file&rsquo;s location on your disk is not printed on every page.</p>
+</section>
+<section id="redaction"><h2>How redaction works and where it can miss</h2>
+<p class="note">Working directories and file paths appear nowhere in this file, and the projects these sessions came from are carried as a count and never as names.</p>
+<p class="note"><strong>Identifying names are a weaker claim than paths, and the difference is worth knowing.</strong> Shell commands go through an identifier redactor keyed to a fixed list of tools &mdash; container runtimes, <code>kubectl</code> (including resource names), the database clients (host, database, and the SQL handed to <code>-c</code> / <code>-e</code>), <code>ssh</code>, <code>git</code> commit messages and identity settings, 1Password&#39;s <code>op</code> (item and vault names), and <code>gh</code> titles and bodies &mdash; plus, in any command, a secret passed as a flag value (<code>--token</code>, <code>--password</code>, <code>--key</code>), a UUID, the body of a heredoc, and the text of a <code>#</code> comment. That list is a deny-list and will miss the tool nobody thought of, so a bare operand naming a resource for a tool not on it can survive.</p>
+<p class="note">Cloud account identifiers are redacted where a name or flag gives them away: <code>CLOUDFLARE_ACCOUNT_ID</code> and <code>--account-id</code>, <code>wrangler</code> commands, AWS account numbers after <code>--account</code> or inside an ARN, and <code>--project</code> for <code>gcloud</code>, <code>gsutil</code>, <code>bq</code> and <code>firebase</code>.</p>
+<p class="note"><strong>Secrets without a known format are caught by name and by shape, and both are guesses.</strong> A value after a name ending in <code>_KEY</code> or <code>-key</code>, an <code>Authorization</code> header, and any long random-looking string of 32 or more characters is masked. A secret that is shorter, that is only hexadecimal and has no revealing name, that is split by punctuation, or that has no name and is followed by a <code>.</code>, ends in <code>=</code> or is written as short dashed groups can survive. Branch names, folder names and git branch operands are kept readable and are not redacted.</p>
+<p class="note"><strong>MCP tool calls are handled the other way round:</strong> a call to an MCP server arrives as a structured payload, and rather than deny-listing known-sensitive fields, every value in it is redacted to <code>&lt;value&gt;</code> by default and only the field names and the shape are kept.</p>
+<p class="note">Guardrail ids and titles are shown as their author wrote them &mdash; which for any guardrail you added yourself means your own words, unredacted. Redaction is thorough but not a guarantee. Read the commands and guardrail names above before posting this anywhere public.</p>
+</section>
+<section id="scanned"><h2>What was scanned</h2>
+<p class="note">Read 1 session across 2 projects.</p>
+</section>
+<section id="tokens"><h2>Tokens</h2>
+<p class="note">Read straight from the transcripts, so these are exact counts and not estimates.</p>
+<div class="table-wrap"><table class="kv">
+<tr><th scope="row">Input</th><td class="num">900</td></tr>
+<tr><th scope="row">Output</th><td class="num">210</td></tr>
+<tr><th scope="row">Read from cache (cumulative)</th><td class="num">0</td></tr>
+<tr><th scope="row">Written to cache</th><td class="num">0</td></tr>
+</table></div>
+<p class="note">None of these sessions reported a 5-minute / 1-hour cache-write split, so that row is omitted rather than shown as zero.</p></section>
+<aside class="product-note" id="os" aria-label="About AgentTrail OS">
+<p class="eyebrow">AgentTrail OS</p>
+<h2>AgentTrail Guard stops the mistake. AgentTrail OS remembers it and turns it into a rule.</h2>
+<p>This report is one look at the transcripts on one machine. AgentTrail OS watches every agent session, turns each repeated mistake into a guardrail, and proves the fix on your own history. It is a separate product, and nothing in this report was sent to it.</p>
+<p class="product-note-action"><a class="button" href="https://www.agenttrail.sh/agenttrail-os?utm_source=guard&amp;utm_medium=scan-report&amp;utm_campaign=claude&amp;utm_content=os-demo" target="_blank" rel="noopener noreferrer">Book a team demo</a>
+<a class="text-link" href="https://www.agenttrail.sh/guard-vs-os?utm_source=guard&amp;utm_medium=scan-report&amp;utm_campaign=claude&amp;utm_content=os-compare" target="_blank" rel="noopener noreferrer">Guard vs OS</a></p>
+</aside>
+<footer>
+<p class="footer-brand"><svg class="mark">(mark)</svg><span>agenttrail-guard 9.9.9 &middot; guardrail library vX.Y.Z</span></p>
+<p>Source: https://github.com/agenttrailhq/guard</p>
+<p>A finding is a guardrail that matched. It is not proof that anything went wrong, and the guardrails state their own coverage limits.</p>
+<ul class="footer-links">
+<li><a href="https://www.agenttrail.sh/agenttrail-guard?utm_source=guard&amp;utm_medium=scan-report&amp;utm_campaign=claude&amp;utm_content=footer-guard" target="_blank" rel="noopener noreferrer">AgentTrail Guard</a></li>
+<li><a href="https://www.agenttrail.sh/guardrails?utm_source=guard&amp;utm_medium=scan-report&amp;utm_campaign=claude&amp;utm_content=footer-library" target="_blank" rel="noopener noreferrer">Guardrail library</a></li>
+<li><a href="https://www.agenttrail.sh/security?utm_source=guard&amp;utm_medium=scan-report&amp;utm_campaign=claude&amp;utm_content=footer-security" target="_blank" rel="noopener noreferrer">Security</a></li>
+</ul>
+</footer>
+<p id="page-status" class="sr-only" role="status" aria-live="polite"></p>
+<textarea id="copy-buffer" class="sr-only" tabindex="-1" aria-hidden="true" readonly></textarea>
+</main>
