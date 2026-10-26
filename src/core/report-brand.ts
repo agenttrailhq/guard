@@ -532,6 +532,8 @@ ${toneRules}
 .verified-facts dd p { margin: 0 0 6px; }
 .verified-facts .command { margin: 6px 0; }
 .codex-caveat { margin: 10px 0 0; font-size: 13px; }
+.read-list { list-style: none; margin: 0 0 12px; padding: 0; display: flex; flex-direction: column; gap: 4px; font-size: 14px; color: var(--muted-fg); }
+.read-title { font-weight: 600; color: var(--fg); }
 .controls { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
 .filters { display: flex; flex-wrap: wrap; gap: 6px; }
 .sort { font-size: 13px; color: var(--muted-fg); }
