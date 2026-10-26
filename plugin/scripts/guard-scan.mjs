@@ -14505,7 +14505,8 @@ function displayPath(path) {
   return path.replace(new RegExp(UNSAFE_PATH_SOURCE, "g"), "?");
 }
 function backupFileName(index, count2, original) {
-  const base = (original.split(/[\\/]/).pop() ?? "").replace(BACKUP_NAME_UNSAFE, "_");
+  const cut = Math.max(original.lastIndexOf("/"), original.lastIndexOf("\\"));
+  const base = original.slice(cut + 1).replace(BACKUP_NAME_UNSAFE, "_");
   const number = String(index).padStart(String(count2).length, "0");
   return `${number}-${(base === "" ? "file" : base).slice(-MAX_BACKUP_NAME)}`;
 }
@@ -14628,7 +14629,7 @@ async function runScrub(input) {
     readLines: (path) => io.readLines(path),
     io: input.verifyIO,
     fingerprint: createFingerprinter(),
-    maxHeldValues: MAX_SCRUB_VALUES
+    maxHeldValues: input.maxValues ?? MAX_SCRUB_VALUES
   });
   const facts = found.check.facts;
   const planning = planFiles(files, found, scrubIO);
@@ -14661,7 +14662,7 @@ async function runScrub(input) {
     gaps.push(`${counted2(facts.unplaced, "redacted text")} could not be classed`);
   if (found.notHeld > 0) {
     gaps.push(
-      `${counted2(found.notHeld, "likely-real value")} past the limit of ${formatCount(MAX_SCRUB_VALUES)} cannot be replaced in this run`
+      `${counted2(found.notHeld, "likely-real value")} past the limit of ${formatCount(input.maxValues ?? MAX_SCRUB_VALUES)} cannot be replaced in this run`
     );
   }
   if (facts.reposNotChecked > 0) {

@@ -158,7 +158,8 @@ export function displayPath(path: string): string {
 
 /** The backup's file name for the `index`th file (from 1) of `count`: numbered, safe characters only. */
 export function backupFileName(index: number, count: number, original: string): string {
-  const base = (original.split(/[\\/]/).pop() ?? "").replace(BACKUP_NAME_UNSAFE, "_");
+  const cut = Math.max(original.lastIndexOf("/"), original.lastIndexOf("\\"));
+  const base = original.slice(cut + 1).replace(BACKUP_NAME_UNSAFE, "_");
   const number = String(index).padStart(String(count).length, "0");
   return `${number}-${(base === "" ? "file" : base).slice(-MAX_BACKUP_NAME)}`;
 }
@@ -315,6 +316,8 @@ export interface ScrubRunInput {
   readonly now: Date;
   readonly platform: string;
   readonly colors: boolean;
+  /** For tests: the cap on likely-real values held for one run. */
+  readonly maxValues?: number;
 }
 
 /** `n` and a noun, with the plural when `n` is not 1. */
@@ -366,7 +369,7 @@ export async function runScrub(input: ScrubRunInput): Promise<number> {
     readLines: (path) => io.readLines(path),
     io: input.verifyIO,
     fingerprint: createFingerprinter(),
-    maxHeldValues: MAX_SCRUB_VALUES,
+    maxHeldValues: input.maxValues ?? MAX_SCRUB_VALUES,
   });
   const facts = found.check.facts;
   const planning = planFiles(files, found, scrubIO);
@@ -402,7 +405,7 @@ export async function runScrub(input: ScrubRunInput): Promise<number> {
     gaps.push(`${counted(facts.unplaced, "redacted text")} could not be classed`);
   if (found.notHeld > 0) {
     gaps.push(
-      `${counted(found.notHeld, "likely-real value")} past the limit of ${formatCount(MAX_SCRUB_VALUES)} cannot be replaced in this run`,
+      `${counted(found.notHeld, "likely-real value")} past the limit of ${formatCount(input.maxValues ?? MAX_SCRUB_VALUES)} cannot be replaced in this run`,
     );
   }
   // Not a gap in the scrub, but a reason it may replace more than it needs to.

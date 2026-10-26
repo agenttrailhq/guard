@@ -42,6 +42,7 @@ import {
   runScrub,
   scrubBackupsRoot,
 } from "../commands/scan-scrub.js";
+import type { ScanCorpus } from "../core/scan-report.js";
 import { scrubPlaceholder, sha256 } from "../core/scrub-transcripts.js";
 import type { AgentSource } from "../core/types.js";
 import { type VerifyIO, WATCHED_PROCESSES, type WatchedProcess } from "../core/verify/types.js";
@@ -801,6 +802,221 @@ describe("--apply when a replace fails part-way", () => {
     };
     const run = await scan(s, "claude", ["--scrub"], { scrub });
     expect(run.stdout).toContain("session-0.jsonl: could not be read; left alone");
+  });
+});
+
+/** `runScrub` itself over `s`, with any input replaced. */
+async function direct(
+  s: Setup,
+  over: {
+    readonly files?: readonly string[];
+    readonly corpus?: Partial<ScanCorpus>;
+    readonly apply?: boolean;
+    readonly verifyIO?: VerifyIO;
+    readonly scrubIO?: ScrubIO;
+    readonly maxValues?: number;
+  } = {},
+): Promise<Run> {
+  const out: string[] = [];
+  const io: ScanIO = {
+    ...createRealScanIO(),
+    homedir: () => s.home,
+    writeStdout: (t) => void out.push(t),
+  };
+  const code = await runScrub({
+    agent: "claude",
+    root: s.root,
+    corpus: {
+      agent: "claude",
+      sessions: [],
+      quarantined: 0,
+      notRead: 0,
+      projects: 1,
+      files: over.files ?? s.files,
+      ...over.corpus,
+    },
+    apply: over.apply ?? true,
+    io,
+    verifyIO: over.verifyIO ?? processes(),
+    scrubIO: over.scrubIO ?? createRealScrubIO(),
+    now: new Date(),
+    platform: "linux",
+    colors: false,
+    ...(over.maxValues === undefined ? {} : { maxValues: over.maxValues }),
+  });
+  return { code, stdout: out.join(""), stderr: "" };
+}
+
+/** A Claude Code prompt line holding `text`. */
+function promptLine(text: string): string {
+  return JSON.stringify({ type: "user", uuid: "p", message: { role: "user", content: text } });
+}
+
+/** Write `text` to `name` under `s.root`, an hour old, and return its path. */
+function extraFile(s: Setup, name: string, text: string): string {
+  const path = join(s.root, name);
+  writeFileSync(path, text);
+  utimesSync(path, OLD, OLD);
+  return path;
+}
+
+describe("what the run reports", () => {
+  it("says nothing is left alone when every value is likely real", async () => {
+    const s = await setup("claude", [SECOND]);
+    const run = await scan(s, "claude", ["--scrub"]);
+    expect(run.stdout).toContain("1 likely-real credential in 1 transcript file.");
+    expect(run.stdout).not.toContain("Left alone");
+  });
+
+  it("names a rename refused with no error code, without a code", async () => {
+    const s = await setup("claude", [SESSION]);
+    const scrub: ScrubIO = {
+      ...createRealScrubIO(),
+      replaceFile: () => ({ ok: false, reason: "rename-failed" }),
+    };
+    const run = await direct(s, { scrubIO: scrub });
+    expect(run.code).toBe(1);
+    expect(run.stdout).toContain(
+      "session-0.jsonl: could not be replaced, which happens when another program holds it open; left as it is.",
+    );
+  });
+
+  it("counts transcript files the scan could not read, and exits 1", async () => {
+    const s = await setup("claude", [SESSION]);
+    const run = await direct(s, { corpus: { notRead: 1, quarantined: 1 } });
+    expect(run.stdout).toContain("2 transcript files could not be read or checked.");
+    expect(run.code).toBe(1);
+  });
+
+  it("counts likely-real values past the cap, and exits 1", async () => {
+    const s = await setup("claude", [SESSION]);
+    const run = await direct(s, { maxValues: 1 });
+    expect(run.stdout).toContain("past the limit of 1 cannot be replaced in this run.");
+    expect(run.code).toBe(1);
+  });
+
+  it("says a repo that could not be searched makes a fixture count as likely real", async () => {
+    const { root } = await writeCorpus("claude", [SESSION], { cwd: "/nonexistent/synthetic/x" });
+    const s: Setup = {
+      root,
+      home: mkdtempSync(join(tmpdir(), "agenttrail-scrub-home-")),
+      files: transcriptFiles(root),
+    };
+    const run = await direct(s, { apply: false });
+    expect(run.stdout).toContain(
+      "1 repo could not be searched for committed fixtures, so a fixture there counts as likely real.",
+    );
+  });
+
+  it("with values found but no file it can edit: exit 0 on a dry run, 1 with --apply", async () => {
+    const s = await setup("claude", [SECOND]);
+    // The check reads the transcript; the planner cannot.
+    const scrub: ScrubIO = {
+      ...createRealScrubIO(),
+      read: () => ({ ok: false, reason: "missing" }),
+    };
+    const applied = await direct(s, { scrubIO: scrub });
+    expect(applied.stdout).toContain(
+      "Nothing could be replaced: no file holds these values in a form this command can edit.",
+    );
+    expect(applied.stdout).toContain("session-0.jsonl: could not be read; left alone");
+    expect(applied.code).toBe(1);
+    expect((await direct(s, { scrubIO: scrub, apply: false })).code).toBe(0);
+  });
+
+  it("with nothing to scrub but files it could not read: exit 1 with --apply", async () => {
+    const s = await setup("claude", [[{ kind: "prompt", text: "hello" }]]);
+    const run = await direct(s, { corpus: { notRead: 1 } });
+    expect(run.stdout).toContain("Nothing to scrub.");
+    expect(run.stdout).toContain("1 transcript file could not be read or checked.");
+    expect(run.code).toBe(1);
+  });
+
+  it("says a dry run would refuse when the process list cannot be read", async () => {
+    const s = await setup("claude", [SESSION]);
+    const run = await direct(s, { apply: false, verifyIO: processes("unreadable") });
+    expect(run.code).toBe(0);
+    expect(run.stdout).toContain(
+      "It would refuse to run now: the list of running programs could not be read.",
+    );
+  });
+
+  it("changes nothing when every file changed between planning and backup", async () => {
+    const s = await setup("claude");
+    const real = createRealScrubIO();
+    const scrub: ScrubIO = {
+      ...real,
+      createBackupDir: (root, name) => {
+        for (const file of s.files) writeFileSync(file, `${promptLine("late")}\n`, { flag: "a" });
+        return real.createBackupDir(root, name);
+      },
+    };
+    const run = await direct(s, { scrubIO: scrub });
+    expect(run.code).toBe(1);
+    expect(run.stdout).toContain("Nothing was changed.");
+    expect(backupFolders(s.home)).toEqual([]);
+  });
+
+  it.each([
+    [1, "1 line holding a value could not be edited and still parse, and was left as it was"],
+    [2, "2 lines holding a value could not be edited and still parse, and were left as they were"],
+  ])("a scrubbed file with %i unparseable line(s) says so, and exits 1", async (n, said) => {
+    const s = await setup("claude", [SECOND]);
+    const torn = Array.from({ length: n }, () => `{"a":"x ${GITHUB}"`);
+    const file = extraFile(
+      s,
+      "mixed.jsonl",
+      `${[promptLine(`y ${GITHUB}`), ...torn].join("\n")}\n`,
+    );
+    const run = await direct(s, { files: [...s.files, file] });
+    expect(run.stdout).toContain(said);
+    expect(run.code).toBe(1);
+  });
+
+  it.each([
+    [1, "1 line still holds a value written in a form this command does not edit"],
+    [2, "2 lines still hold a value written in a form this command does not edit"],
+  ])("a scrubbed file with %i line(s) still holding a value says so, and exits 1", async (n, said) => {
+    const s = await setup("claude", [SECOND]);
+    // The second copy has its first letter as a \u escape, which no tried form matches.
+    const both = `{"a":"${GITHUB}","b":"\\u0067${GITHUB.slice(1)}"}`;
+    const lines = [promptLine(`y ${GITHUB}`), ...Array.from({ length: n }, () => both)];
+    const file = extraFile(s, "escaped.jsonl", `${lines.join("\n")}\n`);
+    const run = await direct(s, { files: [...s.files, file] });
+    expect(run.stdout).toContain(said);
+    expect(run.code).toBe(1);
+  });
+
+  it("prints ten restore commands and says how many more are in restore.txt", async () => {
+    const sessions = Array.from({ length: 11 }, () => SECOND);
+    const s = await setup("claude", sessions);
+    const run = await direct(s);
+    expect(run.code).toBe(0);
+    expect(run.stdout.split("\n").filter((l) => l.startsWith("  cp -p "))).toHaveLength(10);
+    expect(run.stdout).toContain("  and 1 more");
+    const dir = backupFolders(s.home)[0] as string;
+    expect(readFileSync(join(dir, "restore.txt"), "utf8").trim().split("\n")).toHaveLength(11);
+    expect(readdirSync(dir).filter((n) => n.endsWith(".jsonl"))[0]).toMatch(/^01-/);
+  });
+
+  it("reads a corpus with no file list as having nothing to scrub", async () => {
+    const s = await setup("claude", [SESSION]);
+    const out: string[] = [];
+    const code = await runScrub({
+      agent: "claude",
+      root: s.root,
+      corpus: { agent: "claude", sessions: [], quarantined: 0, notRead: 0, projects: 0 },
+      apply: true,
+      io: { ...createRealScanIO(), homedir: () => s.home, writeStdout: (t) => void out.push(t) },
+      verifyIO: processes(),
+      scrubIO: createRealScrubIO(),
+      now: new Date(),
+      platform: "linux",
+      colors: false,
+    });
+    expect(code).toBe(0);
+    expect(out.join("")).toContain("0 likely-real credentials in 0 transcript files.");
+    expect(out.join("")).toContain("Nothing to scrub.");
   });
 });
 
