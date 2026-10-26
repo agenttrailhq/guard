@@ -29,9 +29,14 @@ export interface FixesFileMeta {
   readonly reportName: string;
 }
 
-/** A line break or any other control character but a tab. */
-// biome-ignore lint/suspicious/noControlCharactersInRegex: control characters are what it finds.
-const CONTROL = /[\u0000-\u0008\u000a-\u001f\u007f]/;
+/**
+ * A line break, any other control character but a tab, a C1 control, a line or paragraph
+ * separator, or a bidirectional control, which can make a command read differently from what
+ * it runs.
+ */
+const CONTROL =
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: control characters are what it finds.
+  /[\u0000-\u0008\u000a-\u001f\u007f-\u009f\u2028\u2029\u200e\u200f\u202a-\u202e\u2066-\u2069]/;
 
 /** The commands the file can hold: exact commands, one line each. */
 function writable(fixes: readonly FileFix[]): LocalFix[] {
@@ -82,8 +87,8 @@ export function fixesFileText(fixes: readonly FileFix[], meta: FixesFileMeta): s
     "",
     "These are the exact commands behind the redacted shapes in the report, with real",
     "branch names and paths. Keep this file on this machine: it is not part of the",
-    "report, and only your user account can read it. Read each command before you run",
-    "it. Nothing here has been run.",
+    "report, and it is written for your user account only (mode 0600, where the system",
+    "honours it). Read each command before you run it. Nothing here has been run.",
   ];
   if (left > 0) {
     out.push(

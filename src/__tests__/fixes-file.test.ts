@@ -87,8 +87,8 @@ describe("the file's text", () => {
         "",
         "These are the exact commands behind the redacted shapes in the report, with real",
         "branch names and paths. Keep this file on this machine: it is not part of the",
-        "report, and only your user account can read it. Read each command before you run",
-        "it. Nothing here has been run.",
+        "report, and it is written for your user account only (mode 0600, where the system",
+        "honours it). Read each command before you run it. Nothing here has been run.",
         "",
         "Skipped safety checks",
         MEMORY,
@@ -350,5 +350,33 @@ describe("when the fixes file cannot be written", () => {
     expect(html.startsWith("<!doctype html>")).toBe(true);
     expect(html).not.toContain(`in <code>${FIXES_FILENAME}</code>`);
     expect(run.stdout).not.toContain("Fix commands for this machine");
+  });
+});
+
+describe("an older fixes file next to the report", () => {
+  it("is said, and left as it was, when this scan made no fix command", async () => {
+    const run = await scan(["--verify"], { fixes: false, before: "an older file\n" });
+    const path = join(run.work, FIXES_FILENAME);
+    expect(readFileSync(path, "utf8")).toBe("an older file\n");
+    expect(run.stdout).toContain(
+      `${path} is from an earlier scan; this one wrote no fix commands, so it is left as it was.`,
+    );
+  });
+
+  it("is not mentioned when there is none", async () => {
+    const run = await scan(["--verify"], { fixes: false });
+    expect(run.stdout).not.toContain("is from an earlier scan");
+  });
+});
+
+describe("the fixes file refuses characters that change how a command reads", () => {
+  it.each([
+    ["a C1 control", "\u0085"],
+    ["a line separator", " "],
+    ["a right-to-left override", "‮"],
+    ["an isolate", "⁧"],
+  ])("leaves out a command holding %s", (_name, char) => {
+    const fix = exact("lost-work", ["git", "branch", `a${char}b`]);
+    expect(fixCategories([fix])).toEqual([]);
   });
 });

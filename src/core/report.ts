@@ -1,4 +1,4 @@
-// cspell:words backticked hellip labelledby middot noopener noreferrer ldquo rdquo rsquo
+// cspell:words backticked describedby hellip labelledby middot noopener noreferrer ldquo rdquo rsquo
 /**
  * `agenttrail-guard-report.html` — one self-contained file.
  *
@@ -1209,8 +1209,8 @@ function verifiedCard(card: CardView, variant: ReportVariant, localFixes: boolea
     fields.push(`<div><dt>Fix</dt><dd>\n${parts.join("\n")}\n</dd></div>`);
   }
   const caveat = sentence(CODEX_CAVEAT, card);
-  return `<article class="card verified v-${card.tone}" id="${id}" aria-labelledby="${id}-title">
-<div class="card-head"><span class="tone tone-${card.tone}">${escapeHtml(toneLabel(card))}</span>${count === undefined ? "" : `<span class="times" data-template="${escapeHtml(count.template)}">${escapeHtml(count.text)}</span>`}</div>
+  return `<article class="card verified v-${card.tone}" id="${id}" aria-labelledby="${id}-title" aria-describedby="${id}-tone">
+<div class="card-head"><span class="tone tone-${card.tone}" id="${id}-tone">${escapeHtml(toneLabel(card))}</span>${count === undefined ? "" : `<span class="times" data-template="${escapeHtml(count.template)}">${escapeHtml(count.text)}</span>`}</div>
 <h3 id="${id}-title">${escapeHtml(title)}</h3>
 <dl class="verified-facts">
 ${fields.join("\n")}
@@ -1240,8 +1240,8 @@ function whatHappenedSection(
   const rows = cards
     .map((card) => verifiedCard(card, variant, localFixCategories.includes(card.category)))
     .join("\n");
-  return `<section id="what-happened" class="what-happened">
-<div class="section-head"><h2>What actually happened</h2>${tally === undefined ? "" : `<p class="section-meta" data-template="${escapeHtml(tally.template)}">${escapeHtml(tally.text)}</p>`}</div>
+  return `<section id="what-happened" class="what-happened" aria-labelledby="what-happened-heading">
+<div class="section-head"><h2 id="what-happened-heading">What actually happened</h2>${tally === undefined ? "" : `<p class="section-meta" data-template="${escapeHtml(tally.template)}">${escapeHtml(tally.text)}</p>`}</div>
 <p class="note">A match means a guardrail fired on a command. Each card says what checking that on this machine found, how things stand now, and how to fix it. The checks only read: they changed nothing on this machine.</p>${readList}
 <div class="verified-cards">
 ${rows}

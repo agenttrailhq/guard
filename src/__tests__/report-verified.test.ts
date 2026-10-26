@@ -1,4 +1,4 @@
-// cspell:words labelledby
+// cspell:words describedby labelledby
 /**
  * The verified lead on the page: "What it found, never the values", the "Also checked on this
  * machine" chips, and the nine cards of "What actually happened".
@@ -269,7 +269,9 @@ describe("What actually happened", () => {
 
   it("each card has its tone, title and the three fields, named for assistive technology", () => {
     const secrets = card(HTML, "secrets");
-    expect(secrets).toContain(`<span class="tone tone-act">${TONE_LABELS.act}</span>`);
+    expect(secrets).toContain(
+      `<span class="tone tone-act" id="check-secrets-tone">${TONE_LABELS.act}</span>`,
+    );
     // Secrets counts distinct credential-shaped values, not guardrail matches.
     expect(secrets).toContain(
       '<span class="times" data-template="secrets.count">11 credential-shaped values</span>',
@@ -286,7 +288,9 @@ describe("What actually happened", () => {
 
   it("a category with no check says Not checked, with no count and no claim", () => {
     const unreviewed = card(HTML, "unreviewed");
-    expect(unreviewed).toContain(`<span class="tone tone-not-checked">Not checked</span>`);
+    expect(unreviewed).toContain(
+      `<span class="tone tone-not-checked" id="check-unreviewed-tone">Not checked</span>`,
+    );
     expect(unreviewed).toContain("Not checked yet.");
     expect(unreviewed).not.toContain('class="times"');
     expect(unreviewed).not.toContain("<dt>Now</dt>");
@@ -581,7 +585,7 @@ describe("a card never reads clean, or shows a zero, where nothing could be conf
     const html = renderReport(HIDING_RESULT, VERIFIED_META, OPTIONS);
     const destructive = card(html, "destructive");
     expect(destructive).toContain(
-      '<span class="tone tone-could-not-check">Could not confirm</span>',
+      '<span class="tone tone-could-not-check" id="check-destructive-tone">Could not confirm</span>',
     );
     expect(destructive).toContain(
       "Could not confirm: commands that ran here used a shell given a string to run, xargs, which can run commands this reading does not take apart, so this is not a clean result.",
@@ -593,7 +597,9 @@ describe("a card never reads clean, or shows a zero, where nothing could be conf
   it("a check that found something keeps its tone and count, and still says it", () => {
     const html = renderReport(HIDING_RESULT, VERIFIED_META, OPTIONS);
     const lost = card(html, "lost-work");
-    expect(lost).toContain('<span class="tone tone-act">Act on this</span>');
+    expect(lost).toContain(
+      '<span class="tone tone-act" id="check-lost-work-tone">Act on this</span>',
+    );
     expect(lost).toContain("used eval, which can run commands");
     expect(chip(html, "lost-work")).toBe("3 deleted branches and stashes still recoverable");
   });
@@ -747,5 +753,33 @@ describe("small fences", () => {
     const ids = idsOf(html);
     for (const m of html.matchAll(/\shref="#([^"]+)"/g))
       expect(ids.has(m[1] ?? ""), m[1]).toBe(true);
+  });
+});
+
+describe("small accessibility and label fences", () => {
+  it("each card is described by its tone, and the section is named by its heading", () => {
+    expect(card(HTML, "secrets")).toContain('aria-describedby="check-secrets-tone"');
+    expect(card(HTML, "secrets")).toContain('id="check-secrets-tone"');
+    expect(HTML).toContain('aria-labelledby="what-happened-heading"');
+    expect(HTML).toContain('<h2 id="what-happened-heading">What actually happened</h2>');
+  });
+
+  it("an evidence row of a kind this build does not know says other, never its raw id", () => {
+    const facts = {
+      ...SECRETS_ACT,
+      items: [{ kind: "brand-new-kind", via: ["pasted-into-prompt", "made-up"], files: 1 }],
+    } as unknown as typeof SECRETS_ACT;
+    const html = renderReport(
+      baseResult(
+        verification({ ...verifiedCategories(), secrets: { status: "act", matches: 4, facts } }),
+      ),
+      VERIFIED_META,
+      OPTIONS,
+    );
+    expect(section(html, "found")).toContain('<span class="evidence-kind">Other credential</span>');
+    expect(section(html, "found")).toContain(
+      '<span class="evidence-how">you pasted it into a prompt</span>',
+    );
+    expect(html).not.toContain("undefined");
   });
 });

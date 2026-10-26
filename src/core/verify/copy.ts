@@ -87,9 +87,13 @@ export interface EvidenceRow {
 
 /** The never-the-values row for one likely-real credential. */
 export function evidenceRow(item: SecretItem): EvidenceRow {
+  // A kind or a way in this build does not know is shown as "other", or left out: never raw.
   return {
-    kind: KIND_LABELS[item.kind],
-    how: item.via.map((via) => PROVENANCE_PHRASES[via]).join(", "),
+    kind: KIND_LABELS[item.kind] ?? KIND_LABELS.other,
+    how: item.via
+      .map((via) => PROVENANCE_PHRASES[via])
+      .filter((phrase) => phrase !== undefined)
+      .join(", "),
     files: `in ${countOf(item.files, "transcript file")}`,
   };
 }

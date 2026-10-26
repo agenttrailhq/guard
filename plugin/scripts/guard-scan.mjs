@@ -8289,8 +8289,8 @@ var PROVENANCE_PHRASES = {
 };
 function evidenceRow(item) {
   return {
-    kind: KIND_LABELS[item.kind],
-    how: item.via.map((via) => PROVENANCE_PHRASES[via]).join(", "),
+    kind: KIND_LABELS[item.kind] ?? KIND_LABELS.other,
+    how: item.via.map((via) => PROVENANCE_PHRASES[via]).filter((phrase) => phrase !== void 0).join(", "),
     files: `in ${countOf(item.files, "transcript file")}`
   };
 }
@@ -9233,8 +9233,8 @@ ${parts.join("\n")}
 </dd></div>`);
   }
   const caveat = sentence(CODEX_CAVEAT, card);
-  return `<article class="card verified v-${card.tone}" id="${id}" aria-labelledby="${id}-title">
-<div class="card-head"><span class="tone tone-${card.tone}">${escapeHtml(toneLabel(card))}</span>${count2 === void 0 ? "" : `<span class="times" data-template="${escapeHtml(count2.template)}">${escapeHtml(count2.text)}</span>`}</div>
+  return `<article class="card verified v-${card.tone}" id="${id}" aria-labelledby="${id}-title" aria-describedby="${id}-tone">
+<div class="card-head"><span class="tone tone-${card.tone}" id="${id}-tone">${escapeHtml(toneLabel(card))}</span>${count2 === void 0 ? "" : `<span class="times" data-template="${escapeHtml(count2.template)}">${escapeHtml(count2.text)}</span>`}</div>
 <h3 id="${id}-title">${escapeHtml(title)}</h3>
 <dl class="verified-facts">
 ${fields.join("\n")}
@@ -9253,8 +9253,8 @@ function whatHappenedSection(payload, cards, variant, localFixCategories) {
 ${reads.join("\n")}
 </ul>`;
   const rows = cards.map((card) => verifiedCard(card, variant, localFixCategories.includes(card.category))).join("\n");
-  return `<section id="what-happened" class="what-happened">
-<div class="section-head"><h2>What actually happened</h2>${tally === void 0 ? "" : `<p class="section-meta" data-template="${escapeHtml(tally.template)}">${escapeHtml(tally.text)}</p>`}</div>
+  return `<section id="what-happened" class="what-happened" aria-labelledby="what-happened-heading">
+<div class="section-head"><h2 id="what-happened-heading">What actually happened</h2>${tally === void 0 ? "" : `<p class="section-meta" data-template="${escapeHtml(tally.template)}">${escapeHtml(tally.text)}</p>`}</div>
 <p class="note">A match means a guardrail fired on a command. Each card says what checking that on this machine found, how things stand now, and how to fix it. The checks only read: they changed nothing on this machine.</p>${readList}
 <div class="verified-cards">
 ${rows}
@@ -9907,7 +9907,10 @@ function renderJson(result, meta) {
 }
 
 // src/core/fixes-file.ts
-var CONTROL = /[\u0000-\u0008\u000a-\u001f\u007f]/;
+var CONTROL = (
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: control characters are what it finds.
+  /[\u0000-\u0008\u000a-\u001f\u007f-\u009f\u2028\u2029\u200e\u200f\u202a-\u202e\u2066-\u2069]/
+);
 function writable(fixes) {
   return fixes.filter(
     (fix) => isLocalFix(fix) && fix.command.trim() !== "" && !CONTROL.test(fix.command)
@@ -9940,8 +9943,8 @@ function fixesFileText(fixes, meta) {
     "",
     "These are the exact commands behind the redacted shapes in the report, with real",
     "branch names and paths. Keep this file on this machine: it is not part of the",
-    "report, and only your user account can read it. Read each command before you run",
-    "it. Nothing here has been run."
+    "report, and it is written for your user account only (mode 0600, where the system",
+    "honours it). Read each command before you run it. Nothing here has been run."
   ];
   if (left > 0) {
     out.push(
@@ -14635,7 +14638,11 @@ function renderSummary(result, colorsEnabled, reportPath, fixesPath) {
   }
   if (fixesPath !== void 0) {
     out.push(`Fix commands for this machine: ${fixesPath}`);
-    out.push(c.dim("Only you can read it, and it is not part of the report: keep it to yourself."));
+    out.push(
+      c.dim(
+        "It is written for your user account only (mode 0600, where the system honours it), and is not part of the report: keep it to yourself."
+      )
+    );
   }
   return `${out.join("\n")}
 `;
@@ -14863,6 +14870,22 @@ ${SCAN_USAGE}`);
   io.writeStdout(
     renderSummary(result, colors.enabled, written ? reportPath : void 0, fixesPath)
   );
+  if (outcome !== void 0 && fixesPath === void 0 && fixesTarget !== reportPath) {
+    let stale = false;
+    try {
+      stale = !io.stat(fixesTarget).isDirectory();
+    } catch {
+      stale = false;
+    }
+    if (stale) {
+      io.writeStdout(
+        colors.dim(
+          `${fixesTarget} is from an earlier scan; this one wrote no fix commands, so it is left as it was.
+`
+        )
+      );
+    }
+  }
   if (!written) {
     io.writeStdout(colors.yellow(`
 Could not write the report to ${reportPath}

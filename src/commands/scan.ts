@@ -670,7 +670,11 @@ export function renderSummary(
   }
   if (fixesPath !== undefined) {
     out.push(`Fix commands for this machine: ${fixesPath}`);
-    out.push(c.dim("Only you can read it, and it is not part of the report: keep it to yourself."));
+    out.push(
+      c.dim(
+        "It is written for your user account only (mode 0600, where the system honours it), and is not part of the report: keep it to yourself.",
+      ),
+    );
   }
 
   return `${out.join("\n")}\n`;
@@ -1005,6 +1009,23 @@ export async function runScan(
   io.writeStdout(
     renderSummary(result, colors.enabled, written ? reportPath : undefined, fixesPath),
   );
+  // An older fixes file left next to the report is said, never deleted: its commands are from
+  // an earlier scan, and this one made none.
+  if (outcome !== undefined && fixesPath === undefined && fixesTarget !== reportPath) {
+    let stale = false;
+    try {
+      stale = !io.stat(fixesTarget).isDirectory();
+    } catch {
+      stale = false;
+    }
+    if (stale) {
+      io.writeStdout(
+        colors.dim(
+          `${fixesTarget} is from an earlier scan; this one wrote no fix commands, so it is left as it was.\n`,
+        ),
+      );
+    }
+  }
 
   if (!written) {
     io.writeStdout(colors.yellow(`\nCould not write the report to ${reportPath}\n`));
