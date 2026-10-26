@@ -31,6 +31,7 @@ import {
   agentProcessCheck,
   backupFolderName,
   isRecentlyModified,
+  PROCESS_NAME_GAP,
   RECENT_WRITE_WINDOW_MS,
   restoreCommand,
   runScrub,
@@ -929,6 +930,40 @@ describe("the flags", () => {
     const run = await scan(s, "claude", ["--scrub"], { scrub: null });
     expect(run.code).toBe(1);
     expect(run.stdout).toContain("--scrub is not available in this build");
+  });
+});
+
+describe("what the process check cannot see", () => {
+  it("is one fixed sentence", () => {
+    expect(PROCESS_NAME_GAP).toBe(
+      'If an agent is running under a generic name (for example "node"), this check can\'t see it; files changed in the last 5 minutes are skipped for that reason.',
+    );
+  });
+
+  it("is said in the dry run, beside the check it qualifies", async () => {
+    const s = await setup("claude");
+    const run = await scan(s, "claude", ["--scrub"]);
+    expect(run.stdout).toContain(
+      `  It refuses while Claude Code is running, which it finds by process name.\n  ${PROCESS_NAME_GAP}\n`,
+    );
+  });
+
+  it("is said by --apply once the check has passed", async () => {
+    const s = await setup("cursor");
+    const run = await scan(s, "cursor", ["--scrub", "--apply"]);
+    expect(run.code).toBe(0);
+    expect(run.stdout).toContain(`No Cursor process is running, by name. ${PROCESS_NAME_GAP}\n`);
+  });
+
+  it("a session run as node is not seen by name, so only the 5-minute check holds it back", async () => {
+    const s = await setup("claude");
+    for (const file of s.files) utimesSync(file, new Date(), new Date());
+    const before = snapshot(s.root);
+    const run = await scan(s, "claude", ["--scrub", "--apply"], { verify: processes(["node"]) });
+    expect(run.stdout).not.toContain("Refused:");
+    expect(run.stdout).toContain(PROCESS_NAME_GAP);
+    expect(run.stdout).toContain("changed in the last 5 minutes");
+    expect(snapshot(s.root)).toEqual(before);
   });
 });
 

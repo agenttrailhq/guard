@@ -110,6 +110,13 @@ export async function agentProcessCheck(
     : { state: "not-running" };
 }
 
+/**
+ * What the process check cannot see, said wherever the check is: an app run under a generic
+ * process name. The recent-change check is the backstop for it.
+ */
+export const PROCESS_NAME_GAP =
+  'If an agent is running under a generic name (for example "node"), this check can\'t see it; files changed in the last 5 minutes are skipped for that reason.';
+
 /** Check two: was the file changed in the last `RECENT_WRITE_WINDOW_MS`? */
 export function isRecentlyModified(mtimeMs: number, nowMs: number): boolean {
   return nowMs - mtimeMs < RECENT_WRITE_WINDOW_MS;
@@ -411,6 +418,8 @@ export async function runScrub(input: ScrubRunInput): Promise<number> {
       `  every file above is first copied to a new private folder under ${scrubBackupsRoot(io.homedir())},`,
     );
     lines.push("  and then each one is replaced in a single step.");
+    lines.push(`  It refuses while ${app} is running, which it finds by process name.`);
+    lines.push(`  ${PROCESS_NAME_GAP}`);
     if (running.state === "running") {
       lines.push(c.yellow(`  It would refuse to run now: ${app} is running.`));
     } else if (running.state === "could-not-check") {
@@ -441,6 +450,9 @@ export async function runScrub(input: ScrubRunInput): Promise<number> {
     flush();
     return 1;
   }
+
+  lines.push("");
+  lines.push(c.dim(`No ${app} process is running, by name. ${PROCESS_NAME_GAP}`));
 
   const outcomes: { readonly path: string; readonly reason: SkipReason; readonly code?: string }[] =
     recent.map((f) => ({ path: f.path, reason: "recent" }));

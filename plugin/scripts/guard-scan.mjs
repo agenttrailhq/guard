@@ -14485,6 +14485,7 @@ async function agentProcessCheck(io, agent) {
   if (!listed.ok) return { state: "could-not-check" };
   return listed.running.includes(watchedIdOf(agent)) ? { state: "running" } : { state: "not-running" };
 }
+var PROCESS_NAME_GAP = `If an agent is running under a generic name (for example "node"), this check can't see it; files changed in the last 5 minutes are skipped for that reason.`;
 function isRecentlyModified(mtimeMs, nowMs) {
   return nowMs - mtimeMs < RECENT_WRITE_WINDOW_MS;
 }
@@ -14704,6 +14705,8 @@ async function runScrub(input) {
       `  every file above is first copied to a new private folder under ${scrubBackupsRoot(io.homedir())},`
     );
     lines.push("  and then each one is replaced in a single step.");
+    lines.push(`  It refuses while ${app} is running, which it finds by process name.`);
+    lines.push(`  ${PROCESS_NAME_GAP}`);
     if (running.state === "running") {
       lines.push(c.yellow(`  It would refuse to run now: ${app} is running.`));
     } else if (running.state === "could-not-check") {
@@ -14730,6 +14733,8 @@ async function runScrub(input) {
     flush();
     return 1;
   }
+  lines.push("");
+  lines.push(c.dim(`No ${app} process is running, by name. ${PROCESS_NAME_GAP}`));
   const outcomes = recent.map((f) => ({ path: f.path, reason: "recent" }));
   const targets = planning.changes.filter((f) => !isRecentlyModified(f.stat.mtimeMs, nowMs));
   if (targets.length === 0) {

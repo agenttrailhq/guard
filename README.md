@@ -399,7 +399,9 @@ the exposure.
   kind it would replace, never the values, and changes nothing.
 - **Close the agent first.** A running session keeps appending to its transcript.
   `--apply` refuses while a process of that app is running, and skips any file changed in
-  the last 5 minutes. There is no flag to override either.
+  the last 5 minutes. There is no flag to override either. The first check goes by process
+  name, so it cannot see an agent running under a generic name such as `node`; the second
+  check is there for that case.
 - **Backup first.** Before changing any file, `--apply` copies every file it will change to
   a new folder under `~/.agenttrail/scrub-backups/` (`0700`, files `0600`), with a manifest
   and a restore command for each file. **The backup still holds the credentials:** delete
