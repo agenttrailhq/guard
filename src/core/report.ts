@@ -92,6 +92,7 @@ import type { AgentSource, GuardAction } from "./types.js";
 import { CARD_BUILDERS } from "./verify/builders.js";
 import {
   type CardBuilders,
+  type CardContext,
   type CardSentence,
   type CardView,
   cardsFor,
@@ -116,6 +117,7 @@ import {
   TONE_TALLY,
   toneLabel,
 } from "./verify/copy.js";
+import { shareCounts } from "./verify/share-copy.js";
 import {
   FACT_KEYS,
   FACT_VALUE_ENUMS,
@@ -685,6 +687,14 @@ export function reportPayload(
   builders: CardBuilders = CARD_BUILDERS,
 ): ReportPayload {
   const ordered = bySeverityThenCount(result.findings);
+  // The cards are built from the copy, so they say no more than the file carries; the share
+  // post reads its verified counts from them. The copy the file carries has the same statuses
+  // the cards show.
+  const copied =
+    result.verification === undefined ? undefined : copyVerification(result.verification, true);
+  // A scan that read no tool calls shows no cards, so the file carries none either.
+  const cards =
+    copied === undefined || result.toolCalls === 0 ? undefined : cardsFor(copied, builders);
   const payload: ReportPayload = {
     tool: "agenttrail-guard",
     version: meta.version,
@@ -714,7 +724,12 @@ export function reportPayload(
     })),
     moreRecurring: Math.max(0, result.recurring.length - MAX_ROWS),
     tokens: result.tokens === null ? null : tokenCopy(result.tokens),
-    shareText: shareText(result),
+    shareText: shareText(
+      result,
+      cards === undefined || copied === undefined
+        ? undefined
+        : { cards, context: { ranEvidence: copied.ranEvidence } },
+    ),
     owasp: result.owasp
       .filter((t) => isOwaspId(t.id))
       .map((t) => ({
@@ -724,18 +739,13 @@ export function reportPayload(
         guardrailCount: t.guardrailCount,
       })),
   };
-  // The cards are built from the copy, so they say no more than the file carries. The copy the
-  // file carries has the same honest statuses the cards show.
-  const copied =
-    result.verification === undefined ? undefined : copyVerification(result.verification, true);
   const withVerification: ReportPayload =
     copied === undefined
       ? payload
       : {
           ...payload,
           verification: honestVerification(copied),
-          // A scan that read no tool calls shows no cards, so the file carries none either.
-          ...(result.toolCalls === 0 ? {} : { cards: cardsFor(copied, builders) }),
+          ...(cards === undefined ? {} : { cards }),
         };
   const skipped = result.skipped;
   if (skipped === undefined) return withVerification;
@@ -782,18 +792,48 @@ function topLibraryBlocker(result: ScanResult): ScanFinding | undefined {
     )[0];
 }
 
+/** The tail every post ends with. */
+const SHARE_TAIL = ". Checked locally, nothing uploaded.";
+
 /**
- * The prefilled post: totals, and the top blocked LIBRARY guardrail's title.
+ * The prefilled post. The user can edit it before posting.
+ *
+ * With verified counts that may lead (`shareCounts`: result-backed, not clean, not could-not-
+ * check or could-not-confirm, never on a Codex scan), it states them, most important first, as
+ * many as fit in a post. Otherwise it is the totals post (`totalsShareText`).
+ *
+ * Built from counts, the agent's display name, fixed phrases and at most one shipped guardrail
+ * title — never a command, a path, a project name, a card's own sentence, or a guardrail the
+ * user wrote, whose title can name internal things.
+ */
+export function shareText(
+  result: ScanResult,
+  verified?: { readonly cards: readonly CardView[]; readonly context: CardContext },
+): string {
+  const counts =
+    verified === undefined || result.toolCalls === 0
+      ? []
+      : shareCounts(verified.cards, verified.context);
+  const calls = counted(result.toolCalls, "tool call", "tool calls");
+  const head = `AgentTrail Guard checked ${calls} from ${agentName(result.agent)} on my machine`;
+  for (let n = counts.length; n > 0; n--) {
+    const text = `${head}: ${counts.slice(0, n).join(" · ")}. Nothing uploaded.`;
+    if (postLength(text) <= POST_LIMIT) return text;
+  }
+  return totalsShareText(result);
+}
+
+/**
+ * The totals post: totals, and the top blocked LIBRARY guardrail's title.
  *
  * Built from counts, the agent's display name and one shipped title — never a command, a
  * path, a project name, or a guardrail the user wrote, whose title can name internal things.
- * The user can edit it before posting.
  */
-export function shareText(result: ScanResult): string {
+export function totalsShareText(result: ScanResult): string {
   const { block, require_approval: ask, warn } = result.riskyByAction;
   const calls = counted(result.toolCalls, "tool call", "tool calls");
   const head = `I scanned ${calls} from ${agentName(result.agent)} with AgentTrail Guard`;
-  const tail = ". Checked locally, nothing uploaded.";
+  const tail = SHARE_TAIL;
   const top = topLibraryBlocker(result);
 
   const compose = (withTitle: boolean): string => {
@@ -1791,9 +1831,14 @@ function shareSectionHtml(
   const edit = editable
     ? "Edit it before posting."
     : "This published copy cannot change the post. In the report file it was made from, the post can be edited before posting.";
+  // A post with verified counts holds counts only; the totals post may name one library guardrail.
+  const what =
+    payload.shareText === totalsShareText(result)
+      ? "Totals and at most one library guardrail&#39;s name"
+      : "Counts from the checks on this machine, and nothing else";
   return `<section id="share" class="share">
 <h2>Share your result</h2>
-<p class="note share-note">Totals and at most one library guardrail&#39;s name: no commands, paths, project names or guardrails you wrote. ${edit}</p>
+<p class="note share-note">${what}: no commands, paths, project names or guardrails you wrote. ${edit}</p>
 <label class="share-label" for="share-text">Post preview</label>
 <textarea id="share-text" rows="4"${editable ? "" : " readonly"}>${escapeHtml(payload.shareText)}</textarea>
 <p class="share-actions"><span id="share-count" class="share-count" data-over="${length > POST_LIMIT ? "true" : "false"}">${escapeHtml(`${length} / ${POST_LIMIT}`)}</span>

@@ -11728,14 +11728,16 @@ var HEADLINE_BASIS = {
   destructive: "unguarded-recursive-deletes"
 };
 function pickHeadline(cards, context) {
-  if (context.ranEvidence === "output-record") return void 0;
-  for (const category of HEADLINE_ORDER) {
+  return leadingCards(cards, context)[0];
+}
+function leadingCards(cards, context) {
+  if (context.ranEvidence === "output-record") return [];
+  return HEADLINE_ORDER.flatMap((category) => {
     const card = cards.find(
       (c) => c.category === category && c.headline !== void 0 && c.tone === HEADLINE_TONES[category] && c.headline.basis === HEADLINE_BASIS[category] && c.headline.count > 0 && !c.headline.restsOnCodexRan && c.unconfirmed === void 0
     );
-    if (card !== void 0) return card;
-  }
-  return void 0;
+    return card === void 0 ? [] : [card];
+  });
 }
 var LOCAL_ONLY = /* @__PURE__ */ Symbol("local-only");
 var LOCAL_FIX_SERIALIZED = "a local fix command belongs in the local fixes file only, and is never serialized";
@@ -16876,6 +16878,34 @@ var CARD_BUILDERS = {
   ...COMMAND_CHECK_CARDS
 };
 
+// src/core/verify/share-copy.ts
+var SHARE_PHRASES = {
+  "likely-real-credentials": [
+    "likely-real credential left in its transcripts",
+    "likely-real credentials left in its transcripts"
+  ],
+  "commits-on-main-without-checks": [
+    "commit shipped to main without its checks",
+    "commits shipped to main without their checks"
+  ],
+  "recoverable-deleted-work": [
+    "piece of deleted work still recoverable",
+    "pieces of deleted work still recoverable"
+  ],
+  "iam-changes": ["IAM change ran and needs a review", "IAM changes ran and need a review"],
+  "lowered-test-floors": ["lowered test floor", "lowered test floors"],
+  "unguarded-recursive-deletes": ["unguarded recursive delete", "unguarded recursive deletes"]
+};
+function sharePhrase(basis, count2) {
+  const [one, many] = SHARE_PHRASES[basis];
+  return `${formatCount(count2)} ${count2 === 1 ? one : many}`;
+}
+function shareCounts(cards, context) {
+  return leadingCards(cards, context).filter((card) => card.unconfirmed === void 0).flatMap(
+    (card) => card.headline === void 0 ? [] : [sharePhrase(card.headline.basis, card.headline.count)]
+  );
+}
+
 // src/core/report.ts
 var REPOSITORY_URL = "https://github.com/agenttrailhq/guard";
 var SITE_URL = "https://www.agenttrail.sh";
@@ -17142,6 +17172,8 @@ function payloadFinding(finding) {
 }
 function reportPayload(result, meta, builders = CARD_BUILDERS) {
   const ordered = bySeverityThenCount(result.findings);
+  const copied = result.verification === void 0 ? void 0 : copyVerification(result.verification, true);
+  const cards = copied === void 0 || result.toolCalls === 0 ? void 0 : cardsFor(copied, builders);
   const payload = {
     tool: "agenttrail-guard",
     version: meta.version,
@@ -17171,7 +17203,10 @@ function reportPayload(result, meta, builders = CARD_BUILDERS) {
     })),
     moreRecurring: Math.max(0, result.recurring.length - MAX_ROWS),
     tokens: result.tokens === null ? null : tokenCopy(result.tokens),
-    shareText: shareText(result),
+    shareText: shareText(
+      result,
+      cards === void 0 || copied === void 0 ? void 0 : { cards, context: { ranEvidence: copied.ranEvidence } }
+    ),
     owasp: result.owasp.filter((t) => isOwaspId(t.id)).map((t) => ({
       id: t.id,
       callCount: t.callCount,
@@ -17179,12 +17214,10 @@ function reportPayload(result, meta, builders = CARD_BUILDERS) {
       guardrailCount: t.guardrailCount
     }))
   };
-  const copied = result.verification === void 0 ? void 0 : copyVerification(result.verification, true);
   const withVerification = copied === void 0 ? payload : {
     ...payload,
     verification: honestVerification(copied),
-    // A scan that read no tool calls shows no cards, so the file carries none either.
-    ...result.toolCalls === 0 ? {} : { cards: cardsFor(copied, builders) }
+    ...cards === void 0 ? {} : { cards }
   };
   const skipped = result.skipped;
   if (skipped === void 0) return withVerification;
@@ -17215,11 +17248,22 @@ function topLibraryBlocker(result) {
     (a, b) => b.count - a.count || severityRank(a.severity) - severityRank(b.severity) || a.ruleId.localeCompare(b.ruleId)
   )[0];
 }
-function shareText(result) {
+var SHARE_TAIL = ". Checked locally, nothing uploaded.";
+function shareText(result, verified) {
+  const counts = verified === void 0 || result.toolCalls === 0 ? [] : shareCounts(verified.cards, verified.context);
+  const calls = counted3(result.toolCalls, "tool call", "tool calls");
+  const head = `AgentTrail Guard checked ${calls} from ${agentName(result.agent)} on my machine`;
+  for (let n2 = counts.length; n2 > 0; n2--) {
+    const text2 = `${head}: ${counts.slice(0, n2).join(" \xB7 ")}. Nothing uploaded.`;
+    if (postLength(text2) <= POST_LIMIT) return text2;
+  }
+  return totalsShareText(result);
+}
+function totalsShareText(result) {
   const { block, require_approval: ask, warn } = result.riskyByAction;
   const calls = counted3(result.toolCalls, "tool call", "tool calls");
   const head = `I scanned ${calls} from ${agentName(result.agent)} with AgentTrail Guard`;
-  const tail = ". Checked locally, nothing uploaded.";
+  const tail = SHARE_TAIL;
   const top = topLibraryBlocker(result);
   const compose = (withTitle) => {
     const parts = [];
@@ -17898,9 +17942,10 @@ function shareSectionHtml(result, payload, variant) {
   const length = postLength(payload.shareText);
   const editable = variant === "document";
   const edit = editable ? "Edit it before posting." : "This published copy cannot change the post. In the report file it was made from, the post can be edited before posting.";
+  const what = payload.shareText === totalsShareText(result) ? "Totals and at most one library guardrail&#39;s name" : "Counts from the checks on this machine, and nothing else";
   return `<section id="share" class="share">
 <h2>Share your result</h2>
-<p class="note share-note">Totals and at most one library guardrail&#39;s name: no commands, paths, project names or guardrails you wrote. ${edit}</p>
+<p class="note share-note">${what}: no commands, paths, project names or guardrails you wrote. ${edit}</p>
 <label class="share-label" for="share-text">Post preview</label>
 <textarea id="share-text" rows="4"${editable ? "" : " readonly"}>${escapeHtml(payload.shareText)}</textarea>
 <p class="share-actions"><span id="share-count" class="share-count" data-over="${length > POST_LIMIT ? "true" : "false"}">${escapeHtml(`${length} / ${POST_LIMIT}`)}</span>

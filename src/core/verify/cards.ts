@@ -443,8 +443,17 @@ export function pickHeadline(
   cards: readonly CardView[],
   context: CardContext,
 ): CardView | undefined {
-  if (context.ranEvidence === "output-record") return undefined;
-  for (const category of HEADLINE_ORDER) {
+  return leadingCards(cards, context)[0];
+}
+
+/**
+ * Every card whose claim may lead, highest priority first: the rule `pickHeadline` applies,
+ * kept whole so anything else that states a verified count (the share post) uses the same
+ * one. Empty on a Codex scan.
+ */
+export function leadingCards(cards: readonly CardView[], context: CardContext): CardView[] {
+  if (context.ranEvidence === "output-record") return [];
+  return HEADLINE_ORDER.flatMap((category) => {
     const card = cards.find(
       (c) =>
         c.category === category &&
@@ -455,9 +464,8 @@ export function pickHeadline(
         !c.headline.restsOnCodexRan &&
         c.unconfirmed === undefined,
     );
-    if (card !== undefined) return card;
-  }
-  return undefined;
+    return card === undefined ? [] : [card];
+  });
 }
 
 // ── Exact fix commands: the local fixes file only ────────────────────────────
