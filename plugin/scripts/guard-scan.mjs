@@ -12366,10 +12366,19 @@ var DESTRUCTIVE_SQL = /\b(?:drop\s+(?:database|schema|table)|truncate)\b/i;
 var LOCAL_HOST = /^(?:localhost|127(?:\.\d{1,3}){3}|0\.0\.0\.0|\[?::1\]?|host\.docker\.internal|[a-z0-9-]+\.localhost)$/i;
 var SCRATCH_DATABASE = /(?:^|[_.-])(?:test|tests|testing|tmp|temp|scratch|e2e|ci|sandbox|throwaway|dummy)(?:$|[_.\d-])/i;
 var URL_PARTS = /^[a-z][a-z0-9+.-]*:\/\/(?:[^@/?#]*@)?(\[[^\]]*\]|[^:/?#]*)(?::\d+)?(?:\/([^?#]*))?/i;
-function hostClass(host) {
-  if (host === void 0 || host === "" || host.startsWith("/")) return "local";
+function hostClass(host, noHost) {
+  if (host === void 0 || host === "") return noHost;
+  if (host.startsWith("/")) return "local";
   if (host.includes("$")) return "unresolved";
   return LOCAL_HOST.test(host) ? "local" : "remote";
+}
+var CONNINFO = /(?:^|\s)(?:host|hostaddr|service|dbname)\s*=/;
+function conninfoOf(text) {
+  const out = /* @__PURE__ */ new Map();
+  for (const match of text.matchAll(/(\w+)\s*=\s*(?:'((?:[^'\\]|\\.)*)'|(\S*))/g)) {
+    out.set(match[1].toLowerCase(), match[2] ?? match[3] ?? "");
+  }
+  return out;
 }
 function optionValue(words2, short, long) {
   for (let k = 0; k < words2.length; k++) {
@@ -12393,15 +12402,20 @@ function serverOf(args2, assignments, options, sql = "") {
   const nameWord = options.name === void 0 ? void 0 : optionValue(args2, options.name[0], options.name[1]);
   const urlWord = urls[0] ?? (nameWord !== void 0 && /:\/\//.test(nameWord.value) ? nameWord : void 0);
   const fromUrl = urlWord?.value.match(URL_PARTS) ?? void 0;
+  const infoWord = args2.find((a) => CONNINFO.test(a.value));
+  const info = infoWord === void 0 ? void 0 : conninfoOf(infoWord.value);
   const pgHost = assignments.find((a) => a.value.startsWith("PGHOST="));
-  const host = fromUrl?.[1] ?? hostWord?.value ?? pgHost?.value.slice("PGHOST=".length);
   const rest = operands(args2, DATABASE_VALUE_OPTIONS);
-  const variable = hostWord?.expands === true || pgHost?.expands === true || urlWord?.expands === true || hostWord === void 0 && fromUrl === void 0 && (nameWord?.expands === true || rest.some((o) => o.expands));
+  const positional = options.positionalHost === true && rest[0] !== void 0 && !rest[0].value.includes("://") && /^[^/\s]+(?::\d+)?\//.test(rest[0].value) ? rest[0] : void 0;
+  const host = fromUrl?.[1] ?? info?.get("host") ?? info?.get("hostaddr") ?? positional?.value.split("/")[0]?.replace(/:\d+$/, "") ?? hostWord?.value ?? pgHost?.value.slice("PGHOST=".length);
+  const service = host === void 0 && info?.has("service") === true;
+  const variable = hostWord?.expands === true || pgHost?.expands === true || urlWord?.expands === true || infoWord?.expands === true || hostWord === void 0 && fromUrl === void 0 && (nameWord?.expands === true || rest.some((o) => o.expands));
   const dropped = /\bdrop\s+database\s+(?:if\s+exists\s+)?[`"']?([\w.-]+)/i.exec(sql)?.[1];
-  const name = dropped ?? fromUrl?.[2] ?? nameWord?.value ?? rest.find((o) => !o.value.includes("://"))?.value ?? "";
+  const name = dropped ?? fromUrl?.[2] ?? info?.get("dbname") ?? positional?.value.split("/")[1] ?? nameWord?.value ?? rest.find((o) => !o.value.includes("://") && !CONNINFO.test(o.value))?.value ?? "";
   return {
-    host: variable ? "unresolved" : hostClass(host),
-    scratch: SCRATCH_DATABASE.test(name)
+    host: variable || service ? "unresolved" : hostClass(host, options.noHost),
+    scratch: SCRATCH_DATABASE.test(name),
+    noHostGiven: !variable && !service && (host === void 0 || host === "")
   };
 }
 var DATABASE_VALUE_OPTIONS = /* @__PURE__ */ new Set([
@@ -12436,6 +12450,17 @@ var DATABASE_VALUE_OPTIONS = /* @__PURE__ */ new Set([
   "--uri",
   "--eval"
 ]);
+var KUBECTL_VALUE_OPTIONS = /* @__PURE__ */ new Set([
+  "-n",
+  "--namespace",
+  "--context",
+  "--cluster",
+  "--kubeconfig",
+  "-s",
+  "--server",
+  "--user",
+  "--token"
+]);
 var LAUNCHERS2 = /* @__PURE__ */ new Set(["npx", "pnpm", "yarn", "bunx", "bun"]);
 function databaseTargets(words2, scratchRoots, view, depth = 0) {
   const start = commandStart(words2);
@@ -12454,7 +12479,7 @@ function databaseTargets(words2, scratchRoots, view, depth = 0) {
   const args2 = words2.slice(at + 1);
   const values = args2.map((a) => a.value);
   const relay = (rest, host) => databaseTargets(rest, scratchRoots, view, depth + 1).map(
-    (t) => host === "remote" ? { ...t, host } : t
+    (t) => host === "remote" ? { ...t, host } : t.noHostGiven === true ? { ...t, host: "local" } : t
   );
   switch (name) {
     case "docker":
@@ -12470,8 +12495,12 @@ function databaseTargets(words2, scratchRoots, view, depth = 0) {
       return relay(args2.slice(k + 1), "local");
     }
     case "kubectl": {
+      let k = 0;
+      while (k < args2.length && args2[k].value.startsWith("-")) {
+        k += KUBECTL_VALUE_OPTIONS.has(args2[k].value) ? 2 : 1;
+      }
       const dash = values.indexOf("--");
-      return values[0] === "exec" && dash >= 0 ? relay(args2.slice(dash + 1), "remote") : [];
+      return values[k] === "exec" && dash > k ? relay(args2.slice(dash + 1), "remote") : [];
     }
     case "ssh": {
       const rest = operands(args2, /* @__PURE__ */ new Set(["-p", "-i", "-l", "-o", "-F", "-J", "-L", "-R", "-D"]));
@@ -12484,13 +12513,13 @@ function databaseTargets(words2, scratchRoots, view, depth = 0) {
         serverOf(
           args2,
           start.assignments,
-          { host: ["-h", "--host"], name: ["-d", "--dbname"] },
+          { host: ["-h", "--host"], name: ["-d", "--dbname"], noHost: "unresolved" },
           sql
         )
       ] : [];
     }
     case "dropdb":
-      return [serverOf(args2, start.assignments, { host: ["-h", "--host"] })];
+      return [serverOf(args2, start.assignments, { host: ["-h", "--host"], noHost: "unresolved" })];
     case "mysql":
     case "mariadb": {
       const sql = optionValue(args2, "-e", "--execute")?.value ?? view;
@@ -12498,19 +12527,31 @@ function databaseTargets(words2, scratchRoots, view, depth = 0) {
         serverOf(
           args2,
           start.assignments,
-          { host: ["-h", "--host"], name: ["-D", "--database"] },
+          { host: ["-h", "--host"], name: ["-D", "--database"], noHost: "unresolved" },
           sql
         )
       ] : [];
     }
     case "mysqladmin":
-      return values.includes("drop") ? [serverOf(args2, start.assignments, { host: ["-h", "--host"] })] : [];
+      return values.includes("drop") ? [serverOf(args2, start.assignments, { host: ["-h", "--host"], noHost: "unresolved" })] : [];
     case "redis-cli":
-      return values.some((v) => /^flush(?:all|db)$/i.test(v)) ? [serverOf(args2, start.assignments, { host: ["-h", void 0], name: ["-u", "--uri"] })] : [];
+      return values.some((v) => /^flush(?:all|db)$/i.test(v)) ? [
+        serverOf(args2, start.assignments, {
+          host: ["-h", void 0],
+          name: ["-u", "--uri"],
+          noHost: "local"
+        })
+      ] : [];
     case "mongo":
     case "mongosh": {
       const script = optionValue(args2, void 0, "--eval")?.value ?? "";
-      return /dropDatabase\s*\(|\.drop\s*\(/.test(script) ? [serverOf(args2, start.assignments, { host: [void 0, "--host"] })] : [];
+      return /dropDatabase\s*\(|\.drop\s*\(/.test(script) ? [
+        serverOf(args2, start.assignments, {
+          host: [void 0, "--host"],
+          noHost: "unresolved",
+          positionalHost: true
+        })
+      ] : [];
     }
     case "sqlite3": {
       const [file2, sql] = operands(args2);

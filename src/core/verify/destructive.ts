@@ -1,4 +1,4 @@
-// cspell:words dropdb mysqladmin mongosh flushall flushdb bunx dlx PGHOST kubectl podman mypy pycache pytest
+// cspell:words dropdb mysqladmin mongosh flushall flushdb bunx dlx PGHOST kubectl podman mypy pycache pytest libpq conninfo CONNINFO hostaddr kubeconfig
 /**
  * Destructive commands: what each recursive delete and each database wipe that ran was aimed
  * at.
@@ -19,13 +19,15 @@
  * ── Databases ────────────────────────────────────────────────────────────────
  * A command that drops a database, a schema or a table, truncates one, flushes Redis or resets
  * a schema through a migration tool, classed by where the database is:
- *  - **local**: a host on this machine, or none given (the client's local default), or a
- *    container started on this machine;
+ *  - **local**: a host on this machine or a local socket, a container started on this machine,
+ *    a SQLite file, or a Redis client given no host;
  *  - **scratch**: a local database whose name says test, temp or scratch, or a SQLite file in
  *    a temp folder;
- *  - **other**: a named host that is not this machine, or one reached through `ssh` or
- *    `kubectl exec`;
- *  - **unresolved**: the host comes from a variable or the tool's own config.
+ *  - **other**: a named host that is not this machine (in an option, a URL, a libpq
+ *    `host=` string or `mongosh host/db`), or one reached through `ssh` or `kubectl exec`;
+ *  - **unresolved**: the host comes from a variable, a libpq `service=`, or the tool's own
+ *    config; and a SQL or Mongo client given no host, whose environment or config files
+ *    (`PGHOST`, `~/.pg_service.conf`, `~/.my.cnf`) pick the server.
  *
  * Only what ran counts. The exact restore commands, with real paths, are `LocalFix`es for the
  * local fixes file; the card shows their redacted shapes.
@@ -390,6 +392,8 @@ interface DatabaseTarget {
   readonly host: Host;
   /** Its name says test, temp or scratch, or it is a SQLite file in a temp folder. */
   readonly scratch: boolean;
+  /** The command named no host, so `host` is its client's default. */
+  readonly noHostGiven?: boolean;
 }
 
 /** SQL that drops or empties data. */
@@ -407,11 +411,28 @@ const SCRATCH_DATABASE =
 const URL_PARTS =
   /^[a-z][a-z0-9+.-]*:\/\/(?:[^@/?#]*@)?(\[[^\]]*\]|[^:/?#]*)(?::\d+)?(?:\/([^?#]*))?/i;
 
-/** The class of a host as written: none given is the client's local default. */
-function hostClass(host: string | undefined): Host {
-  if (host === undefined || host === "" || host.startsWith("/")) return "local";
+/**
+ * The class of a host as written. A path is a local socket. None given is `noHost`: for a
+ * client whose own config or environment picks the server (`PGHOST`, a service file,
+ * `~/.my.cnf`), that is `unresolved`, never local.
+ */
+function hostClass(host: string | undefined, noHost: Host): Host {
+  if (host === undefined || host === "") return noHost;
+  if (host.startsWith("/")) return "local";
   if (host.includes("$")) return "unresolved";
   return LOCAL_HOST.test(host) ? "local" : "remote";
+}
+
+/** A libpq keyword/value connection string: `host=… dbname=…`. */
+const CONNINFO = /(?:^|\s)(?:host|hostaddr|service|dbname)\s*=/;
+
+/** The keywords of a libpq connection string. */
+function conninfoOf(text: string): ReadonlyMap<string, string> {
+  const out = new Map<string, string>();
+  for (const match of text.matchAll(/(\w+)\s*=\s*(?:'((?:[^'\\]|\\.)*)'|(\S*))/g)) {
+    out.set((match[1] as string).toLowerCase(), match[2] ?? match[3] ?? "");
+  }
+  return out;
 }
 
 /** The value of an option given as `-h x`, `-hx`, `--host x` or `--host=x`. */
@@ -448,7 +469,14 @@ type OptionNames = readonly [string | undefined, string | undefined];
 function serverOf(
   args: readonly ShellWord[],
   assignments: readonly ShellWord[],
-  options: { readonly host: OptionNames; readonly name?: OptionNames },
+  options: {
+    readonly host: OptionNames;
+    readonly name?: OptionNames;
+    /** The class when no host is given. See `hostClass`. */
+    readonly noHost: Host;
+    /** The first operand may be `host[:port]/db`, as `mongosh` takes it. */
+    readonly positionalHost?: boolean;
+  },
   sql = "",
 ): DatabaseTarget {
   const urls = args.filter((a) => /^[a-z][a-z0-9+.-]*:\/\//i.test(a.value));
@@ -458,14 +486,34 @@ function serverOf(
   const urlWord =
     urls[0] ?? (nameWord !== undefined && /:\/\//.test(nameWord.value) ? nameWord : undefined);
   const fromUrl = urlWord?.value.match(URL_PARTS) ?? undefined;
+  // A libpq connection string, given as an operand or as `-d`.
+  const infoWord = args.find((a) => CONNINFO.test(a.value));
+  const info = infoWord === undefined ? undefined : conninfoOf(infoWord.value);
   const pgHost = assignments.find((a) => a.value.startsWith("PGHOST="));
-  const host = fromUrl?.[1] ?? hostWord?.value ?? pgHost?.value.slice("PGHOST=".length);
   const rest = operands(args, DATABASE_VALUE_OPTIONS);
+  // `mongosh db.example.com/app`, `mongosh db.example.com:27017/app`.
+  const positional =
+    options.positionalHost === true &&
+    rest[0] !== undefined &&
+    !rest[0].value.includes("://") &&
+    /^[^/\s]+(?::\d+)?\//.test(rest[0].value)
+      ? rest[0]
+      : undefined;
+  const host =
+    fromUrl?.[1] ??
+    info?.get("host") ??
+    info?.get("hostaddr") ??
+    positional?.value.split("/")[0]?.replace(/:\d+$/, "") ??
+    hostWord?.value ??
+    pgHost?.value.slice("PGHOST=".length);
+  // A service name is looked up in the user's service file: where it points is not known.
+  const service = host === undefined && info?.has("service") === true;
   // A host, a URL or a database argument built from a variable: where it points is not known.
   const variable =
     hostWord?.expands === true ||
     pgHost?.expands === true ||
     urlWord?.expands === true ||
+    infoWord?.expands === true ||
     (hostWord === undefined &&
       fromUrl === undefined &&
       (nameWord?.expands === true || rest.some((o) => o.expands)));
@@ -474,12 +522,15 @@ function serverOf(
   const name =
     dropped ??
     fromUrl?.[2] ??
+    info?.get("dbname") ??
+    positional?.value.split("/")[1] ??
     nameWord?.value ??
-    rest.find((o) => !o.value.includes("://"))?.value ??
+    rest.find((o) => !o.value.includes("://") && !CONNINFO.test(o.value))?.value ??
     "";
   return {
-    host: variable ? "unresolved" : hostClass(host),
+    host: variable || service ? "unresolved" : hostClass(host, options.noHost),
     scratch: SCRATCH_DATABASE.test(name),
+    noHostGiven: !variable && !service && (host === undefined || host === ""),
   };
 }
 
@@ -517,6 +568,19 @@ const DATABASE_VALUE_OPTIONS: ReadonlySet<string> = new Set([
   "--eval",
 ]);
 
+/** `kubectl` global options that take the next word as their value. */
+const KUBECTL_VALUE_OPTIONS: ReadonlySet<string> = new Set([
+  "-n",
+  "--namespace",
+  "--context",
+  "--cluster",
+  "--kubeconfig",
+  "-s",
+  "--server",
+  "--user",
+  "--token",
+]);
+
 /** Package runners a command-line tool is started through. */
 const LAUNCHERS: ReadonlySet<string> = new Set(["npx", "pnpm", "yarn", "bunx", "bun"]);
 
@@ -547,10 +611,10 @@ function databaseTargets(
   const args = words.slice(at + 1);
   const values = args.map((a) => a.value);
   // A command run on another machine is aimed at that machine's databases. One run in a local
-  // container keeps whatever host it names itself.
+  // container keeps whatever host it names itself, and with none names the container: local.
   const relay = (rest: readonly ShellWord[], host: "local" | "remote"): DatabaseTarget[] =>
     databaseTargets(rest, scratchRoots, view, depth + 1).map((t) =>
-      host === "remote" ? { ...t, host } : t,
+      host === "remote" ? { ...t, host } : t.noHostGiven === true ? { ...t, host: "local" } : t,
     );
 
   switch (name) {
@@ -570,8 +634,14 @@ function databaseTargets(
       return relay(args.slice(k + 1), "local");
     }
     case "kubectl": {
+      // `kubectl -n prod --context x exec pod -- …`: the subcommand comes after the global
+      // options, and the command after `--`.
+      let k = 0;
+      while (k < args.length && (args[k] as ShellWord).value.startsWith("-")) {
+        k += KUBECTL_VALUE_OPTIONS.has((args[k] as ShellWord).value) ? 2 : 1;
+      }
       const dash = values.indexOf("--");
-      return values[0] === "exec" && dash >= 0 ? relay(args.slice(dash + 1), "remote") : [];
+      return values[k] === "exec" && dash > k ? relay(args.slice(dash + 1), "remote") : [];
     }
     case "ssh": {
       const rest = operands(args, new Set(["-p", "-i", "-l", "-o", "-F", "-J", "-L", "-R", "-D"]));
@@ -589,14 +659,14 @@ function databaseTargets(
             serverOf(
               args,
               start.assignments,
-              { host: ["-h", "--host"], name: ["-d", "--dbname"] },
+              { host: ["-h", "--host"], name: ["-d", "--dbname"], noHost: "unresolved" },
               sql,
             ),
           ]
         : [];
     }
     case "dropdb":
-      return [serverOf(args, start.assignments, { host: ["-h", "--host"] })];
+      return [serverOf(args, start.assignments, { host: ["-h", "--host"], noHost: "unresolved" })];
     case "mysql":
     case "mariadb": {
       const sql = optionValue(args, "-e", "--execute")?.value ?? view;
@@ -605,7 +675,7 @@ function databaseTargets(
             serverOf(
               args,
               start.assignments,
-              { host: ["-h", "--host"], name: ["-D", "--database"] },
+              { host: ["-h", "--host"], name: ["-D", "--database"], noHost: "unresolved" },
               sql,
             ),
           ]
@@ -613,17 +683,30 @@ function databaseTargets(
     }
     case "mysqladmin":
       return values.includes("drop")
-        ? [serverOf(args, start.assignments, { host: ["-h", "--host"] })]
+        ? [serverOf(args, start.assignments, { host: ["-h", "--host"], noHost: "unresolved" })]
         : [];
     case "redis-cli":
+      // redis-cli reads no config file for its server: with no host it is this machine.
       return values.some((v) => /^flush(?:all|db)$/i.test(v))
-        ? [serverOf(args, start.assignments, { host: ["-h", undefined], name: ["-u", "--uri"] })]
+        ? [
+            serverOf(args, start.assignments, {
+              host: ["-h", undefined],
+              name: ["-u", "--uri"],
+              noHost: "local",
+            }),
+          ]
         : [];
     case "mongo":
     case "mongosh": {
       const script = optionValue(args, undefined, "--eval")?.value ?? "";
       return /dropDatabase\s*\(|\.drop\s*\(/.test(script)
-        ? [serverOf(args, start.assignments, { host: [undefined, "--host"] })]
+        ? [
+            serverOf(args, start.assignments, {
+              host: [undefined, "--host"],
+              noHost: "unresolved",
+              positionalHost: true,
+            }),
+          ]
         : [];
     }
     case "sqlite3": {

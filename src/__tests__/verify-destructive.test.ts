@@ -1,4 +1,4 @@
-// cspell:words dropdb flushdb flushall mysqladmin PGHOST shutil rmtree
+// cspell:words dropdb flushdb flushall mysqladmin PGHOST shutil rmtree libpq
 /**
  * Destructive commands (`core/verify/destructive.ts`): each `rm -rf` target classed against a
  * real temporary repository and home folder, and each database wipe classed by where the
@@ -457,22 +457,37 @@ describe("databases", () => {
   it.each([
     [`psql -h db.prod.example.com -c "DROP TABLE users"`, "other"],
     [`psql postgresql://app@10.0.0.5:5432/app -c "DROP TABLE x"`, "other"],
-    [`psql -c "DROP DATABASE app_test"`, "scratch"],
+    [`psql -h localhost -c "DROP DATABASE app_test"`, "scratch"],
     [`psql -h localhost -d app -c "TRUNCATE orders"`, "local"],
+    [`psql -h /var/run/postgresql -c "DROP TABLE t"`, "local"],
     [`PGHOST=db.example.com psql -c "DROP TABLE t"`, "other"],
     [`psql "$DATABASE_URL" -c "DROP SCHEMA public CASCADE"`, "unresolved"],
-    ["psql app <<'SQL'\nDROP TABLE t;\nSQL", "local"],
+    // No host given: the client's environment or config files pick the server.
+    [`psql -c "DROP DATABASE app_test"`, "unresolved"],
+    ["psql app <<'SQL'\nDROP TABLE t;\nSQL", "unresolved"],
+    ["dropdb app_dev", "unresolved"],
+    // A libpq connection string names its host, or a service looked up elsewhere.
+    [`psql "host=db.prod.example.com dbname=app user=admin" -c "DROP TABLE users"`, "other"],
+    [`psql -d "host=localhost dbname=app" -c "DROP TABLE users"`, "local"],
+    [`psql "service=prod" -c "DROP TABLE users"`, "unresolved"],
+    // A remote server is other, whatever its database is called.
+    [`psql -h db.prod.example.com -c "DROP DATABASE app_test"`, "other"],
     ["dropdb -h 127.0.0.1 app_dev", "local"],
     [`mysql -h db.internal -e "DROP DATABASE shop"`, "other"],
-    [`mysql -e "DROP DATABASE shop_tmp"`, "scratch"],
+    [`mysql -h localhost -e "DROP DATABASE shop_tmp"`, "scratch"],
+    [`mysql -e "DROP DATABASE shop_tmp"`, "unresolved"],
     ["mysqladmin -h localhost drop shop", "local"],
     ["redis-cli FLUSHALL", "local"],
     ["redis-cli -h cache.example.com flushdb", "other"],
     [`mongosh mongodb://db.example.com/app --eval "db.dropDatabase()"`, "other"],
+    [`mongosh db.prod.example.com/app --eval "db.dropDatabase()"`, "other"],
+    [`mongosh localhost:27017/app --eval "db.dropDatabase()"`, "local"],
+    [`mongosh --eval "db.dropDatabase()"`, "unresolved"],
     ["npx prisma migrate reset --force", "unresolved"],
     ["bin/rails db:drop", "unresolved"],
     [`docker exec -it pg psql -U postgres -c "DROP DATABASE app"`, "local"],
     [`kubectl exec db-0 -- psql -c "DROP TABLE x"`, "other"],
+    [`kubectl -n prod --context live exec pg-0 -- psql -c "DROP TABLE users"`, "other"],
     [`ssh prod-db "psql -c 'DROP TABLE x'"`, "other"],
   ])("%s → %s", async (command, expected) => {
     const root = makeRepo("db");
@@ -515,27 +530,32 @@ describe("databases", () => {
         cwd: root,
         events: [
           { kind: "bash", command: `psql -h db.example.com -c "DROP TABLE t"`, output: "" },
-          { kind: "bash", command: `psql -c "DROP DATABASE app_test"`, output: "" },
+          { kind: "bash", command: `psql -h localhost -c "DROP DATABASE app_test"`, output: "" },
+          { kind: "bash", command: `psql -c "DROP TABLE t"`, output: "" },
           { kind: "bash", command: `echo "psql -h db2.example.com -c 'DROP TABLE t'"`, output: "" },
           { kind: "bash", command: `psql -h db3.example.com -c "DROP TABLE t"`, noResult: true },
         ],
       },
     ]);
+    // `unresolved` is a host this check could not tell: it is not counted as `other`.
     expect(databaseTargetClasses(result)).toEqual({
       local: 0,
       scratch: 1,
       other: 1,
-      unresolved: 0,
+      unresolved: 1,
     });
     expect(databaseTargetClasses({ status: "not-checked" })).toBeUndefined();
   });
 
-  it("a database on another machine is review; local and scratch alone are clean", async () => {
+  it("a database on another machine, or an unresolved one, is review; local and scratch alone are clean", async () => {
     const root = makeRepo("db-status");
     expect(
       (await destructive(ran(root, `psql -h db.example.com -c "DROP TABLE t"`))).result.status,
     ).toBe("review");
-    expect((await destructive(ran(root, `psql -c "DROP TABLE t"`))).result.status).toBe("clean");
+    expect((await destructive(ran(root, `psql -c "DROP TABLE t"`))).result.status).toBe("review");
+    expect(
+      (await destructive(ran(root, `psql -h localhost -c "DROP TABLE t"`))).result.status,
+    ).toBe("clean");
   });
 });
 
