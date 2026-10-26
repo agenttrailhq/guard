@@ -637,6 +637,8 @@ describe("the display leg — no second scrub", () => {
     //   core/crash-scrub.ts — stack traces, on their way into the crash spool
     //   core/scan-report.ts — transcript commands, on their way into the scan report
     //                         and the --json payload
+    //   core/verify/secrets.ts — transcript text, scrubbed once to FIND credential-shaped
+    //                         values for `scan --verify`; its output is never written
     //
     // The failure this guards against is a SECOND PASS over already-scrubbed data,
     // which mangles 11 of the 14 placeholder kinds. `commands/status.ts` and
@@ -652,7 +654,12 @@ describe("the display leg — no second scrub", () => {
       .map((f) => f.slice(srcRoot.length + 1))
       .filter((f) => !f.startsWith("__tests__"))
       .sort();
-    expect(production).toEqual(["core/crash-scrub.ts", "core/events.ts", "core/scan-report.ts"]);
+    expect(production).toEqual([
+      "core/crash-scrub.ts",
+      "core/events.ts",
+      "core/scan-report.ts",
+      "core/verify/secrets.ts",
+    ]);
   });
 });
 
