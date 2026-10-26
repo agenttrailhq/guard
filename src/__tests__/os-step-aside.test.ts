@@ -217,6 +217,49 @@ describe("evaluateStepAside — stands down only when every check passes", () =>
     ).toEqual({ standDown: false, failed: "token" });
   });
 
+  it("a mid-session write to the record itself is caught on the next call", () => {
+    const files = world();
+    expect(evaluateStepAside(input(files)).standDown).toBe(true);
+    // This project's entry is removed: the next call enforces.
+    files[enforcedProjectsPath(HOME)] = JSON.stringify({ version: 1, entries: [] });
+    expect(evaluateStepAside(input(files))).toEqual({ standDown: false, failed: "record" });
+    // An entry is added, but for a different root: still enforces here.
+    files[enforcedProjectsPath(HOME)] = JSON.stringify({
+      version: 1,
+      entries: [entry({ projectRoot: OTHER })],
+    });
+    expect(evaluateStepAside(input(files))).toEqual({ standDown: false, failed: "record" });
+  });
+
+  it.each([
+    ['the string "false"', "false"],
+    ["null", null],
+    ["0", 0],
+    ["a list", [false]],
+  ])("enabledPlugins set to %s for the OS plugin fails the check, at any level", (_why, value) => {
+    for (const path of [
+      `${PROJECT}/.claude/settings.json`,
+      `${PROJECT}/.claude/settings.local.json`,
+      MANAGED,
+    ]) {
+      const files = {
+        ...world(),
+        [path]: JSON.stringify({ enabledPlugins: { [OS_PLUGIN_ID]: value } }),
+      };
+      expect(evaluateStepAside(input(files)), path).toEqual({
+        standDown: false,
+        failed: "enabled",
+      });
+    }
+    const user = {
+      ...world(),
+      [`${HOME}/.claude/settings.json`]: JSON.stringify({
+        enabledPlugins: { [OS_PLUGIN_ID]: value },
+      }),
+    };
+    expect(evaluateStepAside(input(user))).toEqual({ standDown: false, failed: "enabled" });
+  });
+
   it("a token rotated without a record update: enforces", () => {
     const env = { ...ENV, AGENTTRAIL_PEP_TOKEN: "dlv_ingest_rotated" };
     expect(evaluateStepAside(input(world(), env))).toEqual({ standDown: false, failed: "token" });
