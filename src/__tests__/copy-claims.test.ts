@@ -30,6 +30,7 @@ import {
   sentences,
 } from "../core/verify/cards.js";
 import {
+  CARD_COUNT,
   CHIP_TONE,
   CODEX_CAVEAT,
   FIXES_FILE_NOTE,
@@ -40,6 +41,7 @@ import {
 } from "../core/verify/copy.js";
 import {
   SECRETS_CHIP,
+  SECRETS_COUNT,
   SECRETS_FIX,
   SECRETS_FOUND,
   SECRETS_HEADLINE,
@@ -359,7 +361,8 @@ describe("every verified line comes from a template whose facts are present", ()
     [MORE_EVIDENCE, [{ more: secrets.moreItems }]],
     [TONE_TALLY, [cards]],
     [FIXES_FILE_NOTE, [{ variant: "document" }]],
-    ...[CHIP_TONE, CODEX_CAVEAT, NOT_CHECKED_SENTENCE, COULD_NOT_CHECK_SENTENCE].map(
+    [SECRETS_COUNT, [{ matches: verification.categories.secrets.matches }]],
+    ...[CARD_COUNT, CHIP_TONE, CODEX_CAVEAT, NOT_CHECKED_SENTENCE, COULD_NOT_CHECK_SENTENCE].map(
       (t) => [t, cards] as [SentenceTemplate<never>, readonly unknown[]],
     ),
   ];

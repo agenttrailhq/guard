@@ -264,7 +264,13 @@ describe("What actually happened", () => {
   it("each card has its tone, title and the three fields, named for assistive technology", () => {
     const secrets = card(HTML, "secrets");
     expect(secrets).toContain(`<span class="tone tone-act">${TONE_LABELS.act}</span>`);
-    expect(secrets).toContain('<span class="times">11 matches</span>');
+    // Secrets counts distinct credential-shaped values, not guardrail matches.
+    expect(secrets).toContain(
+      '<span class="times" data-template="secrets.count">11 credential-shaped values</span>',
+    );
+    expect(card(HTML, "lost-work")).toContain(
+      '<span class="times" data-template="card.count">3 matches</span>',
+    );
     expect(secrets).toContain('aria-labelledby="check-secrets-title"');
     expect(secrets).toContain('<h3 id="check-secrets-title">Secrets in transcripts</h3>');
     for (const field of ["What checking found", "Now", "Fix"]) {

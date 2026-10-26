@@ -101,10 +101,10 @@ import {
   sentence,
 } from "./verify/cards.js";
 import {
-  CARD_COUNT,
   CATEGORY_TITLES,
   CODEX_CAVEAT,
   CODEX_UNVERIFIED_TEXT,
+  cardCount,
   chipCategories,
   chipText,
   evidenceRow,
@@ -1176,7 +1176,7 @@ ${chips}
 function verifiedCard(card: CardView, variant: ReportVariant, localFixes: boolean): string {
   const title = CATEGORY_TITLES[card.category];
   const id = cardId(card.category);
-  const count = CARD_COUNT.render(card);
+  const count = cardCount(card);
   const block = (lines: readonly CardSentence[]): string =>
     lines.map((line) => sentenceHtml(line)).join("\n");
   const fields: string[] = [];
@@ -1211,7 +1211,7 @@ function verifiedCard(card: CardView, variant: ReportVariant, localFixes: boolea
   }
   const caveat = sentence(CODEX_CAVEAT, card);
   return `<article class="card verified v-${card.tone}" id="${id}" aria-labelledby="${id}-title">
-<div class="card-head"><span class="tone tone-${card.tone}">${escapeHtml(TONE_LABELS[card.tone])}</span>${count === undefined ? "" : `<span class="times">${escapeHtml(count)}</span>`}</div>
+<div class="card-head"><span class="tone tone-${card.tone}">${escapeHtml(TONE_LABELS[card.tone])}</span>${count === undefined ? "" : `<span class="times" data-template="${escapeHtml(count.template)}">${escapeHtml(count.text)}</span>`}</div>
 <h3 id="${id}-title">${escapeHtml(title)}</h3>
 <dl class="verified-facts">
 ${fields.join("\n")}
@@ -2128,8 +2128,8 @@ function verifiedLines(payload: ReportPayload): string[] {
   if (read !== undefined) lines.push(read.text);
   for (const card of cards) {
     const title = CATEGORY_TITLES[card.category];
-    const count = CARD_COUNT.render(card);
-    if (count !== undefined) lines.push(`${title}  ${count}`);
+    const count = cardCount(card);
+    if (count !== undefined) lines.push(`${title}  ${count.text}`);
     for (const line of [...card.found, ...card.now, ...(card.fixSteps ?? [])]) {
       lines.push(`${title}  ${line.text}`);
     }

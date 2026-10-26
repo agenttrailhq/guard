@@ -277,7 +277,19 @@ export const FIXES_FILE_NOTE: SentenceTemplate<{ readonly variant: "document" | 
 /** The fixes file's name. `report.ts` exports it as `FIXES_FILENAME`. */
 export const FIXES_FILE = "agenttrail-guard-fixes.txt";
 
-/** A card's raw count, as the page states it. Absent for a category with no check. */
+/**
+ * A card's raw count, as the page states it: its own count line when it has one, "N matches"
+ * otherwise. Absent for a category with no check, and for a check that could not finish with
+ * no count.
+ */
+export function cardCount(card: CardView): CardSentence | undefined {
+  if (card.tone === "not-checked" || (card.tone === "could-not-check" && card.count === 0)) {
+    return undefined;
+  }
+  return card.countLine ?? sentence(CARD_COUNT, card);
+}
+
+/** A card's raw count, as "N matches". Absent for a category with no check. */
 export const CARD_COUNT: SentenceTemplate<Pick<CardView, "tone" | "count">> = {
   id: "card.count",
   render: ({ tone, count }) =>

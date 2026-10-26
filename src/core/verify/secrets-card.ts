@@ -225,6 +225,12 @@ export const SECRETS_HEADLINE: SentenceTemplate<SecretsFacts> = {
   },
 };
 
+/** The card's raw count: distinct credential-shaped values, of every class. */
+export const SECRETS_COUNT: SentenceTemplate<{ readonly matches: number }> = {
+  id: "secrets.count",
+  render: ({ matches }) => countOf(matches, "credential-shaped value"),
+};
+
 /** The chip's label, after its count. */
 export const SECRETS_CHIP: SentenceTemplate<SecretsFacts> = {
   id: "secrets.chip",
@@ -240,10 +246,12 @@ export const secretsCard: ToCard<"secrets"> = (result): CardView => {
   const likely = facts.classes["likely-real"];
   const headline = sentence(SECRETS_HEADLINE, facts);
   const chip = sentence(SECRETS_CHIP, facts);
+  const countLine = sentence(SECRETS_COUNT, result);
   return {
     category: "secrets",
     tone: result.status,
     count: result.matches,
+    ...(countLine === undefined ? {} : { countLine }),
     found: sentences(SECRETS_FOUND, facts),
     now: sentences(SECRETS_NOW, facts),
     fixSteps: sentences(SECRETS_FIX, facts),

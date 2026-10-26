@@ -8342,6 +8342,12 @@ var FIXES_FILE_NOTE = {
   render: ({ variant }) => variant === "artifact" ? `The exact commands, with real names and paths, are in ${FIXES_FILE} on the machine the scan ran on. That file was not published with this page.` : `The exact commands for this machine, with real names and paths, are in ${FIXES_FILE} next to this report. That file stays on this machine and is not part of this page.`
 };
 var FIXES_FILE = "agenttrail-guard-fixes.txt";
+function cardCount(card) {
+  if (card.tone === "not-checked" || card.tone === "could-not-check" && card.count === 0) {
+    return void 0;
+  }
+  return card.countLine ?? sentence(CARD_COUNT, card);
+}
 var CARD_COUNT = {
   id: "card.count",
   render: ({ tone, count: count2 }) => tone === "not-checked" || tone === "could-not-check" && count2 === 0 ? void 0 : countOf(count2, "match", "matches")
@@ -8483,6 +8489,10 @@ var SECRETS_HEADLINE = {
     return n > 0 ? `${likelyReal(n)} ${be(n)} still in the agent's transcripts` : void 0;
   }
 };
+var SECRETS_COUNT = {
+  id: "secrets.count",
+  render: ({ matches }) => countOf(matches, "credential-shaped value")
+};
 var SECRETS_CHIP = {
   id: "secrets.chip",
   render: (f) => f.classes["likely-real"] === 1 ? "likely-real credential in transcripts" : "likely-real credentials in transcripts"
@@ -8492,10 +8502,12 @@ var secretsCard = (result) => {
   const likely = facts.classes["likely-real"];
   const headline2 = sentence(SECRETS_HEADLINE, facts);
   const chip = sentence(SECRETS_CHIP, facts);
+  const countLine = sentence(SECRETS_COUNT, result);
   return {
     category: "secrets",
     tone: result.status,
     count: result.matches,
+    ...countLine === void 0 ? {} : { countLine },
     found: sentences(SECRETS_FOUND, facts),
     now: sentences(SECRETS_NOW, facts),
     fixSteps: sentences(SECRETS_FIX, facts),
@@ -9116,7 +9128,7 @@ ${chips}
 function verifiedCard(card, variant, localFixes) {
   const title = CATEGORY_TITLES[card.category];
   const id = cardId(card.category);
-  const count2 = CARD_COUNT.render(card);
+  const count2 = cardCount(card);
   const block = (lines) => lines.map((line) => sentenceHtml(line)).join("\n");
   const fields = [];
   if (card.found.length > 0) {
@@ -9152,7 +9164,7 @@ ${parts.join("\n")}
   }
   const caveat = sentence(CODEX_CAVEAT, card);
   return `<article class="card verified v-${card.tone}" id="${id}" aria-labelledby="${id}-title">
-<div class="card-head"><span class="tone tone-${card.tone}">${escapeHtml(TONE_LABELS[card.tone])}</span>${count2 === void 0 ? "" : `<span class="times">${escapeHtml(count2)}</span>`}</div>
+<div class="card-head"><span class="tone tone-${card.tone}">${escapeHtml(TONE_LABELS[card.tone])}</span>${count2 === void 0 ? "" : `<span class="times" data-template="${escapeHtml(count2.template)}">${escapeHtml(count2.text)}</span>`}</div>
 <h3 id="${id}-title">${escapeHtml(title)}</h3>
 <dl class="verified-facts">
 ${fields.join("\n")}
@@ -9790,8 +9802,8 @@ function verifiedLines(payload) {
   if (read !== void 0) lines.push(read.text);
   for (const card of cards) {
     const title = CATEGORY_TITLES[card.category];
-    const count2 = CARD_COUNT.render(card);
-    if (count2 !== void 0) lines.push(`${title}  ${count2}`);
+    const count2 = cardCount(card);
+    if (count2 !== void 0) lines.push(`${title}  ${count2.text}`);
     for (const line of [...card.found, ...card.now, ...card.fixSteps ?? []]) {
       lines.push(`${title}  ${line.text}`);
     }

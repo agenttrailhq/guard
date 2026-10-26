@@ -124,6 +124,8 @@ export interface CardView {
   readonly tone: VerifyStatus;
   /** The raw match count. */
   readonly count: number;
+  /** The raw count in words, when it is not a count of matches (secrets counts values). */
+  readonly countLine?: CardSentence;
   /** "What checking found". */
   readonly found: readonly CardSentence[];
   /** "Now": the state on this machine today. */
