@@ -1432,6 +1432,29 @@ describe("the two checks, on their own", () => {
     expect(snapshot(s.root)).toEqual(before);
   });
 
+  it.each([
+    "claude",
+    "codex",
+    "cursor",
+  ] as const)("%s: only its own id refuses, not another app's or another watched process's", async (agent) => {
+    /** The seam answering with `running` ids. */
+    const ids = (running: readonly string[]): VerifyIO => ({
+      ...createRealVerifyIO(),
+      processNames: () =>
+        Promise.resolve({ ok: true, running: running as readonly WatchedProcess[] }),
+    });
+    // A watched process that is not an app, such as a tunnel, never refuses a scrub.
+    expect(await agentProcessCheck(ids(["ngrok", "cloudflared"]), agent)).toEqual({
+      state: "not-running",
+    });
+    const others = WATCHED_PROCESSES.filter((id) => id !== agent);
+    expect(await agentProcessCheck(ids(others), agent)).toEqual({ state: "not-running" });
+    expect(await agentProcessCheck(ids([agent]), agent)).toEqual({ state: "running" });
+    expect(await agentProcessCheck(ids([...others, "ngrok", agent]), agent)).toEqual({
+      state: "running",
+    });
+  });
+
   it("refuses on the app's own id only, and when the list cannot be read", async () => {
     /** The seam answering with `running` ids. */
     const ids = (running: WatchedProcess[]): VerifyIO => ({

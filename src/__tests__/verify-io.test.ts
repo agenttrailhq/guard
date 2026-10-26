@@ -551,6 +551,9 @@ describe("process names: agent ids only, never arguments or titles", () => {
     ["cursor-agent", "cursor"],
     ["/Users/a/.local/bin/cursor-agent", "cursor"],
     ["cursor-agent.exe", "cursor"],
+    // Case is ignored: the Claude desktop app runs as `Claude`, and Windows names vary.
+    ["Claude", "claude"],
+    ["CODEX.EXE", "codex"],
   ])("%s is %s", (entry, id) => {
     expect(watchedProcessOf(entry)).toBe(id);
   });
