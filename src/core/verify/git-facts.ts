@@ -74,4 +74,6 @@ export const GIT_FACT_KEYS: readonly string[] = [
   "trackedGone",
   "trackedPartlyBack",
   "databases",
+  // Every category: exact fix commands that could not be made safe.
+  "unsafeFixes",
 ];

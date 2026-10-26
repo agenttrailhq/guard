@@ -28,18 +28,20 @@ import {
   sentence,
   sentences,
   type ToCard,
+  type UnsafeFix,
 } from "./cards.js";
 import {
   addTallies,
   cardExtras,
   codexCaveat,
   counted,
+  FixList,
   type GitCheckContext,
   is,
   isUnder,
   MAX_PROBED_ITEMS,
-  pushFix,
   statusOf,
+  unsafeFixLine,
   was,
 } from "./git-copy.js";
 import { isFailure } from "./repo-probe.js";
@@ -111,6 +113,8 @@ export interface LostWorkFacts {
   readonly branches: BranchFacts;
   readonly stashes: StashFacts;
   readonly discards: DiscardFacts;
+  /** Exact fix commands that could not be made safe, so were left out of the local fixes file. */
+  readonly unsafeFixes: number;
 }
 
 declare module "./types.js" {
@@ -314,6 +318,8 @@ const copies: Detector<string> = (text, cwd, home) => {
 export interface LostWorkOutcome {
   readonly result: LostWorkCheck;
   readonly localFixes: readonly LocalFix[];
+  /** Fixes that could not be made safe, each with its note. Counted in the facts. */
+  readonly unsafeFixes: readonly UnsafeFix[];
 }
 
 /** A deleted branch line. */
@@ -347,7 +353,7 @@ function reported(
 async function checkBranches(
   context: GitCheckContext,
   judged: readonly Judged<GitFound>[],
-  fixes: LocalFix[],
+  fixes: FixList,
 ): Promise<BranchFacts> {
   const items: Deleted[] = [];
   let notIdentified = 0;
@@ -381,7 +387,7 @@ async function checkBranches(
     else if (held) onAnotherRef += 1;
     else {
       recoverable += 1;
-      pushFix(fixes, "lost-work", [
+      fixes.add([
         "git",
         "-C",
         { ref: looked.root },
@@ -428,7 +434,7 @@ async function lookUp(
 async function checkStashes(
   context: GitCheckContext,
   judged: readonly Judged<GitFound & { readonly clear: boolean }>[],
-  fixes: LocalFix[],
+  fixes: FixList,
 ): Promise<StashFacts> {
   const items: Deleted[] = [];
   let cleared = 0;
@@ -462,7 +468,7 @@ async function checkStashes(
     else if (list.has(looked.full)) listed += 1;
     else {
       recoverable += 1;
-      pushFix(fixes, "lost-work", [
+      fixes.add([
         "git",
         "-C",
         { ref: looked.root },
@@ -547,7 +553,7 @@ function checkDiscards(
 /** Run the lost-work check. Never throws: what cannot be asked is counted. */
 export async function checkLostWork(context: GitCheckContext): Promise<LostWorkOutcome> {
   const log = context.log;
-  const fixes: LocalFix[] = [];
+  const fixes = new FixList("lost-work");
   const branchCalls = judgeAll(log, /branch/, branchDeletes);
   const stashCalls = judgeAll(log, /stash/, stashDrops);
   const discardCalls = judgeAll(log, /checkout|restore|reset/, discards);
@@ -556,7 +562,12 @@ export async function checkLostWork(context: GitCheckContext): Promise<LostWorkO
   const branches = await checkBranches(context, branchCalls, fixes);
   const stashes = await checkStashes(context, stashCalls, fixes);
   const discarded = checkDiscards(context, discardCalls, own);
-  const facts: LostWorkFacts = { branches, stashes, discards: discarded };
+  const facts: LostWorkFacts = {
+    branches,
+    stashes,
+    discards: discarded,
+    unsafeFixes: fixes.unsafe.length,
+  };
 
   const calls = new Set([...branchCalls, ...stashCalls, ...discardCalls].map((j) => j.call.id));
   const all = addTallies(branches.calls, stashes.calls, discarded.calls);
@@ -574,7 +585,11 @@ export async function checkLostWork(context: GitCheckContext): Promise<LostWorkO
         all.unknown >
       0,
   });
-  return { result: { status, matches: calls.size, facts }, localFixes: fixes };
+  return {
+    result: { status, matches: calls.size, facts },
+    localFixes: fixes.made,
+    unsafeFixes: fixes.unsafe,
+  };
 }
 
 // ── The card ─────────────────────────────────────────────────────────────────
@@ -663,6 +678,10 @@ const FOUND: readonly T[] = [
 ];
 
 const NOW: readonly T[] = [
+  {
+    id: "lost-work.now.unsafe-fixes",
+    render: (f) => unsafeFixLine(f.unsafeFixes),
+  },
   {
     id: "lost-work.now.recoverable-branches",
     render: (f) =>

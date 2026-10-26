@@ -17,7 +17,7 @@ import { homedir } from "node:os";
 import type { CompiledAllowlist } from "../evaluate.js";
 import type { CompiledRule } from "../rules.js";
 import type { ScanCorpus } from "../scan-report.js";
-import type { LocalFix } from "./cards.js";
+import type { LocalFix, UnsafeFix } from "./cards.js";
 import { createFingerprinter, type Fingerprinter } from "./fingerprint.js";
 import { checkGitBacked } from "./git-checks.js";
 import { tallyMatchedCalls } from "./ran.js";
@@ -51,6 +51,11 @@ export const VERIFY_BY_DEFAULT = false;
 export interface VerifyOutcome {
   readonly verification: Verification;
   readonly localFixes: readonly LocalFix[];
+  /**
+   * Fixes a check could not make a safe command for, each with its note. No command text.
+   * For the local fixes file to list as notes; the categories' facts count them too.
+   */
+  readonly unsafeFixes?: readonly UnsafeFix[];
 }
 
 /** A category with no check yet. */
@@ -99,5 +104,5 @@ export async function verifyScan(input: VerifyInput): Promise<VerifyOutcome> {
       egress: NOT_CHECKED,
     },
   };
-  return { verification, localFixes: git.localFixes };
+  return { verification, localFixes: git.localFixes, unsafeFixes: git.unsafeFixes };
 }

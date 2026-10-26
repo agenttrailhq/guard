@@ -34,6 +34,7 @@ import {
   sentence,
   sentences,
   type ToCard,
+  type UnsafeFix,
 } from "./cards.js";
 import {
   addTallies,
@@ -41,11 +42,12 @@ import {
   cardExtras,
   codexCaveat,
   counted,
+  FixList,
   type GitCheckContext,
   is,
   MAX_PROBED_ITEMS,
-  pushFix,
   statusOf,
+  unsafeFixLine,
   was,
 } from "./git-copy.js";
 import { CHECK_HOOKS, COMMIT_HOOKS, isFailure } from "./repo-probe.js";
@@ -130,6 +132,8 @@ export interface SkippedChecksFacts {
   /** `core.hooksPath` changes, and hooks now where checks were skipped. */
   readonly hooksPath: HooksPathFacts;
   readonly instructions: InstructionFacts;
+  /** Exact fix commands that could not be made safe, so were left out of the local fixes file. */
+  readonly unsafeFixes: number;
 }
 
 declare module "./types.js" {
@@ -399,6 +403,8 @@ const SKIP_GREP_PARTS: readonly string[] = [
 export interface SkippedChecksOutcome {
   readonly result: SkippedChecksCheck;
   readonly localFixes: readonly LocalFix[];
+  /** Fixes that could not be made safe, each with its note. Counted in the facts. */
+  readonly unsafeFixes: readonly UnsafeFix[];
 }
 
 /** A `--no-verify` commit to look up: its repository folder and printed id. */
@@ -443,7 +449,7 @@ function noVerifyIds(
 async function checkCommits(
   context: GitCheckContext,
   judged: readonly Judged<GitFound>[],
-  fixes: LocalFix[],
+  fixes: FixList,
 ): Promise<NoVerifyFacts> {
   const { toCheck, notIdentified, noFolder } = noVerifyIds(context, judged);
   const probe = context.probe;
@@ -502,7 +508,7 @@ async function checkCommits(
     }
     if (reached) onMain += 1;
     else offMain += 1;
-    pushFix(fixes, "skipped-checks", ["git", "-C", { ref: root }, "show", "--stat", { sha: full }]);
+    fixes.add(["git", "-C", { ref: root }, "show", "--stat", { sha: full }]);
   }
 
   return {
@@ -527,7 +533,7 @@ async function checkHooksNow(
   context: GitCheckContext,
   changes: readonly Judged<GitFound>[],
   skips: readonly (readonly Judged<GitFound>[])[],
-  fixes: LocalFix[],
+  fixes: FixList,
 ): Promise<HooksPathFacts> {
   const folders = new Set<string>();
   let couldNotCheck = 0;
@@ -554,14 +560,7 @@ async function checkHooksNow(
     else if (state === "none") none += 1;
     else {
       off += 1;
-      pushFix(fixes, "skipped-checks", [
-        "git",
-        "-C",
-        { ref: root },
-        "config",
-        "--unset",
-        "core.hooksPath",
-      ]);
+      fixes.add(["git", "-C", { ref: root }, "config", "--unset", "core.hooksPath"]);
     }
   }
   return { calls: tallyOf(changes), off, on, none, couldNotCheck };
@@ -591,7 +590,7 @@ function homeInstructions(context: GitCheckContext): string[] {
 /** Read every instruction file now and say which tell the agent to skip checks. */
 async function checkInstructions(
   context: GitCheckContext,
-  fixes: LocalFix[],
+  fixes: FixList,
 ): Promise<InstructionFacts> {
   const files = new Map<string, InstructionFile>();
   for (const write of context.log.writes) {
@@ -641,7 +640,7 @@ async function checkInstructions(
     const says = tellsToSkip(text.text);
     if (says) {
       sayToSkip += 1;
-      pushFix(fixes, "skipped-checks", [...SKIP_GREP_PARTS, { ref: path }]);
+      fixes.add([...SKIP_GREP_PARTS, { ref: path }]);
     }
     if (file.agentWrote) {
       if (says) agentWroteStill += 1;
@@ -654,7 +653,7 @@ async function checkInstructions(
 /** Run the skipped-checks check. Never throws: what cannot be asked is counted. */
 export async function checkSkippedChecks(context: GitCheckContext): Promise<SkippedChecksOutcome> {
   const log = context.log;
-  const fixes: LocalFix[] = [];
+  const fixes = new FixList("skipped-checks");
   const commitCalls = judgeAll(log, /no-verify|commit[^\n]*\s-[A-Za-z]*n/, noVerifyCommits);
   const otherCalls = judgeAll(log, /--no-verify/, otherNoVerify);
   const huskyCalls = judgeAll(log, /HUSKY/, huskyCommands);
@@ -674,6 +673,7 @@ export async function checkSkippedChecks(context: GitCheckContext): Promise<Skip
     husky: tallyOf(huskyCalls),
     hooksPath,
     instructions,
+    unsafeFixes: fixes.unsafe.length,
   };
 
   const calls = new Set(
@@ -695,7 +695,11 @@ export async function checkSkippedChecks(context: GitCheckContext): Promise<Skip
         all.unknown >
       0,
   });
-  return { result: { status, matches: calls.size, facts }, localFixes: fixes };
+  return {
+    result: { status, matches: calls.size, facts },
+    localFixes: fixes.made,
+    unsafeFixes: fixes.unsafe,
+  };
 }
 
 // ── The card ─────────────────────────────────────────────────────────────────
@@ -806,6 +810,10 @@ const FOUND: readonly T[] = [
 ];
 
 const NOW: readonly T[] = [
+  {
+    id: "skipped-checks.now.unsafe-fixes",
+    render: (f) => unsafeFixLine(f.unsafeFixes),
+  },
   {
     id: "skipped-checks.now.on-main",
     render: (f) =>

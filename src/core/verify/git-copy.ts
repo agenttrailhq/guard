@@ -13,10 +13,11 @@ import {
   isLocalFix,
   type LocalFix,
   localFixCommand,
+  type UnsafeFix,
 } from "./cards.js";
 import type { RepoProbe } from "./repo-probe.js";
 import type { CallLog } from "./shell-calls.js";
-import type { RunTally, VerifyStatus } from "./types.js";
+import type { RunTally, VerifyCategory, VerifyStatus } from "./types.js";
 
 /** `n` and a noun, with the noun's plural when `n` is not 1. */
 export function counted(n: number, singular: string, plural = `${singular}s`): string {
@@ -93,16 +94,32 @@ export function cardExtras(
 }
 
 /**
- * Add an exact fix command, built from quoted parts, to `fixes`. A part that is not safe for
- * its kind makes no command at all.
+ * The exact fix commands one check makes, each built from quoted parts by `localFixCommand`.
+ * A command with a part that is not safe for its kind is not made: it is kept as an
+ * `UnsafeFix`, counted, and reported with its note ("could not make a safe command").
  */
-export function pushFix(
-  fixes: LocalFix[],
-  category: Parameters<typeof localFixCommand>[0],
-  parts: readonly CommandPart[],
-): void {
-  const fix = localFixCommand(category, parts);
-  if (isLocalFix(fix)) fixes.push(fix);
+export class FixList {
+  readonly made: LocalFix[] = [];
+  readonly unsafe: UnsafeFix[] = [];
+  readonly #category: VerifyCategory;
+
+  constructor(category: VerifyCategory) {
+    this.#category = category;
+  }
+
+  /** Make one command from `parts`, or keep it as unsafe. */
+  add(parts: readonly CommandPart[]): void {
+    const fix = localFixCommand(this.#category, parts);
+    if (isLocalFix(fix)) this.made.push(fix);
+    else this.unsafe.push(fix);
+  }
+}
+
+/** The note on a card that left fixes out: the commands could not be made safe. */
+export function unsafeFixLine(n: number): string | undefined {
+  return n > 0
+    ? `Could not make a safe command for ${counted(n, "fix", "fixes")}: a name or path in ${n === 1 ? "it" : "them"} holds characters a command cannot carry safely, so ${n === 1 ? "it is" : "they are"} left out of the local fixes file.`
+    : undefined;
 }
 
 /** Most items one check asks the repositories about. Past it, the rest are could-not-check. */

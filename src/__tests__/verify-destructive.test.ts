@@ -26,7 +26,14 @@ import {
 import type { CardExtras } from "../core/verify/git-copy.js";
 import { shellCommands } from "../core/verify/shell-words.js";
 import { UNAVAILABLE_VERIFY_IO } from "../core/verify/verify.js";
-import { type GitSession, makeRepo, quoted, runChecks, tempFolder } from "./git-check-fixtures.js";
+import {
+  checkedOf,
+  type GitSession,
+  makeRepo,
+  quoted,
+  runChecks,
+  tempFolder,
+} from "./git-check-fixtures.js";
 
 /** The context of a scan whose results are recorded. */
 const TOOL_RESULT = { ranEvidence: "tool-result" } as const;
@@ -51,8 +58,8 @@ async function destructive(
     },
   );
   return {
-    result: outcome.destructive,
-    facts: outcome.destructive.facts,
+    result: checkedOf(outcome.destructive),
+    facts: checkedOf(outcome.destructive).facts,
     fixes: outcome.localFixes.filter((f) => f.category === "destructive").map((f) => f.command),
   };
 }
@@ -368,6 +375,7 @@ describe("the card", () => {
     db: Partial<DestructiveFacts["databases"]["classes"]> = {},
   ): DestructiveFacts {
     return {
+      unsafeFixes: 0,
       rm: {
         calls: none,
         targets: 0,

@@ -252,21 +252,3 @@ function lines(text: string): string[] {
 function entries(text: string): string[] {
   return text.split("\0").filter((entry) => entry !== "");
 }
-
-/** `value` quoted for a POSIX shell, for a command a person copies. */
-export function shellQuote(value: string): string {
-  return /^[A-Za-z0-9_./:@%+=,-]+$/.test(value) ? value : `'${value.replace(/'/g, `'\\''`)}'`;
-}
-
-/**
- * A branch name safe to put in a recovery command, or `undefined`: letters, digits and
- * `._/+-`, not starting with `-` or `.`, with no `..`, `//` or `@{`, and not ending in `/`,
- * `.` or `.lock`.
- */
-export function safeBranchName(name: string): string | undefined {
-  if (!/^[A-Za-z0-9_][A-Za-z0-9._/+-]{0,199}$/.test(name)) return undefined;
-  if (name.includes("..") || name.includes("//") || /(?:\/|\.|\.lock)$/.test(name)) {
-    return undefined;
-  }
-  return name;
-}

@@ -24,6 +24,7 @@ import {
 } from "../core/verify/skipped.js";
 import { UNAVAILABLE_VERIFY_IO } from "../core/verify/verify.js";
 import {
+  checkedOf,
   commitLine,
   type GitSession,
   git,
@@ -46,8 +47,8 @@ async function skipped(
 ) {
   const outcome = await runChecks(agent, sessions, home);
   return {
-    result: outcome["skipped-checks"],
-    facts: outcome["skipped-checks"].facts,
+    result: checkedOf(outcome["skipped-checks"]),
+    facts: checkedOf(outcome["skipped-checks"]).facts,
     fixes: outcome.localFixes.filter((f) => f.category === "skipped-checks").map((f) => f.command),
   };
 }
@@ -619,7 +620,7 @@ describe("what could not be checked is never clean", () => {
       tempFolder("home"),
       { io: UNAVAILABLE_VERIFY_IO },
     );
-    expect(outcome["skipped-checks"].facts.noVerify.couldNotCheck).toBe(1);
+    expect(checkedOf(outcome["skipped-checks"]).facts.noVerify.couldNotCheck).toBe(1);
     expect(outcome["skipped-checks"].status).toBe("could-not-check");
   });
 
@@ -634,6 +635,7 @@ describe("the card", () => {
   function facts(over: Partial<SkippedChecksFacts> = {}): SkippedChecksFacts {
     const none = { ran: 0, mentioned: 0, unknown: 0 };
     return {
+      unsafeFixes: 0,
       noVerify: {
         calls: none,
         commits: 0,

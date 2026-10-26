@@ -41,18 +41,20 @@ import {
   sentence,
   sentences,
   type ToCard,
+  type UnsafeFix,
 } from "./cards.js";
 import {
   addTallies,
   cardExtras,
   codexCaveat,
   counted,
+  FixList,
   type GitCheckContext,
   is,
   isUnder,
   MAX_PROBED_ITEMS,
-  pushFix,
   statusOf,
+  unsafeFixLine,
   was,
 } from "./git-copy.js";
 import { DATABASE_CLASSES, RM_TARGET_CLASSES } from "./git-facts.js";
@@ -72,7 +74,7 @@ import {
   type ShellWord,
   shellCommands,
 } from "./shell-words.js";
-import type { CheckedCategory, PendingCheck, RunTally } from "./types.js";
+import type { CheckedCategory, CouldNotCheckResult, PendingCheck, RunTally } from "./types.js";
 
 export { DATABASE_CLASSES, RM_TARGET_CLASSES };
 
@@ -109,6 +111,8 @@ export interface DatabaseFacts {
 export interface DestructiveFacts {
   readonly rm: RmFacts;
   readonly databases: DatabaseFacts;
+  /** Exact fix commands that could not be made safe, so were left out of the local fixes file. */
+  readonly unsafeFixes: number;
 }
 
 declare module "./types.js" {
@@ -130,7 +134,7 @@ export type DestructiveCheck = CheckedCategory<DestructiveFacts>;
  * check that is could-not-check for its `rm -rf` targets still has these counts.
  */
 export function databaseTargetClasses(
-  check: DestructiveCheck | PendingCheck,
+  check: DestructiveCheck | CouldNotCheckResult | PendingCheck,
 ): Readonly<Record<DatabaseClass, number>> | undefined {
   if (!("facts" in check)) return undefined;
   const classes = check.facts.databases.classes;
@@ -307,7 +311,7 @@ function restoreParts(folder: string, path: string): CommandPart[] {
 async function checkRm(
   context: GitCheckContext,
   judged: readonly Judged<RmTarget>[],
-  fixes: LocalFix[],
+  fixes: FixList,
 ): Promise<RmFacts> {
   const classes = Object.fromEntries(RM_TARGET_CLASSES.map((c) => [c, 0])) as Record<
     RmTargetClass,
@@ -341,7 +345,7 @@ async function checkRm(
         continue;
       }
       trackedGone += 1;
-      pushFix(fixes, "destructive", restoreParts(classed.folder, classed.path));
+      fixes.add(restoreParts(classed.folder, classed.path));
     }
   }
   return {
@@ -663,12 +667,14 @@ const DATABASE_HINT =
 export interface DestructiveOutcome {
   readonly result: DestructiveCheck;
   readonly localFixes: readonly LocalFix[];
+  /** Fixes that could not be made safe, each with its note. Counted in the facts. */
+  readonly unsafeFixes: readonly UnsafeFix[];
 }
 
 /** Run the destructive-commands check. Never throws: what cannot be asked is counted. */
 export async function checkDestructive(context: GitCheckContext): Promise<DestructiveOutcome> {
   const log = context.log;
-  const fixes: LocalFix[] = [];
+  const fixes = new FixList("destructive");
   const rmCalls = judgeAll(log, /\brm\b/, rmTargets);
   const dbCalls = judgeAll(log, DATABASE_HINT, databaseDetector(context.scratchRoots));
 
@@ -681,7 +687,7 @@ export async function checkDestructive(context: GitCheckContext): Promise<Destru
     for (const target of j.found) dbClasses[databaseClass(target)] += 1;
   }
   const databases: DatabaseFacts = { calls: tallyOf(dbCalls), classes: dbClasses };
-  const facts: DestructiveFacts = { rm, databases };
+  const facts: DestructiveFacts = { rm, databases, unsafeFixes: fixes.unsafe.length };
 
   const calls = new Set([...rmCalls, ...dbCalls].map((j) => j.call.id));
   const all = addTallies(rm.calls, databases.calls);
@@ -693,7 +699,11 @@ export async function checkDestructive(context: GitCheckContext): Promise<Destru
       databases.classes.other + databases.classes.unresolved > 0,
     incomplete: rm.couldNotCheck + all.unknown > 0,
   });
-  return { result: { status, matches: calls.size, facts }, localFixes: fixes };
+  return {
+    result: { status, matches: calls.size, facts },
+    localFixes: fixes.made,
+    unsafeFixes: fixes.unsafe,
+  };
 }
 
 // ── The card ─────────────────────────────────────────────────────────────────
@@ -796,6 +806,10 @@ const FOUND: readonly T[] = [
 ];
 
 const NOW: readonly T[] = [
+  {
+    id: "destructive.now.unsafe-fixes",
+    render: (f) => unsafeFixLine(f.unsafeFixes),
+  },
   {
     id: "destructive.now.tracked-gone",
     render: (f) =>

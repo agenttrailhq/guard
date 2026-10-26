@@ -21,7 +21,7 @@ import type {
 } from "../core/transcript/transcript-types.js";
 import type { AgentSource } from "../core/types.js";
 import { checkGitBacked, type GitChecksOutcome } from "../core/verify/git-checks.js";
-import type { VerifyIO } from "../core/verify/types.js";
+import type { CheckedCategory, CouldNotCheckResult, VerifyIO } from "../core/verify/types.js";
 import { createRealVerifyIO } from "../verify-io.js";
 import { codexExec } from "./verify-fixtures.js";
 
@@ -189,6 +189,12 @@ export function commitLine(
 /** The full id of a revision. */
 export function rev(root: string, revision: string): string {
   return git(root, "rev-parse", revision).trim();
+}
+
+/** A check's result with its facts: a check that failed outright fails the test. */
+export function checkedOf<F>(result: CheckedCategory<F> | CouldNotCheckResult): CheckedCategory<F> {
+  if (!("facts" in result)) throw new Error("the check failed outright, with no facts");
+  return result;
 }
 
 /** An exact fix command as `localFixCommand` writes it: every argument single-quoted. */

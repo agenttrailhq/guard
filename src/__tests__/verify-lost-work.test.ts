@@ -23,6 +23,7 @@ import {
 import { shellCommands } from "../core/verify/shell-words.js";
 import { UNAVAILABLE_VERIFY_IO } from "../core/verify/verify.js";
 import {
+  checkedOf,
   commitLine,
   type GitSession,
   git,
@@ -45,8 +46,8 @@ async function lost(
     scratchRoots: options.scratchRoots ?? [],
   });
   return {
-    result: outcome["lost-work"],
-    facts: outcome["lost-work"].facts,
+    result: checkedOf(outcome["lost-work"]),
+    facts: checkedOf(outcome["lost-work"]).facts,
     fixes: outcome.localFixes.filter((f) => f.category === "lost-work").map((f) => f.command),
   };
 }
@@ -435,7 +436,7 @@ describe("ran, mentioned, unknown", () => {
       tempFolder("home"),
       { io: UNAVAILABLE_VERIFY_IO },
     );
-    expect(outcome["lost-work"].facts.branches.couldNotCheck).toBe(1);
+    expect(checkedOf(outcome["lost-work"]).facts.branches.couldNotCheck).toBe(1);
     expect(outcome["lost-work"].status).toBe("could-not-check");
   });
 });
@@ -445,6 +446,7 @@ describe("the card", () => {
   /** Facts with every count zero, then `over` applied. */
   function facts(over: Partial<LostWorkFacts> = {}): LostWorkFacts {
     return {
+      unsafeFixes: 0,
       branches: {
         calls: none,
         deleted: 0,

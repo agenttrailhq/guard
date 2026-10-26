@@ -8052,7 +8052,9 @@ var GIT_FACT_KEYS = [
   "trackedBack",
   "trackedGone",
   "trackedPartlyBack",
-  "databases"
+  "databases",
+  // Every category: exact fix commands that could not be made safe.
+  "unsafeFixes"
 ];
 
 // src/core/verify/types.ts
@@ -8414,9 +8416,22 @@ function cardExtras(chip, fixSteps) {
     ...fixSteps.length === 0 ? {} : { fixSteps }
   };
 }
-function pushFix(fixes, category, parts) {
-  const fix = localFixCommand(category, parts);
-  if (isLocalFix(fix)) fixes.push(fix);
+var FixList = class {
+  made = [];
+  unsafe = [];
+  #category;
+  constructor(category) {
+    this.#category = category;
+  }
+  /** Make one command from `parts`, or keep it as unsafe. */
+  add(parts) {
+    const fix = localFixCommand(this.#category, parts);
+    if (isLocalFix(fix)) this.made.push(fix);
+    else this.unsafe.push(fix);
+  }
+};
+function unsafeFixLine(n2) {
+  return n2 > 0 ? `Could not make a safe command for ${counted(n2, "fix", "fixes")}: a name or path in ${n2 === 1 ? "it" : "them"} holds characters a command cannot carry safely, so ${n2 === 1 ? "it is" : "they are"} left out of the local fixes file.` : void 0;
 }
 var MAX_PROBED_ITEMS = 500;
 var TEMP_ROOTS = [
@@ -12183,7 +12198,7 @@ async function checkRm(context, judged, fixes) {
         continue;
       }
       trackedGone += 1;
-      pushFix(fixes, "destructive", restoreParts(classed.folder, classed.path));
+      fixes.add(restoreParts(classed.folder, classed.path));
     }
   }
   return {
@@ -12387,7 +12402,7 @@ function databaseDetector(scratchRoots) {
 var DATABASE_HINT = /drop|truncate|flush|migrate\s+reset|force-reset|db:(?:drop|reset|purge)|dropDatabase|\.drop\s*\(/i;
 async function checkDestructive(context) {
   const log = context.log;
-  const fixes = [];
+  const fixes = new FixList("destructive");
   const rmCalls = judgeAll(log, /\brm\b/, rmTargets);
   const dbCalls = judgeAll(log, DATABASE_HINT, databaseDetector(context.scratchRoots));
   const rm = await checkRm(context, rmCalls, fixes);
@@ -12396,7 +12411,7 @@ async function checkDestructive(context) {
     for (const target of j.found) dbClasses[databaseClass(target)] += 1;
   }
   const databases = { calls: tallyOf(dbCalls), classes: dbClasses };
-  const facts = { rm, databases };
+  const facts = { rm, databases, unsafeFixes: fixes.unsafe.length };
   const calls = new Set([...rmCalls, ...dbCalls].map((j) => j.call.id));
   const all = addTallies(rm.calls, databases.calls);
   const status = statusOf({
@@ -12405,7 +12420,11 @@ async function checkDestructive(context) {
     review: rm.classes.untracked + rm.classes.home + rm.classes.other > 0 || databases.classes.other + databases.classes.unresolved > 0,
     incomplete: rm.couldNotCheck + all.unknown > 0
   });
-  return { result: { status, matches: calls.size, facts }, localFixes: fixes };
+  return {
+    result: { status, matches: calls.size, facts },
+    localFixes: fixes.made,
+    unsafeFixes: fixes.unsafe
+  };
 }
 function allCalls(f) {
   return addTallies(f.rm.calls, f.databases.calls);
@@ -12482,6 +12501,10 @@ var FOUND = [
   }
 ];
 var NOW = [
+  {
+    id: "destructive.now.unsafe-fixes",
+    render: (f) => unsafeFixLine(f.unsafeFixes)
+  },
   {
     id: "destructive.now.tracked-gone",
     render: (f) => f.rm.trackedGone > 0 ? `${counted(f.rm.trackedGone, "tracked target")} ${is(f.rm.trackedGone)} still gone.` : void 0
@@ -12733,7 +12756,7 @@ async function checkBranches(context, judged, fixes) {
     else if (held) onAnotherRef += 1;
     else {
       recoverable2 += 1;
-      pushFix(fixes, "lost-work", [
+      fixes.add([
         "git",
         "-C",
         { ref: looked.root },
@@ -12798,7 +12821,7 @@ async function checkStashes(context, judged, fixes) {
     else if (list.has(looked.full)) listed += 1;
     else {
       recoverable2 += 1;
-      pushFix(fixes, "lost-work", [
+      fixes.add([
         "git",
         "-C",
         { ref: looked.root },
@@ -12864,7 +12887,7 @@ function checkDiscards(context, judged, own) {
 }
 async function checkLostWork(context) {
   const log = context.log;
-  const fixes = [];
+  const fixes = new FixList("lost-work");
   const branchCalls = judgeAll(log, /branch/, branchDeletes);
   const stashCalls = judgeAll(log, /stash/, stashDrops);
   const discardCalls = judgeAll(log, /checkout|restore|reset/, discards);
@@ -12872,7 +12895,12 @@ async function checkLostWork(context) {
   const branches = await checkBranches(context, branchCalls, fixes);
   const stashes = await checkStashes(context, stashCalls, fixes);
   const discarded = checkDiscards(context, discardCalls, own);
-  const facts = { branches, stashes, discards: discarded };
+  const facts = {
+    branches,
+    stashes,
+    discards: discarded,
+    unsafeFixes: fixes.unsafe.length
+  };
   const calls = new Set([...branchCalls, ...stashCalls, ...discardCalls].map((j) => j.call.id));
   const all = addTallies(branches.calls, stashes.calls, discarded.calls);
   const status = statusOf({
@@ -12881,7 +12909,11 @@ async function checkLostWork(context) {
     review: discarded.mainCheckout > 0,
     incomplete: branches.notIdentified + branches.couldNotCheck + stashes.notIdentified + stashes.cleared + stashes.couldNotCheck + discarded.couldNotCheck + all.unknown > 0
   });
-  return { result: { status, matches: calls.size, facts }, localFixes: fixes };
+  return {
+    result: { status, matches: calls.size, facts },
+    localFixes: fixes.made,
+    unsafeFixes: fixes.unsafe
+  };
 }
 function allCalls2(f) {
   return addTallies(f.branches.calls, f.stashes.calls, f.discards.calls);
@@ -12937,6 +12969,10 @@ var FOUND2 = [
   }
 ];
 var NOW2 = [
+  {
+    id: "lost-work.now.unsafe-fixes",
+    render: (f) => unsafeFixLine(f.unsafeFixes)
+  },
   {
     id: "lost-work.now.recoverable-branches",
     render: (f) => f.branches.recoverable > 0 ? `${counted(f.branches.recoverable, "deleted branch", "deleted branches")} ${is(f.branches.recoverable)} still in the repo and on no other branch: recoverable by commit id.` : void 0
@@ -13631,7 +13667,7 @@ async function checkCommits(context, judged, fixes) {
     }
     if (reached) onMain += 1;
     else offMain += 1;
-    pushFix(fixes, "skipped-checks", ["git", "-C", { ref: root }, "show", "--stat", { sha: full }]);
+    fixes.add(["git", "-C", { ref: root }, "show", "--stat", { sha: full }]);
   }
   return {
     calls: tallyOf(judged),
@@ -13671,14 +13707,7 @@ async function checkHooksNow(context, changes, skips, fixes) {
     else if (state === "none") none += 1;
     else {
       off += 1;
-      pushFix(fixes, "skipped-checks", [
-        "git",
-        "-C",
-        { ref: root },
-        "config",
-        "--unset",
-        "core.hooksPath"
-      ]);
+      fixes.add(["git", "-C", { ref: root }, "config", "--unset", "core.hooksPath"]);
     }
   }
   return { calls: tallyOf(changes), off, on, none, couldNotCheck };
@@ -13739,7 +13768,7 @@ async function checkInstructions(context, fixes) {
     const says = tellsToSkip(text.text);
     if (says) {
       sayToSkip += 1;
-      pushFix(fixes, "skipped-checks", [...SKIP_GREP_PARTS, { ref: path }]);
+      fixes.add([...SKIP_GREP_PARTS, { ref: path }]);
     }
     if (file2.agentWrote) {
       if (says) agentWroteStill += 1;
@@ -13750,7 +13779,7 @@ async function checkInstructions(context, fixes) {
 }
 async function checkSkippedChecks(context) {
   const log = context.log;
-  const fixes = [];
+  const fixes = new FixList("skipped-checks");
   const commitCalls = judgeAll(log, /no-verify|commit[^\n]*\s-[A-Za-z]*n/, noVerifyCommits);
   const otherCalls = judgeAll(log, /--no-verify/, otherNoVerify);
   const huskyCalls = judgeAll(log, /HUSKY/, huskyCommands);
@@ -13768,7 +13797,8 @@ async function checkSkippedChecks(context) {
     otherNoVerify: tallyOf(otherCalls),
     husky: tallyOf(huskyCalls),
     hooksPath,
-    instructions
+    instructions,
+    unsafeFixes: fixes.unsafe.length
   };
   const calls = new Set(
     [...commitCalls, ...otherCalls, ...huskyCalls, ...configCalls].map((j) => j.call.id)
@@ -13780,7 +13810,11 @@ async function checkSkippedChecks(context) {
     review: noVerify.offMain + noVerify.noMainToCheck > 0 || facts.otherNoVerify.ran > 0 || facts.husky.ran > 0,
     incomplete: noVerify.notIdentified + noVerify.couldNotCheck + hooksPath.couldNotCheck + instructions.couldNotRead + all.unknown > 0
   });
-  return { result: { status, matches: calls.size, facts }, localFixes: fixes };
+  return {
+    result: { status, matches: calls.size, facts },
+    localFixes: fixes.made,
+    unsafeFixes: fixes.unsafe
+  };
 }
 function withHooks(f) {
   const n2 = f.noVerify;
@@ -13849,6 +13883,10 @@ var FOUND3 = [
   }
 ];
 var NOW3 = [
+  {
+    id: "skipped-checks.now.unsafe-fixes",
+    render: (f) => unsafeFixLine(f.unsafeFixes)
+  },
   {
     id: "skipped-checks.now.on-main",
     render: (f) => f.noVerify.onMain > 0 ? `${counted(f.noVerify.onMain, "of those commits", "of those commits")} ${is(f.noVerify.onMain)} on origin/main or origin/master now.` : void 0
@@ -16105,96 +16143,12 @@ function createFingerprinter(key = randomBytes(KEY_BYTES)) {
 }
 
 // src/core/verify/git-checks.ts
-var NONE = { ran: 0, mentioned: 0, unknown: 0 };
-var FAILED_SKIPPED = {
-  status: "could-not-check",
-  matches: 0,
-  facts: {
-    noVerify: {
-      calls: NONE,
-      commits: 0,
-      notIdentified: 0,
-      withoutHooks: 0,
-      onMain: 0,
-      offMain: 0,
-      noMainToCheck: 0,
-      gone: 0,
-      couldNotCheck: 0
-    },
-    otherNoVerify: NONE,
-    husky: NONE,
-    hooksPath: { calls: NONE, off: 0, on: 0, none: 0, couldNotCheck: 0 },
-    instructions: {
-      read: 0,
-      sayToSkip: 0,
-      agentWrote: 0,
-      agentWroteStill: 0,
-      agentWroteRemoved: 0,
-      couldNotRead: 0
-    }
-  }
-};
-var FAILED_LOST_WORK = {
-  status: "could-not-check",
-  matches: 0,
-  facts: {
-    branches: {
-      calls: NONE,
-      deleted: 0,
-      notIdentified: 0,
-      recoverable: 0,
-      onAnotherRef: 0,
-      gone: 0,
-      couldNotCheck: 0
-    },
-    stashes: {
-      calls: NONE,
-      dropped: 0,
-      cleared: 0,
-      notIdentified: 0,
-      recoverable: 0,
-      listed: 0,
-      gone: 0,
-      couldNotCheck: 0
-    },
-    discards: {
-      calls: NONE,
-      paths: 0,
-      ownCopy: 0,
-      agentEdited: 0,
-      mainCheckout: 0,
-      couldNotCheck: 0
-    }
-  }
-};
-var FAILED_DESTRUCTIVE = {
-  status: "could-not-check",
-  matches: 0,
-  facts: {
-    rm: {
-      calls: NONE,
-      targets: 0,
-      classes: Object.fromEntries(
-        RM_TARGET_CLASSES.map((c) => [c, 0])
-      ),
-      trackedBack: 0,
-      trackedGone: 0,
-      trackedPartlyBack: 0,
-      couldNotCheck: 0
-    },
-    databases: {
-      calls: NONE,
-      classes: Object.fromEntries(
-        DATABASE_CLASSES.map((c) => [c, 0])
-      )
-    }
-  }
-};
-async function guarded2(run, failed) {
+var FAILED = { status: "could-not-check", matches: 0 };
+async function guarded2(run) {
   try {
     return await run();
   } catch {
-    return { result: failed, localFixes: [] };
+    return { result: FAILED, localFixes: [], unsafeFixes: [] };
   }
 }
 async function checkGitBacked(input) {
@@ -16207,20 +16161,22 @@ async function checkGitBacked(input) {
     };
   } catch {
     return {
-      "skipped-checks": FAILED_SKIPPED,
-      "lost-work": FAILED_LOST_WORK,
-      destructive: FAILED_DESTRUCTIVE,
-      localFixes: []
+      "skipped-checks": FAILED,
+      "lost-work": FAILED,
+      destructive: FAILED,
+      localFixes: [],
+      unsafeFixes: []
     };
   }
-  const skipped = await guarded2(() => checkSkippedChecks(context), FAILED_SKIPPED);
-  const lost = await guarded2(() => checkLostWork(context), FAILED_LOST_WORK);
-  const destructive = await guarded2(() => checkDestructive(context), FAILED_DESTRUCTIVE);
+  const skipped = await guarded2(() => checkSkippedChecks(context));
+  const lost = await guarded2(() => checkLostWork(context));
+  const destructive = await guarded2(() => checkDestructive(context));
   return {
     "skipped-checks": skipped.result,
     "lost-work": lost.result,
     destructive: destructive.result,
-    localFixes: [...skipped.localFixes, ...lost.localFixes, ...destructive.localFixes]
+    localFixes: [...skipped.localFixes, ...lost.localFixes, ...destructive.localFixes],
+    unsafeFixes: [...skipped.unsafeFixes, ...lost.unsafeFixes, ...destructive.unsafeFixes]
   };
 }
 
@@ -16874,7 +16830,7 @@ async function verifyScan(input) {
       egress: NOT_CHECKED
     }
   };
-  return { verification, localFixes: git.localFixes };
+  return { verification, localFixes: git.localFixes, unsafeFixes: git.unsafeFixes };
 }
 
 // src/core/version.ts
