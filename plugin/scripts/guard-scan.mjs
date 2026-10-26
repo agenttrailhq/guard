@@ -7983,6 +7983,7 @@ var SECRET_PROVENANCES = [
   "in-agent-reply"
 ];
 var MAX_SECRET_ITEMS = 200;
+var WATCHED_PROCESSES = ["claude", "cursor", "codex"];
 
 // src/core/verify/cards.ts
 var LOCAL_ONLY = /* @__PURE__ */ Symbol("local-only");
@@ -13669,7 +13670,7 @@ var CALL_TIMEOUT_MS = 5e3;
 var TOTAL_BUDGET_MS = 6e4;
 var MAX_OUTPUT_BYTES = 1024 * 1024;
 var MAX_FILE_BYTES = 1024 * 1024;
-var MAX_PROCESS_NAMES = 4096;
+var MAX_PROCESS_ENTRIES = 65536;
 function isAllowedGitCall(args2) {
   return GIT_ALLOW_LIST.some(
     (allowed) => allowed.length === args2.length && allowed.every((arg, i) => arg === args2[i])
@@ -13718,16 +13719,27 @@ var realExec = (file2, args2, options) => new Promise((resolve2) => {
     resolve2({ kind: "failed" });
   }
 });
-function parsePsNames(stdout) {
-  return stdout.split(/\r?\n/).map((line) => line.trim()).filter((line) => line !== "").map((line) => line.split("/").pop() ?? line).slice(0, MAX_PROCESS_NAMES);
+function watchedProcessOf(entry) {
+  const title = entry.trim().split(": ")[0] ?? "";
+  const name = (title.split(/[\\/]/).pop() ?? "").trim().toLowerCase().replace(/\.exe$/, "");
+  if (name === "claude") return "claude";
+  if (name === "codex") return "codex";
+  if (/^cursor(?: helper(?: \([a-z ]+\))?)?$/.test(name)) return "cursor";
+  return void 0;
 }
-function parseTasklistNames(stdout) {
-  const names = [];
-  for (const line of stdout.split(/\r?\n/)) {
-    const match = /^"([^"]*)"/.exec(line.trim());
-    if (match?.[1] !== void 0 && match[1] !== "") names.push(match[1]);
+function watchedIn(entries) {
+  const seen = /* @__PURE__ */ new Set();
+  for (const entry of entries.slice(0, MAX_PROCESS_ENTRIES)) {
+    const id = watchedProcessOf(entry);
+    if (id !== void 0) seen.add(id);
   }
-  return names.slice(0, MAX_PROCESS_NAMES);
+  return WATCHED_PROCESSES.filter((id) => seen.has(id));
+}
+function watchedInPs(stdout) {
+  return watchedIn(stdout.split(/\r?\n/));
+}
+function watchedInTasklist(stdout) {
+  return watchedIn(stdout.split(/\r?\n/).map((line) => /^"([^"]*)"/.exec(line.trim())?.[1] ?? ""));
 }
 function isInside(root, path, paths = { relative: relative2, isAbsolute: isAbsolute2 }) {
   const rel = paths.relative(root, path);
@@ -13876,7 +13888,7 @@ function createRealVerifyIO(options = {}) {
       if (result.kind !== "ok") return { ok: false, reason: failureOf(result) };
       return {
         ok: true,
-        names: windows ? parseTasklistNames(result.stdout) : parsePsNames(result.stdout)
+        running: windows ? watchedInTasklist(result.stdout) : watchedInPs(result.stdout)
       };
     }
   };

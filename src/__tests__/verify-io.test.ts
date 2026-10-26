@@ -1,4 +1,4 @@
-// cspell:words fsmonitor tasklist mkfifo statted
+// cspell:words fsmonitor tasklist mkfifo statted secretdb cursorless
 /**
  * The read-only seam `scan --verify` uses (`src/verify-io.ts`).
  *
@@ -30,10 +30,11 @@ import {
   isAllowedGitCall,
   isNetworkPath,
   MAX_FILE_BYTES,
-  parsePsNames,
-  parseTasklistNames,
   realExec,
   resolveProgram,
+  watchedInPs,
+  watchedInTasklist,
+  watchedProcessOf,
 } from "../verify-io.js";
 
 /** An `exec` that records every call and answers `ok`. */
@@ -480,23 +481,60 @@ describe("network paths are not touched", () => {
   });
 });
 
-describe("process names, never arguments", () => {
-  it("reads ps output as names", () => {
-    expect(parsePsNames("/usr/bin/node\n  zsh \n\n/Applications/X.app/Contents/MacOS/X\n")).toEqual(
-      ["node", "zsh", "X"],
-    );
+describe("process names: agent ids only, never arguments or titles", () => {
+  it.each([
+    ["claude", "claude"],
+    ["/usr/local/bin/claude", "claude"],
+    ["codex", "codex"],
+    ["/Applications/Cursor.app/Contents/MacOS/Cursor", "cursor"],
+    ["Cursor Helper", "cursor"],
+    ["Cursor Helper (Plugin): 4c1d-9a (agent-exec) --type=utility", "cursor"],
+    ["Cursor.exe", "cursor"],
+    ["C:\\Program Files\\Cursor\\Cursor.exe", "cursor"],
+    ["claude.exe", "claude"],
+  ])("%s is %s", (entry, id) => {
+    expect(watchedProcessOf(entry)).toBe(id);
   });
 
-  it("reads tasklist output as names", () => {
+  it.each([
+    "node",
+    "zsh",
+    "postgres: alice secretdb 127.0.0.1(5432) idle",
+    "cursorless",
+    "claude-helper",
+    "my-codex-tool",
+    "Cursor Helper (Plugin) extra",
+    "",
+  ])("%j is no watched process", (entry) => {
+    expect(watchedProcessOf(entry)).toBeUndefined();
+  });
+
+  it("reads ps output down to ids, each once, and keeps nothing else", () => {
+    const stdout = [
+      "/usr/bin/node",
+      "postgres: alice secretdb 127.0.0.1(5432) idle",
+      "codex",
+      "Cursor Helper (Plugin): 4c1d-9a (agent-exec)",
+      "/Applications/Cursor.app/Contents/MacOS/Cursor",
+      "claude",
+      "claude",
+      "",
+    ].join("\n");
+    const running = watchedInPs(stdout);
+    expect(running).toEqual(["claude", "cursor", "codex"]);
+    expect(JSON.stringify(running)).not.toMatch(/secretdb|alice|agent-exec|4c1d/);
+  });
+
+  it("reads tasklist output down to ids", () => {
     expect(
-      parseTasklistNames(
-        '"node.exe","123","Console","1","10,000 K"\r\n"Code.exe","9","C","1","1 K"\r\n',
+      watchedInTasklist(
+        '"node.exe","123","Console","1","10,000 K"\r\n"Cursor.exe","9","C","1","1 K"\r\n"codex.exe","7","C","1","1 K"\r\n',
       ),
-    ).toEqual(["node.exe", "Code.exe"]);
+    ).toEqual(["cursor", "codex"]);
   });
 
-  it("runs ps with names only, or tasklist on Windows, each by absolute path", async () => {
-    const unix = recorder("node\n");
+  it("runs ps, or tasklist on Windows, each by absolute path", async () => {
+    const unix = recorder("node\nclaude\n");
     expect(
       await createRealVerifyIO({
         exec: unix.exec,
@@ -504,10 +542,7 @@ describe("process names, never arguments", () => {
         env: { PATH: "/bin:/usr/bin" },
         isExecutable: (path) => path === "/bin/ps",
       }).processNames(),
-    ).toEqual({
-      ok: true,
-      names: ["node"],
-    });
+    ).toEqual({ ok: true, running: ["claude"] });
     expect(unix.calls.map((c) => [c.file, ...c.args])).toEqual([["/bin/ps", "-axo", "comm="]]);
     const win = recorder('"node.exe","1"\r\n');
     expect(
@@ -517,10 +552,7 @@ describe("process names, never arguments", () => {
         env: { Path: "C:\\Windows\\system32;C:\\Windows" },
         isExecutable: (path) => path === "C:\\Windows\\system32\\tasklist.exe",
       }).processNames(),
-    ).toEqual({
-      ok: true,
-      names: ["node.exe"],
-    });
+    ).toEqual({ ok: true, running: [] });
     expect(win.calls.map((c) => [c.file, ...c.args])).toEqual([
       ["C:\\Windows\\system32\\tasklist.exe", "/fo", "csv", "/nh"],
     ]);
@@ -538,8 +570,11 @@ describe("process names, never arguments", () => {
     expect(await io.processNames()).toEqual({ ok: false, reason: "missing" });
   });
 
-  it("reads this machine's list", async () => {
+  it("reads this machine's list as ids", async () => {
     const result = await createRealVerifyIO().processNames();
-    expect(result.ok && result.names.length).toBeGreaterThan(0);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      for (const id of result.running) expect(["claude", "cursor", "codex"]).toContain(id);
+    }
   });
 });

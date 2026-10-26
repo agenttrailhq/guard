@@ -327,9 +327,20 @@ export type FileOutcome =
   | { readonly ok: true; readonly text: string }
   | { readonly ok: false; readonly reason: CheckFailure };
 
-/** The names of the running processes, never their arguments. */
+/**
+ * The processes verification may know are running: the agent apps, by id. A process list is
+ * read inside the seam and reduced to these ids there, so no other process name, and no text a
+ * program put in its own title, is ever held. A check that needs another kind of process adds
+ * its id here, with its matching rule in the seam.
+ */
+export const WATCHED_PROCESSES = ["claude", "cursor", "codex"] as const;
+
+/** One of `WATCHED_PROCESSES`. */
+export type WatchedProcess = (typeof WATCHED_PROCESSES)[number];
+
+/** Which watched processes are running, by id, each at most once, in `WATCHED_PROCESSES` order. */
 export type ProcessOutcome =
-  | { readonly ok: true; readonly names: readonly string[] }
+  | { readonly ok: true; readonly running: readonly WatchedProcess[] }
   | { readonly ok: false; readonly reason: CheckFailure };
 
 /**
@@ -345,6 +356,6 @@ export interface VerifyIO {
   isDirectory(path: string): boolean | undefined;
   /** Read a file of at most the size cap, under a root a `git rev-parse` call has returned. */
   readFile(path: string): Promise<FileOutcome>;
-  /** The names of the running processes. */
+  /** Which watched processes are running. Ids only; see `WATCHED_PROCESSES`. */
   processNames(): Promise<ProcessOutcome>;
 }

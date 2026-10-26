@@ -4,7 +4,7 @@
  *
  * ── What it can do, and nothing else ─────────────────────────────────────────
  *  - run `git` with an argument list from `GIT_ALLOW_LIST`, exactly;
- *  - list the names of the running processes, never their arguments;
+ *  - say which agent apps are running, by id, from a process list reduced to those ids here;
  *  - tell whether a path is a folder;
  *  - read one file of at most `MAX_FILE_BYTES`, inside a repo a `git rev-parse` call returned.
  *
@@ -58,12 +58,14 @@ import {
 } from "node:fs";
 import { isAbsolute, posix, relative, win32 } from "node:path";
 import { isNetworkPath } from "./core/verify/paths.js";
-import type {
-  CheckFailure,
-  FileOutcome,
-  GitOutcome,
-  ProcessOutcome,
-  VerifyIO,
+import {
+  type CheckFailure,
+  type FileOutcome,
+  type GitOutcome,
+  type ProcessOutcome,
+  type VerifyIO,
+  WATCHED_PROCESSES,
+  type WatchedProcess,
 } from "./core/verify/types.js";
 
 /** The `git` argument lists verification may run, exactly as written. */
@@ -95,8 +97,8 @@ export const MAX_OUTPUT_BYTES = 1024 * 1024;
 /** Largest file `readFile` reads. */
 export const MAX_FILE_BYTES = 1024 * 1024;
 
-/** Most process names `processNames` returns. */
-const MAX_PROCESS_NAMES = 4_096;
+/** Most process-list entries looked at. */
+const MAX_PROCESS_ENTRIES = 65_536;
 
 /** Is `args` exactly one of the allow-listed argument lists? */
 export function isAllowedGitCall(args: readonly string[]): boolean {
@@ -184,24 +186,44 @@ export const realExec: Exec = (file, args, options) =>
     }
   });
 
-/** Process names from `ps -axo comm=`: one per line, a path cut to its last part. */
-export function parsePsNames(stdout: string): string[] {
-  return stdout
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter((line) => line !== "")
-    .map((line) => line.split("/").pop() ?? line)
-    .slice(0, MAX_PROCESS_NAMES);
+/**
+ * The watched process one entry of a process list is, or `undefined`.
+ *
+ * `comm` is not always an image name: a program can rewrite its title (`postgres: <role> <db>
+ * …`, `Cursor Helper (Plugin): <id> (agent-exec)`). So the entry is cut at the first `": "`,
+ * then to its last path part, lower-cased and stripped of `.exe`, and only an exact match to an
+ * agent app's process name is kept. Nothing else from the entry survives this function.
+ */
+export function watchedProcessOf(entry: string): WatchedProcess | undefined {
+  const title = entry.trim().split(": ")[0] ?? "";
+  const name = (title.split(/[\\/]/).pop() ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/\.exe$/, "");
+  if (name === "claude") return "claude";
+  if (name === "codex") return "codex";
+  if (/^cursor(?: helper(?: \([a-z ]+\))?)?$/.test(name)) return "cursor";
+  return undefined;
 }
 
-/** Process names from `tasklist /fo csv /nh`: the first quoted field of each line. */
-export function parseTasklistNames(stdout: string): string[] {
-  const names: string[] = [];
-  for (const line of stdout.split(/\r?\n/)) {
-    const match = /^"([^"]*)"/.exec(line.trim());
-    if (match?.[1] !== undefined && match[1] !== "") names.push(match[1]);
+/** The watched processes in a list of entries, each once, in `WATCHED_PROCESSES` order. */
+function watchedIn(entries: readonly string[]): WatchedProcess[] {
+  const seen = new Set<WatchedProcess>();
+  for (const entry of entries.slice(0, MAX_PROCESS_ENTRIES)) {
+    const id = watchedProcessOf(entry);
+    if (id !== undefined) seen.add(id);
   }
-  return names.slice(0, MAX_PROCESS_NAMES);
+  return WATCHED_PROCESSES.filter((id) => seen.has(id));
+}
+
+/** The watched processes in `ps -axo comm=` output: one entry per line. */
+export function watchedInPs(stdout: string): WatchedProcess[] {
+  return watchedIn(stdout.split(/\r?\n/));
+}
+
+/** The watched processes in `tasklist /fo csv /nh` output: the first quoted field per line. */
+export function watchedInTasklist(stdout: string): WatchedProcess[] {
+  return watchedIn(stdout.split(/\r?\n/).map((line) => /^"([^"]*)"/.exec(line.trim())?.[1] ?? ""));
 }
 
 /** Is `path` inside `root` (and not `root` itself)? Both are real paths. */
@@ -414,7 +436,7 @@ export function createRealVerifyIO(options: VerifyIOOptions = {}): VerifyIO {
       if (result.kind !== "ok") return { ok: false, reason: failureOf(result) };
       return {
         ok: true,
-        names: windows ? parseTasklistNames(result.stdout) : parsePsNames(result.stdout),
+        running: windows ? watchedInTasklist(result.stdout) : watchedInPs(result.stdout),
       };
     },
   };
