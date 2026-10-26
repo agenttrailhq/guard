@@ -39,7 +39,12 @@ import { mapCursorCall } from "../core/cursor-mapper.js";
 import { compileAllowlist, evaluateCall } from "../core/evaluate.js";
 import { mapToolCall } from "../core/mapper.js";
 import { buildGuardSpanContext } from "../core/normalize.js";
-import { osCodexPresent, osCursorPresent, osPresentMessage } from "../core/os-presence.js";
+import {
+  osCodexPresent,
+  osCursorNote,
+  osCursorPresent,
+  osPresentMessage,
+} from "../core/os-presence.js";
 import { configPath, guardDir, productLineStatePath, userRulesPath } from "../core/paths.js";
 import { takeProductLine, writeOrFalse } from "../core/product-line.js";
 import { compileCatalog } from "../core/rules.js";
@@ -440,11 +445,8 @@ export async function runInit(
   // Code plugin and reported success for an app that has none.
   switch (agent) {
     case "cursor":
-      // Coexistence first, as for Claude Code below.
-      if (osCursorPresent((p) => io.readFile(p), home)) {
-        io.writeStdout(osPresentMessage("Cursor"));
-        return 0;
-      }
+      // AgentTrail OS is per project in Cursor: say so, and install for the rest.
+      if (osCursorPresent((p) => io.readFile(p), home)) io.writeStdout(osCursorNote());
       return initCursor(io, dryRun, scaffoldDir, deps, catalog, now, argv.quiet === true);
     case "codex":
       if (osCodexPresent((p) => io.readFile(p), home)) {
