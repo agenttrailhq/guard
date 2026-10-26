@@ -5,7 +5,8 @@
  * result — written to a temporary folder in the app's own file format and read back through
  * that app's real reader, so the verification is tested on what the readers actually produce.
  * Every value here is made up; credential-shaped strings are assembled at runtime by the
- * suites, never written as source literals.
+ * suites, never written as source literals. The Codex sessions are built from the documented
+ * rollout format, not from a recorded Codex session.
  */
 
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";

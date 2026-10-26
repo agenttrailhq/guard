@@ -40,7 +40,8 @@
  *
  * Whether a call has a `custom_tool_call_output` is kept, matched to the call by its
  * `call_id`, with the output's text left out: `scan --verify` counts a call as having run
- * only when it has one.
+ * only when it has one. Whether a call a hook blocked also gets one is not established, so
+ * such a count may include blocked calls.
  *
  * ── A bad line never fails the file ──────────────────────────────────────────
  * Each line is parsed on its own, and what cannot be used is counted by kind:

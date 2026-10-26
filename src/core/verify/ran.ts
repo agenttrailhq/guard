@@ -41,7 +41,10 @@
  *   Claude Code   a `tool_result` for the call's id. An error result counts as `ran` only
  *                 when it reports the command's exit code; otherwise it was refused, blocked
  *                 or failed before it started.
- *   Codex         a `custom_tool_call_output` for the call's `call_id`.
+ *   Codex         a `custom_tool_call_output` for the call's `call_id`. Whether Codex also
+ *                 writes one for a call a hook blocked is not established, so a Codex `ran`
+ *                 may include blocked calls (`ranEvidence: "output-record"`). This reading is
+ *                 tested on synthetic sessions built from the documented rollout format only.
  *   Cursor        session files record no results and no tool-use ids, so no Cursor call is
  *                 ever `ran`: it is `unknown`, or `mentioned` when the text says so.
  */

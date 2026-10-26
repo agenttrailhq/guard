@@ -17,6 +17,9 @@
  * It also returns the working directories a line names, which the committed-fixture test uses
  * to find the repos the sessions ran in.
  *
+ * Codex records are read as the documented rollout format describes them. That reading is
+ * tested on synthetic sessions only, so what it finds in a real Codex session is unverified.
+ *
  * Pure and total: a line that is not JSON, or not a record this module knows, gives nothing.
  */
 
