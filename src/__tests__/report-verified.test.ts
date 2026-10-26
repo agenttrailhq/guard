@@ -24,6 +24,7 @@ import {
   CATEGORY_TITLES,
   CHIP_CANDIDATES,
   CHIP_COUNT,
+  chipText,
   KIND_LABELS,
   PROVENANCE_PHRASES,
   TONE_LABELS,
@@ -39,7 +40,9 @@ import { decodeEntities } from "./html-text.js";
 import {
   baseResult,
   CLOUD_LEAD_RESULT,
+  CODEX_ONLY_RESULT,
   CURSOR_RESULT,
+  FALLBACK_RESULT,
   HIDING_RESULT,
   LOCAL_FIX_CATEGORIES,
   SECRETS_ACT,
@@ -655,5 +658,94 @@ describe("every hiding form is named, whatever forms there are", () => {
       expect(hidingFormLabel(form).length).toBeGreaterThan(2);
     }
     expect(hidingFormLabel("some-new-form")).toBe("some new form");
+  });
+});
+
+describe("the review and the page agree on every corpus page", () => {
+  const PAGES = [
+    ["secrets lead", VERIFIED_RESULT],
+    ["cloud lead", CLOUD_LEAD_RESULT],
+    ["fallback", FALLBACK_RESULT],
+    ["Codex", CODEX_ONLY_RESULT],
+    ["Cursor", CURSOR_RESULT],
+    ["hiding forms", HIDING_RESULT],
+  ] as const;
+
+  it.each(
+    PAGES,
+  )("%s: every reviewed piece is in the page, and every templated line is reviewed", (_n, result) => {
+    const html = renderReport(result, VERIFIED_META, OPTIONS);
+    const group = reviewStrings(result, TEST_ONLY_BUILDERS).find((g) =>
+      g.label.startsWith("What the checks found on this machine"),
+    );
+    const pieces = (group?.lines ?? []).flatMap((line) => line.split("  ").filter(Boolean));
+    for (const piece of pieces) expect(html, piece).toContain(escapeHtml(piece));
+    const verified = [
+      html.match(/<h1[^>]*>[^<]*<\/h1>/)?.[0] ?? "",
+      section(html, "found"),
+      section(html, "also-checked"),
+      section(html, "what-happened"),
+    ].join("\n");
+    const reviewed = new Set(pieces.map((p) => p.replace(/:$/, "")));
+    const lines = [...verified.matchAll(/data-template="([^"]+)"[^>]*>([^<]*)</g)]
+      .filter((m) => m[1] !== "card.fixes-file")
+      .map((m) => decodeEntities(m[2] ?? ""));
+    expect(lines.length).toBeGreaterThan(10);
+    expect(lines.filter((line) => !reviewed.has(line))).toEqual([]);
+  });
+
+  it("the Codex caveat on a card is reviewed", () => {
+    const v = verification({
+      ...verifiedCategories(),
+      "skipped-checks": {
+        status: "act",
+        matches: 6,
+        facts: testFacts("skipped-checks", { commits: 2, reachedMain: 1, codex: 1 }),
+      },
+    } as unknown as Verification["categories"]);
+    const lines = reviewStrings(baseResult(v), TEST_ONLY_BUILDERS).flatMap((g) => g.lines);
+    expect(lines.some((l) => l.includes("may include calls a hook blocked"))).toBe(true);
+  });
+});
+
+describe("small fences", () => {
+  it("a Cursor page does not also say a call had no recorded output", () => {
+    const notes = section(renderReport(CURSOR_RESULT, VERIFIED_META, OPTIONS), "also-checked");
+    expect(notes).toContain("These sessions record no command output");
+    expect(notes).not.toContain("had no recorded output");
+  });
+
+  it("a card that could not check shows its tone in the chip, never its count", () => {
+    const card = {
+      category: "egress" as const,
+      tone: "could-not-check" as const,
+      count: 4,
+      found: [],
+      now: [],
+      fixes: [],
+      codexCaveat: false,
+      chip: { count: 4, label: { template: "x", text: "files sent off this machine" } },
+    };
+    expect(chipText(card)).toEqual({
+      label: { template: "chip.tone", text: "could not check" },
+    });
+  });
+
+  it("an empty scan with verification links to nothing that is not on the page", () => {
+    // An empty scan has no matches either; only its verification remains.
+    const empty = {
+      ...VERIFIED_RESULT,
+      toolCalls: 0,
+      sessions: 0,
+      riskyActions: 0,
+      findings: [],
+      recurring: [],
+      owasp: [],
+    };
+    const html = renderReport(empty, VERIFIED_META, OPTIONS);
+    expect(html).not.toContain('href="#what-happened"');
+    const ids = idsOf(html);
+    for (const m of html.matchAll(/\shref="#([^"]+)"/g))
+      expect(ids.has(m[1] ?? ""), m[1]).toBe(true);
   });
 });
