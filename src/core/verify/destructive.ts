@@ -8,7 +8,8 @@
  *  1. **a variable with no guard**: the path is built from a variable or a substitution with no
  *     `${VAR:?}` guard, so an empty value deletes from the wrong folder. One whose every
  *     variable is guarded is not classed further: its value is not known.
- *  2. **scratch**: a temp folder, or build output such as `node_modules`, `dist` or `.cache`.
+ *  2. **scratch**: a temp folder; or build output such as `node_modules`, `dist` or `.cache`
+ *     with nothing under it that git tracks (a committed `dist/` that is gone is class 3).
  *  3. **tracked files**: git tracks files under it. Whether they are back is asked of git now.
  *  4. **untracked files in a repo**: inside a repository, with nothing tracked under it.
  *  5. **under the home folder**, outside any repository.
@@ -278,9 +279,10 @@ async function classify(context: GitCheckContext, target: RmTarget): Promise<Cla
   const home = context.log.home;
   const path = resolvePath(target.folder, literalPart(word.value), home);
   if (path === undefined) return { kind: "could-not-check" };
-  if (isUnder(path, context.scratchRoots) || namesScratch(path, target.folder)) {
-    return { kind: "scratch" };
-  }
+  if (isUnder(path, context.scratchRoots)) return { kind: "scratch" };
+  // A build-output name (`dist`, `build`, `node_modules`) counts as scratch only once git has
+  // said nothing under it is tracked: a committed `dist/` that is gone is lost work.
+  const byName = namesScratch(path, target.folder);
 
   // The nearest folder that is still there: the target itself, or a parent of it.
   let folder = path;
@@ -296,11 +298,12 @@ async function classify(context: GitCheckContext, target: RmTarget): Promise<Cla
   const root = await context.probe.toplevel(folder);
   if (isFailure(root)) {
     if (root.failed !== "not-a-repo") return { kind: "could-not-check" };
+    if (byName) return { kind: "scratch" };
     return { kind: isUnder(path, [home]) ? "home" : "other" };
   }
   const state = await context.probe.tracked(folder, path);
   if (isFailure(state)) return { kind: "could-not-check" };
-  if (state.tracked === 0) return { kind: "untracked" };
+  if (state.tracked === 0) return { kind: byName ? "scratch" : "untracked" };
   return {
     kind: "tracked",
     missing: state.missing > 0,

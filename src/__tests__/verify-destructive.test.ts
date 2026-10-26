@@ -176,6 +176,16 @@ describe("rm -rf targets, one per class", () => {
     expect(card.headline).toBeUndefined();
   });
 
+  it("a build-output name with tracked files gone is tracked, not scratch", async () => {
+    const root = makeRepo("rm-tracked-dist", { files: { "dist/index.js": "x\n" } });
+    rmSync(join(root, "dist"), { recursive: true });
+    const { facts, result, fixes } = await destructive(ran(root, "rm -rf dist", "rm -rf build"));
+    expect(facts.rm.classes).toEqual(classes({ tracked: 1, scratch: 1 }));
+    expect(facts.rm.trackedGone).toBe(1);
+    expect(result.status).toBe("act");
+    expect(fixes).toEqual([quoted("git", "-C", root, "restore", "--", "dist")]);
+  });
+
   it("tracked files partly back: no command restores them as a whole", async () => {
     const root = makeRepo("rm-partly", { files: { "src/a.ts": "a\n", "src/b.ts": "b\n" } });
     rmSync(join(root, "src", "a.ts"));

@@ -12284,9 +12284,8 @@ async function classify2(context, target) {
   const home = context.log.home;
   const path = resolvePath(target.folder, literalPart(word.value), home);
   if (path === void 0) return { kind: "could-not-check" };
-  if (isUnder(path, context.scratchRoots) || namesScratch(path, target.folder)) {
-    return { kind: "scratch" };
-  }
+  if (isUnder(path, context.scratchRoots)) return { kind: "scratch" };
+  const byName = namesScratch(path, target.folder);
   let folder = path;
   let steps = 0;
   while (context.probe.isFolder(folder) !== true && steps < MAX_PARENT_STEPS) {
@@ -12299,11 +12298,12 @@ async function classify2(context, target) {
   const root = await context.probe.toplevel(folder);
   if (isFailure(root)) {
     if (root.failed !== "not-a-repo") return { kind: "could-not-check" };
+    if (byName) return { kind: "scratch" };
     return { kind: isUnder(path, [home]) ? "home" : "other" };
   }
   const state = await context.probe.tracked(folder, path);
   if (isFailure(state)) return { kind: "could-not-check" };
-  if (state.tracked === 0) return { kind: "untracked" };
+  if (state.tracked === 0) return { kind: byName ? "scratch" : "untracked" };
   return {
     kind: "tracked",
     missing: state.missing > 0,
