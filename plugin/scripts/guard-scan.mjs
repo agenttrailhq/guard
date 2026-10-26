@@ -11653,9 +11653,10 @@ function shellItems(text) {
   let start = -1;
   let value = "";
   let expands = false;
+  let globAt = -1;
   const endWord = (end) => {
     if (start < 0) return;
-    const word = { raw: text.slice(start, end), value, expands };
+    const word = { raw: text.slice(start, end), value, expands, globAt };
     if (next === "word") words2.push(word);
     else if (next === "write") writes.push(word);
     else if (next === "heredoc" || next === "heredoc-tabs") {
@@ -11665,6 +11666,7 @@ function shellItems(text) {
     start = -1;
     value = "";
     expands = false;
+    globAt = -1;
   };
   const endCommand = (end) => {
     endWord(end);
@@ -11790,6 +11792,7 @@ function shellItems(text) {
       continue;
     }
     begin(i);
+    if (globAt < 0 && (ch === "*" || ch === "?" || ch === "[")) globAt = value.length;
     value += ch;
     i += 1;
   }
@@ -12282,8 +12285,7 @@ function namesScratch(path, folder) {
   const below = folder !== void 0 && (path === folder || path.startsWith(`${folder}${sep2}`)) ? relative2(folder, path) : path.split(/[\\/]/).pop() ?? "";
   return below.split(/[\\/]/).some((part) => SCRATCH_NAMES.has(part));
 }
-function literalPart(value) {
-  const wild = value.search(/[*?[]/);
+function literalPart(value, wild = value.search(/[*?[]/)) {
   if (wild < 0) return value;
   const cut = value.lastIndexOf("/", wild);
   return cut < 0 ? "." : value.slice(0, cut) || "/";
@@ -12293,7 +12295,7 @@ async function classify2(context, target) {
   const { word } = target;
   if (word.expands) return { kind: guarded(word.raw) ? "guarded-variable" : "unguarded-variable" };
   const home = context.log.home;
-  const path = resolvePath(target.folder, literalPart(word.value), home);
+  const path = resolvePath(target.folder, literalPart(word.value, word.globAt), home);
   if (path === void 0) return { kind: "could-not-check" };
   if (isUnder(path, context.scratchRoots)) return { kind: "scratch" };
   const byName = namesScratch(path, target.folder);
@@ -12325,7 +12327,7 @@ async function classify2(context, target) {
 }
 function restoreParts(folder, path) {
   const rel = relative2(folder, path).split(sep2).join("/") || ".";
-  return ["git", "-C", { ref: folder }, "restore", "--", { repoPath: rel }];
+  return ["git", "-C", { ref: folder }, "--literal-pathspecs", "restore", "--", { repoPath: rel }];
 }
 async function checkRm(context, judged, fixes) {
   const classes = Object.fromEntries(RM_TARGET_CLASSES.map((c) => [c, 0]));
@@ -12721,7 +12723,7 @@ var NOW = [
   },
   {
     id: "destructive.now.tracked-partly-back",
-    render: (f) => f.rm.trackedPartlyBack > 0 ? `${counted(f.rm.trackedPartlyBack, "tracked target")} ${is(f.rm.trackedPartlyBack)} partly back, with tracked files still missing.` : void 0
+    render: (f) => f.rm.trackedPartlyBack > 0 ? `${counted(f.rm.trackedPartlyBack, "tracked target")} ${is(f.rm.trackedPartlyBack)} partly back, with tracked files still missing. No exact command is made for ${f.rm.trackedPartlyBack === 1 ? "it" : "them"}: restoring a whole target would overwrite any new changes in the files that are back.` : void 0
   },
   {
     id: "destructive.now.tracked-back",
@@ -12735,7 +12737,11 @@ var NOW = [
 var FIX_STEPS = [
   {
     id: "destructive.fix.restore",
-    render: (f) => trackedMissing(f) > 0 ? "Restore the tracked files that are still missing. The exact commands are in the local fixes file." : void 0
+    render: (f) => f.rm.trackedGone > 0 ? "Restore each tracked target that is still wholly gone. The exact commands are in the local fixes file." : void 0
+  },
+  {
+    id: "destructive.fix.restore-partly",
+    render: (f) => f.rm.trackedPartlyBack > 0 ? "Where a target is partly back, restore only the files still missing, one by one, after checking that none of them was deleted on purpose." : void 0
   },
   {
     id: "destructive.fix.guard",
@@ -12752,7 +12758,7 @@ var FIX_STEPS = [
 ];
 function fixShapes(f) {
   const out = [];
-  if (f.rm.trackedGone > 0) out.push({ shape: "git restore -- <path>" });
+  if (f.rm.trackedGone > 0) out.push({ shape: "git --literal-pathspecs restore -- <path>" });
   return out;
 }
 var destructiveCard = (result, context) => {
@@ -12922,7 +12928,9 @@ var copies = (text, cwd, home) => {
         else if (url !== void 0 && !url.expands) {
           const name = url.value.replace(/[\\/]+$/, "").split(/[\\/:]/).pop() ?? "";
           const folderName = name.replace(/\.git$/, "");
-          if (folderName !== "") add(base, { raw: folderName, value: folderName, expands: false });
+          if (folderName !== "") {
+            add(base, { raw: folderName, value: folderName, expands: false, globAt: -1 });
+          }
         }
       }
       return;

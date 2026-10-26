@@ -24,6 +24,11 @@ export interface ShellWord {
   readonly value: string;
   /** It holds a `$` expansion, a `$(…)` or backticks outside single quotes. */
   readonly expands: boolean;
+  /**
+   * Where in `value` the first `*`, `?` or `[` the shell would expand is: one neither quoted
+   * nor escaped. `-1` when there is none, so a quoted `"[ab]"` is a literal name.
+   */
+  readonly globAt: number;
 }
 
 /** One simple command. */
@@ -104,10 +109,11 @@ export function shellItems(text: string): ShellItem[] {
   let start = -1;
   let value = "";
   let expands = false;
+  let globAt = -1;
 
   const endWord = (end: number): void => {
     if (start < 0) return;
-    const word: ShellWord = { raw: text.slice(start, end), value, expands };
+    const word: ShellWord = { raw: text.slice(start, end), value, expands, globAt };
     if (next === "word") words.push(word);
     else if (next === "write") writes.push(word);
     else if (next === "heredoc" || next === "heredoc-tabs") {
@@ -117,6 +123,7 @@ export function shellItems(text: string): ShellItem[] {
     start = -1;
     value = "";
     expands = false;
+    globAt = -1;
   };
   const endCommand = (end: number): void => {
     endWord(end);
@@ -260,6 +267,7 @@ export function shellItems(text: string): ShellItem[] {
     }
 
     begin(i);
+    if (globAt < 0 && (ch === "*" || ch === "?" || ch === "[")) globAt = value.length;
     value += ch;
     i += 1;
   }

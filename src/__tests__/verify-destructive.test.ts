@@ -1,4 +1,4 @@
-// cspell:words dropdb flushdb flushall mysqladmin PGHOST shutil rmtree libpq
+// cspell:words dropdb flushdb flushall mysqladmin PGHOST shutil rmtree libpq pathspecs
 /**
  * Destructive commands (`core/verify/destructive.ts`): each `rm -rf` target classed against a
  * real temporary repository and home folder, and each database wipe classed by where the
@@ -120,6 +120,24 @@ describe("reading rm", () => {
     expect(literalPart("/*")).toBe("/");
     expect(literalPart("plain/path")).toBe("plain/path");
   });
+
+  it.each([
+    [`src/*`, 4],
+    [`"src/*"`, -1],
+    [`'[ab]'`, -1],
+    [`[ab]`, 0],
+    [`src/\\*`, -1],
+    [`"src"/a?`, 5],
+    [`"$HOME"/x`, -1],
+  ])("ShellWord.globAt(%s) → %d", (text, expected) => {
+    expect(shellCommands(`rm -rf ${text}`)[0]?.words[2]?.globAt).toBe(expected);
+  });
+
+  it("a quoted wildcard is kept in the literal part", () => {
+    expect(literalPart("[ab]", -1)).toBe("[ab]");
+    expect(literalPart("src/a*", -1)).toBe("src/a*");
+    expect(literalPart("src/a*", 5)).toBe("src");
+  });
 });
 
 describe("rm -rf targets, one per class", () => {
@@ -168,9 +186,11 @@ describe("rm -rf targets, one per class", () => {
     expect(facts.rm.classes).toEqual(classes({ tracked: 1 }));
     expect(facts.rm).toMatchObject({ trackedGone: 1, trackedPartlyBack: 0, trackedBack: 0 });
     expect(result.status).toBe("act");
-    expect(fixes).toEqual([quoted("git", "-C", root, "restore", "--", "src")]);
+    expect(fixes).toEqual([
+      quoted("git", "-C", root, "--literal-pathspecs", "restore", "--", "src"),
+    ]);
     const card = destructiveCard(result, { ranEvidence: "tool-result" });
-    expect(card.fixes).toEqual([{ shape: "git restore -- <path>" }]);
+    expect(card.fixes).toEqual([{ shape: "git --literal-pathspecs restore -- <path>" }]);
     expect(JSON.stringify(card)).not.toContain(root);
     // Missing tracked files are not an unguarded delete: no headline claim.
     expect(card.headline).toBeUndefined();
@@ -183,15 +203,57 @@ describe("rm -rf targets, one per class", () => {
     expect(facts.rm.classes).toEqual(classes({ tracked: 1, scratch: 1 }));
     expect(facts.rm.trackedGone).toBe(1);
     expect(result.status).toBe("act");
-    expect(fixes).toEqual([quoted("git", "-C", root, "restore", "--", "dist")]);
+    expect(fixes).toEqual([
+      quoted("git", "-C", root, "--literal-pathspecs", "restore", "--", "dist"),
+    ]);
   });
 
-  it("tracked files partly back: no command restores them as a whole", async () => {
+  it("tracked files partly back: no command restores them as a whole, and the card says why", async () => {
     const root = makeRepo("rm-partly", { files: { "src/a.ts": "a\n", "src/b.ts": "b\n" } });
     rmSync(join(root, "src", "a.ts"));
-    const { facts, fixes } = await destructive(ran(root, "rm -rf src"));
+    const { facts, fixes, result } = await destructive(ran(root, "rm -rf src"));
     expect(facts.rm).toMatchObject({ trackedGone: 0, trackedPartlyBack: 1 });
     expect(fixes).toEqual([]);
+    const card = destructiveCard(result, { ranEvidence: "tool-result" });
+    expect(card.now.map((s) => s.text)).toContain(
+      "1 tracked target is partly back, with tracked files still missing. No exact command is made for it: restoring a whole target would overwrite any new changes in the files that are back.",
+    );
+    expect(card.fixes).toEqual([]);
+  });
+
+  it("a quoted [, * or ? is part of the name, not a wildcard", async () => {
+    const root = makeRepo("rm-quoted-glob", {
+      files: { "[ab]/x.ts": "x\n", "keep.ts": "k\n", "other.ts": "o\n" },
+    });
+    // The user deleted an unrelated tracked file on purpose; the quoted target is untouched.
+    rmSync(join(root, "other.ts"));
+    const { facts, fixes } = await destructive(ran(root, `rm -rf "[ab]"`, `rm -rf 'a*'`));
+    // `"[ab]"` names that folder, which is back: not the whole repo with a file missing.
+    expect(facts.rm.trackedPartlyBack).toBe(0);
+    expect(facts.rm.trackedBack).toBe(1);
+    // `'a*'` names a folder that never existed, not every name starting with a.
+    expect(facts.rm.classes).toEqual(classes({ tracked: 1, untracked: 1 }));
+    expect(fixes).toEqual([]);
+  });
+
+  it("an unquoted wildcard is still read as the folder before it", async () => {
+    const root = makeRepo("rm-glob", { files: { "src/a.ts": "a\n", "keep.ts": "k\n" } });
+    rmSync(join(root, "src"), { recursive: true });
+    const { facts, fixes } = await destructive(ran(root, "rm -rf src/*"));
+    expect(facts.rm.trackedGone).toBe(1);
+    expect(fixes).toEqual([
+      quoted("git", "-C", root, "--literal-pathspecs", "restore", "--", "src"),
+    ]);
+  });
+
+  it("a wholly gone target whose name is outside the safe set makes no command, with a counted note", async () => {
+    const root = makeRepo("rm-odd-name", { files: { "[ab]/x.ts": "x\n" } });
+    rmSync(join(root, "[ab]"), { recursive: true });
+    const { facts, fixes, result } = await destructive(ran(root, `rm -rf "[ab]"`));
+    expect(facts.rm.trackedGone).toBe(1);
+    expect(facts.unsafeFixes).toBe(1);
+    expect(fixes).toEqual([]);
+    expect(result.status).toBe("act");
   });
 
   it("tracked files all back: clean", async () => {

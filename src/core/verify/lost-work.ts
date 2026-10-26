@@ -324,7 +324,9 @@ const copies: Detector<string> = (text, cwd, home) => {
               .split(/[\\/:]/)
               .pop() ?? "";
           const folderName = name.replace(/\.git$/, "");
-          if (folderName !== "") add(base, { raw: folderName, value: folderName, expands: false });
+          if (folderName !== "") {
+            add(base, { raw: folderName, value: folderName, expands: false, globAt: -1 });
+          }
         }
       }
       return;
