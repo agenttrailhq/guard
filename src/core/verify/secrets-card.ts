@@ -27,29 +27,13 @@ function be(n: number): string {
   return n === 1 ? "is" : "are";
 }
 
-/**
- * Credential-like strings set aside before they were classed, such as a random string seen only
- * in output, as one count. Read from the facts' `setAside` counts when they carry them; zero when
- * they do not.
- */
-function setAsideCount(facts: SecretsFacts): number {
-  const counts = (facts as SecretsFacts & { readonly setAside?: unknown }).setAside;
-  if (counts === null || typeof counts !== "object") return 0;
-  let n = 0;
-  for (const value of Object.values(counts)) {
-    if (typeof value === "number" && Number.isFinite(value) && value > 0) n += value;
-  }
-  return n;
-}
-
-/** Any credential-shaped value at all, of any class, or set aside. */
+/** Any credential-shaped value at all, of any class. Set-aside values are placeholders. */
 function anyFound(f: SecretsFacts): boolean {
   return (
     f.classes["likely-real"] +
       f.classes["committed-fixture"] +
       f.classes.placeholder +
-      f.classes["local-dev"] +
-      setAsideCount(f) >
+      f.classes["local-dev"] >
     0
   );
 }
@@ -104,11 +88,18 @@ const FOUND_NOT_COUNTED: SentenceTemplate<SecretsFacts> = {
 const FOUND_SET_ASIDE: SentenceTemplate<SecretsFacts> = {
   id: "secrets.found.set-aside",
   render: (f) => {
-    const n = setAsideCount(f);
+    // A subset of the placeholders, set aside by a rule that can miss a real credential.
+    const { unnamedOutputOnly, namedNotCredentialShaped } = f.setAside;
+    const n = unnamedOutputOnly + namedNotCredentialShaped;
     if (n === 0) return undefined;
-    return n === 1
-      ? "1 more credential-like string was set aside as unlikely to be real."
-      : `${formatCount(n)} more credential-like strings were set aside as unlikely to be real.`;
+    const why: string[] = [];
+    if (unnamedOutputOnly > 0) {
+      why.push(`${formatCount(unnamedOutputOnly)} unnamed and seen only in output or replies`);
+    }
+    if (namedNotCredentialShaped > 0) {
+      why.push(`${formatCount(namedNotCredentialShaped)} named but not shaped like a credential`);
+    }
+    return `Of the placeholders or false positives, ${formatCount(n)} ${n === 1 ? "was" : "were"} set aside by a rule that can miss a real credential: ${why.join(", and ")}.`;
   },
 };
 

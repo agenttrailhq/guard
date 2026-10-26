@@ -31,11 +31,12 @@ function facts(over: Partial<SecretsFacts> = {}, classes: Partial<SecretsFacts["
     filesRead: 3,
     filesNotRead: 0,
     unplaced: 0,
+    setAside: { unnamedOutputOnly: 0, namedNotCredentialShaped: 0 },
     fixtureCheck: "complete",
     reposChecked: 1,
     reposNotChecked: 0,
     ...over,
-  } as SecretsFacts;
+  } satisfies SecretsFacts as SecretsFacts;
 }
 
 const found = (f: SecretsFacts): string[] => sentences(SECRETS_FOUND, f).map((s) => s.text);
@@ -83,24 +84,47 @@ describe("what checking found", () => {
     );
   });
 
-  it("set-aside counts, when the facts carry them, keep the card from reading empty", () => {
-    const withSetAside = (counts: unknown) =>
-      ({ ...facts(), setAside: counts }) as unknown as SecretsFacts;
-    expect(found(withSetAside({ randomInOutput: 2, namedNotCredential: 1 }))).toEqual(
+  it("set-aside values are a part of the placeholders, said with both reasons, never twice", () => {
+    const lines = found(
+      facts(
+        { setAside: { unnamedOutputOnly: 2, namedNotCredentialShaped: 1 } },
+        { placeholder: 5 },
+      ),
+    );
+    expect(lines).toEqual(
       expect.arrayContaining([
         "Found no likely-real credential in 3 transcript files.",
-        "3 more credential-like strings were set aside as unlikely to be real.",
+        "Not counted as likely real: 5 placeholders or false positives.",
+        "Of the placeholders or false positives, 3 were set aside by a rule that can miss a real credential: 2 unnamed and seen only in output or replies, and 1 named but not shaped like a credential.",
       ]),
     );
-    expect(found(withSetAside({ randomInOutput: 1 }))).toContain(
-      "1 more credential-like string was set aside as unlikely to be real.",
+    // A part of the 5, so no line adds them to it.
+    expect(lines.join(" ")).not.toMatch(/\b8\b|more credential-like/);
+  });
+
+  it("names only the reason that applies, in the singular for one", () => {
+    expect(
+      found(
+        facts(
+          { setAside: { unnamedOutputOnly: 0, namedNotCredentialShaped: 1 } },
+          { placeholder: 1 },
+        ),
+      ),
+    ).toContain(
+      "Of the placeholders or false positives, 1 was set aside by a rule that can miss a real credential: 1 named but not shaped like a credential.",
     );
-    // Anything but a positive count is ignored.
-    for (const counts of [null, 7, { a: -1, b: "2", c: Number.NaN }]) {
-      expect(found(withSetAside(counts))[0]).toBe(
-        "Found no credential-shaped value in 3 transcript files.",
-      );
-    }
+    expect(
+      found(
+        facts(
+          { setAside: { unnamedOutputOnly: 1, namedNotCredentialShaped: 0 } },
+          { placeholder: 1 },
+        ),
+      ).join(" "),
+    ).not.toContain("named but not shaped");
+  });
+
+  it("says nothing of it when nothing was set aside", () => {
+    expect(found(facts({}, { placeholder: 2 })).join(" ")).not.toContain("set aside");
   });
 
   it("says when the fixture search was partial or could not run", () => {

@@ -431,6 +431,7 @@ describe("every verified line comes from a template whose facts are present", ()
       ...secrets,
       classes: { "likely-real": 0, "committed-fixture": 0, placeholder: 0, "local-dev": 0 },
       items: [],
+      setAside: { unnamedOutputOnly: 0, namedNotCredentialShaped: 0 },
       filesRead: 0,
       reposChecked: 0,
     };

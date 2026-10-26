@@ -8354,17 +8354,8 @@ function likelyReal(n) {
 function be(n) {
   return n === 1 ? "is" : "are";
 }
-function setAsideCount(facts) {
-  const counts = facts.setAside;
-  if (counts === null || typeof counts !== "object") return 0;
-  let n = 0;
-  for (const value of Object.values(counts)) {
-    if (typeof value === "number" && Number.isFinite(value) && value > 0) n += value;
-  }
-  return n;
-}
 function anyFound(f) {
-  return f.classes["likely-real"] + f.classes["committed-fixture"] + f.classes.placeholder + f.classes["local-dev"] + setAsideCount(f) > 0;
+  return f.classes["likely-real"] + f.classes["committed-fixture"] + f.classes.placeholder + f.classes["local-dev"] > 0;
 }
 var FOUND_LIKELY_REAL = {
   id: "secrets.found.likely-real",
@@ -8402,9 +8393,17 @@ var FOUND_NOT_COUNTED = {
 var FOUND_SET_ASIDE = {
   id: "secrets.found.set-aside",
   render: (f) => {
-    const n = setAsideCount(f);
+    const { unnamedOutputOnly, namedNotCredentialShaped } = f.setAside;
+    const n = unnamedOutputOnly + namedNotCredentialShaped;
     if (n === 0) return void 0;
-    return n === 1 ? "1 more credential-like string was set aside as unlikely to be real." : `${formatCount(n)} more credential-like strings were set aside as unlikely to be real.`;
+    const why = [];
+    if (unnamedOutputOnly > 0) {
+      why.push(`${formatCount(unnamedOutputOnly)} unnamed and seen only in output or replies`);
+    }
+    if (namedNotCredentialShaped > 0) {
+      why.push(`${formatCount(namedNotCredentialShaped)} named but not shaped like a credential`);
+    }
+    return `Of the placeholders or false positives, ${formatCount(n)} ${n === 1 ? "was" : "were"} set aside by a rule that can miss a real credential: ${why.join(", and ")}.`;
   }
 };
 var FOUND_FIXTURES_PARTIAL = {

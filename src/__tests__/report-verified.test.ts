@@ -154,6 +154,16 @@ describe("What it found, never the values", () => {
     expect(html).toContain('id="also-checked"');
   });
 
+  it("the secrets card says how many placeholders were set aside, and why, as part of them", () => {
+    expect(card(HTML, "secrets")).toContain(
+      "Of the placeholders or false positives, 3 were set aside by a rule that can miss a real credential: 2 unnamed and seen only in output or replies, and 1 named but not shaped like a credential.",
+    );
+    // The boundary copy keeps the typed counts, so the page is built from them.
+    const facts = reportPayload(VERIFIED_RESULT, VERIFIED_META, TEST_ONLY_BUILDERS).verification
+      ?.categories.secrets.facts;
+    expect(facts?.setAside).toEqual({ unnamedOutputOnly: 2, namedNotCredentialShaped: 1 });
+  });
+
   it("links to the secrets card", () => {
     expect(found).toContain('<a href="#check-secrets">');
   });

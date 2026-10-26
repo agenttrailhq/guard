@@ -111,7 +111,8 @@ export const SECRETS_ACT: SecretsFacts = {
   filesRead: 18,
   filesNotRead: 0,
   unplaced: 0,
-  setAside: { unnamedOutputOnly: 0, namedNotCredentialShaped: 0 },
+  // A part of the 5 placeholders, set aside by a rule that can miss a real credential.
+  setAside: { unnamedOutputOnly: 2, namedNotCredentialShaped: 1 },
   fixtureCheck: "complete",
   reposChecked: 2,
   reposNotChecked: 0,
