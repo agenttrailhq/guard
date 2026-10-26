@@ -143,7 +143,8 @@ Usage:
                  [REDACTED-BY-AGENTTRAIL:<kind>]. Fixtures, placeholders and local
                  dev values are left alone. A dry run: it says what it would replace,
                  by kind, never by value, and changes nothing without --apply.
-                 Rotate each credential first, then scrub.
+                 Rotate each credential first, then scrub. For Codex this is tested
+                 only on synthetic session files, not on real Codex sessions.
   --apply        With --scrub: make the change. Refuses while the app is running and
                  skips files changed in the last 5 minutes. Backs up every file first
                  to a private folder under ~/.agenttrail/scrub-backups/, which still

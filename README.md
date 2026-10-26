@@ -416,6 +416,9 @@ the exposure.
   reported.
 - **Not scrubbed:** anything the app keeps outside its session files (its prompt history
   and caches), your shell history, and the backup itself.
+- **Codex: limited and unverified.** For Codex, `--scrub` has been tested only on synthetic
+  session files built from Codex's documented rollout format, never on a real Codex
+  session, and the command says so each time it runs.
 
 ## The commands
 

@@ -14468,6 +14468,7 @@ function planFileScrub(text, targets) {
 }
 
 // src/commands/scan-scrub.ts
+var CODEX_SCRUB_NOTE = "Codex support is limited and unverified: scrubbing has been tested only on synthetic session files built from Codex's documented rollout format, not on real Codex sessions.";
 var RECENT_WRITE_WINDOW_MS = 5 * 60 * 1e3;
 var MAX_SCRUB_VALUES = 5e4;
 var MAX_RESTORE_LINES_SHOWN = 10;
@@ -14615,6 +14616,7 @@ async function runScrub(input) {
     )
   );
   if (!input.apply) lines.push("Nothing is changed without --apply.");
+  if (agent === "codex") lines.push(c.yellow(CODEX_SCRUB_NOTE));
   const files = [...new Set(input.corpus.files ?? [])];
   const found = await findLikelyReal({
     agent,
@@ -14956,7 +14958,8 @@ Usage:
                  [REDACTED-BY-AGENTTRAIL:<kind>]. Fixtures, placeholders and local
                  dev values are left alone. A dry run: it says what it would replace,
                  by kind, never by value, and changes nothing without --apply.
-                 Rotate each credential first, then scrub.
+                 Rotate each credential first, then scrub. For Codex this is tested
+                 only on synthetic session files, not on real Codex sessions.
   --apply        With --scrub: make the change. Refuses while the app is running and
                  skips files changed in the last 5 minutes. Backs up every file first
                  to a private folder under ~/.agenttrail/scrub-backups/, which still

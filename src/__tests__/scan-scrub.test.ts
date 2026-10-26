@@ -32,6 +32,7 @@ import {
   agentProcessCheck,
   backupFileName,
   backupFolderName,
+  CODEX_SCRUB_NOTE,
   displayPath,
   isRecentlyModified,
   isSafePath,
@@ -941,6 +942,36 @@ describe("the flags", () => {
     const run = await scan(s, "claude", ["--scrub"], { scrub: null });
     expect(run.code).toBe(1);
     expect(run.stdout).toContain("--scrub is not available in this build");
+  });
+});
+
+describe("Codex is limited and unverified", () => {
+  it("is one fixed sentence", () => {
+    expect(CODEX_SCRUB_NOTE).toBe(
+      "Codex support is limited and unverified: scrubbing has been tested only on synthetic " +
+        "session files built from Codex's documented rollout format, not on real Codex sessions.",
+    );
+  });
+
+  it.each([
+    ["--scrub"],
+    ["--scrub", "--apply"],
+  ])("is said on every Codex run (%s)", async (...argv) => {
+    const s = await setup("codex");
+    const run = await scan(s, "codex", argv);
+    expect(run.stdout).toContain(CODEX_SCRUB_NOTE);
+  });
+
+  it.each(["claude", "cursor"] as const)("is not said for %s", async (agent) => {
+    const s = await setup(agent);
+    const run = await scan(s, agent, ["--scrub"]);
+    expect(run.stdout).not.toContain("Codex support");
+  });
+
+  it("the usage says the same", () => {
+    expect(SCAN_USAGE).toContain(
+      "For Codex this is tested\n                 only on synthetic session files",
+    );
   });
 });
 

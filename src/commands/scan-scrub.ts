@@ -56,6 +56,13 @@ import type { SecretKind, VerifyIO, WatchedProcess } from "../core/verify/types.
 import type { ScanIO } from "../scan-io.js";
 import type { ScrubIO, ScrubStat } from "../scrub-io.js";
 
+/**
+ * Said on every Codex run. The Codex format is supported as far as synthetic session files
+ * built from its documented rollout format show, and no further.
+ */
+export const CODEX_SCRUB_NOTE =
+  "Codex support is limited and unverified: scrubbing has been tested only on synthetic session files built from Codex's documented rollout format, not on real Codex sessions.";
+
 /** A file changed this recently may belong to a session still in use, and is skipped. */
 export const RECENT_WRITE_WINDOW_MS = 5 * 60 * 1000;
 
@@ -350,6 +357,7 @@ export async function runScrub(input: ScrubRunInput): Promise<number> {
     ),
   );
   if (!input.apply) lines.push("Nothing is changed without --apply.");
+  if (agent === "codex") lines.push(c.yellow(CODEX_SCRUB_NOTE));
 
   const files = [...new Set(input.corpus.files ?? [])];
   const found = await findLikelyReal({
