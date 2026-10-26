@@ -21,6 +21,7 @@ import {
 } from "../commands/status.js";
 import { runUninstall, type UninstallDeps } from "../commands/uninstall.js";
 import { parseConfig } from "../core/config.js";
+import { enforcedProjectsPath, OS_PLUGIN_ID, tokenFingerprint } from "../core/os-step-aside.js";
 import { productLineText } from "../core/product-line.js";
 import { PATTERN_PLACEHOLDER } from "../core/redaction.js";
 import type { GuardRule } from "../core/types.js";
@@ -255,6 +256,8 @@ function runStatus(io: SetupIO, deps: StatusDeps = {}): Promise<number> {
     cursorIo: fakeCursorFiles().io,
     codexIo: fakeCodexFiles().io,
     guardIo: fakeGuardIo().io,
+    // Hermetic: the AgentTrail OS lines read this folder and environment, not the runner's.
+    os: { cwd: "/work/none", env: {}, realpath: (p) => p, platform: "linux" },
     ...deps,
   });
 }
@@ -2471,7 +2474,13 @@ describe("status writes nothing", () => {
     expect(cursor.reads.length).toBeGreaterThan(0);
     expect(codex.reads.length).toBeGreaterThan(0);
     expect(guard.read.length).toBeGreaterThan(0);
-    for (const path of setupReads) expect(path.startsWith(`${HOME}/`), path).toBe(true);
+    // Besides the home folder, `status` reads only the Claude Code settings that decide
+    // whether AgentTrail OS enforces the current folder: that folder's `.claude/` files and
+    // the managed settings.
+    const osRead = (path: string) =>
+      path.startsWith("/work/none/.claude/") || path.startsWith("/etc/claude-code/");
+    for (const path of setupReads)
+      expect(path.startsWith(`${HOME}/`) || osRead(path), path).toBe(true);
     for (const path of guard.read) expect(path.startsWith(`${HOME}/`), path).toBe(true);
     // Each app's reads also hold existence checks; the Node its entries run is the only
     // path outside the home folder.
@@ -2696,5 +2705,115 @@ describe("the AgentTrail OS line in init and status", () => {
     await runStatus(tty(h), { now: NOW });
     expect(h.out()).toContain("productLine:");
     expect(lastLine(h.out())).toContain("AgentTrail OS");
+  });
+});
+
+// ── AgentTrail OS coexistence ────────────────────────────────────────────────
+
+describe("status — AgentTrail OS", () => {
+  const PROJECT = "/work/app";
+  const TOKEN = "dlv_ingest_real";
+  const SOURCE = { source: "directory", path: "/npm/cli/plugin" };
+  const osFiles = (extra: Record<string, string> = {}) => ({
+    [enforcedProjectsPath(HOME)]: JSON.stringify({
+      version: 1,
+      entries: [
+        {
+          projectRoot: PROJECT,
+          scope: "project",
+          apiOrigin: "https://api.agenttrail.sh",
+          pluginId: OS_PLUGIN_ID,
+          marketplaceSource: SOURCE,
+          tokenFingerprint: tokenFingerprint(TOKEN),
+          writtenAt: "2026-10-26T00:00:00.000Z",
+        },
+      ],
+    }),
+    [`${HOME}/.claude/settings.json`]: JSON.stringify({ enabledPlugins: { [OS_PLUGIN_ID]: true } }),
+    [`${HOME}/.claude/plugins/installed_plugins.json`]: JSON.stringify({
+      version: 2,
+      plugins: { [OS_PLUGIN_ID]: [{ scope: "user" }] },
+    }),
+    [`${HOME}/.claude/plugins/known_marketplaces.json`]: JSON.stringify({
+      agenttrail: { source: SOURCE },
+    }),
+    [`${PROJECT}/.claude/settings.local.json`]: JSON.stringify({
+      env: {
+        AGENTTRAIL_PEP_ENFORCE: "1",
+        AGENTTRAIL_PEP_URL: "https://api.agenttrail.sh/api/v1/policies/evaluate",
+        AGENTTRAIL_PEP_TOKEN: TOKEN,
+      },
+    }),
+    ...extra,
+  });
+  const os = (cwd: string) => ({
+    cwd,
+    env: {},
+    realpath: (p: string) => p,
+    platform: "linux" as const,
+  });
+  const installed = [{ id: GUARD_PLUGIN_ID, version: VERSION }];
+
+  it("says guard stands down in a folder AgentTrail OS enforces", async () => {
+    const h = harness({ files: osFiles(), plugins: installed });
+    await runStatus(h.io, { os: os(PROJECT) });
+    expect(h.out()).toContain("AgentTrail OS enforces this folder. Guard stands down here.");
+  });
+
+  it("names the failing check: a stray sentinel the repo committed, with no record entry", async () => {
+    const h = harness({
+      files: {
+        ...osFiles(),
+        "/work/cloned/.claude/settings.json": JSON.stringify({
+          env: { AGENTTRAIL_PEP_ENFORCE: "1" },
+        }),
+      },
+      plugins: installed,
+    });
+    await runStatus(h.io, { os: os("/work/cloned") });
+    expect(h.out()).toContain(
+      "Guard keeps enforcing here: this folder is not one AgentTrail OS setup recorded",
+    );
+  });
+
+  it("names the failing check: the plugin disabled for this folder", async () => {
+    const h = harness({
+      files: osFiles({
+        [`${PROJECT}/.claude/settings.json`]: JSON.stringify({
+          enabledPlugins: { [OS_PLUGIN_ID]: false },
+        }),
+      }),
+      plugins: installed,
+    });
+    await runStatus(h.io, { os: os(PROJECT) });
+    expect(h.out()).toContain(
+      "Guard keeps enforcing here: the AgentTrail OS plugin is disabled for this folder",
+    );
+  });
+
+  it("counts the projects guard stood down in, from the decision log", async () => {
+    const now = new Date("2026-10-26T12:00:00Z");
+    const line = (project: string) =>
+      JSON.stringify({
+        ts: "2026-10-26T11:00:00.000Z",
+        event: "stepped-aside",
+        project,
+        agent: "claude",
+      });
+    const h = harness({
+      files: {
+        [`${HOME}/.agenttrail/guard/events.jsonl`]: `${line("aaaa")}\n${line("bbbb")}\n${line("aaaa")}\n`,
+      },
+      plugins: installed,
+    });
+    await runStatus(h.io, { now });
+    expect(h.out()).toContain("AgentTrail OS is enforcing in 2 projects. Guard stands down there.");
+    expect(h.out()).toContain("No decisions recorded yet.");
+  });
+
+  it("says nothing about AgentTrail OS when it is not set up", async () => {
+    const h = harness({ plugins: installed });
+    await runStatus(h.io);
+    expect(h.out()).not.toContain("AgentTrail OS");
   });
 });

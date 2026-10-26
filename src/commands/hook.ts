@@ -83,9 +83,10 @@ import { hasGuardCursorEntry } from "../core/cursor-entry.js";
 import { mapCursorCall } from "../core/cursor-mapper.js";
 import { createEmitter, type StdoutSink } from "../core/emit.js";
 import { type CompiledAllowlist, compileAllowlist, evaluateCall } from "../core/evaluate.js";
-import { createEventRecorder, type EventRecorder } from "../core/events.js";
+import { createEventRecorder, type EventRecorder, recordSteppedAside } from "../core/events.js";
 import { mapToolCall } from "../core/mapper.js";
 import { buildGuardSpanContext } from "../core/normalize.js";
+import { evaluateStepAside } from "../core/os-step-aside.js";
 import { configPath, cursorHooksPath, userRulesPath } from "../core/paths.js";
 import { type CompiledRule, compileCatalog } from "../core/rules.js";
 import type {
@@ -149,6 +150,15 @@ export interface HookDeps {
    * SENT the call, not the one named here.
    */
   readonly agent?: AgentSource;
+  /**
+   * The hook process's environment and a real-path resolver, for standing down where
+   * AgentTrail OS enforces the project (`core/os-step-aside.ts`). The entry point passes
+   * `process.env` and `fs.realpathSync.native`. Omitted, guard never stands down.
+   */
+  readonly env?: Readonly<Record<string, string | undefined>>;
+  readonly realpath?: (path: string) => string;
+  /** The platform whose managed-settings folder is read. Defaults to `process.platform`. */
+  readonly platform?: NodeJS.Platform;
 }
 
 /**
@@ -322,6 +332,26 @@ function answerClaudeCodeCall(
   sentBy: AgentSource,
   emitter: ReturnType<typeof createEmitter>,
 ): void {
+  // Where AgentTrail OS enforces this project, its own hook decides the call: guard gives no
+  // decision, so there is one decision per call. Every check must pass; see the module.
+  if (deps.env !== undefined && deps.realpath !== undefined) {
+    const cwd = (payload as { cwd?: unknown }).cwd;
+    const aside = evaluateStepAside({
+      env: deps.env,
+      home: io.homedir(),
+      ...(typeof cwd === "string" ? { cwd } : {}),
+      readFile: (path) => io.readFile(path),
+      listDir: (path) => io.listDir(path),
+      realpath: deps.realpath,
+      ...(deps.platform !== undefined ? { platform: deps.platform } : {}),
+    });
+    if (aside.standDown) {
+      emitter.emit("allow", "");
+      recordSteppedAside(io, aside.projectKey, sentBy);
+      return;
+    }
+  }
+
   const mapped = mapToolCall(payload);
 
   const { catalog, allowlist } = loadRules(io, deps);

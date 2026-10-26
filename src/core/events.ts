@@ -55,7 +55,7 @@
  */
 
 import type { GuardIO } from "../io.js";
-import { dedupMarkerPath, eventsPath, guardDir } from "./paths.js";
+import { dedupMarkerPath, eventsPath, guardDir, steppedAsideMarkerPath } from "./paths.js";
 import { scrubText } from "./scrub.js";
 import type { AgentSource, GuardAction, GuardDecision, MappedCall } from "./types.js";
 
@@ -306,4 +306,57 @@ export function createEventRecorder(io: GuardIO, now: () => number = Date.now): 
       }
     },
   };
+}
+
+// ── `stepped-aside`: guard gave no decision because AgentTrail OS enforces here ──
+
+/** How often one project's `stepped-aside` line is written at most. */
+export const STEPPED_ASIDE_INTERVAL_MS = 60 * 60 * 1000;
+
+/**
+ * Record that guard stood down for a project, as one `events.jsonl` line:
+ * `{ ts, event: "stepped-aside", project, agent }`. `project` is a hash of the project's path,
+ * never the path, and the line has no tool, command or rule. `parseDecisionLog` skips it (it
+ * has no `ruleId`), so decision counts are unchanged.
+ *
+ * Written at most once per project per {@link STEPPED_ASIDE_INTERVAL_MS}, through a marker of
+ * hashes and timestamps, so the log's byte budget stays with decisions. Never throws.
+ */
+export function recordSteppedAside(
+  io: GuardIO,
+  projectKey: string,
+  agent: AgentSource,
+  now: () => number = Date.now,
+): void {
+  try {
+    const home = io.homedir();
+    const nowMs = now();
+    let marks: Record<string, number> = {};
+    try {
+      const parsed: unknown = JSON.parse(io.readFile(steppedAsideMarkerPath(home)) ?? "{}");
+      if (parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)) {
+        for (const [key, value] of Object.entries(parsed as Record<string, unknown>)) {
+          if (typeof value === "number" && nowMs - value < MAX_AGE_MS) marks[key] = value;
+        }
+      }
+    } catch {
+      marks = {};
+    }
+    const last = marks[projectKey];
+    if (last !== undefined && nowMs - last < STEPPED_ASIDE_INTERVAL_MS) return;
+    if (!io.mkdirp(guardDir(home))) return;
+    const line = JSON.stringify({
+      ts: new Date(nowMs).toISOString(),
+      event: "stepped-aside",
+      project: projectKey,
+      agent,
+    });
+    const path = eventsPath(home);
+    if (!io.appendFile(path, `${line}\n`)) return;
+    marks[projectKey] = nowMs;
+    io.writeFileAtomic(steppedAsideMarkerPath(home), JSON.stringify(marks));
+    if (io.fileSize(path) > MAX_BYTES) compact(io, path, nowMs);
+  } catch {
+    /* recording is never a reason to change what the hook answered */
+  }
 }
