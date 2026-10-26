@@ -6,6 +6,8 @@
 import {
   chmodSync,
   existsSync,
+  linkSync,
+  lstatSync,
   mkdirSync,
   mkdtempSync,
   openSync,
@@ -13,6 +15,7 @@ import {
   readFileSync,
   renameSync,
   statSync,
+  symlinkSync,
   unlinkSync,
   utimesSync,
   writeFileSync,
@@ -388,6 +391,41 @@ describe("replaceFile fails safely", () => {
     });
     expect(io.replaceFile(path, Buffer.from("new\n"), { stat, sha256: sha })).toEqual({ ok: true });
     expect(readFileSync(path, "utf8")).toBe("new\n");
+  });
+});
+
+describe("links", () => {
+  it("a symbolic link is read as a link, never followed", () => {
+    if (!POSIX) return;
+    const { path } = fileWith('{"a":"target"}\n');
+    const link = join(folder(), "link.jsonl");
+    symlinkSync(path, link);
+    expect(createRealScrubIO().read(link)).toEqual({ ok: false, reason: "link" });
+  });
+
+  it("a hard-linked file reports how many names it has", () => {
+    const { path } = fileWith('{"a":"x"}\n');
+    expect(createRealScrubIO().read(path).ok && true).toBe(true);
+    linkSync(path, join(folder(), "other-name.jsonl"));
+    const read = createRealScrubIO().read(path);
+    expect(read.ok && read.stat.nlink).toBe(2);
+  });
+
+  it("a path swapped for a link to the same file before the replace is refused", () => {
+    if (!POSIX) return;
+    // The original moved aside and the path made a link to it: same inode, size, time, bytes.
+    const { path, stat, sha } = fileWith('{"a":"old"}\n');
+    const aside = join(folder(), "aside.jsonl");
+    renameSync(path, aside);
+    symlinkSync(aside, path);
+    const result = createRealScrubIO().replaceFile(path, Buffer.from("new\n"), {
+      stat,
+      sha256: sha,
+    });
+    expect(result).toEqual({ ok: false, reason: "changed" });
+    expect(lstatSync(path).isSymbolicLink()).toBe(true);
+    expect(readFileSync(aside, "utf8")).toBe('{"a":"old"}\n');
+    expect(temps(path)).toEqual([]);
   });
 });
 

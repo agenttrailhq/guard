@@ -15,8 +15,9 @@
  * ── How a file is replaced ───────────────────────────────────────────────────
  *  1. The new bytes go to a temporary file in the same folder, created exclusively with the
  *     original file's mode, then `fsync`ed.
- *  2. The original is read again. If its size, modification time, inode or SHA-256 differ from
- *     what the caller read, the temporary file is removed and nothing is replaced.
+ *  2. The original is read again, never through a symbolic link. If it is now a link, or its
+ *     size, modification time, inode or SHA-256 differ from what the caller read, the temporary
+ *     file is removed and nothing is replaced.
  *  3. `rename` puts the new file in place. Where it fails (on Windows, a file another process
  *     holds open gives `EPERM` or `EBUSY`), the temporary file is removed and the original is
  *     left as it was.
@@ -31,6 +32,7 @@ import { randomBytes } from "node:crypto";
 import {
   chmodSync,
   closeSync,
+  constants,
   fstatSync,
   fsyncSync,
   lstatSync,
@@ -61,6 +63,8 @@ export interface ScrubStat {
   readonly ino: number;
   /** Permission bits only. */
   readonly mode: number;
+  /** How many names the file has. Above 1, another name keeps the old bytes after a replace. */
+  readonly nlink: number;
 }
 
 /** One file read. */
@@ -68,8 +72,12 @@ export type ScrubRead =
   | { readonly ok: true; readonly bytes: Uint8Array; readonly stat: ScrubStat }
   | {
       readonly ok: false;
-      /** `changed`: the file ended before the size it was opened at. */
-      readonly reason: "missing" | "not-a-file" | "too-large" | "changed";
+      /**
+       * - `changed`: the file ended before the size it was opened at.
+       * - `link`: the path is a symbolic link. It is never followed, so a replace can never
+       *   swap a link for a regular file and leave the file it points to as it was.
+       */
+      readonly reason: "missing" | "not-a-file" | "too-large" | "changed" | "link";
     };
 
 /** The outcome of replacing one file. */
@@ -113,13 +121,14 @@ export interface ScrubIO {
  * them to make it fail.
  */
 export interface ScrubFs {
-  readonly openSync: (path: string, flags: string, mode?: number) => number;
+  readonly openSync: (path: string, flags: string | number, mode?: number) => number;
   readonly fstatSync: (fd: number) => {
     isFile(): boolean;
     readonly size: number;
     readonly mtimeMs: number;
     readonly ino: number;
     readonly mode: number;
+    readonly nlink: number;
   };
   readonly readSync: (
     fd: number,
@@ -192,13 +201,26 @@ function closeQuietly(fs: ScrubFs, fd: number): void {
   }
 }
 
-/** Read `path` with the stat of the same open file. */
+/**
+ * Open for reading without following a symbolic link at the last step of the path. Where the
+ * platform has no such flag (Windows), this is a plain read-only open.
+ */
+const READ_NO_FOLLOW = constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0);
+
+/** The codes an open with `O_NOFOLLOW` gives for a link: `ELOOP`, or `EMLINK` on FreeBSD. */
+const LINK_CODES: ReadonlySet<string> = new Set(["ELOOP", "EMLINK"]);
+
+/** Read `path` with the stat of the same open file. Never follows a link at `path`. */
 function readWithStat(fs: ScrubFs, path: string, maxBytes: number): ScrubRead {
   let fd: number;
   try {
-    fd = fs.openSync(path, "r");
-  } catch {
-    return { ok: false, reason: "missing" };
+    fd = fs.openSync(path, READ_NO_FOLLOW);
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException | undefined)?.code;
+    return {
+      ok: false,
+      reason: typeof code === "string" && LINK_CODES.has(code) ? "link" : "missing",
+    };
   }
   try {
     const stat = fs.fstatSync(fd);
@@ -209,7 +231,13 @@ function readWithStat(fs: ScrubFs, path: string, maxBytes: number): ScrubRead {
     return {
       ok: true,
       bytes,
-      stat: { size: stat.size, mtimeMs: stat.mtimeMs, ino: stat.ino, mode: stat.mode & 0o777 },
+      stat: {
+        size: stat.size,
+        mtimeMs: stat.mtimeMs,
+        ino: stat.ino,
+        mode: stat.mode & 0o777,
+        nlink: stat.nlink,
+      },
     };
   } catch {
     return { ok: false, reason: "missing" };

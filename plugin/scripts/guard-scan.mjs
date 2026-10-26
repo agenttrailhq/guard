@@ -624,7 +624,7 @@ var require_scan = __commonJS({
 var require_parse = __commonJS({
   "node_modules/picomatch/lib/parse.js"(exports, module) {
     "use strict";
-    var constants3 = require_constants();
+    var constants4 = require_constants();
     var utils = require_utils();
     var {
       MAX_LENGTH,
@@ -632,7 +632,7 @@ var require_parse = __commonJS({
       REGEX_NON_SPECIAL_CHARS,
       REGEX_SPECIAL_CHARS_BACKREF,
       REPLACEMENTS
-    } = constants3;
+    } = constants4;
     var expandRange = (args2, options) => {
       if (typeof options.expandRange === "function") {
         return options.expandRange(...args2, options);
@@ -838,7 +838,7 @@ var require_parse = __commonJS({
       if (options.maxExtglobRecursion === false) {
         return { risky: false };
       }
-      const max = typeof options.maxExtglobRecursion === "number" ? options.maxExtglobRecursion : constants3.DEFAULT_MAX_EXTGLOB_RECURSION;
+      const max = typeof options.maxExtglobRecursion === "number" ? options.maxExtglobRecursion : constants4.DEFAULT_MAX_EXTGLOB_RECURSION;
       const branches = splitTopLevel(body).map((branch) => branch.trim());
       if (branches.length > 1) {
         if (branches.some((branch) => branch === "") || branches.some((branch) => /^[*?]+$/.test(branch)) || hasRepeatedCharPrefixOverlap(branches)) {
@@ -870,8 +870,8 @@ var require_parse = __commonJS({
       const bos = { type: "bos", value: "", output: opts.prepend || "" };
       const tokens = [bos];
       const capture = opts.capture ? "" : "?:";
-      const PLATFORM_CHARS = constants3.globChars(opts.windows);
-      const EXTGLOB_CHARS = constants3.extglobChars(PLATFORM_CHARS);
+      const PLATFORM_CHARS = constants4.globChars(opts.windows);
+      const EXTGLOB_CHARS = constants4.extglobChars(PLATFORM_CHARS);
       const {
         DOT_LITERAL,
         PLUS_LITERAL,
@@ -1566,7 +1566,7 @@ var require_parse = __commonJS({
         NO_DOTS_SLASH,
         STAR,
         START_ANCHOR
-      } = constants3.globChars(opts.windows);
+      } = constants4.globChars(opts.windows);
       const nodot = opts.dot ? NO_DOTS : NO_DOT;
       const slashDot = opts.dot ? NO_DOTS_SLASH : NO_DOT;
       const capture = opts.capture ? "" : "?:";
@@ -1624,7 +1624,7 @@ var require_picomatch = __commonJS({
     var scan = require_scan();
     var parse = require_parse();
     var utils = require_utils();
-    var constants3 = require_constants();
+    var constants4 = require_constants();
     var isObject = (val) => val && typeof val === "object" && !Array.isArray(val);
     var picomatch3 = (glob, options, returnState = false) => {
       if (Array.isArray(glob)) {
@@ -1752,7 +1752,7 @@ var require_picomatch = __commonJS({
         return /$^/;
       }
     };
-    picomatch3.constants = constants3;
+    picomatch3.constants = constants4;
     module.exports = picomatch3;
   }
 });
@@ -14540,6 +14540,10 @@ function skipText(reason, code2) {
   switch (reason) {
     case "unsupported":
       return "not a supported transcript format (JSON Lines); left alone";
+    case "link":
+      return "a symbolic link, which is never replaced or followed; left alone";
+    case "hard-link":
+      return "has other names (hard links) that would keep the old text; left alone";
     case "unreadable":
       return "could not be read; left alone";
     case "too-large":
@@ -14590,8 +14594,12 @@ function planFiles(files, found, held, scrubIO) {
     if (!read.ok) {
       planning.skipped.push({
         path,
-        reason: read.reason === "too-large" ? "too-large" : read.reason === "changed" ? "changed" : "unreadable"
+        reason: read.reason === "too-large" || read.reason === "changed" || read.reason === "link" ? read.reason : "unreadable"
       });
+      continue;
+    }
+    if (read.stat.nlink > 1) {
+      planning.skipped.push({ path, reason: "hard-link" });
       continue;
     }
     const text = utf8(read.bytes);
@@ -15785,6 +15793,7 @@ import { randomBytes as randomBytes3 } from "crypto";
 import {
   chmodSync,
   closeSync as closeSync2,
+  constants as constants2,
   fstatSync,
   fsyncSync as fsyncSync2,
   lstatSync,
@@ -15840,12 +15849,18 @@ function closeQuietly(fs, fd) {
   } catch {
   }
 }
+var READ_NO_FOLLOW = constants2.O_RDONLY | (constants2.O_NOFOLLOW ?? 0);
+var LINK_CODES = /* @__PURE__ */ new Set(["ELOOP", "EMLINK"]);
 function readWithStat(fs, path, maxBytes) {
   let fd;
   try {
-    fd = fs.openSync(path, "r");
-  } catch {
-    return { ok: false, reason: "missing" };
+    fd = fs.openSync(path, READ_NO_FOLLOW);
+  } catch (error) {
+    const code2 = error?.code;
+    return {
+      ok: false,
+      reason: typeof code2 === "string" && LINK_CODES.has(code2) ? "link" : "missing"
+    };
   }
   try {
     const stat2 = fs.fstatSync(fd);
@@ -15856,7 +15871,13 @@ function readWithStat(fs, path, maxBytes) {
     return {
       ok: true,
       bytes,
-      stat: { size: stat2.size, mtimeMs: stat2.mtimeMs, ino: stat2.ino, mode: stat2.mode & 511 }
+      stat: {
+        size: stat2.size,
+        mtimeMs: stat2.mtimeMs,
+        ino: stat2.ino,
+        mode: stat2.mode & 511,
+        nlink: stat2.nlink
+      }
     };
   } catch {
     return { ok: false, reason: "missing" };
@@ -16008,7 +16029,7 @@ import { execFile } from "child_process";
 import {
   accessSync,
   closeSync as closeSync3,
-  constants as constants2,
+  constants as constants3,
   fstatSync as fstatSync2,
   openSync as openSync3,
   readSync as readSync2,
@@ -16118,7 +16139,7 @@ function defaultIsExecutable(platform) {
   return (path) => {
     try {
       if (!statSync3(path).isFile()) return false;
-      if (platform !== "win32") accessSync(path, constants2.X_OK);
+      if (platform !== "win32") accessSync(path, constants3.X_OK);
       return true;
     } catch {
       return false;
@@ -16226,7 +16247,7 @@ function createRealVerifyIO(options = {}) {
         }
         fd = openSync3(
           real,
-          constants2.O_RDONLY | (constants2.O_NOFOLLOW ?? 0) | (constants2.O_NONBLOCK ?? 0)
+          constants3.O_RDONLY | (constants3.O_NOFOLLOW ?? 0) | (constants3.O_NONBLOCK ?? 0)
         );
         const stat2 = fstatSync2(fd);
         if (!stat2.isFile()) return Promise.resolve({ ok: false, reason: "failed" });

@@ -201,6 +201,8 @@ export function restoreCommand(
 /** Why a file was not scrubbed. */
 type SkipReason =
   | "unsupported"
+  | "link"
+  | "hard-link"
   | "unreadable"
   | "too-large"
   | "not-utf8"
@@ -215,6 +217,10 @@ function skipText(reason: SkipReason, code?: string): string {
   switch (reason) {
     case "unsupported":
       return "not a supported transcript format (JSON Lines); left alone";
+    case "link":
+      return "a symbolic link, which is never replaced or followed; left alone";
+    case "hard-link":
+      return "has other names (hard links) that would keep the old text; left alone";
     case "unreadable":
       return "could not be read; left alone";
     case "too-large":
@@ -300,12 +306,14 @@ function planFiles(
       planning.skipped.push({
         path,
         reason:
-          read.reason === "too-large"
-            ? "too-large"
-            : read.reason === "changed"
-              ? "changed"
-              : "unreadable",
+          read.reason === "too-large" || read.reason === "changed" || read.reason === "link"
+            ? read.reason
+            : "unreadable",
       });
+      continue;
+    }
+    if (read.stat.nlink > 1) {
+      planning.skipped.push({ path, reason: "hard-link" });
       continue;
     }
     const text = utf8(read.bytes);

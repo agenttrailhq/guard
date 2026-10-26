@@ -13,6 +13,8 @@ import { execFileSync } from "node:child_process";
 import {
   existsSync,
   fsyncSync,
+  linkSync,
+  lstatSync,
   mkdirSync,
   mkdtempSync,
   openSync,
@@ -20,6 +22,7 @@ import {
   readFileSync,
   renameSync,
   statSync,
+  symlinkSync,
   utimesSync,
   writeFileSync,
   writeSync,
@@ -946,6 +949,41 @@ describe("a file holding a likely-real value that is not scrubbed fails the run"
     expect(run.stdout).toContain(
       "b.jsonl: holds a likely-real value this command could not find to replace.",
     );
+  });
+});
+
+describe("linked transcripts are never replaced", () => {
+  it("a symbolic link: left as a link, its target untouched, named, exit 1", async () => {
+    if (process.platform === "win32") return;
+    const s = await setup("claude");
+    const linked = s.files[0] as string;
+    const target = join(mkdtempSync(join(tmpdir(), "agenttrail-scrub-outside-")), "t.jsonl");
+    renameSync(linked, target);
+    symlinkSync(target, linked);
+    const before = readFileSync(target);
+    const run = await scan(s, "claude", ["--scrub", "--apply"]);
+    expect(run.code).toBe(1);
+    expect(run.stdout).toContain(
+      "session-0.jsonl: a symbolic link, which is never replaced or followed; left alone; it holds a likely-real value, which stays in it.",
+    );
+    expect(lstatSync(linked).isSymbolicLink()).toBe(true);
+    expect(readFileSync(target).equals(before)).toBe(true);
+    expect(readFileSync(s.files[1] as string, "utf8")).not.toContain(GITHUB);
+  });
+
+  it("a hard link: both names keep their bytes, named, exit 1", async () => {
+    const s = await setup("claude");
+    const file = s.files[0] as string;
+    const other = join(mkdtempSync(join(tmpdir(), "agenttrail-scrub-outside-")), "other.jsonl");
+    linkSync(file, other);
+    const before = readFileSync(file);
+    const run = await scan(s, "claude", ["--scrub", "--apply"]);
+    expect(run.code).toBe(1);
+    expect(run.stdout).toContain(
+      "session-0.jsonl: has other names (hard links) that would keep the old text; left alone; it holds a likely-real value, which stays in it.",
+    );
+    expect(readFileSync(file).equals(before)).toBe(true);
+    expect(readFileSync(other).equals(before)).toBe(true);
   });
 });
 
