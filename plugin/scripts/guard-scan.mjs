@@ -11769,6 +11769,9 @@ function createFingerprinter(key = randomBytes(KEY_BYTES)) {
 }
 
 // src/core/verify/ran.ts
+function emptySegment() {
+  return { words: [], inputs: [], pipedOut: false, writesFile: false };
+}
 function skipQuoted(text, at, quote) {
   let i = at + 1;
   while (i < text.length) {
@@ -11777,16 +11780,56 @@ function skipQuoted(text, at, quote) {
       i += 2;
       continue;
     }
+    if (quote === '"' && ch === "$" && text[i + 1] === "(") {
+      i = skipSubstitution(text, i + 1);
+      continue;
+    }
     if (ch === quote) return i + 1;
     i += 1;
   }
   return text.length;
 }
+function readDelimiter(text, at) {
+  let i = at;
+  while (text[i] === " " || text[i] === "	") i += 1;
+  const quote = text[i];
+  if (quote === "'" || quote === '"') {
+    const close = text.indexOf(quote, i + 1);
+    if (close < 0) return void 0;
+    return { delimiter: text.slice(i + 1, close), end: close + 1 };
+  }
+  const match = /^[^\s;&|<>()]+/.exec(text.slice(i));
+  if (match === null) return void 0;
+  return { delimiter: match[0].replace(/\\/g, ""), end: i + match[0].length };
+}
 function skipSubstitution(text, at) {
   let depth = 0;
   let i = at;
+  const pending = [];
   while (i < text.length) {
     const ch = text[i];
+    if (ch === "\n" && pending.length > 0) {
+      i += 1;
+      for (const doc of pending.splice(0)) {
+        while (i < text.length) {
+          const lineEnd = text.indexOf("\n", i);
+          const stop = lineEnd < 0 ? text.length : lineEnd;
+          const line = text.slice(i, stop);
+          i = lineEnd < 0 ? text.length : lineEnd + 1;
+          if ((doc.stripTabs ? line.replace(/^\t+/, "") : line) === doc.delimiter) break;
+        }
+      }
+      continue;
+    }
+    if (ch === "<" && text[i + 1] === "<" && text[i + 2] !== "<") {
+      const stripTabs = text[i + 2] === "-";
+      const read = readDelimiter(text, i + (stripTabs ? 3 : 2));
+      if (read !== void 0) {
+        pending.push({ delimiter: read.delimiter, stripTabs });
+        i = read.end;
+        continue;
+      }
+    }
     if (ch === "'" || ch === '"' || ch === "`") {
       i = skipQuoted(text, i, ch);
       continue;
@@ -11808,7 +11851,8 @@ function parseShell(text) {
   const segments = [];
   const comments = [];
   const pending = [];
-  let segment = { words: [], inputs: [] };
+  const groups = [];
+  let segment = emptySegment();
   let next = "word";
   let wordStart = -1;
   let value = "";
@@ -11828,7 +11872,23 @@ function parseShell(text) {
   const endSegment = (end) => {
     endWord(end);
     if (segment.words.length > 0 || segment.inputs.length > 0) segments.push(segment);
-    segment = { words: [], inputs: [] };
+    segment = emptySegment();
+  };
+  const pipeFrom = (from) => {
+    for (let k = Math.max(0, from); k < segments.length; k++)
+      segments[k].pipedOut = true;
+  };
+  const pipeLast = () => {
+    const last = segments[segments.length - 1];
+    if (last === void 0) return;
+    last.pipedOut = true;
+    if (last.words.length === 1 && last.words[0]?.value === "}") {
+      for (let k = segments.length - 1; k >= 0; k--) {
+        const seg = segments[k];
+        seg.pipedOut = true;
+        if (seg.words[0]?.value === "{") break;
+      }
+    }
   };
   const startWord = (at) => {
     if (wordStart < 0) wordStart = at;
@@ -11918,8 +11978,12 @@ function parseShell(text) {
         next = "heredoc";
         i += 2;
       } else {
+        const start = i;
         i += 1;
         while (i < text.length && /[>|&<]/.test(text[i])) i += 1;
+        const operator = text.slice(start, i);
+        const toDescriptor = operator.endsWith("&") && /^\s*(?:\d|-)/.test(text.slice(i));
+        if (operator.startsWith(">") && !toDescriptor) segment.writesFile = true;
         next = "target";
       }
       continue;
@@ -11928,13 +11992,30 @@ function parseShell(text) {
       endWord(i);
       i += 2;
       if (text[i] === ">") i += 1;
+      segment.writesFile = true;
       next = "target";
       continue;
     }
-    if (ch === ";" || ch === "&" || ch === "|" || ch === "(" || ch === ")") {
+    if (ch === "(") {
+      endSegment(i);
+      groups.push(segments.length);
+      i += 1;
+      continue;
+    }
+    if (ch === ")") {
+      endSegment(i);
+      const from = groups.pop() ?? 0;
+      i += 1;
+      const after = /^[ \t]*\|(?!\|)/.exec(text.slice(i));
+      if (after !== null) pipeFrom(from);
+      continue;
+    }
+    if (ch === ";" || ch === "&" || ch === "|") {
       endSegment(i);
       i += 1;
-      if ((ch === "&" || ch === "|" || ch === ";") && /[&|;]/.test(text[i] ?? "")) i += 1;
+      const pipe = ch === "|" && text[i] !== "|";
+      if (/[&|;]/.test(text[i] ?? "")) i += 1;
+      if (pipe) pipeLast();
       continue;
     }
     startWord(i);
@@ -12038,6 +12119,50 @@ var SEARCH_VALUE_OPTIONS = /* @__PURE__ */ new Set([
   "--encoding"
 ]);
 var INPUT_SINKS = /* @__PURE__ */ new Set(["cat", "tee", "echo", "printf"]);
+var INTERPRETERS = /* @__PURE__ */ new Set([
+  "sh",
+  "bash",
+  "zsh",
+  "dash",
+  "ksh",
+  "fish",
+  "source",
+  ".",
+  "eval",
+  "xargs",
+  "node",
+  "deno",
+  "bun",
+  "ruby",
+  "perl",
+  "php",
+  "psql",
+  "mysql",
+  "mariadb",
+  "sqlite3",
+  "osascript",
+  "pwsh",
+  "powershell",
+  "cmd",
+  "make",
+  "awk"
+]);
+function startsInterpreter(segment) {
+  const program = segment.words[programIndex(segment.words)];
+  if (program === void 0) return false;
+  const name = programName(program);
+  return INTERPRETERS.has(name) || /^python[\d.]*$/.test(name) || program.value.includes("/");
+}
+function isHeredocValue(raw) {
+  if (!raw.startsWith("$(") || skipSubstitution(raw, 1) !== raw.length) return false;
+  const inner = parseShell(raw.slice(2, -1));
+  if (inner.segments.length !== 1 || inner.comments.length > 0) return false;
+  const only = inner.segments[0];
+  return only.words.length === 1 && programName(only.words[0]) === "cat" && only.inputs.length === 1 && !only.pipedOut && !only.writesFile;
+}
+function isDataValue(word, value = word.value) {
+  return !word.runs || isHeredocValue(value);
+}
 var TEST_RUNNERS = /* @__PURE__ */ new Set(["vitest", "jest", "mocha", "pytest", "test"]);
 var LAUNCHERS = /* @__PURE__ */ new Set(["npx", "pnpm", "npm", "yarn", "bun", "bunx"]);
 var TEST_FILTER_OPTIONS = /* @__PURE__ */ new Set([
@@ -12084,18 +12209,19 @@ function optionValues(words2, options) {
     const word = words2[k];
     if (options.has(word.value)) {
       const value = words2[k + 1];
-      if (value !== void 0 && !value.runs) out.push(value);
+      if (value !== void 0 && isDataValue(value)) out.push(value);
       k += 1;
       continue;
     }
-    if (word.runs) continue;
     const eq = word.value.indexOf("=");
     if (word.value.startsWith("--") && eq > 0 && options.has(word.value.slice(0, eq))) {
-      out.push(word);
+      if (isDataValue(word, word.value.slice(eq + 1))) out.push(word);
       continue;
     }
     if (/^-[A-Za-z]./.test(word.value) && !word.value.startsWith("--")) {
-      if (options.has(word.value.slice(0, 2))) out.push(word);
+      if (options.has(word.value.slice(0, 2)) && isDataValue(word, word.value.slice(2))) {
+        out.push(word);
+      }
     }
   }
   return out;
@@ -12117,7 +12243,9 @@ function searchPatterns(words2) {
   }
   return [];
 }
-function segmentRegions(segment) {
+function segmentRegions(segment, interpreterFollows) {
+  if (segment.pipedOut) return [];
+  if (segment.writesFile && interpreterFollows) return [];
   const words2 = segment.words;
   const at = programIndex(words2);
   const program = words2[at];
@@ -12159,7 +12287,7 @@ function segmentRegions(segment) {
   if (startsTests && name !== "test") {
     blank(optionValues(rest, TEST_FILTER_OPTIONS), "test-string");
   }
-  if (INPUT_SINKS.has(name)) {
+  if (INPUT_SINKS.has(name) && !interpreterFollows) {
     for (const input of segment.inputs) regions.push({ ...input, kind: "heredoc" });
   }
   return regions;
@@ -12167,7 +12295,10 @@ function segmentRegions(segment) {
 function executedView(command) {
   const parsed = parseShell(command);
   const regions = parsed.comments.map((c) => ({ ...c, kind: "doc" }));
-  for (const segment of parsed.segments) regions.push(...segmentRegions(segment));
+  parsed.segments.forEach((segment, index) => {
+    const interpreterFollows = parsed.segments.slice(index + 1).some(startsInterpreter);
+    regions.push(...segmentRegions(segment, interpreterFollows));
+  });
   if (regions.length === 0) return { text: command, kinds: [] };
   regions.sort((a, b) => a.start - b.start);
   let out = "";

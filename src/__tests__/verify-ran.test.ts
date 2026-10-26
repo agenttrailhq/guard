@@ -1,4 +1,4 @@
-// cspell:words pytest oneline
+// cspell:words pytest oneline BLANKERS
 /**
  * Ran, or only mentioned (`core/verify/ran.ts`).
  *
@@ -326,5 +326,141 @@ describe("the ran-or-mentioned split, per app and per place a match can sit", ()
       sessions: [{ ...session, turns: [...session.turns, ...session.turns] }],
     };
     expect(tallyMatchedCalls(doubled, CATALOG, NO_ALLOWLIST).tally.ran).toBe(1);
+  });
+});
+
+/** The command the rm rule catches, as a command that runs. */
+const RUN = "rm -rf build";
+
+/** How many times the rm rule's text is left in the executed view. */
+const leftToRun = (command: string): number =>
+  executedView(command).text.match(/\brm\s+-rf\s+build\b/g)?.length ?? 0;
+
+describe("a command that ran is never hidden as mentioned", () => {
+  // Each blanking program, then each control operator, then a command that runs. Whatever
+  // the first part blanks, the command after the operator must stay.
+  const OPERATORS = [";", "&&", "||", "|", "&", "\n"] as const;
+  const BLANKERS: readonly (readonly [string, (op: string) => string])[] = [
+    ["echo", (op) => `echo "${RUN}" ${op} ${RUN}`],
+    ["printf", (op) => `printf '%s' '${RUN}' ${op} ${RUN}`],
+    ["grep", (op) => `grep -rn "${RUN}" scripts ${op} ${RUN}`],
+    ["git commit -m", (op) => `git commit -m "stop ${RUN}" ${op} ${RUN}`],
+    ["a man page", (op) => `man rm ${op} ${RUN}`],
+    [
+      "a cat heredoc",
+      (op) =>
+        op === "\n"
+          ? `cat > notes.md <<'EOF'\n${RUN}\nEOF\n${RUN}`
+          : `cat > notes.md <<'EOF' ${op} ${RUN}\n${RUN}\nEOF`,
+    ],
+    [
+      "a tee heredoc",
+      (op) =>
+        op === "\n"
+          ? `tee notes.md <<'EOF'\n${RUN}\nEOF\n${RUN}`
+          : `tee notes.md <<'EOF' ${op} ${RUN}\n${RUN}\nEOF`,
+    ],
+    [
+      "a tab-stripped heredoc",
+      (op) =>
+        op === "\n"
+          ? `cat <<-EOF > notes.md\n\t${RUN}\n\tEOF\n${RUN}`
+          : `cat <<-EOF > notes.md ${op} ${RUN}\n\t${RUN}\n\tEOF`,
+    ],
+  ];
+
+  for (const [label, build] of BLANKERS) {
+    it.each(OPERATORS)(`${label}, then %j, then a command`, (op) => {
+      const command = build(op);
+      expect(leftToRun(command), JSON.stringify(command)).toBeGreaterThanOrEqual(1);
+      expect(runVerdict("claude", bash(command), ok, stillMatches).state).toBe("ran");
+    });
+  }
+
+  it.each([
+    ["printed text piped into a shell", `echo "${RUN}" | sh`],
+    ["printf piped into bash", `printf '${RUN}\\n' | bash`],
+    ["printed text piped with stderr", `echo "${RUN}" |& sh`],
+    ["a heredoc printed into bash", `cat <<'EOF' | bash\n${RUN}\nEOF`],
+    ["a heredoc teed into sh", `tee run.sh <<'EOF' | sh\n${RUN}\nEOF`],
+    ["a heredoc written, then run with bash", `cat > run.sh <<'EOF'\n${RUN}\nEOF\nbash run.sh`],
+    [
+      "a heredoc written, then run by path",
+      `cat > run.sh <<'EOF'\n${RUN}\nEOF\nchmod +x run.sh && ./run.sh`,
+    ],
+    ["a heredoc teed, then sourced", `tee run.sh <<'EOF'\n${RUN}\nEOF\nsource run.sh`],
+    ["printed into a file, then run by path", `echo "${RUN}" > run.sh; ./run.sh`],
+    ["printed into a file, then run with python", `echo "${RUN}" > run.py && python3 run.py`],
+    ["a subshell piped into sh", `(echo "${RUN}") | sh`],
+    ["a brace group piped into sh", `{ echo "${RUN}"; } | sh`],
+    ["a man page piped into sh", `man ${RUN} | sh`],
+    ["a substitution as a commit message", `git commit -m "$(${RUN})"`],
+    ["a heredoc substitution that pipes", `git commit -m "$(cat <<'EOF' | sh\n${RUN}\nEOF\n)"`],
+    ["a hash inside a word", `echo a#b; ${RUN}`],
+    ["a command after a semicolon", `echo done; ${RUN}`],
+    ["a command after a tab-stripped heredoc", `cat <<-EOF > notes.md\n\tnotes\n\tEOF\n${RUN}`],
+  ])("%s is ran", (_label, command) => {
+    expect(leftToRun(command), JSON.stringify(command)).toBeGreaterThanOrEqual(1);
+    expect(runVerdict("claude", bash(command), ok, stillMatches).state).toBe("ran");
+  });
+
+  it("a heredoc written to a file that nothing runs stays a mention", () => {
+    const command = `cat > notes.md <<'EOF'\n${RUN}\nEOF\ngit add notes.md`;
+    expect(runVerdict("claude", bash(command), ok, stillMatches)).toEqual({
+      state: "mentioned",
+      why: "heredoc",
+    });
+  });
+
+  it("printed text that stays on the terminal stays a mention, even when a shell runs later", () => {
+    expect(runVerdict("claude", bash(`echo "${RUN}"; bash ci.sh`), ok, stillMatches).state).toBe(
+      "mentioned",
+    );
+  });
+});
+
+describe("a message given as a printed heredoc is data", () => {
+  it.each([
+    [
+      "a commit message",
+      `git commit -m "$(cat <<'EOF'\nStop the ${RUN} step.\n\nIt's gone.\nEOF\n)"`,
+    ],
+    [
+      "a commit message holding double quotes",
+      `git commit -m "$(cat <<'EOF'\nReplace "${RUN}" with a clean step.\nEOF\n)"`,
+    ],
+    ["an attached message", `git commit -m"$(cat <<'EOF'\n${RUN}\nEOF\n)"`],
+    [
+      "a PR body",
+      `gh pr create --title t --body "$(cat <<'EOF'\n## Summary\n- drop ${RUN}\nEOF\n)"`,
+    ],
+    ["a PR body after =", `gh pr create --title t --body="$(cat <<'EOF'\n${RUN}\nEOF\n)"`],
+  ])("%s is mentioned", (_label, command) => {
+    expect(runVerdict("claude", bash(command), ok, stillMatches)).toEqual({
+      state: "mentioned",
+      why: "doc",
+    });
+  });
+
+  it("and a command after it still runs", () => {
+    const command = `git commit -m "$(cat <<'EOF'\nnotes\nEOF\n)" && ${RUN}`;
+    expect(runVerdict("claude", bash(command), ok, stillMatches).state).toBe("ran");
+  });
+});
+
+describe("result edge cases", () => {
+  it.each([
+    "Blocked by a hook. Exit code 2 would have followed.",
+    "PreToolUse hook said no\nExit code 2",
+  ])("an error result that only mentions an exit code mid-text stays unknown: %j", (content) => {
+    expect(
+      runVerdict("claude", bash(RUN), { ...ok, isError: true, content }, stillMatches),
+    ).toEqual({ state: "unknown", why: "error-result" });
+  });
+
+  it("an assignment before a printer still makes it a printer", () => {
+    expect(runVerdict("claude", bash(`FOO=1 echo "${RUN}"`), ok, stillMatches).state).toBe(
+      "mentioned",
+    );
   });
 });

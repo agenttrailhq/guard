@@ -1,4 +1,4 @@
-// cspell:words egrep fgrep zgrep apropos whatis tldr whereis stdbuf bunx herestring heredocs redirections whatchanged shortlog pytest nohup iglob mtext Stext ovalue
+// cspell:words egrep fgrep zgrep apropos whatis tldr whereis stdbuf bunx herestring heredocs redirections whatchanged shortlog pytest nohup iglob mtext Stext ovalue osascript
 /**
  * Ran, or only mentioned: did a matched tool call actually run on this machine?
  *
@@ -26,6 +26,13 @@
  * `$(…)` or backticks is kept too: `echo "$(rm -rf x)"` runs `rm`. Getting it wrong in that
  * direction counts a mention as a command, which overstates; the other direction would hide a
  * command that ran.
+ *
+ * Printed text is data only while it stays printed. A command whose output goes into a pipe
+ * blanks nothing (`echo "…" | sh`, `cat <<EOF | bash`, `(echo …) | sh`), and when a later
+ * command in the same call starts an interpreter or a program by path, nothing that writes a
+ * file and no heredoc is blanked, since the file just written may be what runs. The one
+ * substitution read as data is a value that only prints a heredoc, `-m "$(cat <<'EOF' … EOF)"`,
+ * which is how agents pass a commit message or a PR body.
  *
  * ── Whether it ran ───────────────────────────────────────────────────────────
  * A call whose matched text sits where the shell runs it is `ran` only when the transcript
@@ -74,12 +81,21 @@ interface Body {
   readonly end: number;
 }
 
-/** One simple command: its words, and the data fed to its standard input. */
+/** One simple command: its words, the data fed to its standard input, and where its output goes. */
 interface Segment {
   /** Words other than redirection targets, in order. */
   readonly words: Word[];
   /** Heredoc bodies and here-strings fed to this command. */
   readonly inputs: Body[];
+  /** Its output goes into a pipe (`|`, `|&`), alone or as part of a `( … )` or `{ … }` group. */
+  pipedOut: boolean;
+  /** It redirects its output into a file (`>`, `>>`, `&>`). */
+  writesFile: boolean;
+}
+
+/** A segment with nothing in it yet. */
+function emptySegment(): Segment {
+  return { words: [], inputs: [], pipedOut: false, writesFile: false };
 }
 
 /** A heredoc whose delimiter has been read and whose body starts after the next line break. */
@@ -102,7 +118,10 @@ interface Parsed {
   readonly comments: readonly Body[];
 }
 
-/** Where a command substitution or a quoted string ends, starting at an opening character. */
+/**
+ * Where a quoted string ends, starting at its opening character. Inside double quotes a
+ * `$(…)` is skipped whole, so a quote inside the substitution does not end the string.
+ */
 function skipQuoted(text: string, at: number, quote: string): number {
   let i = at + 1;
   while (i < text.length) {
@@ -111,18 +130,63 @@ function skipQuoted(text: string, at: number, quote: string): number {
       i += 2;
       continue;
     }
+    if (quote === '"' && ch === "$" && text[i + 1] === "(") {
+      i = skipSubstitution(text, i + 1);
+      continue;
+    }
     if (ch === quote) return i + 1;
     i += 1;
   }
   return text.length;
 }
 
-/** Where a `$(…)` ends, counting nested parentheses and skipping quoted text. */
+/** A heredoc delimiter at `at` (just past `<<` or `<<-`): its text, and where it ends. */
+function readDelimiter(text: string, at: number): { delimiter: string; end: number } | undefined {
+  let i = at;
+  while (text[i] === " " || text[i] === "\t") i += 1;
+  const quote = text[i];
+  if (quote === "'" || quote === '"') {
+    const close = text.indexOf(quote, i + 1);
+    if (close < 0) return undefined;
+    return { delimiter: text.slice(i + 1, close), end: close + 1 };
+  }
+  const match = /^[^\s;&|<>()]+/.exec(text.slice(i));
+  if (match === null) return undefined;
+  return { delimiter: match[0].replace(/\\/g, ""), end: i + match[0].length };
+}
+
+/**
+ * Where a `$(…)` ends, counting nested parentheses, skipping quoted text and skipping the body
+ * of any heredoc opened inside it, so an apostrophe in a heredoc message is not a quote.
+ */
 function skipSubstitution(text: string, at: number): number {
   let depth = 0;
   let i = at;
+  const pending: { delimiter: string; stripTabs: boolean }[] = [];
   while (i < text.length) {
     const ch = text[i];
+    if (ch === "\n" && pending.length > 0) {
+      i += 1;
+      for (const doc of pending.splice(0)) {
+        while (i < text.length) {
+          const lineEnd = text.indexOf("\n", i);
+          const stop = lineEnd < 0 ? text.length : lineEnd;
+          const line = text.slice(i, stop);
+          i = lineEnd < 0 ? text.length : lineEnd + 1;
+          if ((doc.stripTabs ? line.replace(/^\t+/, "") : line) === doc.delimiter) break;
+        }
+      }
+      continue;
+    }
+    if (ch === "<" && text[i + 1] === "<" && text[i + 2] !== "<") {
+      const stripTabs = text[i + 2] === "-";
+      const read = readDelimiter(text, i + (stripTabs ? 3 : 2));
+      if (read !== undefined) {
+        pending.push({ delimiter: read.delimiter, stripTabs });
+        i = read.end;
+        continue;
+      }
+    }
     if (ch === "'" || ch === '"' || ch === "`") {
       i = skipQuoted(text, i, ch);
       continue;
@@ -152,7 +216,9 @@ function parseShell(text: string): Parsed {
   const segments: Segment[] = [];
   const comments: Body[] = [];
   const pending: PendingHeredoc[] = [];
-  let segment: Segment = { words: [], inputs: [] };
+  // Where each open `(` group starts, as an index into `segments`.
+  const groups: number[] = [];
+  let segment: Segment = emptySegment();
   // What the next completed word is: an ordinary word, a redirection target, a heredoc
   // delimiter or a here-string.
   let next: "word" | "target" | "heredoc" | "herestring" | "heredoc-tabs" = "word";
@@ -175,7 +241,28 @@ function parseShell(text: string): Parsed {
   const endSegment = (end: number): void => {
     endWord(end);
     if (segment.words.length > 0 || segment.inputs.length > 0) segments.push(segment);
-    segment = { words: [], inputs: [] };
+    segment = emptySegment();
+  };
+  /** Mark segments from `from` on as writing into a pipe. */
+  const pipeFrom = (from: number): void => {
+    for (let k = Math.max(0, from); k < segments.length; k++)
+      (segments[k] as Segment).pipedOut = true;
+  };
+  /**
+   * The segment just ended went into a pipe. A `{ … }` group ends in a segment that is only
+   * `}`, and then the whole group goes into the pipe.
+   */
+  const pipeLast = (): void => {
+    const last = segments[segments.length - 1];
+    if (last === undefined) return;
+    last.pipedOut = true;
+    if (last.words.length === 1 && last.words[0]?.value === "}") {
+      for (let k = segments.length - 1; k >= 0; k--) {
+        const seg = segments[k] as Segment;
+        seg.pipedOut = true;
+        if (seg.words[0]?.value === "{") break;
+      }
+    }
   };
   const startWord = (at: number): void => {
     if (wordStart < 0) wordStart = at;
@@ -277,9 +364,14 @@ function parseShell(text: string): Parsed {
         next = "heredoc";
         i += 2;
       } else {
-        // `>`, `>>`, `<`, `>|`, `<>`, and `>&` / `<&` with a descriptor.
+        // `>`, `>>`, `<`, `>|`, `<>`, and `>&` / `<&` with a descriptor. An output redirect
+        // to anything but a descriptor (`2>&1`) writes a file.
+        const start = i;
         i += 1;
         while (i < text.length && /[>|&<]/.test(text[i] as string)) i += 1;
+        const operator = text.slice(start, i);
+        const toDescriptor = operator.endsWith("&") && /^\s*(?:\d|-)/.test(text.slice(i));
+        if (operator.startsWith(">") && !toDescriptor) segment.writesFile = true;
         next = "target";
       }
       continue;
@@ -289,15 +381,35 @@ function parseShell(text: string): Parsed {
       endWord(i);
       i += 2;
       if (text[i] === ">") i += 1;
+      segment.writesFile = true;
       next = "target";
       continue;
     }
 
-    if (ch === ";" || ch === "&" || ch === "|" || ch === "(" || ch === ")") {
+    if (ch === "(") {
+      endSegment(i);
+      groups.push(segments.length);
+      i += 1;
+      continue;
+    }
+
+    if (ch === ")") {
+      endSegment(i);
+      const from = groups.pop() ?? 0;
+      i += 1;
+      // A group whose output goes into a pipe pipes every command in it.
+      const after = /^[ \t]*\|(?!\|)/.exec(text.slice(i));
+      if (after !== null) pipeFrom(from);
+      continue;
+    }
+
+    if (ch === ";" || ch === "&" || ch === "|") {
       endSegment(i);
       i += 1;
+      const pipe = ch === "|" && text[i] !== "|";
       // `&&`, `||`, `|&` and `;;` are one operator.
-      if ((ch === "&" || ch === "|" || ch === ";") && /[&|;]/.test(text[i] ?? "")) i += 1;
+      if (/[&|;]/.test(text[i] ?? "")) i += 1;
+      if (pipe) pipeLast();
       continue;
     }
 
@@ -424,6 +536,73 @@ const SEARCH_VALUE_OPTIONS: ReadonlySet<string> = new Set([
 /** Programs that feed a heredoc or a here-string into a file or the terminal. */
 const INPUT_SINKS: ReadonlySet<string> = new Set(["cat", "tee", "echo", "printf"]);
 
+/**
+ * Programs that run text they are given or a file they are pointed at. A file written earlier
+ * in the same command can be run by one of these, so nothing that writes a file is blanked when
+ * one follows.
+ */
+const INTERPRETERS: ReadonlySet<string> = new Set([
+  "sh",
+  "bash",
+  "zsh",
+  "dash",
+  "ksh",
+  "fish",
+  "source",
+  ".",
+  "eval",
+  "xargs",
+  "node",
+  "deno",
+  "bun",
+  "ruby",
+  "perl",
+  "php",
+  "psql",
+  "mysql",
+  "mariadb",
+  "sqlite3",
+  "osascript",
+  "pwsh",
+  "powershell",
+  "cmd",
+  "make",
+  "awk",
+]);
+
+/** Does this segment start a program that runs text or a file it is given? */
+function startsInterpreter(segment: Segment): boolean {
+  const program = segment.words[programIndex(segment.words)];
+  if (program === undefined) return false;
+  const name = programName(program);
+  // A program named by a path (`./run.sh`, `/tmp/x.sh`, `bin/task`) may be a file just written.
+  return INTERPRETERS.has(name) || /^python[\d.]*$/.test(name) || program.value.includes("/");
+}
+
+/**
+ * Is `raw` exactly one `$(cat <<DELIM … DELIM)`: a heredoc printed as a value, which is how
+ * agents pass a multi-line commit message or PR body? Its text is data. Anything more inside
+ * the substitution — a pipe, a second command, a different program — and part of it runs.
+ */
+function isHeredocValue(raw: string): boolean {
+  if (!raw.startsWith("$(") || skipSubstitution(raw, 1) !== raw.length) return false;
+  const inner = parseShell(raw.slice(2, -1));
+  if (inner.segments.length !== 1 || inner.comments.length > 0) return false;
+  const only = inner.segments[0] as Segment;
+  return (
+    only.words.length === 1 &&
+    programName(only.words[0] as Word) === "cat" &&
+    only.inputs.length === 1 &&
+    !only.pipedOut &&
+    !only.writesFile
+  );
+}
+
+/** Is this option value data: no substitution, or only a printed heredoc? */
+function isDataValue(word: Word, value: string = word.value): boolean {
+  return !word.runs || isHeredocValue(value);
+}
+
 /** Test runners, and the words that start one through a package manager. */
 const TEST_RUNNERS: ReadonlySet<string> = new Set(["vitest", "jest", "mocha", "pytest", "test"]);
 
@@ -483,7 +662,8 @@ const GH_TEXT_OPTIONS: ReadonlySet<string> = new Set([
 /**
  * The values of `options` among `words`, as `--opt value`, `--opt=value` or `-ovalue`.
  *
- * A value that holds a substitution is left out: part of it runs.
+ * A value that holds a substitution is left out — part of it runs — unless the substitution
+ * only prints a heredoc (`-m "$(cat <<'EOF' … EOF)"`).
  */
 function optionValues(words: readonly Word[], options: ReadonlySet<string>): Word[] {
   const out: Word[] = [];
@@ -491,19 +671,20 @@ function optionValues(words: readonly Word[], options: ReadonlySet<string>): Wor
     const word = words[k] as Word;
     if (options.has(word.value)) {
       const value = words[k + 1];
-      if (value !== undefined && !value.runs) out.push(value);
+      if (value !== undefined && isDataValue(value)) out.push(value);
       k += 1;
       continue;
     }
-    if (word.runs) continue;
     const eq = word.value.indexOf("=");
     if (word.value.startsWith("--") && eq > 0 && options.has(word.value.slice(0, eq))) {
-      out.push(word);
+      if (isDataValue(word, word.value.slice(eq + 1))) out.push(word);
       continue;
     }
     // `-mtext`, `-Stext`: a short option with its value attached.
     if (/^-[A-Za-z]./.test(word.value) && !word.value.startsWith("--")) {
-      if (options.has(word.value.slice(0, 2))) out.push(word);
+      if (options.has(word.value.slice(0, 2)) && isDataValue(word, word.value.slice(2))) {
+        out.push(word);
+      }
     }
   }
   return out;
@@ -528,8 +709,18 @@ function searchPatterns(words: readonly Word[]): Word[] {
   return [];
 }
 
-/** The regions of one simple command that are only data. */
-function segmentRegions(segment: Segment): Region[] {
+/**
+ * The regions of one simple command that are only data.
+ *
+ * Nothing is blanked in a command whose output goes into a pipe: whatever it prints may be
+ * run by the next program (`echo "…" | sh`, `cat <<EOF | bash`). Nothing is blanked in a
+ * command that writes a file, and no heredoc is blanked at all, when a later command in the
+ * same call starts an interpreter or a program by path: the file just written may be what
+ * it runs.
+ */
+function segmentRegions(segment: Segment, interpreterFollows: boolean): Region[] {
+  if (segment.pipedOut) return [];
+  if (segment.writesFile && interpreterFollows) return [];
   const words = segment.words;
   const at = programIndex(words);
   const program = words[at];
@@ -575,7 +766,7 @@ function segmentRegions(segment: Segment): Region[] {
     blank(optionValues(rest, TEST_FILTER_OPTIONS), "test-string");
   }
 
-  if (INPUT_SINKS.has(name)) {
+  if (INPUT_SINKS.has(name) && !interpreterFollows) {
     for (const input of segment.inputs) regions.push({ ...input, kind: "heredoc" });
   }
   return regions;
@@ -589,7 +780,10 @@ function segmentRegions(segment: Segment): Region[] {
 export function executedView(command: string): ExecutedView {
   const parsed = parseShell(command);
   const regions: Region[] = parsed.comments.map((c) => ({ ...c, kind: "doc" as const }));
-  for (const segment of parsed.segments) regions.push(...segmentRegions(segment));
+  parsed.segments.forEach((segment, index) => {
+    const interpreterFollows = parsed.segments.slice(index + 1).some(startsInterpreter);
+    regions.push(...segmentRegions(segment, interpreterFollows));
+  });
   if (regions.length === 0) return { text: command, kinds: [] };
 
   regions.sort((a, b) => a.start - b.start);
@@ -649,8 +843,10 @@ function verdict(state: RunVerdict["state"], why: RunWhy): RunVerdict {
 /**
  * Did this call run? See the module header.
  *
- * `stillMatches` evaluates the guardrails that matched the call on a changed copy of it; it is
- * how a match that came only from a mentioned region is told apart from one that did not.
+ * `stillMatches` evaluates the whole catalog on a changed copy of the call, with its data-only
+ * regions blanked. If any guardrail still matches, the call is treated as having run — which
+ * errs towards `ran` when a different guardrail matches the blanked copy. A match that came
+ * only from a mentioned region leaves nothing to match.
  */
 export function runVerdict(
   agent: AgentSource,
