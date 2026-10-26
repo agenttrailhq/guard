@@ -158,6 +158,13 @@ function processes(names: readonly string[] | "unreadable" = ["zsh", "node"]): V
   };
 }
 
+/**
+ * The process check finding no agent by name, which is all it can say about a session run under
+ * a generic name such as `node`. The tests of that gap use only this, so they do not depend on
+ * the shape of the process list.
+ */
+const NO_AGENT_SEEN: VerifyIO = processes(["node"]);
+
 /** A `ScrubIO` that records every write call. */
 function recording(base: ScrubIO = createRealScrubIO()): { io: ScrubIO; writes: string[] } {
   const writes: string[] = [];
@@ -952,14 +959,14 @@ describe("what the process check cannot see", () => {
     const s = await setup("cursor");
     const run = await scan(s, "cursor", ["--scrub", "--apply"]);
     expect(run.code).toBe(0);
-    expect(run.stdout).toContain(`No Cursor process is running, by name. ${PROCESS_NAME_GAP}\n`);
+    expect(run.stdout).toContain(`No Cursor process was found by name. ${PROCESS_NAME_GAP}\n`);
   });
 
   it("a session run as node is not seen by name, so only the 5-minute check holds it back", async () => {
     const s = await setup("claude");
     for (const file of s.files) utimesSync(file, new Date(), new Date());
     const before = snapshot(s.root);
-    const run = await scan(s, "claude", ["--scrub", "--apply"], { verify: processes(["node"]) });
+    const run = await scan(s, "claude", ["--scrub", "--apply"], { verify: NO_AGENT_SEEN });
     expect(run.stdout).not.toContain("Refused:");
     expect(run.stdout).toContain(PROCESS_NAME_GAP);
     expect(run.stdout).toContain("changed in the last 5 minutes");

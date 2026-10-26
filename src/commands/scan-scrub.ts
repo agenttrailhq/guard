@@ -452,7 +452,8 @@ export async function runScrub(input: ScrubRunInput): Promise<number> {
   }
 
   lines.push("");
-  lines.push(c.dim(`No ${app} process is running, by name. ${PROCESS_NAME_GAP}`));
+  // Not finding the app by name does not show it is closed; see `PROCESS_NAME_GAP`.
+  lines.push(c.dim(`No ${app} process was found by name. ${PROCESS_NAME_GAP}`));
 
   const outcomes: { readonly path: string; readonly reason: SkipReason; readonly code?: string }[] =
     recent.map((f) => ({ path: f.path, reason: "recent" }));

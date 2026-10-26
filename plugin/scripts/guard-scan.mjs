@@ -14734,7 +14734,7 @@ async function runScrub(input) {
     return 1;
   }
   lines.push("");
-  lines.push(c.dim(`No ${app} process is running, by name. ${PROCESS_NAME_GAP}`));
+  lines.push(c.dim(`No ${app} process was found by name. ${PROCESS_NAME_GAP}`));
   const outcomes = recent.map((f) => ({ path: f.path, reason: "recent" }));
   const targets = planning.changes.filter((f) => !isRecentlyModified(f.stat.mtimeMs, nowMs));
   if (targets.length === 0) {
