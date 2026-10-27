@@ -16637,6 +16637,22 @@ var SKIP_GREP_PARTS = [
   "no-verify|HUSKY|SKIP=|hooks"
 ];
 var COMMIT_LINE = /^\[[^\]\n]*? ([0-9a-f]{7,64})\] /gm;
+var OTHER_COMMIT_MAKERS = /* @__PURE__ */ new Set([
+  "cherry-pick",
+  "revert",
+  "merge",
+  "am",
+  "rebase",
+  "pull"
+]);
+function makesOtherCommits(text2, cwd, home) {
+  let found = false;
+  walkCommands(text2, cwd, home, (command) => {
+    const git = gitCommand(command.words);
+    if (git !== void 0 && OTHER_COMMIT_MAKERS.has(git.sub)) found = true;
+  });
+  return found;
+}
 function noVerifyIds(context, judged) {
   const toCheck = [];
   let notIdentified = 0;
@@ -16652,7 +16668,7 @@ function noVerifyIds(context, judged) {
       failed += 1;
       continue;
     }
-    if (all.length !== j.found.length || folders.size !== 1 || ids.length === 0) {
+    if (all.length !== j.found.length || folders.size !== 1 || ids.length === 0 || ids.length !== all.length || makesOtherCommits(j.call.view, j.call.cwd, context.log.home)) {
       notIdentified += 1;
       continue;
     }

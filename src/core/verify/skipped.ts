@@ -457,6 +457,26 @@ interface CommitToCheck {
 /** A commit line: `[main 1a2b3c4] message`, `[main (root-commit) 1a2b3c4] message`. */
 const COMMIT_LINE = /^\[[^\]\n]*? ([0-9a-f]{7,64})\] /gm;
 
+/** `git` subcommands other than `commit` that make commits, and may print a commit line. */
+const OTHER_COMMIT_MAKERS: ReadonlySet<string> = new Set([
+  "cherry-pick",
+  "revert",
+  "merge",
+  "am",
+  "rebase",
+  "pull",
+]);
+
+/** Does a text run a `git` command other than `commit` that makes commits? */
+function makesOtherCommits(text: string, cwd: string | undefined, home: string): boolean {
+  let found = false;
+  walkCommands(text, cwd, home, (command) => {
+    const git = gitCommand(command.words);
+    if (git !== undefined && OTHER_COMMIT_MAKERS.has(git.sub)) found = true;
+  });
+  return found;
+}
+
 /** The ids of the `--no-verify` commits in the calls that ran, and the calls with none. */
 function noVerifyIds(
   context: GitCheckContext,
@@ -479,8 +499,16 @@ function noVerifyIds(
       continue;
     }
     // The ids can be put to the right commit only when every commit in the call skipped its
-    // hooks, in one folder.
-    if (all.length !== j.found.length || folders.size !== 1 || ids.length === 0) {
+    // hooks, in one folder, and each commit line is one of those commits: one line per
+    // `git commit`, and no other git command in the call that makes commits (a cherry-pick, a
+    // revert, a merge, `am`, a rebase or a pull prints commit lines of its own).
+    if (
+      all.length !== j.found.length ||
+      folders.size !== 1 ||
+      ids.length === 0 ||
+      ids.length !== all.length ||
+      makesOtherCommits(j.call.view, j.call.cwd, context.log.home)
+    ) {
       notIdentified += 1;
       continue;
     }

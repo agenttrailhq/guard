@@ -238,6 +238,59 @@ describe("--no-verify commits, against a real repository", () => {
     expect(result.status).toBe("could-not-check");
   });
 
+  it("a cherry-pick in the same call: its commit line is not counted as one that skipped hooks", async () => {
+    const root = makeRepo("nv-cherry-pick", { hooks: ["pre-commit"] });
+    git(root, "checkout", "-q", "-b", "side");
+    commitLine(root, "side.txt", "side work");
+    const side = rev(root, "HEAD");
+    git(root, "checkout", "-q", "main");
+    const first = commitLine(root, "a.txt", "skipped hooks", ["--no-verify"]);
+    const picked = git(root, "cherry-pick", side);
+    setRemoteBranch(root, "main", rev(root, "HEAD"));
+    const { facts, result } = await skipped([
+      {
+        cwd: root,
+        events: [
+          {
+            kind: "bash",
+            command: `git commit --no-verify -m "skipped hooks" && git cherry-pick ${side}`,
+            output: `${first}${picked}`,
+          },
+        ],
+      },
+    ]);
+    // Two commit lines were printed; only one is the commit that skipped its hooks, and which
+    // one cannot be told from the output alone.
+    expect(facts.noVerify.onMain).toBe(0);
+    expect(facts.noVerify.commits).toBe(0);
+    expect(facts.noVerify.notIdentified).toBe(1);
+    expect(result.status).toBe("could-not-check");
+  });
+
+  it.each([
+    ["a revert", "git revert --no-edit HEAD"],
+    ["a merge", "git merge --no-edit topic"],
+    ["am", "git am fix.patch"],
+    ["a rebase", "git rebase main"],
+    ["a pull", "git pull origin main"],
+  ])("%s in the same call: the count is not identified", async (_label, other) => {
+    const { root, output } = noVerifyRepo(`nv-other-${other.split(" ")[1]}`);
+    const { facts } = await skipped([
+      { cwd: root, events: [{ kind: "bash", command: `${COMMIT} && ${other}`, output }] },
+    ]);
+    expect(facts.noVerify.notIdentified).toBe(1);
+    expect(facts.noVerify.commits).toBe(0);
+  });
+
+  it("more commit lines than commits in the call: not identified", async () => {
+    const { root, output } = noVerifyRepo("nv-extra-line");
+    const { facts } = await skipped([
+      { cwd: root, events: [{ kind: "bash", command: COMMIT, output: `${output}${output}` }] },
+    ]);
+    expect(facts.noVerify.notIdentified).toBe(1);
+    expect(facts.noVerify.onMain).toBe(0);
+  });
+
   it("a commit that printed no id is not identified, never clean", async () => {
     const { root } = noVerifyRepo("nv-quiet");
     const { facts, result } = await skipped([
