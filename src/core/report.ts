@@ -793,7 +793,7 @@ function topLibraryBlocker(result: ScanResult): ScanFinding | undefined {
     )[0];
 }
 
-/** The tail every post ends with. */
+/** The tail the totals post ends with. The verified post ends ". Nothing uploaded.", to fit. */
 const SHARE_TAIL = ". Checked locally, nothing uploaded.";
 
 /**
@@ -1820,7 +1820,10 @@ ${copyable("cmd-scan-again", `agenttrail-guard scan --agent ${a} --review`, "Cop
 </section>`;
 }
 
-/** The post preview: totals only, editable, with a count and a plain link to X. */
+/**
+ * The post preview: verified counts or totals (`shareText`), editable, with a count and a plain
+ * link to X, under a note that says which kind of post it is.
+ */
 function shareSectionHtml(
   result: ScanResult,
   payload: ReportPayload,

@@ -27,6 +27,7 @@ import type { VerifyCategory, VerifyStatus } from "../core/verify/types.js";
 import {
   baseResult,
   CODEX_ONLY_RESULT,
+  CURSOR_RESULT,
   FALLBACK_RESULT,
   HIDING_RESULT,
   LOCAL_FIX_CATEGORIES,
@@ -347,6 +348,32 @@ describe("on the page", () => {
     const text = reportPayload(HIDING_RESULT, VERIFIED_META, TEST_ONLY_BUILDERS).shareText;
     expect(text).toContain("3 likely-real credentials left in its transcripts");
     expect(text).not.toContain("deleted work");
+  });
+});
+
+describe("a Cursor scan, whose sessions record no command output", () => {
+  const CURSOR: CardContext = { ranEvidence: "none" };
+
+  it("still states a credential, which is found in text rather than in a call that ran", () => {
+    expect(post([claim("secrets", 3)], CURSOR)).toContain(
+      ": 3 likely-real credentials left in its transcripts.",
+    );
+  });
+
+  it("never states a count its card could not confirm for want of output", () => {
+    const unconfirmed = claim("destructive", 2, {
+      unconfirmed: { reason: "no-output", forms: [] },
+    });
+    expect(post([unconfirmed], CURSOR)).toBe(TOTALS);
+    expect(post([claim("secrets", 3), unconfirmed], CURSOR)).not.toContain("recursive");
+  });
+
+  it("on the page, the post states only confirmed counts, and never a zero", () => {
+    const text = reportPayload(CURSOR_RESULT, VERIFIED_META, TEST_ONLY_BUILDERS).shareText;
+    expect(text).toContain("AgentTrail Guard checked 7 tool calls from Cursor on my machine: ");
+    expect(text).toContain("3 likely-real credentials left in its transcripts");
+    expect(text).not.toMatch(/: 0 |· 0 /);
+    expect(postLength(text)).toBeLessThanOrEqual(POST_LIMIT);
   });
 });
 
