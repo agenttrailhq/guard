@@ -1,4 +1,4 @@
-<!-- cspell:words guardrails jsonl mjs bpnpm agenttrailhq backtesting hostnames inspectable tasklist doas nohup setsid -->
+<!-- cspell:words guardrails jsonl mjs bpnpm agenttrailhq backtesting hostnames inspectable tasklist doas nohup setsid ionice caffeinate gtimeout taskset chrt runuser bunx direnv pipenv -->
 
 <div align="center">
 
@@ -410,15 +410,23 @@ run, and is not counted as ran. Where a command that ran, or may have run, uses 
 check does not read inside (a shell given a string to run or one this scan does not read,
 inline code or a piped script, `find -exec`, `xargs`, process substitution, a command
 substitution, `eval`, or git with its own `-c` settings, running a command it was given, or
-after a hook or its config was written, a quote left open, or a command one of that check's
-guardrails matched but the check could not read), the card says **could not confirm** for
-that category, never none or clean.
+after a hook or its config was written, a quote left open, or a command of that check's kind
+behind a program it could not read), the card says **could not confirm** for that category,
+never none or clean.
 
-The checks read past the usual wrappers before a program (`sudo`, `doas`, `env`, `nice`,
-`timeout`, `nohup`, `setsid`, `npx` and the like) and their options. A wrapper they do not
-know can still hide the program from the checks that read program names. Where one of that
-category's guardrails matches the command, the card says could not confirm; where none does,
-for example an IAM user created through an unknown wrapper, it can read clean.
+The checks read past these wrappers before a program, with their options: `sudo`, `doas`,
+`env`, `command`, `exec`, `time`, `nice`, `ionice`, `nohup`, `setsid`, `caffeinate`, `stdbuf`,
+`timeout`, `gtimeout`, `chronic`, `unbuffer`, `taskset`, `chrt`, `flock`, `watch -x`,
+`runuser -u`, `npx`, `bunx` and `dotenv`; and these launchers, to the command they run:
+`aws-vault exec`, `op run`, `doppler run`, `mise exec --`, `direnv exec`, `uv run`,
+`poetry run`, `pipenv run`, `pdm run`, `bundle exec`, `pnpm exec` and `dlx`, `yarn exec` and
+`dlx`, and `npm exec`. Behind any other program no check reads, each later word that names a
+program a check reads (`my-wrapper git push origin main`) is read again from there with that
+check's own reading, and a command it finds makes the card say could not confirm, never
+counted and never clean. Two things stay out of reach: a wrapper that hides the program in a
+string (`su -c`, `env -S`, `nix-shell --run`) is read as a form the check cannot read, so the
+card says could not confirm without knowing what ran; and a program reached only through a
+script file (`./deploy.sh`) is not read at all, so a card can read clean.
 
 Cursor's session files record no command output, so on Cursor
 a check of commands that ran that would read clean says could not confirm instead. The
