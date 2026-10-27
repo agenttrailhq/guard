@@ -5,13 +5,9 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { sentences } from "../core/verify/cards.js";
-import {
-  checkDependencies,
-  DEPENDENCY_SENTENCES,
-  LOCKFILE_RESTORES_LEFT_OUT,
-  readInstalls,
-} from "../core/verify/deps.js";
+import { checkDependencies, type DependencyFacts, readInstalls } from "../core/verify/deps.js";
+import { verifiedNote } from "../core/verify/notes.js";
+import type { Verification } from "../core/verify/types.js";
 import { type CommandEvent, callsOf, OK } from "./verify-command-fixtures.js";
 
 async function deps(
@@ -97,16 +93,39 @@ describe("the check", () => {
     expect(facts).toMatchObject({ installs: 0, unconfirmed: 1 });
   });
 
-  it("says package age was not checked, and how many restores were left out", async () => {
+  it("the rendered note says package age was not checked, and leaves restores out of the count", async () => {
+    const facts = await deps([
+      { kind: "shell", command: "npm ci", result: OK },
+      { kind: "shell", command: "pnpm add zod", result: OK },
+      { kind: "shell", command: "npm ci", result: OK },
+    ]);
+    expect(noteOf(facts)).toBe(
+      "1 package install ran, not counting 2 lockfile restores. Package age is not checked: the scan runs offline.",
+    );
+  });
+
+  it("the rendered note on restores alone calls the match a false positive", async () => {
     const facts = await deps([
       { kind: "shell", command: "npm ci", result: OK },
       { kind: "shell", command: "npm ci", result: OK },
     ]);
-    expect(sentences(DEPENDENCY_SENTENCES, facts).map((s) => s.text)).toEqual([
-      "No install that ran added or changed a package.",
-      "2 lockfile restores were left out.",
-      "Package age: not checked, because the scan runs offline.",
-    ]);
-    expect(LOCKFILE_RESTORES_LEFT_OUT.render({ ...facts, lockfileRestores: 0 })).toBeUndefined();
+    expect(noteOf(facts)).toBe("False positive: the 2 installs that ran only restored a lockfile.");
+  });
+
+  it("no install and no restore: no note, never a line that says none ran", async () => {
+    expect(noteOf(await deps([{ kind: "shell", command: "make", result: OK }]))).toBeUndefined();
   });
 });
+
+/** The note the report renders under the dependency guardrail, for these facts. */
+function noteOf(facts: DependencyFacts): string | undefined {
+  const verification = {
+    matchedCalls: { ran: 1, mentioned: 0, unknown: 0 },
+    resultsRecorded: true,
+    ranEvidence: "tool-result",
+    categories: {},
+    dependencies: facts,
+  } as unknown as Verification;
+  return verifiedNote({ ruleId: "flag-dependency-install", source: "library" }, verification, [])
+    ?.sentence.text;
+}

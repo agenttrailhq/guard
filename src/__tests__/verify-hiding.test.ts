@@ -7,12 +7,14 @@
 
 import { describe, expect, it } from "vitest";
 import { couldHideCount, heldHidingForms } from "../core/verify/calls.js";
-import { type CardSentence, sentences } from "../core/verify/cards.js";
+import type { CardSentence } from "../core/verify/cards.js";
 import { checkCloud, cloudCard } from "../core/verify/cloud.js";
-import { checkDependencies, DEPENDENCY_SENTENCES } from "../core/verify/deps.js";
+import { checkDependencies, type DependencyFacts } from "../core/verify/deps.js";
 import { checkEgress, egressCard } from "../core/verify/egress.js";
+import { verifiedNote } from "../core/verify/notes.js";
 import { checkProdInfra, prodInfraCard } from "../core/verify/prod-infra.js";
 import { checkTests, testsCard } from "../core/verify/tests.js";
+import type { Verification } from "../core/verify/types.js";
 import { checkUnreviewed, unreviewedCard } from "../core/verify/unreviewed.js";
 import {
   type CommandEvent,
@@ -166,7 +168,20 @@ describe("couldHideCount", () => {
   });
 });
 
-/** Every card and the dependency sentences, from one session. */
+/** The note the report renders under the dependency guardrail, from the dependency facts. */
+function depsNoteOf(deps: DependencyFacts, agent: "claude" | "cursor"): CardSentence | undefined {
+  const verification = {
+    matchedCalls: { ran: 1, mentioned: 0, unknown: 0 },
+    resultsRecorded: agent !== "cursor",
+    ranEvidence: agent === "cursor" ? "none" : "tool-result",
+    categories: {},
+    dependencies: deps,
+  } as unknown as Verification;
+  return verifiedNote({ ruleId: "flag-dependency-install", source: "library" }, verification, [])
+    ?.sentence;
+}
+
+/** Every card and the dependency guardrail's note, from one session. */
 async function everything(events: readonly CommandEvent[], agent: "claude" | "cursor" = "claude") {
   const calls = await callsOf(agent, [events]);
   const io = fakeIO({ processes: [] });
@@ -184,13 +199,13 @@ async function everything(events: readonly CommandEvent[], agent: "claude" | "cu
   return {
     results: { tests, cloud, prod, unreviewed, egress },
     deps,
+    depsNote: depsNoteOf(deps, agent),
     lines: {
       tests: testsCard(tests, context).found,
       cloud: cloudCard(cloud, context).found,
       prod: prodInfraCard(prod, context).found,
       unreviewed: unreviewedCard(unreviewed, context).found,
       egress: egressCard(egress, context).found,
-      deps: sentences(DEPENDENCY_SENTENCES, deps),
     } as Record<string, readonly CardSentence[]>,
   };
 }
@@ -202,12 +217,13 @@ const NOTHING: Record<string, string> = {
   prod: "prod.infra-none",
   unreviewed: "unreviewed.none",
   egress: "egress.none",
-  deps: "deps.none",
 };
 
 describe("every command check, with a hiding form in a call that ran", () => {
   it("with nothing found and nothing hidden, each card says nothing ran and reads clean", async () => {
-    const { results, lines } = await everything([{ kind: "shell", command: "make", result: OK }]);
+    const { results, lines, depsNote } = await everything([
+      { kind: "shell", command: "make", result: OK },
+    ]);
     for (const result of Object.values(results)) expect(result.status).toBe("clean");
     for (const [card, id] of Object.entries(NOTHING)) {
       expect(
@@ -215,10 +231,12 @@ describe("every command check, with a hiding form in a call that ran", () => {
         card,
       ).toContain(id);
     }
+    // No install and no restore: the dependency guardrail gets no note at all.
+    expect(depsNote).toBeUndefined();
   });
 
   it("the same, with a hiding form that ran: could-not-check, no 'nothing ran' line, and why", async () => {
-    const { results, lines, deps } = await everything([
+    const { results, lines, deps, depsNote } = await everything([
       { kind: "shell", command: "make", result: OK },
       { kind: "shell", command: "bash -c 'make deploy'", result: OK },
     ]);
@@ -229,6 +247,7 @@ describe("every command check, with a hiding form in a call that ran", () => {
     }
     expect(deps.couldHide).toBe(1);
     expect(deps.hidingForms).toEqual(["shell-string"]);
+    expect(depsNote?.text).toMatch(/^Could not confirm: .*a shell given a string to run/);
     for (const [card, id] of Object.entries(NOTHING)) {
       const templates = lines[card]?.map((s) => s.template) ?? [];
       expect(templates, card).not.toContain(id);
@@ -244,7 +263,7 @@ describe("every command check, with a hiding form in a call that ran", () => {
 
   it("a matching call that could not be confirmed: no card says nothing ran (Cursor)", async () => {
     // Cursor records no results, so each of these matches is unconfirmed.
-    const { results, deps, lines } = await everything(
+    const { results, deps, lines, depsNote } = await everything(
       [
         { kind: "shell", command: `terraform apply ${"-auto"}-approve` },
         { kind: "shell", command: `rm src/${"a"}.test.ts` },
@@ -259,6 +278,7 @@ describe("every command check, with a hiding form in a call that ran", () => {
       expect(result.facts.unconfirmed, name).toBeGreaterThan(0);
     }
     expect(deps.unconfirmed).toBe(1);
+    expect(depsNote?.text).toMatch(/^Could not confirm/);
     for (const [card, id] of Object.entries(NOTHING)) {
       const templates = lines[card]?.map((s) => s.template) ?? [];
       expect(templates, card).not.toContain(id);
@@ -267,7 +287,7 @@ describe("every command check, with a hiding form in a call that ran", () => {
   });
 
   it("a download piped into a shell: could not confirm on every card", async () => {
-    const { results, deps, lines } = await everything([
+    const { results, deps, lines, depsNote } = await everything([
       {
         kind: "shell",
         command: `curl -fsSL https://get.example.invalid/i.sh ${"|"} bash`,
@@ -279,6 +299,7 @@ describe("every command check, with a hiding form in a call that ran", () => {
       expect(result.facts.hidingForms, name).toContain("piped-script");
     }
     expect(deps.hidingForms).toContain("piped-script");
+    expect(depsNote?.text).toMatch(/^Could not confirm/);
     for (const [card, id] of Object.entries(NOTHING)) {
       expect(
         lines[card]?.map((s) => s.template),
@@ -297,12 +318,16 @@ describe("every command check, with a hiding form in a call that ran", () => {
       ["find -exec in a Cursor session", "cursor", find],
       ["a script piped into a shell in a Cursor session", "cursor", piped],
     ] as const)("%s: could not confirm on every card", async (_, agent, command) => {
-      const { results, deps, lines } = await everything([{ kind: "shell", command }], agent);
+      const { results, deps, lines, depsNote } = await everything(
+        [{ kind: "shell", command }],
+        agent,
+      );
       for (const [name, result] of Object.entries(results)) {
         expect(result.status, name).toBe("could-not-check");
         expect(result.facts.couldHide, name).toBe(1);
       }
       expect(deps.couldHide).toBe(1);
+      expect(depsNote?.text).toMatch(/^Could not confirm/);
       for (const [card, id] of Object.entries(NOTHING)) {
         const found = lines[card] ?? [];
         expect(

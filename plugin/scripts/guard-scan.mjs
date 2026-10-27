@@ -19628,31 +19628,6 @@ function checkDependencies(calls) {
     hidingForms: heldHidingForms(calls)
   };
 }
-function whenAny3(id, count2, say) {
-  return { id, render: (f) => count2(f) > 0 ? say(count2(f), f) : void 0 };
-}
-var LOCKFILE_RESTORES_LEFT_OUT = whenAny3(
-  "deps.restores-left-out",
-  (f) => f.lockfileRestores,
-  (n2) => `${counted(n2, "lockfile restore was", "lockfile restores were")} left out.`
-);
-var DEPENDENCY_SENTENCES = [
-  whenAny3(
-    "deps.installs",
-    (f) => f.installs,
-    (n2, f) => `${counted(n2, "install that ran", "installs that ran")} added or changed packages, with ${f.managers.join(", ")}.`
-  ),
-  {
-    id: "deps.none",
-    render: (f) => f.installs === 0 && f.couldHide === 0 && f.unconfirmed === 0 ? "No install that ran added or changed a package." : void 0
-  },
-  couldHideTemplate("deps.could-hide"),
-  LOCKFILE_RESTORES_LEFT_OUT,
-  {
-    id: "deps.package-age",
-    render: () => "Package age: not checked, because the scan runs offline."
-  }
-];
 
 // src/core/verify/fingerprint.ts
 import { createHmac, randomBytes } from "crypto";

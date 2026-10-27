@@ -12,8 +12,8 @@
  * not checked, and the facts say so.
  *
  * There is no card for dependencies. The facts ride on `Verification.dependencies`, for the
- * report's "left out" note and the notes on the dependency guardrails. Counts and fixed enums
- * only.
+ * report's data block and the note on the dependency guardrails (`notes.ts`), which is the one
+ * place they are put in words. Counts and fixed enums only.
  */
 
 import {
@@ -27,8 +27,6 @@ import {
   type SimpleCommand,
   simpleCommands,
 } from "./calls.js";
-import { couldHideTemplate, counted } from "./card-parts.js";
-import type { SentenceTemplate } from "./cards.js";
 import { PACKAGE_AGE_NOT_CHECKED, PACKAGE_MANAGERS } from "./command-facts.js";
 import type { HidingForm } from "./types.js";
 
@@ -212,44 +210,3 @@ export function checkDependencies(calls: CorpusCalls): DependencyFacts {
     hidingForms: heldHidingForms(calls),
   };
 }
-
-// ── Sentences, for the report's "left out" note and the dependency guardrails' notes ─────
-
-/** A template that states a count when it is above zero. */
-function whenAny(
-  id: string,
-  count: (f: DependencyFacts) => number,
-  say: (n: number, f: DependencyFacts) => string,
-): SentenceTemplate<DependencyFacts> {
-  return { id, render: (f) => (count(f) > 0 ? say(count(f), f) : undefined) };
-}
-
-/** The "left out" note's line: lockfile restores are not counted as installs. */
-export const LOCKFILE_RESTORES_LEFT_OUT: SentenceTemplate<DependencyFacts> = whenAny(
-  "deps.restores-left-out",
-  (f) => f.lockfileRestores,
-  (n) => `${counted(n, "lockfile restore was", "lockfile restores were")} left out.`,
-);
-
-/** The dependency sentences. */
-export const DEPENDENCY_SENTENCES: readonly SentenceTemplate<DependencyFacts>[] = [
-  whenAny(
-    "deps.installs",
-    (f) => f.installs,
-    (n, f) =>
-      `${counted(n, "install that ran", "installs that ran")} added or changed packages, with ${f.managers.join(", ")}.`,
-  ),
-  {
-    id: "deps.none",
-    render: (f) =>
-      f.installs === 0 && f.couldHide === 0 && f.unconfirmed === 0
-        ? "No install that ran added or changed a package."
-        : undefined,
-  },
-  couldHideTemplate("deps.could-hide"),
-  LOCKFILE_RESTORES_LEFT_OUT,
-  {
-    id: "deps.package-age",
-    render: () => "Package age: not checked, because the scan runs offline.",
-  },
-];
