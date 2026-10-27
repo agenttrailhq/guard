@@ -196,6 +196,21 @@ describe("a rule the table leaves out gets no note", () => {
     expect(noteText(id)).toBeUndefined();
   });
 
+  it("an id inherited by every object, set on the object prototype, gets none", () => {
+    // `__proto__` and `constructor` would also fail a card lookup. A probe id set on the
+    // prototype with a real check behind it fails only the table's own-property test.
+    const probe = "probe.inherited-rule";
+    const proto = Object.prototype as unknown as Record<string, unknown>;
+    proto[probe] = { category: "secrets", kind: "secrets-printed" };
+    try {
+      expect((NOTE_RULES as Record<string, unknown>)[probe]).toBeDefined();
+      expect(noteText(probe)).toBeUndefined();
+    } finally {
+      delete proto[probe];
+    }
+    expect((NOTE_RULES as Record<string, unknown>)[probe]).toBeUndefined();
+  });
+
   it("a guardrail the user wrote gets none, even with a shipped id", () => {
     const verification = notesVerification();
     const cards = cardsFor(verification, TONE_BUILDERS);
@@ -573,6 +588,22 @@ describe("a check that is not checked gives no note", () => {
     expect(noteText(id, notesVerification({ [category]: { status: "not-checked" } }))).toBe(
       undefined,
     );
+  });
+
+  it.each(CATEGORY_RULES)("%s, from sessions that record no command output", (category, id) => {
+    const cursor = notesVerification(
+      { [category]: { status: "not-checked" } },
+      { resultsRecorded: false, ranEvidence: "none" },
+    );
+    expect(noteText(id, cursor)).toBeUndefined();
+  });
+
+  it.each(CATEGORY_RULES)("%s, from Codex sessions", (category, id) => {
+    const codex = notesVerification(
+      { [category]: { status: "not-checked" } },
+      { ranEvidence: "output-record" },
+    );
+    expect(noteText(id, codex)).toBeUndefined();
   });
 
   it("the dependency check, absent, gives none", () => {

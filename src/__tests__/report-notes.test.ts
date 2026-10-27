@@ -10,6 +10,7 @@ import { renderReport, reportPayload, reviewStrings, shareText } from "../core/r
 import { REPORT_STYLES } from "../core/report-brand.js";
 import { UNCONFIRMED_SENTENCE } from "../core/verify/cards.js";
 import { NOTE_COULD_NOT_CHECK, NOTE_KINDS, type NoteKindName } from "../core/verify/notes.js";
+import { FACT_KEYS } from "../core/verify/types.js";
 import { decodedSurfaces, decodeEntities } from "./html-text.js";
 import {
   checked,
@@ -163,6 +164,22 @@ describe("where a note is shown", () => {
 
   it("a note of what was found takes its card's tone", () => {
     expect(noteClass(row(html, "se.env-print"))).toBe("verified-note v-act");
+  });
+
+  it("a note that could hide others is neutral, once the report carries that count", () => {
+    // The count of calls that could hide others is a key the command checks register; where a
+    // build does not, the report drops it and the row has no note to mark.
+    const hiding = notesResult(
+      notesVerification({ egress: checked("clean", { ...EGRESS_FACTS, couldHide: 1 }) }),
+    );
+    const line = noteLine(row(renderReport(hiding, VERIFIED_META, OPTIONS), "ex.file-upload"));
+    if (FACT_KEYS.includes("couldHide")) {
+      expect(line).toMatch(
+        /^<p class="verified-note v-could-not-check"><span class="verified-note-label">What checking found:<\/span> <span data-template="note\.could-hide">/,
+      );
+    } else {
+      expect(line).toBe("");
+    }
   });
 
   it("a row with no note is as it was", () => {
