@@ -110,6 +110,17 @@ describe("other commands", () => {
     expect(h.out()).toContain("Usage:");
   });
 
+  it("--help lists scan's --verify among the scan flags", async () => {
+    const h = harness();
+    await runCli(["--help"], h.io);
+    const out = h.out();
+    const flags = out.slice(
+      out.indexOf("scan flags:"),
+      out.indexOf("\n\n", out.indexOf("scan flags:")),
+    );
+    expect(flags).toContain("--verify");
+  });
+
   it("no arguments prints usage and exits 0", async () => {
     const h = harness();
     expect(await runCli([], h.io)).toBe(0);

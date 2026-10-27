@@ -895,6 +895,29 @@ describe("a counted chip that could not confirm never shows a zero", () => {
   });
 });
 
+describe("--json and an empty scan's data block", () => {
+  it("--json for a Codex scan carries the limited-and-unverified note; no other app's does", () => {
+    const codex = JSON.parse(renderJson(CODEX_ONLY_RESULT, VERIFIED_META));
+    expect(codex.notes).toEqual([
+      "The Codex reading is limited and unverified: it is tested on synthetic sessions only.",
+    ]);
+    for (const agent of ["claude", "cursor"] as const) {
+      expect(JSON.parse(renderJson({ ...VERIFIED_RESULT, agent }, VERIFIED_META)).notes).toBe(
+        undefined,
+      );
+    }
+  });
+
+  it("a scan that read no tool calls carries no cards, as its page shows none", () => {
+    const empty = { ...VERIFIED_RESULT, toolCalls: 0 };
+    const payload = reportPayload(empty, VERIFIED_META, TEST_ONLY_BUILDERS);
+    expect(payload.cards).toBeUndefined();
+    expect(renderReport(empty, VERIFIED_META, OPTIONS)).not.toContain('id="what-happened"');
+    // Negative control: with tool calls read, the cards are there.
+    expect(reportPayload(VERIFIED_RESULT, VERIFIED_META, TEST_ONLY_BUILDERS).cards).toHaveLength(9);
+  });
+});
+
 describe("small fences", () => {
   it("a Cursor page does not also say a call had no recorded output", () => {
     const notes = section(renderReport(CURSOR_RESULT, VERIFIED_META, OPTIONS), "also-checked");

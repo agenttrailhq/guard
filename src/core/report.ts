@@ -726,7 +726,8 @@ export function reportPayload(
       : {
           ...payload,
           verification: honestVerification(copied),
-          cards: cardsFor(copied, builders),
+          // A scan that read no tool calls shows no cards, so the file carries none either.
+          ...(result.toolCalls === 0 ? {} : { cards: cardsFor(copied, builders) }),
         };
   const skipped = result.skipped;
   if (skipped === undefined) return withVerification;
@@ -1271,7 +1272,6 @@ ${fields.join("\n")}
 
 /** "What actually happened": the nine cards, act first, then review, clean and the rest. */
 function whatHappenedSection(
-  payload: ReportPayload,
   cards: readonly CardView[],
   variant: ReportVariant,
   localFixCategories: readonly VerifyCategory[],
@@ -2046,7 +2046,7 @@ export function renderReport(
     statsSection(result),
     ...(cards === undefined
       ? []
-      : [whatHappenedSection(payload, cards, variant, options.localFixCategories ?? [])]),
+      : [whatHappenedSection(cards, variant, options.localFixCategories ?? [])]),
     ...(scanned
       ? [
           wouldHaveDoneSection(result, payload),
@@ -2219,6 +2219,8 @@ export function renderJson(result: ScanResult, meta: ReportMeta): string {
       version: meta.version,
       generatedAt: meta.generatedAt.toISOString(),
       catalog: formatCatalogStamp(catalogStamp(), meta.generatedAt),
+      // A Codex scan says, in --json too, how far its reading can be trusted.
+      ...(result.agent === "codex" ? { notes: [CODEX_UNVERIFIED_TEXT] } : {}),
       result: safe,
     },
     null,

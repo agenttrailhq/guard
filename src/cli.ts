@@ -80,7 +80,7 @@ guardrails subcommands: list  show  enable  disable  set-action  add  remove  al
                         reset  validate  export  (run "agenttrail-guard guardrails --help")
 
 scan flags: --agent <claude|cursor|codex> (required) --dir <root> --out <file> --artifact
-            --no-open --review --json --quiet
+            --no-open --review --json --quiet --verify
 scan reads transcripts already on your disk, writes one self-contained HTML file, and
 opens it in your browser (--no-open to skip).
 No account, and no network call of its own — crash reporting above is the one

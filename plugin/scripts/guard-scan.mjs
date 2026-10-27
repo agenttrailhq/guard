@@ -8911,7 +8911,8 @@ function reportPayload(result, meta, builders = CARD_BUILDERS) {
   const withVerification = copied === void 0 ? payload : {
     ...payload,
     verification: honestVerification(copied),
-    cards: cardsFor(copied, builders)
+    // A scan that read no tool calls shows no cards, so the file carries none either.
+    ...result.toolCalls === 0 ? {} : { cards: cardsFor(copied, builders) }
   };
   const skipped = result.skipped;
   if (skipped === void 0) return withVerification;
@@ -9278,7 +9279,7 @@ ${fields.join("\n")}
 ${sentenceHtml(caveat, "note codex-caveat")}`}
 </article>`;
 }
-function whatHappenedSection(payload, cards, variant, localFixCategories) {
+function whatHappenedSection(cards, variant, localFixCategories) {
   const tally = sentence(TONE_TALLY, cards);
   const reads = cards.filter((card) => card.read !== void 0).map(
     (card) => `<li><span class="read-title">${escapeHtml(CATEGORY_TITLES[card.category])}:</span> <span data-template="${escapeHtml(card.read?.template ?? "")}">${escapeHtml(card.read?.text ?? "")}</span></li>`
@@ -9802,7 +9803,7 @@ function renderReport(result, meta, options = {}) {
     heroSection(result, payload, meta, variant, lead),
     ...cards === void 0 ? [] : [evidenceSection(payload), alsoCheckedSection(payload, cards, lead)],
     statsSection(result),
-    ...cards === void 0 ? [] : [whatHappenedSection(payload, cards, variant, options.localFixCategories ?? [])],
+    ...cards === void 0 ? [] : [whatHappenedSection(cards, variant, options.localFixCategories ?? [])],
     ...scanned ? [
       wouldHaveDoneSection(result, payload),
       fixFirstSection(payload),
@@ -9934,6 +9935,8 @@ function renderJson(result, meta) {
       version: meta.version,
       generatedAt: meta.generatedAt.toISOString(),
       catalog: formatCatalogStamp(catalogStamp(), meta.generatedAt),
+      // A Codex scan says, in --json too, how far its reading can be trusted.
+      ...result.agent === "codex" ? { notes: [CODEX_UNVERIFIED_TEXT] } : {},
       result: safe
     },
     null,
@@ -15393,6 +15396,9 @@ function renderSummary(result, colorsEnabled, reportPath, fixesPath, checksFaile
   return `${out.join("\n")}
 `;
 }
+function samePath(a, b, platform) {
+  return platform === "darwin" || platform === "win32" ? a.toLowerCase() === b.toLowerCase() : a === b;
+}
 var CHECKS_FAILED_LINE = "Checked on this machine: the checks could not run, so this report shows no verified results.";
 function counted3(n, singular, plural2 = `${singular}s`) {
   return `${formatCount(n)} ${n === 1 ? singular : plural2}`;
@@ -15610,7 +15616,8 @@ ${SCAN_USAGE}`);
   const colors = createColors(shouldUseColor({ env: io.env, isTTY: io.isTTY() }));
   const fixes = outcome?.localFixes ?? [];
   const fixesTarget = join6(dirname(reportPath), FIXES_FILENAME);
-  const writesFixes = hasFileFixes(fixes) && fixesTarget !== reportPath;
+  const fixesIsReport = samePath(fixesTarget, reportPath, deps.platform ?? process.platform);
+  const writesFixes = hasFileFixes(fixes) && !fixesIsReport;
   if (flags.review) {
     const disclosures = mcpReviewDisclosures(corpus, catalog, allowlist);
     io.writeStdout(
@@ -15662,7 +15669,7 @@ ${SCAN_USAGE}`);
       checksFailed
     )
   );
-  if (outcome !== void 0 && fixesPath === void 0 && fixesTarget !== reportPath) {
+  if (outcome !== void 0 && fixesPath === void 0 && !fixesIsReport) {
     let stale = false;
     try {
       stale = !io.stat(fixesTarget).isDirectory();

@@ -22,7 +22,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { CHECKS_FAILED_LINE, runScan } from "../commands/scan.js";
+import { CHECKS_FAILED_LINE, runScan, samePath } from "../commands/scan.js";
 import { fixCategories, fixesFileText } from "../core/fixes-file.js";
 import { FIXES_FILENAME, REPORT_FILENAME } from "../core/report.js";
 import {
@@ -135,6 +135,8 @@ async function scan(
     readonly failFixes?: boolean;
     /** Make the checks throw, with this message. */
     readonly throws?: string;
+    /** The platform the scan runs as. */
+    readonly platform?: string;
   } = {},
 ): Promise<{ code: number; stdout: string; work: string }> {
   const { root } = await writeCorpus("claude", [
@@ -167,6 +169,7 @@ async function scan(
   const code = await runScan(["--agent", "claude", "--dir", root, "--no-open", ...argv], io, {
     catalog: [RULE_RM_RF],
     now: AT,
+    ...(options.platform === undefined ? {} : { platform: options.platform }),
     verify: async (input: VerifyInput) => {
       if (options.throws !== undefined) throw new Error(options.throws);
       const outcome = await verifyScan(input);
@@ -181,6 +184,25 @@ async function scan(
   });
   return { code, stdout: out.join(""), work };
 }
+
+describe("the report never takes the fixes file's place, whatever the case", () => {
+  it("compares paths without case on macOS and Windows, and with it elsewhere", () => {
+    expect(
+      samePath("/a/AGENTTRAIL-GUARD-FIXES.TXT", "/a/agenttrail-guard-fixes.txt", "darwin"),
+    ).toBe(true);
+    expect(samePath("C:\\a\\Fixes.txt", "c:\\a\\fixes.txt", "win32")).toBe(true);
+    expect(
+      samePath("/a/AGENTTRAIL-GUARD-FIXES.TXT", "/a/agenttrail-guard-fixes.txt", "linux"),
+    ).toBe(false);
+  });
+
+  it("on macOS, --out the fixes file's name in capitals writes no fixes file to be replaced", async () => {
+    const upper = FIXES_FILENAME.toUpperCase();
+    const run = await scan(["--verify", "--out", upper], { platform: "darwin" });
+    expect(run.code).toBe(0);
+    expect(run.stdout).not.toContain("Fix commands for this machine:");
+  });
+});
 
 describe("a check that throws does not take the scan down", () => {
   const CANARY = "THROWNCHECKCANARY /Users/sample/secret-path";

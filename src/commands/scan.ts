@@ -718,6 +718,16 @@ export function renderSummary(
   return `${out.join("\n")}\n`;
 }
 
+/**
+ * Do two paths name the same file? On macOS and Windows, whose disks ignore case by default,
+ * paths that differ only in case do.
+ */
+export function samePath(a: string, b: string, platform: string): boolean {
+  return platform === "darwin" || platform === "win32"
+    ? a.toLowerCase() === b.toLowerCase()
+    : a === b;
+}
+
 /** The summary line when the checks were asked for and could not run. */
 export const CHECKS_FAILED_LINE =
   "Checked on this machine: the checks could not run, so this report shows no verified results.";
@@ -1036,7 +1046,9 @@ export async function runScan(
   // An exact command, or a fix a check could not make safe, which the file lists as a note.
   const fixes: readonly FileFix[] = outcome?.localFixes ?? [];
   const fixesTarget = join(dirname(reportPath), FIXES_FILENAME);
-  const writesFixes = hasFileFixes(fixes) && fixesTarget !== reportPath;
+  // On a disk that ignores case, `--out AGENTTRAIL-GUARD-FIXES.TXT` names the fixes file too.
+  const fixesIsReport = samePath(fixesTarget, reportPath, deps.platform ?? process.platform);
+  const writesFixes = hasFileFixes(fixes) && !fixesIsReport;
 
   if (flags.review) {
     const disclosures = mcpReviewDisclosures(corpus, catalog, allowlist);
@@ -1103,7 +1115,7 @@ export async function runScan(
   );
   // An older fixes file left next to the report is said, never deleted: its commands are from
   // an earlier scan, and this one made none.
-  if (outcome !== undefined && fixesPath === undefined && fixesTarget !== reportPath) {
+  if (outcome !== undefined && fixesPath === undefined && !fixesIsReport) {
     let stale = false;
     try {
       stale = !io.stat(fixesTarget).isDirectory();
