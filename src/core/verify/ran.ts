@@ -1,4 +1,4 @@
-// cspell:words egrep fgrep zgrep apropos whatis tldr whereis stdbuf bunx herestring heredocs redirections whatchanged shortlog pytest nohup iglob mtext Stext ovalue osascript hookspath mksh execdir okdir fdfind encodedcommand
+// cspell:words egrep fgrep zgrep apropos whatis tldr whereis stdbuf bunx herestring heredocs redirections whatchanged shortlog pytest nohup iglob mtext Stext ovalue osascript hookspath mksh execdir okdir fdfind encodedcommand runuser
 /**
  * Ran, or only mentioned: did a matched tool call actually run on this machine?
  *
@@ -1046,6 +1046,15 @@ const SHELLS: ReadonlySet<string> = new Set([
   "fish",
 ]);
 
+/**
+ * Programs that hand a command given as one string to a shell: `su user -c '…'`, `runuser -u
+ * user -c '…'`, `script -qc '…' log`.
+ */
+const STRING_RUNNERS: ReadonlySet<string> = new Set(["su", "runuser", "script"]);
+
+/** Their option that gives that string: `-c`, a cluster holding `c` (`-qc`), `--command`. */
+const STRING_RUNNER_OPTION = /^(?:--command|--session-command)(?:=.*)?$|^-[A-Za-z]*c[A-Za-z]*$/;
+
 /** Does this shell get a string to run: `-c`, a cluster holding `c` (`-lc`), `--command`? */
 function runsAString(args: readonly Word[]): boolean {
   for (let k = 0; k < args.length; k++) {
@@ -1125,9 +1134,14 @@ function segmentHidingForms(
   if (segment.words.some(runsASubstitution) || segment.inputs.some((input) => input.expands)) {
     forms.push("command-substitution");
   }
+  // A prefix word given its command as one string: `env -S '…'`, `flock lock -c '…'`, `watch`.
+  if (programStart(segment.words.map((word) => word.value)).shellString) forms.push("shell-string");
   if (command === undefined) return forms;
   const { name, args } = command;
   if (SHELLS.has(name) && runsAString(args)) forms.push("shell-string");
+  if (STRING_RUNNERS.has(name) && args.some((word) => STRING_RUNNER_OPTION.test(word.value))) {
+    forms.push("shell-string");
+  }
   if (runsInlineCode(name, args)) forms.push("inline-code");
   // A pipe, a heredoc or a here-string fed to a shell or interpreter with no script file.
   const fed = fedByPipe || segment.inputs.length > 0;

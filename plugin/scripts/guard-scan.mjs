@@ -10030,6 +10030,7 @@ function mcpReviewDisclosures(corpus, catalog, allowlist) {
 // src/core/verify/prefix-words.ts
 var PREFIX_WORDS = /* @__PURE__ */ new Set([
   "sudo",
+  "doas",
   "env",
   "command",
   "builtin",
@@ -10037,8 +10038,14 @@ var PREFIX_WORDS = /* @__PURE__ */ new Set([
   "time",
   "nohup",
   "nice",
+  "ionice",
+  "setsid",
+  "caffeinate",
   "stdbuf",
   "timeout",
+  "flock",
+  "watch",
+  "npx",
   "!",
   "{",
   "}",
@@ -10051,14 +10058,72 @@ var PREFIX_WORDS = /* @__PURE__ */ new Set([
   "until"
 ]);
 var PREFIX_VALUE_OPTIONS = /* @__PURE__ */ new Map([
-  ["sudo", /* @__PURE__ */ new Set(["-u", "-g", "-C", "-D", "-h", "-p", "-R", "-r", "-T", "-t", "-U"])],
-  ["env", /* @__PURE__ */ new Set(["-u", "-C", "--unset", "--chdir"])],
-  ["nice", /* @__PURE__ */ new Set(["-n"])],
-  ["timeout", /* @__PURE__ */ new Set(["-s", "-k", "--signal", "--kill-after"])],
-  ["stdbuf", /* @__PURE__ */ new Set(["-i", "-o", "-e"])],
-  ["time", /* @__PURE__ */ new Set(["-f", "-o", "--format", "--output"])],
-  ["exec", /* @__PURE__ */ new Set(["-a"])]
+  [
+    "sudo",
+    /* @__PURE__ */ new Set([
+      "-u",
+      "--user",
+      "-g",
+      "--group",
+      "-C",
+      "--close-from",
+      "-D",
+      "--chdir",
+      "-h",
+      "--host",
+      "-p",
+      "--prompt",
+      "-R",
+      "--chroot",
+      "-r",
+      "--role",
+      "-t",
+      "--type",
+      "-T",
+      "--command-timeout",
+      "-U",
+      "--other-user"
+    ])
+  ],
+  ["doas", /* @__PURE__ */ new Set(["-u", "-C"])],
+  ["env", /* @__PURE__ */ new Set(["-u", "--unset", "-C", "--chdir", "-S", "--split-string", "-a", "--argv0"])],
+  ["nice", /* @__PURE__ */ new Set(["-n", "--adjustment"])],
+  [
+    "ionice",
+    /* @__PURE__ */ new Set(["-c", "--class", "-n", "--classdata", "-p", "--pid", "-P", "--pgid", "-u", "--uid"])
+  ],
+  ["caffeinate", /* @__PURE__ */ new Set(["-t", "-w"])],
+  ["timeout", /* @__PURE__ */ new Set(["-s", "--signal", "-k", "--kill-after"])],
+  ["stdbuf", /* @__PURE__ */ new Set(["-i", "--input", "-o", "--output", "-e", "--error"])],
+  ["time", /* @__PURE__ */ new Set(["-f", "--format", "-o", "--output"])],
+  ["exec", /* @__PURE__ */ new Set(["-a"])],
+  [
+    "flock",
+    /* @__PURE__ */ new Set(["-w", "--wait", "--timeout", "-E", "--conflict-exit-code", "-c", "--command"])
+  ],
+  ["watch", /* @__PURE__ */ new Set(["-n", "--interval", "-q", "--equexit", "--shotsdir"])],
+  [
+    "npx",
+    /* @__PURE__ */ new Set([
+      "-p",
+      "--package",
+      "-c",
+      "--call",
+      "-w",
+      "--workspace",
+      "--registry",
+      "--cache",
+      "--prefix",
+      "--userconfig"
+    ])
+  ]
 ]);
+var PREFIX_SHELL_STRING_OPTIONS = /* @__PURE__ */ new Map([
+  ["env", /* @__PURE__ */ new Set(["-S", "--split-string"])],
+  ["flock", /* @__PURE__ */ new Set(["-c", "--command"])],
+  ["npx", /* @__PURE__ */ new Set(["-c", "--call"])]
+]);
+var PREFIX_OPERANDS = /* @__PURE__ */ new Set(["timeout", "flock"]);
 var GIT_GLOBAL_VALUE_OPTIONS = /* @__PURE__ */ new Set([
   "-C",
   "-c",
@@ -10081,8 +10146,24 @@ function programNameOf(value) {
   const base = value.split(/[\\/]/).pop() ?? "";
   return base.toLowerCase().replace(/\.exe$/, "");
 }
+function readOption(name, word) {
+  const valued = PREFIX_VALUE_OPTIONS.get(name);
+  if (word.startsWith("--")) {
+    const eq = word.indexOf("=");
+    const option = eq < 0 ? word : word.slice(0, eq);
+    return { given: [option], takesNext: eq < 0 && valued?.has(option) === true };
+  }
+  const given = [];
+  for (let c = 1; c < word.length; c++) {
+    const option = `-${word[c]}`;
+    given.push(option);
+    if (valued?.has(option) === true) return { given, takesNext: c === word.length - 1 };
+  }
+  return { given, takesNext: false };
+}
 function programStart(values) {
   const assignments = [];
+  let shellString = false;
   let k = 0;
   while (k < values.length) {
     const value = values[k];
@@ -10092,15 +10173,30 @@ function programStart(values) {
       continue;
     }
     const name = programNameOf(value);
-    if (!PREFIX_WORDS.has(name)) return { index: k, assignments };
-    const valued = PREFIX_VALUE_OPTIONS.get(name);
+    if (!PREFIX_WORDS.has(name)) return { index: k, assignments, shellString };
+    const strings = PREFIX_SHELL_STRING_OPTIONS.get(name);
+    let exec = false;
     k += 1;
-    while (k < values.length && values[k].startsWith("-")) {
-      k += valued?.has(values[k]) === true ? 2 : 1;
+    const readOptions = () => {
+      while (k < values.length && values[k].startsWith("-")) {
+        if (values[k] === "--") {
+          k += 1;
+          return;
+        }
+        const read = readOption(name, values[k]);
+        if (read.given.some((option) => strings?.has(option) === true)) shellString = true;
+        if (read.given.some((option) => option === "-x" || option === "--exec")) exec = true;
+        k += read.takesNext ? 2 : 1;
+      }
+    };
+    readOptions();
+    if (PREFIX_OPERANDS.has(name) && k < values.length) {
+      k += 1;
+      if (name === "flock") readOptions();
     }
-    if (name === "timeout" && k < values.length) k += 1;
+    if (name === "watch" && !exec) shellString = true;
   }
-  return { index: k, assignments };
+  return { index: k, assignments, shellString };
 }
 
 // src/core/verify/shell-words.ts
@@ -11401,6 +11497,8 @@ var SHELLS2 = /* @__PURE__ */ new Set([
   "ash",
   "fish"
 ]);
+var STRING_RUNNERS = /* @__PURE__ */ new Set(["su", "runuser", "script"]);
+var STRING_RUNNER_OPTION = /^(?:--command|--session-command)(?:=.*)?$|^-[A-Za-z]*c[A-Za-z]*$/;
 function runsAString(args2) {
   for (let k = 0; k < args2.length; k++) {
     const value = args2[k].value;
@@ -11453,9 +11551,13 @@ function segmentHidingForms(segment, command, gitConfigured, gitRunnableWritten,
   if (segment.words.some(runsASubstitution) || segment.inputs.some((input) => input.expands)) {
     forms.push("command-substitution");
   }
+  if (programStart(segment.words.map((word) => word.value)).shellString) forms.push("shell-string");
   if (command === void 0) return forms;
   const { name, args: args2 } = command;
   if (SHELLS2.has(name) && runsAString(args2)) forms.push("shell-string");
+  if (STRING_RUNNERS.has(name) && args2.some((word) => STRING_RUNNER_OPTION.test(word.value))) {
+    forms.push("shell-string");
+  }
   if (runsInlineCode(name, args2)) forms.push("inline-code");
   const fed = fedByPipe || segment.inputs.length > 0;
   if (fed && !(SHELLS2.has(name) && runsAString(args2)) && runsPipedScript(name, args2)) {

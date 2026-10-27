@@ -1,4 +1,4 @@
-// cspell:words xargs execdir okdir
+// cspell:words xargs execdir okdir doas ionice setsid caffeinate runuser
 /**
  * Hiding forms (`core/verify/calls.ts`): commands that can run other commands the checks do not
  * read. Where a call that ran holds one, no command check says that nothing ran, and none reads
@@ -441,6 +441,59 @@ describe("a command after an ANSI-C quoted string is read", () => {
     CONTROLS,
   )("%s after a quote left open is never clean", async (_label, command, category) => {
     expect((await shownStatuses(`echo 'it; ${command}`))[category]).toBe("could-not-check");
+  });
+});
+
+/** Words before a command that the readers take apart: the command is read as it is alone. */
+const READ_WRAPS: readonly (readonly [string, (command: string) => string])[] = [
+  ["sudo --user root", (c) => `sudo --user root ${c}`],
+  ["sudo --user=root", (c) => `sudo --user=root ${c}`],
+  ["sudo --chdir /tmp", (c) => `sudo --chdir /tmp ${c}`],
+  ["sudo -Eu root", (c) => `sudo -Eu root ${c}`],
+  ["nice --adjustment 5", (c) => `nice --adjustment 5 ${c}`],
+  ["timeout --signal=KILL 5", (c) => `timeout --signal=KILL 5 ${c}`],
+  ["doas", (c) => `doas ${c}`],
+  ["doas -u root", (c) => `doas -u root ${c}`],
+  ["ionice -c3", (c) => `ionice -c3 ${c}`],
+  ["ionice -c 3", (c) => `ionice -c 3 ${c}`],
+  ["setsid", (c) => `setsid ${c}`],
+  ["caffeinate -i", (c) => `caffeinate -i ${c}`],
+  ["npx --yes", (c) => `npx --yes ${c}`],
+  ["npx -y", (c) => `npx -y ${c}`],
+  ["flock with a lock file", (c) => `flock /tmp/x.lock ${c}`],
+  ["\\sudo", (c) => `\\sudo ${c}`],
+  ['"sudo"', (c) => `"sudo" ${c}`],
+  ["command -p", (c) => `command -p ${c}`],
+];
+
+/** Words before a command that give it as one string: the command is not read, never clean. */
+const STRING_WRAPS: readonly (readonly [string, (command: string) => string])[] = [
+  ["env -S", (c) => `env -S '${c}'`],
+  ["env --split-string", (c) => `env --split-string='${c}'`],
+  ["su -c", (c) => `su root -c '${c}'`],
+  ["runuser -c", (c) => `runuser -u root -c '${c}'`],
+  ["script -qc", (c) => `script -qc '${c}' /dev/null`],
+  ["flock -c", (c) => `flock /tmp/x.lock -c '${c}'`],
+  ["watch -n 1", (c) => `watch -n 1 '${c}'`],
+  ["npx -c", (c) => `npx -c '${c}'`],
+];
+
+describe("words before a command", () => {
+  const read = CONTROLS.flatMap(([label, command, category]) =>
+    READ_WRAPS.map(([wrap, f]) => [label, wrap, command, f(command), category] as const),
+  );
+  it.each(
+    read,
+  )("%s after %s reads as it does alone", async (_l, _w, command, wrapped, category) => {
+    const alone = (await shownStatuses(command))[category];
+    expect((await shownStatuses(wrapped))[category], wrapped).toBe(alone);
+  });
+
+  const strings = CONTROLS.flatMap(([label, command, category]) =>
+    STRING_WRAPS.map(([wrap, f]) => [label, wrap, f(command), category] as const),
+  );
+  it.each(strings)("%s given to %s is never clean", async (_l, _w, wrapped, category) => {
+    expect((await shownStatuses(wrapped))[category], wrapped).not.toBe("clean");
   });
 });
 

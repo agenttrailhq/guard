@@ -1,4 +1,4 @@
-// cspell:words nohup stdbuf
+// cspell:words nohup stdbuf doas ionice setsid caffeinate flock equexit shotsdir classdata pgid argv0 chroot userconfig
 /**
  * The words that come before a program and are not it (`sudo`, `env`, `timeout 5`), and the
  * options of each that take the next word as their value. One table for every reader that looks
@@ -12,6 +12,7 @@
 /** Words that come before a program and are not it. */
 export const PREFIX_WORDS: ReadonlySet<string> = new Set([
   "sudo",
+  "doas",
   "env",
   "command",
   "builtin",
@@ -19,8 +20,14 @@ export const PREFIX_WORDS: ReadonlySet<string> = new Set([
   "time",
   "nohup",
   "nice",
+  "ionice",
+  "setsid",
+  "caffeinate",
   "stdbuf",
   "timeout",
+  "flock",
+  "watch",
+  "npx",
   "!",
   "{",
   "}",
@@ -34,18 +41,87 @@ export const PREFIX_WORDS: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * The options of each prefix word that take the next word as their value, `sudo -u root`. Any
- * other option of a prefix word is a flag: `sudo -n`, `sudo -s`, `env -i`.
+ * The options of each prefix word that take a value: the next word (`sudo -u root`, `sudo --user
+ * root`), the rest of a short option's word (`ionice -c3`), or what follows `=` in a long
+ * option's word (`sudo --user=root`). Any other option of a prefix word is a flag: `sudo -n`,
+ * `sudo -s`, `env -i`.
  */
 export const PREFIX_VALUE_OPTIONS: ReadonlyMap<string, ReadonlySet<string>> = new Map([
-  ["sudo", new Set(["-u", "-g", "-C", "-D", "-h", "-p", "-R", "-r", "-T", "-t", "-U"])],
-  ["env", new Set(["-u", "-C", "--unset", "--chdir"])],
-  ["nice", new Set(["-n"])],
-  ["timeout", new Set(["-s", "-k", "--signal", "--kill-after"])],
-  ["stdbuf", new Set(["-i", "-o", "-e"])],
-  ["time", new Set(["-f", "-o", "--format", "--output"])],
+  [
+    "sudo",
+    new Set([
+      "-u",
+      "--user",
+      "-g",
+      "--group",
+      "-C",
+      "--close-from",
+      "-D",
+      "--chdir",
+      "-h",
+      "--host",
+      "-p",
+      "--prompt",
+      "-R",
+      "--chroot",
+      "-r",
+      "--role",
+      "-t",
+      "--type",
+      "-T",
+      "--command-timeout",
+      "-U",
+      "--other-user",
+    ]),
+  ],
+  ["doas", new Set(["-u", "-C"])],
+  ["env", new Set(["-u", "--unset", "-C", "--chdir", "-S", "--split-string", "-a", "--argv0"])],
+  ["nice", new Set(["-n", "--adjustment"])],
+  [
+    "ionice",
+    new Set(["-c", "--class", "-n", "--classdata", "-p", "--pid", "-P", "--pgid", "-u", "--uid"]),
+  ],
+  ["caffeinate", new Set(["-t", "-w"])],
+  ["timeout", new Set(["-s", "--signal", "-k", "--kill-after"])],
+  ["stdbuf", new Set(["-i", "--input", "-o", "--output", "-e", "--error"])],
+  ["time", new Set(["-f", "--format", "-o", "--output"])],
   ["exec", new Set(["-a"])],
+  [
+    "flock",
+    new Set(["-w", "--wait", "--timeout", "-E", "--conflict-exit-code", "-c", "--command"]),
+  ],
+  ["watch", new Set(["-n", "--interval", "-q", "--equexit", "--shotsdir"])],
+  [
+    "npx",
+    new Set([
+      "-p",
+      "--package",
+      "-c",
+      "--call",
+      "-w",
+      "--workspace",
+      "--registry",
+      "--cache",
+      "--prefix",
+      "--userconfig",
+    ]),
+  ],
 ]);
+
+/**
+ * The options of a prefix word whose value is a command given as one string, which a shell or
+ * the word itself splits into words: `env -S 'cmd args'`, `flock lock -c 'cmd'`, `npx -c 'cmd'`.
+ * The command in it is not read as words here, so a command that uses one holds the
+ * `shell-string` hiding form.
+ */
+export const PREFIX_SHELL_STRING_OPTIONS: ReadonlyMap<string, ReadonlySet<string>> = new Map([
+  ["env", new Set(["-S", "--split-string"])],
+  ["flock", new Set(["-c", "--command"])],
+  ["npx", new Set(["-c", "--call"])],
+]);
+
+/** Prefix words followed by one operand before the program: `timeout 5 cmd`, `flock lock cmd`. */
+const PREFIX_OPERANDS: ReadonlySet<string> = new Set(["timeout", "flock"]);
 
 /**
  * `git`'s own options, before its subcommand, that take the next word as their value: `git -C
@@ -87,15 +163,47 @@ export function programNameOf(value: string): string {
 }
 
 /**
+ * One option word of a prefix word: the options it gives, and whether the last of them takes the
+ * next word as its value. A long option takes its value after `=` or as the next word
+ * (`--user=root`, `--user root`). A short one may share its word with others (`-Eu root`), and
+ * one that takes a value takes the rest of the word (`-c3`), or the next word when it is last.
+ */
+function readOption(
+  name: string,
+  word: string,
+): { readonly given: readonly string[]; readonly takesNext: boolean } {
+  const valued = PREFIX_VALUE_OPTIONS.get(name);
+  if (word.startsWith("--")) {
+    const eq = word.indexOf("=");
+    const option = eq < 0 ? word : word.slice(0, eq);
+    return { given: [option], takesNext: eq < 0 && valued?.has(option) === true };
+  }
+  const given: string[] = [];
+  for (let c = 1; c < word.length; c++) {
+    const option = `-${word[c]}`;
+    given.push(option);
+    if (valued?.has(option) === true) return { given, takesNext: c === word.length - 1 };
+  }
+  return { given, takesNext: false };
+}
+
+/**
  * Where the program is among a command's words, past assignments and prefix words with their
- * options, and `timeout`'s duration; `values.length` when there is none. `assignments` are the
- * indexes of the `NAME=value` words before it, including those given to `env`.
+ * options, and the operand `timeout` and `flock` take before it (a duration, a lock file);
+ * `values.length` when there is none. `assignments` are the indexes of the `NAME=value` words
+ * before it, including those given to `env`.
+ *
+ * `shellString` is set when a prefix word is given its command as one string it splits or hands
+ * to a shell (`PREFIX_SHELL_STRING_OPTIONS`), or is `watch` without `-x`, which runs its words
+ * through `sh -c`. What that string runs is not read as words here.
  */
 export function programStart(values: readonly string[]): {
   readonly index: number;
   readonly assignments: readonly number[];
+  readonly shellString: boolean;
 } {
   const assignments: number[] = [];
+  let shellString = false;
   let k = 0;
   while (k < values.length) {
     const value = values[k] as string;
@@ -105,15 +213,32 @@ export function programStart(values: readonly string[]): {
       continue;
     }
     const name = programNameOf(value);
-    if (!PREFIX_WORDS.has(name)) return { index: k, assignments };
-    const valued = PREFIX_VALUE_OPTIONS.get(name);
+    if (!PREFIX_WORDS.has(name)) return { index: k, assignments, shellString };
+    const strings = PREFIX_SHELL_STRING_OPTIONS.get(name);
+    let exec = false;
     k += 1;
-    // A prefix word's own options, `sudo -E`, `env -i`, and their values, `sudo -u root`.
-    while (k < values.length && (values[k] as string).startsWith("-")) {
-      k += valued?.has(values[k] as string) === true ? 2 : 1;
+    // A prefix word's own options, `sudo -E`, `env -i`, and their values, `sudo -u root`. A `--`
+    // ends them.
+    const readOptions = (): void => {
+      while (k < values.length && (values[k] as string).startsWith("-")) {
+        if (values[k] === "--") {
+          k += 1;
+          return;
+        }
+        const read = readOption(name, values[k] as string);
+        if (read.given.some((option) => strings?.has(option) === true)) shellString = true;
+        if (read.given.some((option) => option === "-x" || option === "--exec")) exec = true;
+        k += read.takesNext ? 2 : 1;
+      }
+    };
+    readOptions();
+    // `timeout 5 cmd`: the duration. `flock lock cmd`, `flock lock -c 'cmd'`: the lock file,
+    // and the options after it.
+    if (PREFIX_OPERANDS.has(name) && k < values.length) {
+      k += 1;
+      if (name === "flock") readOptions();
     }
-    // `timeout 5 cmd`: the duration.
-    if (name === "timeout" && k < values.length) k += 1;
+    if (name === "watch" && !exec) shellString = true;
   }
-  return { index: k, assignments };
+  return { index: k, assignments, shellString };
 }

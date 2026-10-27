@@ -1,4 +1,4 @@
-// cspell:words gitk popd pushd subshells
+// cspell:words gitk popd pushd subshells doas ionice setsid caffeinate runuser
 /**
  * The shell reader the git-backed checks use (`core/verify/shell-words.ts`) and the folder each
  * command runs in (`core/verify/shell-calls.ts`).
@@ -6,7 +6,7 @@
 
 import { describe, expect, it } from "vitest";
 import { programAndArgs, simpleCommands } from "../core/verify/calls.js";
-import { executedView } from "../core/verify/ran.js";
+import { commandHidingForms, executedView } from "../core/verify/ran.js";
 import { resolvePath, walkCommands } from "../core/verify/shell-calls.js";
 import {
   commandStart,
@@ -42,6 +42,44 @@ describe("one prefix table for every reader of a command's program", () => {
     "timeout -s KILL 5",
     "stdbuf -o L",
     "HUSKY=0 sudo -D /x",
+    // Long options with their value as the next word, or after `=`.
+    "sudo --user root",
+    "sudo --user=root",
+    "sudo --group wheel",
+    "sudo --chdir /tmp",
+    "sudo --host h",
+    "sudo --prompt p",
+    "sudo --close-from 3",
+    "sudo --role r",
+    "sudo --type t",
+    "sudo --other-user u",
+    "sudo --command-timeout 5",
+    "sudo --chroot /x",
+    "sudo -Eu root",
+    "sudo -- ",
+    "nice --adjustment 5",
+    "nice --adjustment=5",
+    "timeout --signal KILL --kill-after 9 5",
+    "stdbuf --output L --error L",
+    "time --output /tmp/t",
+    "env --argv0 x",
+    "ionice --class 3",
+    // Words that come before a program, and their options.
+    "doas",
+    "doas -u root",
+    "ionice -c3",
+    "ionice -c 3 -n 7",
+    "setsid",
+    "setsid -f",
+    "caffeinate -i",
+    "caffeinate -t 5",
+    "npx --yes",
+    "npx -y",
+    "npx -p pkg",
+    "flock /tmp/x.lock",
+    "flock -w 5 /tmp/x.lock",
+    "watch -x",
+    "watch -n 1 -x",
   ];
 
   it.each(FORMS)("%s git push: every reader names git", (prefix) => {
@@ -72,6 +110,42 @@ describe("one prefix table for every reader of a command's program", () => {
       ["rm", "-rf", `$(dirname "$f") /build`],
       ["git", "branch", "-D", "topic"],
     ]);
+  });
+
+  it.each([
+    ["env -S", "env -S 'git push'"],
+    ["env -S, attached", "env -S'git push'"],
+    ["env --split-string=", "env --split-string='git push'"],
+    ["env --split-string", "env --split-string 'git push'"],
+    ["flock -c", "flock /tmp/x.lock -c 'git push'"],
+    ["flock --command", "flock -n /tmp/x.lock --command 'git push'"],
+    ["npx -c", "npx -c 'git push'"],
+    ["watch", "watch -n 1 'git push'"],
+    ["watch, words", "watch -n 1 git push"],
+  ])("%s: the command is one string, so the call holds a shell-string form", (_label, text) => {
+    expect(commandHidingForms(text)).toContain("shell-string");
+  });
+
+  it.each([
+    ["su", "su root -c 'git push'"],
+    ["su, login", "su - root -c 'git push'"],
+    ["su --command=", "su --command='git push' root"],
+    ["runuser", "runuser -u root -c 'git push'"],
+    ["script", "script -qc 'git push' /dev/null"],
+    ["script --command", "script --command 'git push' log.txt"],
+  ])("%s -c: the command is one string, so the call holds a shell-string form", (_label, text) => {
+    expect(commandHidingForms(text)).toContain("shell-string");
+  });
+
+  it.each([
+    "su root",
+    "script log.txt",
+    "watch -x git status",
+    "flock /tmp/x.lock git status",
+    "npx --yes prettier --check .",
+    "env -i git status",
+  ])("%j gives its command as words: no shell-string form", (text) => {
+    expect(commandHidingForms(text)).not.toContain("shell-string");
   });
 
   it("an assignment given to env is the program's, in both readers", () => {
