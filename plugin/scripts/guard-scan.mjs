@@ -20454,15 +20454,31 @@ function wrapText(text2, width, indent = "") {
   if (line2 !== "") lines2.push(line2);
   return lines2.map((l) => `${indent}${l}`).join("\n");
 }
-function scanUsage(byDefault) {
+function scrubUsage() {
+  return {
+    line: "\n  agenttrail-guard scan --agent <claude|cursor|codex> --scrub [--apply] [--dir <root>]",
+    flags: `
+  --scrub        Replace the likely-real credentials in the app's transcripts with
+                 [REDACTED-BY-AGENTTRAIL:<kind>]. Fixtures, placeholders and local
+                 dev values are left alone. A dry run: it says what it would replace,
+                 by kind, never by value, and changes nothing without --apply.
+${wrapText(`Rotate each credential first, then scrub. For Codex this is ${CODEX_TESTED_ON}.`, USAGE_WIDTH, " ".repeat(17))}
+  --apply        With --scrub: make the change. Refuses while the app is running and
+                 skips files changed in the last 5 minutes. Backs up every file first
+                 to a private folder under ~/.agenttrail/scrub-backups/, which still
+                 holds the credentials until you delete it, and replaces each file in
+                 one step, leaving any file that changed since it was read.`
+  };
+}
+function scanUsage(byDefault, scrub = true) {
   const checks = checksUsage(byDefault);
+  const scrubbing = scrub ? scrubUsage() : { line: "", flags: "" };
   return `agenttrail-guard scan \u2014 what your agent has been doing
 
 Usage:
   agenttrail-guard scan --agent <claude|cursor|codex> [--dir <root>] [--out <file>]
                         [--artifact] [--no-open] [--review] [--json] [--quiet]
-                        [--no-checks | --verify]
-  agenttrail-guard scan --agent <claude|cursor|codex> --scrub [--apply] [--dir <root>]
+                        [--no-checks | --verify]${scrubbing.line}
 
   --agent <app>  Whose sessions to read, and it is required: claude reads Claude Code's
                  transcripts in ~/.claude/projects, cursor reads Cursor's session files
@@ -20480,17 +20496,7 @@ Usage:
   --review       Print every command and guardrail the report will contain, and ask
                  before writing it. Redaction is thorough but not a guarantee; this
                  is how you check it yourself before the file exists.
-${checks.flags}
-  --scrub        Replace the likely-real credentials in the app's transcripts with
-                 [REDACTED-BY-AGENTTRAIL:<kind>]. Fixtures, placeholders and local
-                 dev values are left alone. A dry run: it says what it would replace,
-                 by kind, never by value, and changes nothing without --apply.
-${wrapText(`Rotate each credential first, then scrub. For Codex this is ${CODEX_TESTED_ON}.`, USAGE_WIDTH, " ".repeat(17))}
-  --apply        With --scrub: make the change. Refuses while the app is running and
-                 skips files changed in the last 5 minutes. Backs up every file first
-                 to a private folder under ~/.agenttrail/scrub-backups/, which still
-                 holds the credentials until you delete it, and replaces each file in
-                 one step, leaving any file that changed since it was read.
+${checks.flags}${scrubbing.flags}
 
 Reads transcripts already on your disk. No account, nothing uploaded, and no network
 call: the one exception anywhere in this tool is crash reporting, which is off unless
@@ -20973,7 +20979,7 @@ function isYes(answer) {
 async function runScan(argv, io, deps = {}) {
   const flags = parseScanFlags(argv);
   const byDefault = deps.verifyByDefault ?? VERIFY_BY_DEFAULT;
-  const usage = scanUsage(byDefault);
+  const usage = scanUsage(byDefault, deps.scrub !== void 0);
   if (flags.help) {
     io.writeStdout(usage);
     return 0;

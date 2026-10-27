@@ -196,11 +196,32 @@ describe("the usage", () => {
     for (const line of codex.split("\n")) expect(line.length, line).toBeLessThanOrEqual(80);
   });
 
-  it("is what --help prints, for the injected value", async () => {
+  it("is what --help prints, for the injected value, in a build with no scrub", async () => {
     const work = mkdtempSync(join(tmpdir(), "agenttrail-verify-default-work-"));
     for (const byDefault of [true, false]) {
+      // This file's runs pass no scrub, as the plugin's scanner does.
       const run = await scan(["--help"], byDefault, work);
-      expect(run.stdout).toBe(scanUsage(byDefault));
+      expect(run.stdout).toBe(scanUsage(byDefault, false));
+    }
+  });
+
+  it.each([
+    true,
+    false,
+  ])("default %s: without scrub, the usage is the CLI's less only --scrub and --apply", (byDefault) => {
+    const cli = scanUsage(byDefault);
+    const plugin = scanUsage(byDefault, false);
+    for (const flag of ["--scrub", "--apply", "REDACTED-BY-AGENTTRAIL", "scrub-backups"]) {
+      expect(cli).toContain(flag);
+      expect(plugin).not.toContain(flag);
+    }
+    // Every line the plugin's usage has, the CLI's has too, in the same order.
+    const lines = cli.split("\n");
+    let at = 0;
+    for (const line of plugin.split("\n")) {
+      at = lines.indexOf(line, at);
+      expect(at, line).toBeGreaterThanOrEqual(0);
+      at += 1;
     }
   });
 });

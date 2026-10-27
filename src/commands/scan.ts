@@ -189,16 +189,37 @@ function wrapText(text: string, width: number, indent = ""): string {
   return lines.map((l) => `${indent}${l}`).join("\n");
 }
 
-/** `scan`'s usage, for one value of the verify-by-default switch. */
-export function scanUsage(byDefault: boolean): string {
+/** The usage line and the flags of `--scrub`, which only the CLI carries. */
+function scrubUsage(): { line: string; flags: string } {
+  return {
+    line: "\n  agenttrail-guard scan --agent <claude|cursor|codex> --scrub [--apply] [--dir <root>]",
+    flags: `
+  --scrub        Replace the likely-real credentials in the app's transcripts with
+                 [REDACTED-BY-AGENTTRAIL:<kind>]. Fixtures, placeholders and local
+                 dev values are left alone. A dry run: it says what it would replace,
+                 by kind, never by value, and changes nothing without --apply.
+${wrapText(`Rotate each credential first, then scrub. For Codex this is ${CODEX_TESTED_ON}.`, USAGE_WIDTH, " ".repeat(17))}
+  --apply        With --scrub: make the change. Refuses while the app is running and
+                 skips files changed in the last 5 minutes. Backs up every file first
+                 to a private folder under ~/.agenttrail/scrub-backups/, which still
+                 holds the credentials until you delete it, and replaces each file in
+                 one step, leaving any file that changed since it was read.`,
+  };
+}
+
+/**
+ * `scan`'s usage, for one value of the verify-by-default switch. `scrub` says whether this
+ * build can scrub: the plugin's scanner cannot, so its usage leaves `--scrub` and `--apply` out.
+ */
+export function scanUsage(byDefault: boolean, scrub = true): string {
   const checks = checksUsage(byDefault);
+  const scrubbing = scrub ? scrubUsage() : { line: "", flags: "" };
   return `agenttrail-guard scan — what your agent has been doing
 
 Usage:
   agenttrail-guard scan --agent <claude|cursor|codex> [--dir <root>] [--out <file>]
                         [--artifact] [--no-open] [--review] [--json] [--quiet]
-                        [--no-checks | --verify]
-  agenttrail-guard scan --agent <claude|cursor|codex> --scrub [--apply] [--dir <root>]
+                        [--no-checks | --verify]${scrubbing.line}
 
   --agent <app>  Whose sessions to read, and it is required: claude reads Claude Code's
                  transcripts in ~/.claude/projects, cursor reads Cursor's session files
@@ -216,17 +237,7 @@ Usage:
   --review       Print every command and guardrail the report will contain, and ask
                  before writing it. Redaction is thorough but not a guarantee; this
                  is how you check it yourself before the file exists.
-${checks.flags}
-  --scrub        Replace the likely-real credentials in the app's transcripts with
-                 [REDACTED-BY-AGENTTRAIL:<kind>]. Fixtures, placeholders and local
-                 dev values are left alone. A dry run: it says what it would replace,
-                 by kind, never by value, and changes nothing without --apply.
-${wrapText(`Rotate each credential first, then scrub. For Codex this is ${CODEX_TESTED_ON}.`, USAGE_WIDTH, " ".repeat(17))}
-  --apply        With --scrub: make the change. Refuses while the app is running and
-                 skips files changed in the last 5 minutes. Backs up every file first
-                 to a private folder under ~/.agenttrail/scrub-backups/, which still
-                 holds the credentials until you delete it, and replaces each file in
-                 one step, leaving any file that changed since it was read.
+${checks.flags}${scrubbing.flags}
 
 Reads transcripts already on your disk. No account, nothing uploaded, and no network
 call: the one exception anywhere in this tool is crash reporting, which is off unless
@@ -237,7 +248,7 @@ ${checks.reads}
 `;
 }
 
-/** `scan`'s usage, as shipped. */
+/** `scan`'s usage, as the CLI ships it. */
 export const SCAN_USAGE = scanUsage(VERIFY_BY_DEFAULT);
 
 /**
@@ -1033,7 +1044,8 @@ export async function runScan(
 ): Promise<number> {
   const flags = parseScanFlags(argv);
   const byDefault = deps.verifyByDefault ?? VERIFY_BY_DEFAULT;
-  const usage = scanUsage(byDefault);
+  // A build given no scrub (the plugin's scanner) neither runs nor offers `--scrub`.
+  const usage = scanUsage(byDefault, deps.scrub !== undefined);
   if (flags.help) {
     io.writeStdout(usage);
     return 0;

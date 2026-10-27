@@ -1245,6 +1245,23 @@ describe("scan, against the built binary", () => {
     expect(existsSync(join(work, ".agenttrail"))).toBe(false);
   });
 
+  it("the plugin's scan bundle does not offer --scrub or --apply in its usage; the CLI does", () => {
+    const plugin = spawnSync("node", [SCAN_BUNDLE, "--help"], { encoding: "utf8" });
+    const unknown = spawnSync("node", [SCAN_BUNDLE, "--not-a-flag"], { encoding: "utf8" });
+    const cli = spawnSync("node", [CLI_BUNDLE, "scan", "--help"], { encoding: "utf8" });
+    expect(plugin.status).toBe(0);
+    expect(unknown.status).toBe(1);
+    expect(cli.status).toBe(0);
+    for (const usage of [plugin.stdout, unknown.stdout, cli.stdout]) {
+      expect(usage).toContain("--no-checks");
+    }
+    for (const flag of ["--scrub", "--apply", "scrub-backups"]) {
+      expect(plugin.stdout).not.toContain(flag);
+      expect(unknown.stdout).not.toContain(flag);
+      expect(cli.stdout).toContain(flag);
+    }
+  });
+
   it("scan --verify, from both bundles: no network call, nothing in HOME, no value printed or written", () => {
     // The verify path runs `git` in a real repo and reads the transcript again. Its token is
     // assembled at runtime and made up.
