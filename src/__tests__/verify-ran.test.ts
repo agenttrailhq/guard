@@ -702,6 +702,11 @@ describe("what a call could hide", () => {
     ["a file piped to node -", `cat x.js | node -`, ["piped-script"]],
     ["a file piped to sudo zsh", `cat x.sh | sudo zsh`, ["piped-script"]],
     ["a pipe into bash -c is a shell string", `cat list | bash -c 'wc -l'`, ["shell-string"]],
+    [
+      "git after a hook write, then an unrelated write",
+      `echo make > .git/hooks/pre-commit; echo notes > notes.md; git commit -m wip`,
+      ["git-hook"],
+    ],
     ["a here-string into bash", `bash <<< "make all"`, ["piped-script"]],
     ["a here-string into python3", `python3 <<< 'print(1)'`, ["piped-script"]],
     ["a heredoc into sh", `sh <<'EOF'\nmake all\nEOF`, ["piped-script"]],

@@ -62,6 +62,40 @@ describe("each call carries the hiding forms the shared reader finds", () => {
     expect(await formsOf(command)).toEqual([]);
   });
 
+  // A heredoc or a here-string inside a body a shell reads: the inner body is not read, and the
+  // outer one is a script fed to a shell, so the call holds a hiding form.
+  const NESTED_HEREDOC = [
+    "bash <<'A'",
+    "bash <<'B'",
+    `aws iam create-user --user-name ${"nested-bot"}`,
+    "B",
+    "A",
+  ].join("\n");
+  const NESTED_HERE_STRING = [
+    "bash <<'A'",
+    `bash <<< "aws iam create-user --user-name ${"nested-bot"}"`,
+    "A",
+  ].join("\n");
+
+  it.each([
+    ["a heredoc inside a heredoc fed to a shell", NESTED_HEREDOC],
+    ["a here-string inside a heredoc fed to a shell", NESTED_HERE_STRING],
+  ])("%s holds a hiding form", async (_label, command) => {
+    expect(await formsOf(command)).toContain("piped-script");
+  });
+
+  it.each([
+    ["a heredoc inside a heredoc fed to a shell", NESTED_HEREDOC],
+    ["a here-string inside a heredoc fed to a shell", NESTED_HERE_STRING],
+  ])("the cloud card never reads clean when %s carries an IAM change", async (_label, command) => {
+    const calls = await callsOf("claude", [[{ kind: "shell", command, result: OK }]]);
+    const check = checkCloud({ calls, ...SHIPPED }).check;
+    expect(check.facts.hidingForms).toContain("piped-script");
+    expect(check.status).not.toBe("clean");
+    const card = cloudCard(check, { ranEvidence: "tool-result" });
+    expect(card.found.map((s) => s.text).join(" ")).not.toContain("No IAM");
+  });
+
   it("a local script run by name is a stated limit, not a hiding form", async () => {
     // Its file is not read. The usage and the README say so.
     expect(await formsOf("bash ./deploy.sh")).toEqual([]);
