@@ -10,8 +10,9 @@
  *     `${VAR:?}` guard, so an empty value deletes from the wrong folder. One whose every
  *     variable is guarded is not classed further: its value is not known, so it keeps the
  *     check from clean.
- *  2. **scratch**: a temp folder; or build output such as `node_modules`, `dist` or `.cache`
- *     with nothing under it that git tracks (a committed `dist/` that is gone is class 3).
+ *  2. **scratch**: a temp folder, or build output such as `node_modules`, `dist` or `.cache`,
+ *     with nothing under it that git tracks (a committed `dist/` that is gone, or a repository
+ *     cloned into a temp folder, is class 3).
  *  3. **tracked files**: git tracks files under it. Whether they are back is asked of git now.
  *  4. **untracked files in a repo**: inside a repository, with nothing tracked under it.
  *  5. **under the home folder**, outside any repository.
@@ -299,10 +300,10 @@ async function classify(context: GitCheckContext, target: RmTarget): Promise<Cla
   if (path === undefined) return { kind: "could-not-check" };
   // The home folder itself, a folder that holds it, or the root: everything in it goes.
   if (path === home || path === sep || isUnder(home, [path])) return { kind: "home-or-above" };
-  if (isUnder(path, context.scratchRoots)) return { kind: "scratch" };
-  // A build-output name (`dist`, `build`, `node_modules`) counts as scratch only once git has
-  // said nothing under it is tracked: a committed `dist/` that is gone is lost work.
-  const byName = namesScratch(path, target.folder);
+  // A temp folder, or a build-output name (`dist`, `build`, `node_modules`), counts as scratch
+  // only once git has said nothing under it is tracked: a committed `dist/` that is gone is lost
+  // work, and so is a repository cloned into a temp folder.
+  const byName = isUnder(path, context.scratchRoots) || namesScratch(path, target.folder);
 
   // The nearest folder that is still there: the target itself, or a parent of it.
   let folder = path;

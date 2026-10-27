@@ -212,6 +212,23 @@ describe("rm -rf targets, one per class", () => {
     ]);
   });
 
+  it("a repository in a temp folder: git is asked first, so tracked files gone are tracked", async () => {
+    const root = makeRepo("rm-tracked-in-temp", { files: { "src/a.ts": "a\n" } });
+    rmSync(join(root, "src"), { recursive: true });
+    const outside = tempFolder("scratch-outside");
+    // The whole repository sits in a temp folder: a clone made under /tmp, say.
+    const { facts, result, fixes } = await destructive(
+      ran(root, "rm -rf src", "rm -rf untracked-here", `rm -rf ${join(outside, "work")}`),
+      { scratchRoots: [root, outside] },
+    );
+    expect(facts.rm.classes).toEqual(classes({ tracked: 1, scratch: 2 }));
+    expect(facts.rm.trackedGone).toBe(1);
+    expect(result.status).toBe("act");
+    expect(fixes).toEqual([
+      quoted("git", "-C", root, "--literal-pathspecs", "restore", "--", "src"),
+    ]);
+  });
+
   it("tracked files partly back: no command restores them as a whole, and the card says why", async () => {
     const root = makeRepo("rm-partly", { files: { "src/a.ts": "a\n", "src/b.ts": "b\n" } });
     rmSync(join(root, "src", "a.ts"));

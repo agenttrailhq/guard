@@ -14825,8 +14825,7 @@ async function classify2(context, target) {
   const path = resolvePath(target.folder, literalPart(word.value, word.globAt), home);
   if (path === void 0) return { kind: "could-not-check" };
   if (path === home || path === sep2 || isUnder(home, [path])) return { kind: "home-or-above" };
-  if (isUnder(path, context.scratchRoots)) return { kind: "scratch" };
-  const byName = namesScratch(path, target.folder);
+  const byName = isUnder(path, context.scratchRoots) || namesScratch(path, target.folder);
   let folder = path;
   let steps = 0;
   while (context.probe.isFolder(folder) !== true && steps < MAX_PARENT_STEPS) {
