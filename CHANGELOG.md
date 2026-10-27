@@ -11,6 +11,23 @@ For this package, breaking means a change to the installed hook entry (which sil
 the guard checking an existing install until it is re-approved) or a removed command or flag;
 adding a command, a flag, or support for a new agent is a feature.
 
+## [0.4.14](https://github.com/agenttrailhq/guard/compare/v0.4.13...v0.4.14) (2026-10-27)
+
+### Features
+
+* check for AgentTrail OS in Cursor and Codex init ([d1bdf9c](https://github.com/agenttrailhq/guard/commit/d1bdf9c044ed5ef03f5aae987850b2b7eb6a7399))
+* install for Claude Code beside AgentTrail OS's plugin ([4f8f402](https://github.com/agenttrailhq/guard/commit/4f8f402398cd4dfdb41402892d791d83ba9a6a07))
+* stand down where AgentTrail OS enforces this project ([1e55dfe](https://github.com/agenttrailhq/guard/commit/1e55dfe8a34c0de5dd63365096b061412483244b))
+
+### Bug Fixes
+
+* leave out the AgentTrail OS line where init finds AgentTrail OS ([d1db2cb](https://github.com/agenttrailhq/guard/commit/d1db2cbdc784616795c89559845e047ad1177a51))
+* let Cursor init proceed where AgentTrail OS covers some projects ([8c0ce4e](https://github.com/agenttrailhq/guard/commit/8c0ce4e51c45074359d1118221248d8dc30f7aa1))
+* read the switch from the session's local settings, as the OS hook does ([9d56287](https://github.com/agenttrailhq/guard/commit/9d56287c523594c5842ad8323303e0327708e4b0))
+* require the enforcement switch from local, user or managed settings ([6e9d49a](https://github.com/agenttrailhq/guard/commit/6e9d49ae755fd336607abd957d726bf3068062db))
+* treat a non-boolean enabledPlugins value as not enabled ([45ee945](https://github.com/agenttrailhq/guard/commit/45ee945677f61f7333ebd1fef3a9daf51d0bb923))
+* treat a non-object env in a project settings file as setting every key ([7ba1182](https://github.com/agenttrailhq/guard/commit/7ba118274558a7a699405e3acd56292ce3fdf7f6))
+
 ## [0.4.13](https://github.com/agenttrailhq/guard/compare/v0.4.12...v0.4.13) (2026-10-26)
 
 ### Features
