@@ -26,6 +26,7 @@ import type { CompiledRule } from "../rules.js";
 import { evaluateAction, type ScanCorpus, toolUseCalls } from "../scan-report.js";
 import type { ToolResult, ToolUse } from "../transcript/transcript-types.js";
 import type { AgentSource, MappedCall } from "../types.js";
+import { programNameOf, programStart } from "./prefix-words.js";
 import {
   executedView,
   hidingFormsOf,
@@ -462,47 +463,10 @@ export function simpleCommands(command: string): readonly SimpleCommand[] {
   return simpleCommandsOf(command);
 }
 
-/** Words that come before a program and are not it. */
-const PREFIX_WORDS: ReadonlySet<string> = new Set([
-  "sudo",
-  "env",
-  "command",
-  "exec",
-  "time",
-  "nohup",
-  "nice",
-  "then",
-  "do",
-  "else",
-  "if",
-  "elif",
-  "while",
-  "until",
-  "builtin",
-  "timeout",
-  "stdbuf",
-  "!",
-  "{",
-  "}",
-]);
-
-/**
- * The options of each prefix word that take the next word as their value, `sudo -u root`. Any
- * other option of a prefix word is a flag: `sudo -n`, `sudo -s`, `env -i`.
- */
-const PREFIX_VALUE_OPTIONS: ReadonlyMap<string, ReadonlySet<string>> = new Map([
-  ["sudo", new Set(["-u", "-g", "-C", "-D", "-h", "-p", "-R", "-r", "-T", "-t", "-U"])],
-  ["env", new Set(["-u", "-C", "--unset", "--chdir"])],
-  ["nice", new Set(["-n"])],
-  ["timeout", new Set(["-s", "-k", "--signal", "--kill-after"])],
-  ["stdbuf", new Set(["-i", "-o", "-e"])],
-  ["time", new Set(["-f", "-o", "--format", "--output"])],
-  ["exec", new Set(["-a"])],
-]);
-
 /**
  * A simple command's program, lower-cased and without its folder, the words after it, and the
- * variable assignments before it (`HTTPS_PROXY=… curl`, `env X=1 make`).
+ * variable assignments before it (`HTTPS_PROXY=… curl`, `env X=1 make`). The prefix words and
+ * their options are the shared table's (`prefix-words.ts`).
  */
 export function programAndArgs(simple: SimpleCommand): {
   program: string;
@@ -510,30 +474,12 @@ export function programAndArgs(simple: SimpleCommand): {
   assignments: string[];
 } {
   const list = simple.words;
-  const assignments: string[] = [];
-  let k = 0;
-  while (k < list.length) {
-    const word = list[k] as string;
-    if (/^[A-Za-z_][A-Za-z0-9_]*=/.test(word)) {
-      assignments.push(word);
-      k += 1;
-      continue;
-    }
-    const prefix = word.toLowerCase();
-    if (!PREFIX_WORDS.has(prefix)) break;
-    const valued = PREFIX_VALUE_OPTIONS.get(prefix);
-    k += 1;
-    // A prefix word's own options, `sudo -E`, `env -i`, and their values, `sudo -u root`.
-    while (k < list.length && (list[k] as string).startsWith("-")) {
-      k += valued?.has(list[k] as string) === true ? 2 : 1;
-    }
-    // `timeout 5 cmd`: the duration.
-    if (prefix === "timeout" && k < list.length) k += 1;
-  }
-  const program = baseName(list[k] ?? "")
-    .toLowerCase()
-    .replace(/\.exe$/, "");
-  return { program, args: list.slice(k + 1), assignments };
+  const { index: k, assignments } = programStart(list);
+  return {
+    program: programNameOf(list[k] ?? ""),
+    args: list.slice(k + 1),
+    assignments: assignments.map((i) => list[i] as string),
+  };
 }
 
 /** Is it an edit? */

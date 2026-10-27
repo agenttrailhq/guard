@@ -5,6 +5,8 @@
  */
 
 import { describe, expect, it } from "vitest";
+import { programAndArgs, simpleCommands } from "../core/verify/calls.js";
+import { executedView } from "../core/verify/ran.js";
 import { resolvePath, walkCommands } from "../core/verify/shell-calls.js";
 import {
   commandStart,
@@ -18,6 +20,54 @@ import {
 /** The words of each simple command, as values. */
 const values = (text: string): string[][] =>
   shellCommands(text).map((c) => c.words.map((w) => w.value));
+
+describe("one prefix table for every reader of a command's program", () => {
+  // Each form puts a prefix word, with an option and its value, before the program.
+  const FORMS = [
+    "sudo -D /x",
+    "sudo -u root",
+    "sudo -n",
+    "sudo -E -h host",
+    "/usr/bin/sudo -C 3",
+    "env --chdir /x",
+    "env -C /x",
+    "env --unset HOME",
+    "env -i X=1",
+    "nice -n 5",
+    "time -o /tmp/t",
+    "exec -a name",
+    "timeout -s KILL 5",
+    "stdbuf -o L",
+    "HUSKY=0 sudo -D /x",
+  ];
+
+  it.each(FORMS)("%s git push: every reader names git", (prefix) => {
+    const text = `${prefix} git push`;
+    // shell-words.ts, the git-backed checks' reader.
+    const words = shellCommands(text)[0]?.words ?? [];
+    expect(words[commandStart(words).index]?.value).toBe("git");
+    // calls.ts, the command checks' reader.
+    const simple = simpleCommands(text)[0];
+    expect(simple && programAndArgs(simple)).toMatchObject({ program: "git", args: ["push"] });
+  });
+
+  it.each(FORMS)("%s echo …: ran.ts blanks what the printer prints", (prefix) => {
+    // ran.ts, the reading of what ran: a printer's words are data, so it must find the printer.
+    const view = executedView(`${prefix} echo rm -rf build`);
+    expect(view.text).not.toMatch(/\brm\b/);
+    expect(view.kinds).toContain("doc");
+  });
+
+  it("an assignment given to env is the program's, in both readers", () => {
+    const text = "env --chdir /x HUSKY=0 git commit -m x";
+    const words = shellCommands(text)[0]?.words ?? [];
+    const start = commandStart(words);
+    expect(words[start.index]?.value).toBe("git");
+    expect(start.assignments.map((w) => w.value)).toEqual(["HUSKY=0"]);
+    const simple = simpleCommands(text)[0];
+    expect(simple && programAndArgs(simple).assignments).toEqual(["HUSKY=0"]);
+  });
+});
 
 describe("shellItems", () => {
   it("splits on every control operator and keeps quoted text in one word", () => {

@@ -16,6 +16,8 @@
  * Pure. No I/O.
  */
 
+import { programNameOf, programStart } from "./prefix-words.js";
+
 /** One word of a simple command. */
 export interface ShellWord {
   /** The word as written, quotes and all. */
@@ -280,40 +282,9 @@ export function shellCommands(text: string): ShellCommand[] {
   return shellItems(text).filter((item): item is ShellCommand => item.kind === "command");
 }
 
-/** Words that come before the program and are not it. */
-const PREFIX_WORDS: ReadonlySet<string> = new Set([
-  "sudo",
-  "env",
-  "command",
-  "builtin",
-  "exec",
-  "time",
-  "nohup",
-  "nice",
-  "stdbuf",
-  "timeout",
-  "!",
-  "{",
-  "}",
-  "if",
-  "then",
-  "else",
-  "elif",
-  "do",
-  "while",
-  "until",
-]);
-
-/** Options of a prefix word that take the next word as their value. */
-const PREFIX_VALUE_OPTIONS: ReadonlySet<string> = new Set(["-u", "-g", "-n", "-s", "-k", "-C"]);
-
-/** A variable assignment before the program, such as `HUSKY=0`. */
-const ASSIGNMENT = /^[A-Za-z_][A-Za-z0-9_]*=/;
-
 /** The program's name: its file name, lower-cased, without `.exe`. */
 export function programName(word: ShellWord): string {
-  const base = word.value.split(/[\\/]/).pop() ?? "";
-  return base.toLowerCase().replace(/\.exe$/, "");
+  return programNameOf(word.value);
 }
 
 /** Where the program is in a command, and the assignments made for it. */
@@ -324,27 +295,13 @@ export interface CommandStart {
   readonly assignments: readonly ShellWord[];
 }
 
-/** The program word, past assignments and prefix words such as `sudo` and `env`. */
+/**
+ * The program word, past assignments and prefix words such as `sudo` and `env`, by the shared
+ * table (`prefix-words.ts`).
+ */
 export function commandStart(words: readonly ShellWord[]): CommandStart {
-  const assignments: ShellWord[] = [];
-  let k = 0;
-  while (k < words.length) {
-    const word = words[k] as ShellWord;
-    if (ASSIGNMENT.test(word.value)) {
-      assignments.push(word);
-      k += 1;
-      continue;
-    }
-    const name = programName(word);
-    if (!PREFIX_WORDS.has(name)) return { index: k, assignments };
-    k += 1;
-    while (k < words.length && (words[k] as ShellWord).value.startsWith("-")) {
-      const option = (words[k] as ShellWord).value;
-      k += PREFIX_VALUE_OPTIONS.has(option) ? 2 : 1;
-    }
-    if (name === "timeout" && k < words.length) k += 1;
-  }
-  return { index: k, assignments };
+  const { index, assignments } = programStart(words.map((word) => word.value));
+  return { index, assignments: assignments.map((i) => words[i] as ShellWord) };
 }
 
 /** A `git` command: its subcommand, the words after it, and the folders `-C` moves to. */

@@ -71,6 +71,7 @@ import type { CompiledRule } from "../rules.js";
 import { evaluateAction, type ScanCorpus, toolUseCalls } from "../scan-report.js";
 import type { ToolResult } from "../transcript/transcript-types.js";
 import type { AgentSource, MappedCall } from "../types.js";
+import { programNameOf, programStart } from "./prefix-words.js";
 import {
   HIDING_FORMS,
   type HidingForm,
@@ -527,62 +528,17 @@ function parseShell(text: string): Parsed {
   return { segments, comments, processSubstitution, targetRuns };
 }
 
-/** Words that come before the program and are not it. */
-const PREFIX_WORDS: ReadonlySet<string> = new Set([
-  "sudo",
-  "env",
-  "command",
-  "builtin",
-  "exec",
-  "time",
-  "nohup",
-  "nice",
-  "stdbuf",
-  "timeout",
-  "!",
-  "{",
-  "}",
-  "if",
-  "then",
-  "else",
-  "elif",
-  "do",
-  "while",
-  "until",
-]);
-
-/** Options of a prefix word that take the next word as their value. */
-const PREFIX_VALUE_OPTIONS: ReadonlySet<string> = new Set(["-u", "-g", "-n", "-s", "-k"]);
-
-/** A shell variable assignment before the program, such as `HUSKY=0`. */
-const ASSIGNMENT = /^[A-Za-z_][A-Za-z0-9_]*=/;
-
 /** The program's name: its file name, lower-cased, without `.exe`. */
 function programName(word: Word): string {
-  const base = word.value.split(/[\\/]/).pop() ?? "";
-  return base.toLowerCase().replace(/\.exe$/, "");
+  return programNameOf(word.value);
 }
 
-/** The index of the program word, past assignments and prefix words such as `sudo`. */
+/**
+ * The index of the program word, past assignments and prefix words such as `sudo`, by the
+ * shared table (`prefix-words.ts`).
+ */
 function programIndex(words: readonly Word[]): number {
-  let k = 0;
-  while (k < words.length) {
-    const word = words[k] as Word;
-    if (ASSIGNMENT.test(word.value)) {
-      k += 1;
-      continue;
-    }
-    const name = programName(word);
-    if (!PREFIX_WORDS.has(name)) return k;
-    k += 1;
-    // A prefix word's own options, and `timeout`'s duration.
-    while (k < words.length && (words[k] as Word).value.startsWith("-")) {
-      const option = (words[k] as Word).value;
-      k += PREFIX_VALUE_OPTIONS.has(option) ? 2 : 1;
-    }
-    if (name === "timeout" && k < words.length) k += 1;
-  }
-  return k;
+  return programStart(words.map((word) => word.value)).index;
 }
 
 /** Programs whose arguments are printed, not run. */

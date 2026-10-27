@@ -10020,6 +10020,65 @@ function mcpReviewDisclosures(corpus, catalog, allowlist) {
   return out;
 }
 
+// src/core/verify/prefix-words.ts
+var PREFIX_WORDS = /* @__PURE__ */ new Set([
+  "sudo",
+  "env",
+  "command",
+  "builtin",
+  "exec",
+  "time",
+  "nohup",
+  "nice",
+  "stdbuf",
+  "timeout",
+  "!",
+  "{",
+  "}",
+  "if",
+  "then",
+  "else",
+  "elif",
+  "do",
+  "while",
+  "until"
+]);
+var PREFIX_VALUE_OPTIONS = /* @__PURE__ */ new Map([
+  ["sudo", /* @__PURE__ */ new Set(["-u", "-g", "-C", "-D", "-h", "-p", "-R", "-r", "-T", "-t", "-U"])],
+  ["env", /* @__PURE__ */ new Set(["-u", "-C", "--unset", "--chdir"])],
+  ["nice", /* @__PURE__ */ new Set(["-n"])],
+  ["timeout", /* @__PURE__ */ new Set(["-s", "-k", "--signal", "--kill-after"])],
+  ["stdbuf", /* @__PURE__ */ new Set(["-i", "-o", "-e"])],
+  ["time", /* @__PURE__ */ new Set(["-f", "-o", "--format", "--output"])],
+  ["exec", /* @__PURE__ */ new Set(["-a"])]
+]);
+var ASSIGNMENT3 = /^[A-Za-z_][A-Za-z0-9_]*=/;
+function programNameOf(value) {
+  const base = value.split(/[\\/]/).pop() ?? "";
+  return base.toLowerCase().replace(/\.exe$/, "");
+}
+function programStart(values) {
+  const assignments = [];
+  let k = 0;
+  while (k < values.length) {
+    const value = values[k];
+    if (ASSIGNMENT3.test(value)) {
+      assignments.push(k);
+      k += 1;
+      continue;
+    }
+    const name = programNameOf(value);
+    if (!PREFIX_WORDS.has(name)) return { index: k, assignments };
+    const valued = PREFIX_VALUE_OPTIONS.get(name);
+    k += 1;
+    while (k < values.length && values[k].startsWith("-")) {
+      k += valued?.has(values[k]) === true ? 2 : 1;
+    }
+    if (name === "timeout" && k < values.length) k += 1;
+  }
+  return { index: k, assignments };
+}
+
 // src/core/verify/command-facts.ts
 var IAM_SUBJECTS = [
   "access-keys",
@@ -10628,52 +10687,11 @@ function parseShell(text2) {
   endSegment(text2.length);
   return { segments, comments, processSubstitution, targetRuns };
 }
-var PREFIX_WORDS = /* @__PURE__ */ new Set([
-  "sudo",
-  "env",
-  "command",
-  "builtin",
-  "exec",
-  "time",
-  "nohup",
-  "nice",
-  "stdbuf",
-  "timeout",
-  "!",
-  "{",
-  "}",
-  "if",
-  "then",
-  "else",
-  "elif",
-  "do",
-  "while",
-  "until"
-]);
-var PREFIX_VALUE_OPTIONS = /* @__PURE__ */ new Set(["-u", "-g", "-n", "-s", "-k"]);
-var ASSIGNMENT3 = /^[A-Za-z_][A-Za-z0-9_]*=/;
 function programName(word) {
-  const base = word.value.split(/[\\/]/).pop() ?? "";
-  return base.toLowerCase().replace(/\.exe$/, "");
+  return programNameOf(word.value);
 }
 function programIndex(words2) {
-  let k = 0;
-  while (k < words2.length) {
-    const word = words2[k];
-    if (ASSIGNMENT3.test(word.value)) {
-      k += 1;
-      continue;
-    }
-    const name = programName(word);
-    if (!PREFIX_WORDS.has(name)) return k;
-    k += 1;
-    while (k < words2.length && words2[k].value.startsWith("-")) {
-      const option = words2[k].value;
-      k += PREFIX_VALUE_OPTIONS.has(option) ? 2 : 1;
-    }
-    if (name === "timeout" && k < words2.length) k += 1;
-  }
-  return k;
+  return programStart(words2.map((word) => word.value)).index;
 }
 var PRINTERS = /* @__PURE__ */ new Set(["echo", "printf"]);
 var LOOKUPS = /* @__PURE__ */ new Set([
@@ -11500,59 +11518,14 @@ function baseName(path) {
 function simpleCommands(command) {
   return simpleCommandsOf(command);
 }
-var PREFIX_WORDS2 = /* @__PURE__ */ new Set([
-  "sudo",
-  "env",
-  "command",
-  "exec",
-  "time",
-  "nohup",
-  "nice",
-  "then",
-  "do",
-  "else",
-  "if",
-  "elif",
-  "while",
-  "until",
-  "builtin",
-  "timeout",
-  "stdbuf",
-  "!",
-  "{",
-  "}"
-]);
-var PREFIX_VALUE_OPTIONS2 = /* @__PURE__ */ new Map([
-  ["sudo", /* @__PURE__ */ new Set(["-u", "-g", "-C", "-D", "-h", "-p", "-R", "-r", "-T", "-t", "-U"])],
-  ["env", /* @__PURE__ */ new Set(["-u", "-C", "--unset", "--chdir"])],
-  ["nice", /* @__PURE__ */ new Set(["-n"])],
-  ["timeout", /* @__PURE__ */ new Set(["-s", "-k", "--signal", "--kill-after"])],
-  ["stdbuf", /* @__PURE__ */ new Set(["-i", "-o", "-e"])],
-  ["time", /* @__PURE__ */ new Set(["-f", "-o", "--format", "--output"])],
-  ["exec", /* @__PURE__ */ new Set(["-a"])]
-]);
 function programAndArgs(simple) {
   const list = simple.words;
-  const assignments = [];
-  let k = 0;
-  while (k < list.length) {
-    const word = list[k];
-    if (/^[A-Za-z_][A-Za-z0-9_]*=/.test(word)) {
-      assignments.push(word);
-      k += 1;
-      continue;
-    }
-    const prefix = word.toLowerCase();
-    if (!PREFIX_WORDS2.has(prefix)) break;
-    const valued = PREFIX_VALUE_OPTIONS2.get(prefix);
-    k += 1;
-    while (k < list.length && list[k].startsWith("-")) {
-      k += valued?.has(list[k]) === true ? 2 : 1;
-    }
-    if (prefix === "timeout" && k < list.length) k += 1;
-  }
-  const program = baseName(list[k] ?? "").toLowerCase().replace(/\.exe$/, "");
-  return { program, args: list.slice(k + 1), assignments };
+  const { index: k, assignments } = programStart(list);
+  return {
+    program: programNameOf(list[k] ?? ""),
+    args: list.slice(k + 1),
+    assignments: assignments.map((i) => list[i])
+  };
 }
 function isEdit(call) {
   return call.edit !== void 0;
@@ -14318,54 +14291,12 @@ function shellItems(text2) {
 function shellCommands(text2) {
   return shellItems(text2).filter((item) => item.kind === "command");
 }
-var PREFIX_WORDS3 = /* @__PURE__ */ new Set([
-  "sudo",
-  "env",
-  "command",
-  "builtin",
-  "exec",
-  "time",
-  "nohup",
-  "nice",
-  "stdbuf",
-  "timeout",
-  "!",
-  "{",
-  "}",
-  "if",
-  "then",
-  "else",
-  "elif",
-  "do",
-  "while",
-  "until"
-]);
-var PREFIX_VALUE_OPTIONS3 = /* @__PURE__ */ new Set(["-u", "-g", "-n", "-s", "-k", "-C"]);
-var ASSIGNMENT4 = /^[A-Za-z_][A-Za-z0-9_]*=/;
 function programName2(word) {
-  const base = word.value.split(/[\\/]/).pop() ?? "";
-  return base.toLowerCase().replace(/\.exe$/, "");
+  return programNameOf(word.value);
 }
 function commandStart(words2) {
-  const assignments = [];
-  let k = 0;
-  while (k < words2.length) {
-    const word = words2[k];
-    if (ASSIGNMENT4.test(word.value)) {
-      assignments.push(word);
-      k += 1;
-      continue;
-    }
-    const name = programName2(word);
-    if (!PREFIX_WORDS3.has(name)) return { index: k, assignments };
-    k += 1;
-    while (k < words2.length && words2[k].value.startsWith("-")) {
-      const option = words2[k].value;
-      k += PREFIX_VALUE_OPTIONS3.has(option) ? 2 : 1;
-    }
-    if (name === "timeout" && k < words2.length) k += 1;
-  }
-  return { index: k, assignments };
+  const { index, assignments } = programStart(words2.map((word) => word.value));
+  return { index, assignments: assignments.map((i) => words2[i]) };
 }
 var GIT_VALUE_OPTIONS2 = /* @__PURE__ */ new Set([
   "-C",

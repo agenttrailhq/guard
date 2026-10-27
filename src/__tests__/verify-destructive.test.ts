@@ -170,6 +170,19 @@ describe("rm -rf targets, one per class", () => {
     expect(pickHeadline([card], TOOL_RESULT)?.category).toBe("destructive");
   });
 
+  it("behind a prefix word's option with a value: the delete is still read", async () => {
+    const root = makeRepo("rm-prefix");
+    const { facts } = await destructive(
+      ran(
+        root,
+        `env --chdir /x rm -rf "$BUILD_DIR/out"`,
+        `sudo -D /x rm -rf "$BUILD_DIR/out"`,
+        `sudo -n rm -rf "$BUILD_DIR/out"`,
+      ),
+    );
+    expect(facts.rm.classes).toEqual(classes({ "unguarded-variable": 3 }));
+  });
+
   it("scratch, temp and build output: clean", async () => {
     const root = makeRepo("rm-scratch");
     const scratch = tempFolder("scratch-root");
