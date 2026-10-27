@@ -470,8 +470,11 @@ describe("only the scrub path can write a transcript", () => {
    *
    * What it guarantees: no direct write, renamed writer, re-export, unlisted local module,
    * dynamic import, `require`, module route (`getBuiltinModule`, `createRequire`, bindings),
-   * `eval`, `Function`, `Reflect`, `.constructor`, string or computed key (beyond the three the
-   * file uses, by name), or `openSync` flag other than the read-only ones written out below.
+   * `eval`, `Function`, `Reflect`, `.constructor`, `getOwnPropertyDescriptor`, string or
+   * computed key (beyond the three the file uses, each pinned to its own function and count),
+   * `execFile` outside `realExec`, or `openSync` flag other than the read-only ones written out
+   * below; and no listed local module, or any module it loads, that loads `node:fs`,
+   * `child_process`, `worker_threads` or `vm`.
    *
    * What it does not: a reading of source text cannot be complete against deliberate
    * obfuscation in general. It closes every route found by review so far, each with its edit as
@@ -580,7 +583,41 @@ describe("only the scrub path can write a transcript", () => {
       "Reflect",
       // `.constructor` of any function is the Function constructor, which runs a string as code.
       "constructor",
+      // A property descriptor hands on a property, a writer included, by its name as a string.
+      "getOwnPropertyDescriptor",
+      "getOwnPropertyDescriptors",
     ]);
+
+    /** Modules that start a process or run code, which no listed local module may load. */
+    const PROCESS_MODULES = /^(node:)?(child_process|worker_threads|vm)$/;
+
+    /**
+     * The real file's own element accesses with a computed key, each pinned to the function it
+     * sits in and to how many times it appears there. The same text anywhere else, or once more,
+     * fails: the names are only names, so they must not be reused to index something else.
+     */
+    const PINNED_COMPUTED_ACCESS: Readonly<Record<string, { fn: string; count: number }>> = {
+      "args[i]": { fn: "isAllowedGitCall", count: 1 },
+      "env[key]": { fn: "gitEnvironment", count: 1 },
+      "out[key]": { fn: "gitEnvironment", count: 1 },
+    };
+
+    /** The named function a node sits in, or `(top)`. */
+    function enclosingFunction(node: ts.Node, file: ts.SourceFile): string {
+      for (let p = node.parent; p !== undefined; p = p.parent) {
+        if ((ts.isFunctionDeclaration(p) || ts.isMethodDeclaration(p)) && p.name !== undefined) {
+          return p.name.getText(file);
+        }
+        if (
+          ts.isVariableDeclaration(p) &&
+          p.initializer !== undefined &&
+          (ts.isArrowFunction(p.initializer) || ts.isFunctionExpression(p.initializer))
+        ) {
+          return p.name.getText(file);
+        }
+      }
+      return "(top)";
+    }
 
     /**
      * The local modules `verify-io.ts` may import. Each is checked below to import and re-export
@@ -592,13 +629,6 @@ describe("only the scrub path can write a transcript", () => {
       "./core/verify/paths.js": join(SRC, "core", "verify", "paths.ts"),
       "./core/verify/types.js": join(SRC, "core", "verify", "types.ts"),
     };
-
-    /**
-     * The element accesses with a computed key the real file makes, exactly as written. Any
-     * other key that is not a numeric literal fails: a key built at run time can name any
-     * property, a writer included.
-     */
-    const ALLOWED_COMPUTED_ACCESS = new Set(["args[i]", "env[key]", "out[key]"]);
 
     /** Names that must only ever be the `node:fs` import of the same name. */
     const FS_ONLY_NAMES = new Set(["constants", "openSync"]);
@@ -632,7 +662,17 @@ describe("only the scrub path can write a transcript", () => {
       const fsSpecifiers = new Set<ts.Node>();
       const fsImported = new Set<string>();
       const used = new Set<string>();
+      const pinnedSeen = new Map<string, number>();
       const visit = (node: ts.Node): void => {
+        // `execFile` starts a process: allowed only in its import and inside `realExec`.
+        if (
+          ts.isIdentifier(node) &&
+          node.text === "execFile" &&
+          !ts.isImportSpecifier(node.parent) &&
+          enclosingFunction(node, file) !== "realExec"
+        ) {
+          problems.push(`uses execFile in ${enclosingFunction(node, file)}`);
+        }
         if (
           ts.isExportDeclaration(node) &&
           node.moduleSpecifier !== undefined &&
@@ -688,11 +728,20 @@ describe("only the scrub path can write a transcript", () => {
           const key = node.argumentExpression;
           if (ts.isStringLiteralLike(key) || ts.isTemplateExpression(key)) {
             problems.push("indexes by a string key");
-          } else if (
-            !ts.isNumericLiteral(key) &&
-            !ALLOWED_COMPUTED_ACCESS.has(node.getText(file).replace(/\s+/g, ""))
-          ) {
-            problems.push(`indexes by a computed key: ${node.getText(file)}`);
+          } else if (!ts.isNumericLiteral(key)) {
+            // A key that is not a numeric literal: only the real file's own accesses, in their
+            // own functions, as many times as there.
+            const text = node.getText(file).replace(/\s+/g, "");
+            const pinned = PINNED_COMPUTED_ACCESS[text];
+            const seen = (pinnedSeen.get(text) ?? 0) + 1;
+            pinnedSeen.set(text, seen);
+            if (
+              pinned === undefined ||
+              enclosingFunction(node, file) !== pinned.fn ||
+              seen > pinned.count
+            ) {
+              problems.push(`indexes by a computed key: ${node.getText(file)}`);
+            }
           }
         }
         if (ts.isNewExpression(node)) {
@@ -983,6 +1032,56 @@ describe("only the scrub path can write a transcript", () => {
       expect(readOnlyProblems(mutated).some((p) => p.startsWith(problem))).toBe(true);
     });
 
+    // The edits of the fifth review that passed the previous form of this check, as found.
+    it.each([
+      [
+        "R1: the real file's computed-key names, reused in another function",
+        [
+          "type Fn = (...args: unknown[]) => Record<string, Fn>;",
+          "const env = process as unknown as Record<string, Fn>;",
+          'let key = ["getBuilt", "inModule"].join("");',
+          'const out = env[key]?.("node:fs") as Record<string, Fn>;',
+          'key = ["write", "FileSync"].join("");',
+          // biome-ignore lint/suspicious/noTemplateCurlyInString: source text for the mutant
+          'out[key]?.(`${real}.verified`, "x");',
+        ].join("\n"),
+        "indexes by a computed key",
+      ],
+      [
+        "R3: getOwnPropertyDescriptor with .call",
+        [
+          'const getModule = Object.getOwnPropertyDescriptor(process, "getBuiltinModule")?.value;',
+          'const fsModule = getModule.call(process, "node:fs");',
+          // biome-ignore lint/suspicious/noTemplateCurlyInString: source text for the mutant
+          'Object.getOwnPropertyDescriptor(fsModule, "appendFileSync")?.value.apply(fsModule, [`${real}.verified`, "x"]);',
+        ].join("\n"),
+        "reaches getOwnPropertyDescriptor",
+      ],
+      [
+        "R10: execFile called outside realExec, to start a program that writes",
+        // biome-ignore lint/suspicious/noTemplateCurlyInString: source text for the mutant
+        'execFile("/usr/bin/touch", [`${real}.verified`], () => {});',
+        "uses execFile in",
+      ],
+    ])("negative control: fails on %s", (_name, code, problem) => {
+      const mutated = beforeOpen(code);
+      expect(mutated).not.toBe(real);
+      expect(readOnlyProblems(mutated).some((p) => p.startsWith(problem))).toBe(true);
+    });
+
+    it("the real file's own computed keys pass only in their own functions, once each", () => {
+      expect(readOnlyProblems(real)).toEqual([]);
+      // One more `env[key]` inside gitEnvironment is one too many.
+      const twice = real.replace(
+        "    const value = env[key];",
+        "    void env[key];\n    const value = env[key];",
+      );
+      expect(twice).not.toBe(real);
+      expect(readOnlyProblems(twice).some((p) => p.startsWith("indexes by a computed key"))).toBe(
+        true,
+      );
+    });
+
     /**
      * Every reason the local modules `verify-io.ts` imports could hand it a writer: a local import
      * that is not on the list, or a listed module, or any module it value-imports or re-exports
@@ -1015,6 +1114,9 @@ describe("only the scrub path can write a transcript", () => {
             if (/^(node:)?fs(\/promises)?$/.test(imported.specifier)) {
               problems.push(`${name} loads ${imported.specifier}`);
             }
+            if (PROCESS_MODULES.test(imported.specifier)) {
+              problems.push(`${name} loads ${imported.specifier}`);
+            }
             if (!imported.typeOnly && imported.specifier.startsWith(".")) {
               queue.push(join(dirname(file), imported.specifier.replace(/\.js$/, ".ts")));
             }
@@ -1032,6 +1134,21 @@ describe("only the scrub path can write a transcript", () => {
           .filter((s) => s.startsWith("."))
           .sort(),
       ).toEqual(Object.keys(LOCAL_IMPORTS).sort());
+    });
+
+    it("negative control, R11: a listed module re-exports a process starter", () => {
+      const PATHS = LOCAL_IMPORTS["./core/verify/paths.js"] as string;
+      for (const from of [
+        "node:child_process",
+        "child_process",
+        "node:worker_threads",
+        "node:vm",
+      ]) {
+        const changed = `${readFileSync(PATHS, "utf8")}\nexport { execFileSync as put } from "${from}";\n`;
+        const read = (path: string): string =>
+          path === PATHS ? changed : readFileSync(path, "utf8");
+        expect(localModuleProblems(real, read)).toContain(`core/verify/paths.ts loads ${from}`);
+      }
     });
 
     it("negative control, B4: a writer re-exported from a listed module, imported and called", () => {
