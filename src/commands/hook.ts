@@ -159,6 +159,8 @@ export interface HookDeps {
   readonly realpath?: (path: string) => string;
   /** The platform whose managed-settings folder is read. Defaults to `process.platform`. */
   readonly platform?: NodeJS.Platform;
+  /** The hook process's working folder, for the step-aside check. */
+  readonly processCwd?: string;
 }
 
 /**
@@ -344,6 +346,7 @@ function answerClaudeCodeCall(
       listDir: (path) => io.listDir(path),
       realpath: deps.realpath,
       ...(deps.platform !== undefined ? { platform: deps.platform } : {}),
+      ...(deps.processCwd !== undefined ? { processCwd: deps.processCwd } : {}),
     });
     if (aside.standDown) {
       emitter.emit("allow", "");

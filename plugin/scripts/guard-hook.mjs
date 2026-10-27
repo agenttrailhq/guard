@@ -7307,7 +7307,7 @@ function enforcedProjectsPath(home) {
 }
 function claudeDir(home, env) {
   const configured = env[ENV_CONFIG_DIR]?.trim();
-  return configured !== void 0 && configured.length > 0 ? configured : join2(home, ".claude");
+  return configured !== void 0 && configured.length > 0 && isAbsolute(configured) ? configured : join2(home, ".claude");
 }
 function managedSettingsFiles(platform, listDir) {
   const dir = platform === "darwin" ? "/Library/Application Support/ClaudeCode" : platform === "win32" ? "C:\\Program Files\\ClaudeCode" : "/etc/claude-code";
@@ -7455,19 +7455,28 @@ function evaluate(input) {
   ];
   if (candidates.length === 0) return { standDown: false, failed: "record" };
   const homeReal = safeRealpath(input.home, input.realpath) ?? input.home;
-  const scanned = projectSettingsFolders(
-    [...projectDir !== void 0 ? [projectDir] : [], ...cwd !== void 0 ? [cwd] : []],
-    homeReal
-  ).map((folder) => input.readFile(join2(folder, ".claude", "settings.json")));
+  const base = input.processCwd;
+  const resolveFrom = (path) => isAbsolute(path) ? path : base !== void 0 ? join2(base, path) : void 0;
+  const scanStarts = [projectDirRaw, input.cwd, base].filter((p) => p !== void 0 && p.length > 0).map(resolveFrom).filter((p) => p !== void 0).map((p) => safeRealpath(p, input.realpath) ?? p);
+  const scanned = projectSettingsFolders(scanStarts, homeReal).map(
+    (folder) => input.readFile(join2(folder, ".claude", "settings.json"))
+  );
   const repoSets = (key) => scanned.some((text) => {
     if (text === void 0) return false;
     const parsed = parseJson(text);
     return !isRecord3(parsed) || isRecord3(parsed.env) && key in parsed.env;
   });
   const configDir = repoSets(ENV_CONFIG_DIR) ? join2(input.home, ".claude") : claudeDir(input.home, env);
+  let localRoot;
+  if (projectDirRaw !== void 0 && projectDirRaw.length > 0) {
+    localRoot = projectDir !== void 0 && !repoSets(ENV_PROJECT_DIR) ? projectDir : void 0;
+  } else {
+    const fallback = [input.cwd, base].find((p) => p !== void 0 && p.length > 0);
+    localRoot = fallback === void 0 ? void 0 : safeRealpath(fallback, input.realpath) ?? fallback;
+  }
   const trustedFiles = [
     ...managedSettingsFiles(input.platform ?? process.platform, input.listDir),
-    ...repoSets(ENV_PROJECT_DIR) ? [] : [join2(here, ".claude", "settings.local.json")],
+    ...localRoot === void 0 ? [] : [join2(localRoot, ".claude", "settings.local.json")],
     join2(configDir, "settings.json")
   ];
   const trustedSentinel = trustedFiles.map((path) => envBlock(input.readFile(path))[ENV_ENFORCE]).find((value) => value !== void 0);
@@ -7501,7 +7510,7 @@ function envBlock(text) {
   if (!isRecord3(parsed) || !isRecord3(parsed.env)) return {};
   const out = {};
   for (const [key, value] of Object.entries(parsed.env)) {
-    if (typeof value === "string") out[key] = value;
+    out[key] = typeof value === "string" ? value : typeof value === "number" || typeof value === "boolean" ? String(value) : JSON.stringify(value);
   }
   return out;
 }
@@ -7974,7 +7983,8 @@ function answerClaudeCodeCall(io2, deps, payload, sentBy, emitter) {
       readFile: (path) => io2.readFile(path),
       listDir: (path) => io2.listDir(path),
       realpath: deps.realpath,
-      ...deps.platform !== void 0 ? { platform: deps.platform } : {}
+      ...deps.platform !== void 0 ? { platform: deps.platform } : {},
+      ...deps.processCwd !== void 0 ? { processCwd: deps.processCwd } : {}
     });
     if (aside.standDown) {
       emitter.emit("allow", "");
@@ -8308,6 +8318,7 @@ await runHook(io, {
   agent: agentFromArgv(process.argv.slice(2)),
   env: process.env,
   realpath: (path) => realpathSync.native(path),
+  processCwd: process.cwd(),
   captureCrash: (err) => {
     captureCrash(err, {
       io,

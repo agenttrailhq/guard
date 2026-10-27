@@ -32,6 +32,7 @@ await runHook(io, {
   agent: agentFromArgv(process.argv.slice(2)),
   env: process.env,
   realpath: (path) => realpathSync.native(path),
+  processCwd: process.cwd(),
   captureCrash: (err) => {
     captureCrash(err, {
       io,

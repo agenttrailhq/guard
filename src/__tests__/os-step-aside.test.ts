@@ -340,6 +340,69 @@ describe("evaluateStepAside — stands down only when every check passes", () =>
     });
   });
 
+  it("session in one project, cwd in a recorded other: the local file is the session's, so enforces", () => {
+    // Session started in A (CLAUDE_PROJECT_DIR=A): A's committed settings.json has "1", A's local
+    // file kept the URL and token but lost its sentinel. The agent works in PROJECT (recorded,
+    // its local file has "1", same token). The OS hook reads A's local file and sets the "1"
+    // aside, so Guard must not stand down.
+    const A = "/work/session-a";
+    const files = {
+      ...world(),
+      [`${A}/.claude/settings.json`]: JSON.stringify({ env: { AGENTTRAIL_PEP_ENFORCE: "1" } }),
+      [`${A}/.claude/settings.local.json`]: JSON.stringify({
+        env: { AGENTTRAIL_PEP_URL: URL, AGENTTRAIL_PEP_TOKEN: TOKEN },
+      }),
+    };
+    expect(
+      evaluateStepAside(input(files, { ...ENV, CLAUDE_PROJECT_DIR: A }, { cwd: PROJECT })),
+    ).toEqual({ standDown: false, failed: "sentinel" });
+  });
+
+  it("no CLAUDE_PROJECT_DIR: the payload cwd's local file counts", () => {
+    const env = { ...ENV, CLAUDE_PROJECT_DIR: undefined };
+    expect(evaluateStepAside(input(world(), env)).standDown).toBe(true);
+  });
+
+  it("a non-string sentinel in a higher trusted file counts as that file's value", () => {
+    const files = {
+      ...world(),
+      [`${PROJECT}/.claude/settings.local.json`]: JSON.stringify({
+        env: { AGENTTRAIL_PEP_ENFORCE: null },
+      }),
+      [`${HOME}/.claude/settings.json`]: JSON.stringify({
+        env: { AGENTTRAIL_PEP_ENFORCE: "1" },
+        enabledPlugins: { [OS_PLUGIN_ID]: true },
+      }),
+    };
+    expect(evaluateStepAside(input(files))).toEqual({ standDown: false, failed: "sentinel" });
+  });
+
+  it("a relative CLAUDE_CONFIG_DIR is ignored: the user file stays under the home folder", () => {
+    const files = {
+      ...world(),
+      [`${PROJECT}/.claude/settings.local.json`]: JSON.stringify({}),
+      ["cfg/settings.json"]: JSON.stringify({ env: { AGENTTRAIL_PEP_ENFORCE: "1" } }),
+    };
+    expect(evaluateStepAside(input(files, { ...ENV, CLAUDE_CONFIG_DIR: "cfg" }))).toEqual({
+      standDown: false,
+      failed: "sentinel",
+    });
+  });
+
+  it("the hook's own folder is scanned too: a project file there that sets CLAUDE_PROJECT_DIR", () => {
+    const hookDir = "/work/elsewhere";
+    const files = {
+      ...world(),
+      [`${hookDir}/.claude/settings.json`]: JSON.stringify({
+        env: { CLAUDE_PROJECT_DIR: PROJECT },
+      }),
+    };
+    expect(evaluateStepAside(input(files, ENV, { processCwd: hookDir }))).toEqual({
+      standDown: false,
+      failed: "sentinel",
+    });
+  });
+
   it("a token rotated without a record update: enforces", () => {
     const env = { ...ENV, AGENTTRAIL_PEP_TOKEN: "dlv_ingest_rotated" };
     expect(evaluateStepAside(input(world(), env))).toEqual({ standDown: false, failed: "token" });
