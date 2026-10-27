@@ -6,7 +6,7 @@
  * - What a note may claim: a check not checked gives no note; one that could not finish, or
  *   whose commands that ran hold a form that can hide others, gives "Could not confirm", never
  *   a reassuring note; sessions with no recorded output confirm nothing that rests on output;
- *   Codex counts carry their caveat.
+ *   a Codex scan gets no reassuring note, and its counts carry their caveat.
  * - Only counts: a value of any other type ends the note, and a note's only variable parts are
  *   numbers.
  * - Registered keys only: every key a note reads is one a check registers.
@@ -52,10 +52,15 @@ import {
 } from "./notes-corpus.js";
 import { SECRETS_ACT, SECRETS_CLEAN } from "./verified-corpus.js";
 
-/** The note text for `ruleId` over `verification`, or `undefined`. */
-function noteText(ruleId: string, verification: Verification = notesVerification()) {
+/** The note for `ruleId` over `verification`, or `undefined`. */
+function noteOf(ruleId: string, verification: Verification = notesVerification()) {
   const cards = cardsFor(verification, TONE_BUILDERS);
-  return verifiedNote(library(ruleId), verification, cards)?.sentence;
+  return verifiedNote(library(ruleId), verification, cards);
+}
+
+/** The note's sentence for `ruleId` over `verification`, or `undefined`. */
+function noteText(ruleId: string, verification: Verification = notesVerification()) {
+  return noteOf(ruleId, verification)?.sentence;
 }
 
 /** One rule of each kind, for the per-kind tests. */
@@ -437,7 +442,7 @@ const KIND_CASES: readonly [NoteKindName, string, object, string][] = [
     "uploads",
     "false positive",
     EGRESS_FACTS,
-    "False positive: the 3 upload-shaped calls that ran went to this machine or LocalStack.",
+    "False positive: nothing that ran left this machine; 3 calls went to this machine or LocalStack.",
   ],
   [
     "uploads",
@@ -495,10 +500,22 @@ const CATEGORY_RULES: readonly [VerifyCategory, string][] = VERIFY_CATEGORIES.fl
 
 /**
  * Words a reassuring note uses: every reassuring clause the templates have. A note that could
- * not confirm must use none of them.
+ * not confirm, and any note on a Codex scan, must use none of them.
  */
 const REASSURING =
   /false positive|nothing lost|no tracked file|only local|no coverage floor|no known tunnel|hooks are on now|no likely-real|none of the|all scratch|mostly scratch|own worktree or a scratch copy/i;
+
+/** Every kind case's note, from the sessions `calls` describes. */
+function caseNotes(calls: Partial<Pick<Verification, "resultsRecorded" | "ranEvidence">> = {}) {
+  return KIND_CASES.map(([kind, label, facts]) => {
+    const category = categoryOf(kind);
+    const verification =
+      category === "dependencies"
+        ? notesVerification({}, calls, facts)
+        : notesVerification({ [category]: checked("act", facts) }, calls);
+    return { kind, label, note: noteOf(ruleOf(kind), verification) };
+  });
+}
 
 describe("a check that is not checked gives no note", () => {
   it.each(CATEGORY_RULES)("%s", (category, id) => {
@@ -658,20 +675,49 @@ describe("sessions that record no command output confirm nothing that rests on i
   });
 });
 
-describe("Codex counts carry their caveat", () => {
-  const codex = notesVerification({}, { ranEvidence: "output-record" });
+describe("a Codex scan gets no reassuring note, and its counts carry their caveat", () => {
+  const codex = { ranEvidence: "output-record" } as const;
 
-  it.each(
-    Object.entries(NOTE_RULES).filter(([, rule]) => NOTE_KINDS[rule.kind].ran),
-  )("%s", (id) => {
-    const plain = noteText(id);
-    const note = noteText(id, codex);
-    expect(note?.template).toBe(plain?.template);
-    expect(note?.text).toBe(`${plain?.text} ${CODEX_TEXT}`);
+  it.each(KIND_CASES.map(([kind, label]) => [kind, label] as const))("%s: %s", (kind, label) => {
+    const plain = caseNotes().find((c) => c.kind === kind && c.label === label)?.note;
+    const note = caseNotes(codex).find((c) => c.kind === kind && c.label === label)?.note;
+    const text = note?.sentence.text ?? "";
+    expect(text).not.toMatch(REASSURING);
+    if (note !== undefined) expect(note.sentence.template).toBe(plain?.sentence.template);
+    // A count of commands that ran carries the caveat; a note with no count has none to carry.
+    const caveated = NOTE_KINDS[kind].ran && /\d/.test(text.replace(CODEX_TEXT ?? "", ""));
+    expect(text.endsWith(` ${CODEX_TEXT}`)).toBe(caveated);
+    // A note of what was found reads as it does elsewhere, with the caveat.
+    if (plain !== undefined && !REASSURING.test(plain.sentence.text)) {
+      expect(text).toBe(caveated ? `${plain.sentence.text} ${CODEX_TEXT}` : plain.sentence.text);
+    }
   });
 
-  it("a note on what the transcripts hold does not", () => {
-    expect(noteText("se.env-print", codex)?.text).toBe(noteText("se.env-print")?.text);
+  it("keeps a reassuring note's counts, and drops its reassurance", () => {
+    expect(noteText("dd.rm-rf-absolute", notesVerification({}, codex))?.text).toBe(
+      `5 of 7 targets were scratch, temp or build folders. 1 target held untracked files in a repo. ${CODEX_TEXT}`,
+    );
+    expect(noteText("wt.checkout-discard", notesVerification({}, codex))?.text).toBe(
+      `Of 4 discarded paths: 4 in the agent's own copy. ${CODEX_TEXT}`,
+    );
+  });
+
+  it("gives no note when nothing but reassurance is left", () => {
+    for (const id of [
+      "ex.file-upload",
+      "ex.tunnel-expose",
+      "ti.test-config-edit",
+      "dd.database-drop",
+    ]) {
+      expect(noteText(id), id).toBeDefined();
+      expect(noteText(id, notesVerification({}, codex)), id).toBeUndefined();
+    }
+  });
+
+  it("a note on what the transcripts hold carries no caveat", () => {
+    expect(noteText("se.env-print", notesVerification({}, codex))?.text).toBe(
+      noteText("se.env-print")?.text,
+    );
   });
 
   it("a Codex note that could not confirm says so, without a count to caveat", () => {
@@ -679,10 +725,11 @@ describe("Codex counts carry their caveat", () => {
       "dd.rm-rf-absolute",
       notesVerification(
         { destructive: checked("clean", { ...DESTRUCTIVE_FACTS, hidingForms: ["eval"] }) },
-        { ranEvidence: "output-record" },
+        codex,
       ),
     );
     expect(note?.template).toBe(UNCONFIRMED_SENTENCE.id);
+    expect(note?.text).not.toContain(CODEX_TEXT);
   });
 });
 
@@ -699,48 +746,6 @@ describe("a reassuring note needs every part of its check settled", () => {
       {
         ...DESTRUCTIVE_FACTS,
         rm: { ...DESTRUCTIVE_FACTS.rm, calls: { ran: 7, mentioned: 0, unknown: 1 } },
-      },
-    ],
-    [
-      "rm-targets",
-      "every target scratch, one call not confirmed",
-      {
-        ...DESTRUCTIVE_FACTS,
-        rm: {
-          ...DESTRUCTIVE_FACTS.rm,
-          calls: { ran: 7, mentioned: 0, unknown: 1 },
-          classes: { ...DESTRUCTIVE_FACTS.rm.classes, scratch: 7, tracked: 0, untracked: 0 },
-          trackedBack: 0,
-        },
-      },
-    ],
-    [
-      "rm-targets",
-      "a target from a variable with no guard",
-      {
-        ...DESTRUCTIVE_FACTS,
-        rm: {
-          ...DESTRUCTIVE_FACTS.rm,
-          classes: { ...DESTRUCTIVE_FACTS.rm.classes, tracked: 0, "unguarded-variable": 1 },
-          trackedBack: 0,
-        },
-      },
-    ],
-    [
-      "rm-targets",
-      "a target from a guarded variable",
-      {
-        ...DESTRUCTIVE_FACTS,
-        rm: {
-          ...DESTRUCTIVE_FACTS.rm,
-          classes: {
-            ...DESTRUCTIVE_FACTS.rm.classes,
-            scratch: 6,
-            tracked: 0,
-            "guarded-variable": 1,
-          },
-          trackedBack: 0,
-        },
       },
     ],
     ["uploads", "a match not confirmed", { ...EGRESS_FACTS, unconfirmed: 1 }],
@@ -868,7 +873,7 @@ describe("a note reads only counts", () => {
     };
     const note = noteText("ex.file-upload", withFacts("uploads", facts));
     expect(note?.text).toBe(
-      "False positive: the 3 upload-shaped calls that ran went to this machine or LocalStack.",
+      "False positive: nothing that ran left this machine; 3 calls went to this machine or LocalStack.",
     );
     expect(JSON.stringify(note)).not.toContain("CANARY");
   });

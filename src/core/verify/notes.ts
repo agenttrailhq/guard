@@ -21,10 +21,12 @@
  *  - a check whose commands that ran hold a form that can hide others (`HIDING_FORMS`), or that
  *    could not finish, gets a "Could not confirm" note, never a reassuring one;
  *  - a note that rests on commands having run, or on what commands printed, from sessions that
- *    record no command output, gets a "Could not confirm" note;
- *  - from Codex sessions, such a note also says that Codex counts may include calls a hook
- *    blocked.
- * No template says a guardrail's commands did not run.
+ *    record no command output, gets a "Could not confirm" note.
+ * A template's reassuring clauses ("False positive", "Nothing lost", "No tracked file is
+ * missing" and the like) run only when it is told it may reassure. Codex sessions are read in a
+ * limited way that is not verified, so on a Codex scan no note reassures: what is left is its
+ * counts, followed by the Codex caveat, or no note at all. No template says a guardrail's
+ * commands did not run.
  *
  * Pure. No I/O.
  */
@@ -64,6 +66,15 @@ type CountReads<K extends string> = Readonly<Record<K, CountRead>>;
 
 /** The counts a note kind read, by name. */
 type Counts<K extends string> = Readonly<Record<K, number>>;
+
+/** What a template is told beside its counts. */
+interface NoteContext {
+  /** Whether its reassuring clauses may run. Never on a Codex scan. */
+  readonly reassure: boolean;
+}
+
+/** A template's input: its counts, and its context. */
+type NoteFacts<K extends string> = Counts<K> & NoteContext;
 
 /** The value at `path`, through plain objects only; `undefined` when a step is missing. */
 function at(facts: unknown, path: FactPath): unknown {
@@ -154,7 +165,7 @@ function reviewByHand(n: number): string {
 /** A kind of note: the counts it reads, its template, and whether it rests on commands that ran. */
 interface NoteKind<K extends string> {
   readonly reads: CountReads<K>;
-  readonly template: SentenceTemplate<Counts<K>>;
+  readonly template: SentenceTemplate<NoteFacts<K>>;
   /**
    * The note states what commands that ran did. From sessions that record no command output it
    * could confirm nothing, and from Codex sessions its counts may include blocked calls.
@@ -198,7 +209,7 @@ const NO_VERIFY = kind({
         withHooks > 0
           ? `${countOf(withHooks, "commit")} skipped the hooks of a repo that has them; ${formatCount(f.onMain)} ${is(f.onMain)} on main now.`
           : undefined,
-        withHooks === 0 && f.withoutHooks > 0 && settled
+        f.reassure && withHooks === 0 && f.withoutHooks > 0 && settled
           ? `False positive: ${f.withoutHooks === 1 ? "the commit" : `all ${formatCount(f.withoutHooks)} commits`} that skipped hooks ${was(f.withoutHooks)} in repos with no commit hook, so no check was skipped.`
           : undefined,
         f.noMain > 0
@@ -225,7 +236,7 @@ const HOOKS_OFF = kind({
     render: (f) =>
       line([
         f.off > 0 ? `Hooks are switched off now in ${countOf(f.off, "repo")}.` : undefined,
-        f.off === 0 && f.on > 0 && f.couldNotCheck + f.unknown === 0
+        f.reassure && f.off === 0 && f.on > 0 && f.couldNotCheck + f.unknown === 0
           ? "Hooks are on now in every repo where they were switched."
           : undefined,
         f.oneCommand > 0
@@ -258,6 +269,7 @@ const BRANCHES = kind({
         f.gone > 0
           ? `${countOf(f.gone, "deleted branch", "deleted branches")} ${is(f.gone)} gone from the object store.`
           : undefined,
+        f.reassure &&
         f.recoverable + f.gone === 0 &&
         f.onAnotherRef > 0 &&
         f.notIdentified + f.couldNotCheck + f.unknown === 0
@@ -290,6 +302,7 @@ const STASHES = kind({
         f.gone > 0
           ? `${countOf(f.gone, "dropped stash", "dropped stashes")} ${is(f.gone)} gone from the object store.`
           : undefined,
+        f.reassure &&
         f.recoverable + f.gone + f.cleared === 0 &&
         f.listed > 0 &&
         f.notIdentified + f.couldNotCheck + f.unknown === 0
@@ -318,7 +331,7 @@ const DISCARDS = kind({
     id: "note.discards",
     render: (f) => {
       if (f.paths === 0) return undefined;
-      if (f.ownCopy === f.paths && f.couldNotCheck + f.unknown === 0) {
+      if (f.reassure && f.ownCopy === f.paths && f.couldNotCheck + f.unknown === 0) {
         return f.paths === 1
           ? "The discarded path was in the agent's own worktree or a scratch copy."
           : `All ${formatCount(f.paths)} discarded paths were in the agent's own worktree or a scratch copy.`;
@@ -362,16 +375,16 @@ const RM_TARGETS = kind({
       // A target held in a variable is never resolved, so what it held is not known.
       const settled = f.couldNotCheck + f.unknown + f.unguarded + f.guarded === 0;
       return line([
-        settled && f.scratch === f.targets
+        f.reassure && settled && f.scratch === f.targets
           ? "All scratch, temp or build folders."
-          : settled && f.scratch * 2 > f.targets
+          : f.reassure && settled && f.scratch * 2 > f.targets
             ? "Mostly scratch, temp or build folders."
             : f.scratch > 0
               ? `${formatCount(f.scratch)} of ${countOf(f.targets, "target")} ${was(f.scratch)} scratch, temp or build folders.`
               : undefined,
         missing > 0
           ? `${countOf(missing, "tracked target")} still ${missing === 1 ? "has" : "have"} files missing.`
-          : settled
+          : f.reassure && settled
             ? "No tracked file is missing."
             : undefined,
         f.untracked > 0
@@ -411,7 +424,7 @@ const DATABASES = kind({
       return line([
         f.other > 0
           ? `${countOf(f.other, "database")} aimed at ${was(f.other)} neither local nor scratch.`
-          : f.unresolved + f.unknown === 0
+          : f.reassure && f.unresolved + f.unknown === 0
             ? `Only local or scratch databases: ${formatCount(f.local)} local, ${formatCount(f.scratch)} scratch.`
             : undefined,
         f.unresolved > 0 ? `${countOf(f.unresolved, "database")} could not be placed.` : undefined,
@@ -445,7 +458,11 @@ function secretsBy(id: string, via: string, how: string, output: boolean): AnyKi
           return `Likely-real credentials ${how}: ${f.more > 0 ? "at least " : ""}${formatCount(f.shown)}.`;
         }
         // Nothing in a count the check could not finish, or set aside by a rule that can miss.
-        if (f.read === 0 || f.more + f.notRead + f.unplaced + f.outputOnly + f.notShaped > 0) {
+        if (
+          !f.reassure ||
+          f.read === 0 ||
+          f.more + f.notRead + f.unplaced + f.outputOnly + f.notShaped > 0
+        ) {
           return undefined;
         }
         return f.likelyReal > 0
@@ -547,7 +564,7 @@ const TESTS_CONFIG = kind({
       line([
         f.lowered > 0
           ? `${countOf(f.lowered, "coverage threshold")} lowered.`
-          : f.reverts > 0 && f.rewritten + f.unconfirmed === 0
+          : f.reassure && f.reverts > 0 && f.rewritten + f.unconfirmed === 0
             ? `No coverage floor went down: the ${countOf(f.reverts, "threshold drop")} undid an automatic raise.`
             : undefined,
         f.excludes > 0
@@ -587,8 +604,8 @@ const UPLOADS = kind({
     render: (f) =>
       f.uploads > 0
         ? `${countOf(f.uploads, "upload")} to a host off this machine ran.`
-        : f.localOnly > 0 && f.unconfirmed === 0
-          ? `False positive: the ${countOf(f.localOnly, "upload-shaped call")} that ran went to this machine or LocalStack.`
+        : f.reassure && f.localOnly > 0 && f.unconfirmed === 0
+          ? `False positive: nothing that ran left this machine; ${countOf(f.localOnly, "call")} went to this machine or LocalStack.`
           : undefined,
   },
 });
@@ -610,9 +627,11 @@ const TUNNELS = kind({
           : undefined,
         f.running > 0
           ? `${countOf(f.running, "tunnel program")} ${is(f.running)} running now.`
-          : f.listed === 1
-            ? "No known tunnel or relay program was seen running now."
-            : "Whether one is running now could not be checked.",
+          : f.listed === 0
+            ? "Whether one is running now could not be checked."
+            : f.reassure
+              ? "No known tunnel or relay program was seen running now."
+              : undefined,
       ]),
   },
 });
@@ -630,7 +649,7 @@ const INSTALLS = kind({
     render: (f) =>
       f.installs > 0
         ? `${countOf(f.installs, "package install")} ran, not counting ${countOf(f.restores, "lockfile restore")}. Package age is not checked: the scan runs offline.`
-        : f.restores > 0 && f.unconfirmed === 0
+        : f.reassure && f.restores > 0 && f.unconfirmed === 0
           ? `False positive: the ${countOf(f.restores, "install")} that ran only restored a lockfile.`
           : undefined,
   },
@@ -849,10 +868,12 @@ export function verifiedNote(
   const spec = NOTE_KINDS[rule.kind];
   const counts = readCounts(facts, spec.reads);
   if (counts === undefined) return undefined;
-  const made = sentence(spec.template, counts);
+  // The Codex reading is limited and unverified: on a Codex scan no note reassures.
+  const codex = verification.ranEvidence === "output-record";
+  const made = sentence(spec.template, { ...counts, reassure: !codex });
   if (made === undefined) return undefined;
   // From Codex sessions, a count of commands that ran may include calls a hook blocked.
-  return verification.ranEvidence === "output-record" && spec.ran
+  return codex && spec.ran && /\d/.test(made.text)
     ? note({ template: made.template, text: `${made.text} ${CODEX_NOTE_TEXT}` })
     : note(made);
 }

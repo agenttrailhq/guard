@@ -75,7 +75,7 @@ describe("the notes on the page corpus", () => {
         "ex.file-upload",
         "uploads",
         carried.categories.egress?.facts,
-        "False positive: the 3 upload-shaped calls that ran went to this machine or LocalStack.",
+        "False positive: nothing that ran left this machine; 3 calls went to this machine or LocalStack.",
       ],
       [
         "flag-dependency-install",

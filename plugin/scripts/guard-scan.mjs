@@ -16966,7 +16966,7 @@ var NO_VERIFY = kind({
       const settled = f.notIdentified + f.couldNotCheck + f.unknown === 0;
       return line([
         withHooks2 > 0 ? `${countOf(withHooks2, "commit")} skipped the hooks of a repo that has them; ${formatCount(f.onMain)} ${is2(f.onMain)} on main now.` : void 0,
-        withHooks2 === 0 && f.withoutHooks > 0 && settled ? `False positive: ${f.withoutHooks === 1 ? "the commit" : `all ${formatCount(f.withoutHooks)} commits`} that skipped hooks ${was2(f.withoutHooks)} in repos with no commit hook, so no check was skipped.` : void 0,
+        f.reassure && withHooks2 === 0 && f.withoutHooks > 0 && settled ? `False positive: ${f.withoutHooks === 1 ? "the commit" : `all ${formatCount(f.withoutHooks)} commits`} that skipped hooks ${was2(f.withoutHooks)} in repos with no commit hook, so no check was skipped.` : void 0,
         f.noMain > 0 ? `${countOf(f.noMain, "commit")} ${is2(f.noMain)} in a repo with no main branch to check against.` : void 0,
         notLookedUp(f.notIdentified + f.couldNotCheck, "commit")
       ]);
@@ -16986,7 +16986,7 @@ var HOOKS_OFF = kind({
     id: "note.hooks-off",
     render: (f) => line([
       f.off > 0 ? `Hooks are switched off now in ${countOf(f.off, "repo")}.` : void 0,
-      f.off === 0 && f.on > 0 && f.couldNotCheck + f.unknown === 0 ? "Hooks are on now in every repo where they were switched." : void 0,
+      f.reassure && f.off === 0 && f.on > 0 && f.couldNotCheck + f.unknown === 0 ? "Hooks are on now in every repo where they were switched." : void 0,
       f.oneCommand > 0 ? `${countOf(f.oneCommand, "command")} turned Husky off for that command only.` : void 0,
       notLookedUp(f.couldNotCheck, "repo")
     ])
@@ -17008,7 +17008,7 @@ var BRANCHES = kind({
     render: (f) => line([
       f.recoverable > 0 ? `${countOf(f.recoverable, "deleted branch", "deleted branches")} can still be recovered by commit id.` : void 0,
       f.gone > 0 ? `${countOf(f.gone, "deleted branch", "deleted branches")} ${is2(f.gone)} gone from the object store.` : void 0,
-      f.recoverable + f.gone === 0 && f.onAnotherRef > 0 && f.notIdentified + f.couldNotCheck + f.unknown === 0 ? "Nothing lost: every deleted branch's commits are still on another branch or tag." : void 0,
+      f.reassure && f.recoverable + f.gone === 0 && f.onAnotherRef > 0 && f.notIdentified + f.couldNotCheck + f.unknown === 0 ? "Nothing lost: every deleted branch's commits are still on another branch or tag." : void 0,
       notLookedUp(f.notIdentified + f.couldNotCheck, "deleted branch", "deleted branches")
     ])
   }
@@ -17029,7 +17029,7 @@ var STASHES = kind({
     render: (f) => line([
       f.recoverable > 0 ? `${countOf(f.recoverable, "dropped stash", "dropped stashes")} can still be recovered by commit id.` : void 0,
       f.gone > 0 ? `${countOf(f.gone, "dropped stash", "dropped stashes")} ${is2(f.gone)} gone from the object store.` : void 0,
-      f.recoverable + f.gone + f.cleared === 0 && f.listed > 0 && f.notIdentified + f.couldNotCheck + f.unknown === 0 ? "Nothing lost: every dropped stash is back in the stash list." : void 0,
+      f.reassure && f.recoverable + f.gone + f.cleared === 0 && f.listed > 0 && f.notIdentified + f.couldNotCheck + f.unknown === 0 ? "Nothing lost: every dropped stash is back in the stash list." : void 0,
       f.cleared > 0 ? `${countOf(f.cleared, "stash clear")} ran; what ${f.cleared === 1 ? "it" : "they"} removed is not checked.` : void 0,
       notLookedUp(f.notIdentified + f.couldNotCheck, "dropped stash", "dropped stashes")
     ])
@@ -17049,7 +17049,7 @@ var DISCARDS = kind({
     id: "note.discards",
     render: (f) => {
       if (f.paths === 0) return void 0;
-      if (f.ownCopy === f.paths && f.couldNotCheck + f.unknown === 0) {
+      if (f.reassure && f.ownCopy === f.paths && f.couldNotCheck + f.unknown === 0) {
         return f.paths === 1 ? "The discarded path was in the agent's own worktree or a scratch copy." : `All ${formatCount(f.paths)} discarded paths were in the agent's own worktree or a scratch copy.`;
       }
       const parts = [];
@@ -17086,8 +17086,8 @@ var RM_TARGETS = kind({
       const missing = f.trackedGone + f.trackedPartlyBack;
       const settled = f.couldNotCheck + f.unknown + f.unguarded + f.guarded === 0;
       return line([
-        settled && f.scratch === f.targets ? "All scratch, temp or build folders." : settled && f.scratch * 2 > f.targets ? "Mostly scratch, temp or build folders." : f.scratch > 0 ? `${formatCount(f.scratch)} of ${countOf(f.targets, "target")} ${was2(f.scratch)} scratch, temp or build folders.` : void 0,
-        missing > 0 ? `${countOf(missing, "tracked target")} still ${missing === 1 ? "has" : "have"} files missing.` : settled ? "No tracked file is missing." : void 0,
+        f.reassure && settled && f.scratch === f.targets ? "All scratch, temp or build folders." : f.reassure && settled && f.scratch * 2 > f.targets ? "Mostly scratch, temp or build folders." : f.scratch > 0 ? `${formatCount(f.scratch)} of ${countOf(f.targets, "target")} ${was2(f.scratch)} scratch, temp or build folders.` : void 0,
+        missing > 0 ? `${countOf(missing, "tracked target")} still ${missing === 1 ? "has" : "have"} files missing.` : f.reassure && settled ? "No tracked file is missing." : void 0,
         f.untracked > 0 ? `${countOf(f.untracked, "target")} held untracked files in a repo.` : void 0,
         f.home > 0 ? `${countOf(f.home, "target")} ${was2(f.home)} under the home folder, outside a repo.` : void 0,
         f.unguarded > 0 ? `${countOf(f.unguarded, "target")} came from a variable with no guard.` : void 0,
@@ -17111,7 +17111,7 @@ var DATABASES = kind({
     render: (f) => {
       if (f.local + f.scratch + f.other + f.unresolved === 0) return void 0;
       return line([
-        f.other > 0 ? `${countOf(f.other, "database")} aimed at ${was2(f.other)} neither local nor scratch.` : f.unresolved + f.unknown === 0 ? `Only local or scratch databases: ${formatCount(f.local)} local, ${formatCount(f.scratch)} scratch.` : void 0,
+        f.other > 0 ? `${countOf(f.other, "database")} aimed at ${was2(f.other)} neither local nor scratch.` : f.reassure && f.unresolved + f.unknown === 0 ? `Only local or scratch databases: ${formatCount(f.local)} local, ${formatCount(f.scratch)} scratch.` : void 0,
         f.unresolved > 0 ? `${countOf(f.unresolved, "database")} could not be placed.` : void 0
       ]);
     }
@@ -17137,7 +17137,7 @@ function secretsBy(id, via, how, output) {
         if (f.shown > 0) {
           return `Likely-real credentials ${how}: ${f.more > 0 ? "at least " : ""}${formatCount(f.shown)}.`;
         }
-        if (f.read === 0 || f.more + f.notRead + f.unplaced + f.outputOnly + f.notShaped > 0) {
+        if (!f.reassure || f.read === 0 || f.more + f.notRead + f.unplaced + f.outputOnly + f.notShaped > 0) {
           return void 0;
         }
         return f.likelyReal > 0 ? `None of the likely-real credentials found ${was2(f.likelyReal)} ${how}.` : "No likely-real credential was found in the transcripts.";
@@ -17208,7 +17208,7 @@ var TESTS_CONFIG = kind({
   template: {
     id: "note.tests-config",
     render: (f) => line([
-      f.lowered > 0 ? `${countOf(f.lowered, "coverage threshold")} lowered.` : f.reverts > 0 && f.rewritten + f.unconfirmed === 0 ? `No coverage floor went down: the ${countOf(f.reverts, "threshold drop")} undid an automatic raise.` : void 0,
+      f.lowered > 0 ? `${countOf(f.lowered, "coverage threshold")} lowered.` : f.reassure && f.reverts > 0 && f.rewritten + f.unconfirmed === 0 ? `No coverage floor went down: the ${countOf(f.reverts, "threshold drop")} undid an automatic raise.` : void 0,
       f.excludes > 0 ? `${countOf(f.excludes, "exclude")} added to a test or coverage list.` : void 0,
       f.rewritten > 0 ? `${countOf(f.rewritten, "test config")} rewritten whole, so whether a threshold went down cannot be told.` : void 0
     ])
@@ -17230,7 +17230,7 @@ var UPLOADS = kind({
   ran: true,
   template: {
     id: "note.uploads",
-    render: (f) => f.uploads > 0 ? `${countOf(f.uploads, "upload")} to a host off this machine ran.` : f.localOnly > 0 && f.unconfirmed === 0 ? `False positive: the ${countOf(f.localOnly, "upload-shaped call")} that ran went to this machine or LocalStack.` : void 0
+    render: (f) => f.uploads > 0 ? `${countOf(f.uploads, "upload")} to a host off this machine ran.` : f.reassure && f.localOnly > 0 && f.unconfirmed === 0 ? `False positive: nothing that ran left this machine; ${countOf(f.localOnly, "call")} went to this machine or LocalStack.` : void 0
   }
 });
 var TUNNELS = kind({
@@ -17244,7 +17244,7 @@ var TUNNELS = kind({
     id: "note.tunnels",
     render: (f) => line([
       f.started > 0 ? `${countOf(f.started, "tunnel")} ${was2(f.started)} started to expose this machine.` : void 0,
-      f.running > 0 ? `${countOf(f.running, "tunnel program")} ${is2(f.running)} running now.` : f.listed === 1 ? "No known tunnel or relay program was seen running now." : "Whether one is running now could not be checked."
+      f.running > 0 ? `${countOf(f.running, "tunnel program")} ${is2(f.running)} running now.` : f.listed === 0 ? "Whether one is running now could not be checked." : f.reassure ? "No known tunnel or relay program was seen running now." : void 0
     ])
   }
 });
@@ -17257,7 +17257,7 @@ var INSTALLS = kind({
   ran: true,
   template: {
     id: "note.installs",
-    render: (f) => f.installs > 0 ? `${countOf(f.installs, "package install")} ran, not counting ${countOf(f.restores, "lockfile restore")}. Package age is not checked: the scan runs offline.` : f.restores > 0 && f.unconfirmed === 0 ? `False positive: the ${countOf(f.restores, "install")} that ran only restored a lockfile.` : void 0
+    render: (f) => f.installs > 0 ? `${countOf(f.installs, "package install")} ran, not counting ${countOf(f.restores, "lockfile restore")}. Package age is not checked: the scan runs offline.` : f.reassure && f.restores > 0 && f.unconfirmed === 0 ? `False positive: the ${countOf(f.restores, "install")} that ran only restored a lockfile.` : void 0
   }
 });
 var NOTE_KINDS = {
@@ -17403,9 +17403,10 @@ function verifiedNote(finding, verification, cards) {
   const spec = NOTE_KINDS[rule.kind];
   const counts = readCounts(facts, spec.reads);
   if (counts === void 0) return void 0;
-  const made = sentence(spec.template, counts);
+  const codex = verification.ranEvidence === "output-record";
+  const made = sentence(spec.template, { ...counts, reassure: !codex });
   if (made === void 0) return void 0;
-  return verification.ranEvidence === "output-record" && spec.ran ? note({ template: made.template, text: `${made.text} ${CODEX_NOTE_TEXT}` }) : note(made);
+  return codex && spec.ran && /\d/.test(made.text) ? note({ template: made.template, text: `${made.text} ${CODEX_NOTE_TEXT}` }) : note(made);
 }
 function verifiedNotes(findings, verification, cards) {
   return findings.flatMap((finding) => {

@@ -29,25 +29,25 @@ block-prod-config-edit  note.infra  1 production infrastructure command or edit 
 ti.test-file-delete  note.tests-deleted  1 test file deleted, 1 after a test run reported it failing.
 ti.test-config-edit  note.tests-config  No coverage floor went down: the 2 threshold drops undid an automatic raise.
 ti.coverage-bypass  note.tests-pass  1 test run or config allowed passing with no tests.
-ex.file-upload  note.uploads  False positive: the 3 upload-shaped calls that ran went to this machine or LocalStack.
-se.secret-egress  note.uploads  False positive: the 3 upload-shaped calls that ran went to this machine or LocalStack.
-ex.paste-service  note.uploads  False positive: the 3 upload-shaped calls that ran went to this machine or LocalStack.
-ex.reverse-shell  note.uploads  False positive: the 3 upload-shaped calls that ran went to this machine or LocalStack.
+ex.file-upload  note.uploads  False positive: nothing that ran left this machine; 3 calls went to this machine or LocalStack.
+se.secret-egress  note.uploads  False positive: nothing that ran left this machine; 3 calls went to this machine or LocalStack.
+ex.paste-service  note.uploads  False positive: nothing that ran left this machine; 3 calls went to this machine or LocalStack.
+ex.reverse-shell  note.uploads  False positive: nothing that ran left this machine; 3 calls went to this machine or LocalStack.
 ex.tunnel-expose  note.tunnels  No known tunnel or relay program was seen running now.
 flag-dependency-install  note.installs  2 package installs ran, not counting 3 lockfile restores. Package age is not checked: the scan runs offline.
 rce.unverified-package  note.installs  2 package installs ran, not counting 3 lockfile restores. Package age is not checked: the scan runs offline.
 # Codex
 gb.git-no-verify  note.no-verify  4 commits skipped the hooks of a repo that has them; 3 are on main now. Codex counts here include every call Codex recorded an output for, which may include calls a hook blocked.
-gb.hooks-disable  note.hooks-off  Hooks are on now in every repo where they were switched. 1 command turned Husky off for that command only. Codex counts here include every call Codex recorded an output for, which may include calls a hook blocked.
+gb.hooks-disable  note.hooks-off  1 command turned Husky off for that command only. Codex counts here include every call Codex recorded an output for, which may include calls a hook blocked.
 wt.branch-force-delete  note.branches  2 deleted branches can still be recovered by commit id. Codex counts here include every call Codex recorded an output for, which may include calls a hook blocked.
 wt.stash-drop  note.stashes  1 dropped stash can still be recovered by commit id. Codex counts here include every call Codex recorded an output for, which may include calls a hook blocked.
-wt.checkout-discard  note.discards  All 4 discarded paths were in the agent's own worktree or a scratch copy. Codex counts here include every call Codex recorded an output for, which may include calls a hook blocked.
-wt.restore-path  note.discards  All 4 discarded paths were in the agent's own worktree or a scratch copy. Codex counts here include every call Codex recorded an output for, which may include calls a hook blocked.
-wt.reset-hard  note.discards  All 4 discarded paths were in the agent's own worktree or a scratch copy. Codex counts here include every call Codex recorded an output for, which may include calls a hook blocked.
-require-approval-rm-rf  note.rm-targets  Mostly scratch, temp or build folders. No tracked file is missing. 1 target held untracked files in a repo. Codex counts here include every call Codex recorded an output for, which may include calls a hook blocked.
-dd.rm-rf-absolute  note.rm-targets  Mostly scratch, temp or build folders. No tracked file is missing. 1 target held untracked files in a repo. Codex counts here include every call Codex recorded an output for, which may include calls a hook blocked.
-dd.database-drop  note.databases  Only local or scratch databases: 2 local, 0 scratch. Codex counts here include every call Codex recorded an output for, which may include calls a hook blocked.
-block-destructive-sql  note.databases  Only local or scratch databases: 2 local, 0 scratch. Codex counts here include every call Codex recorded an output for, which may include calls a hook blocked.
+wt.checkout-discard  note.discards  Of 4 discarded paths: 4 in the agent's own copy. Codex counts here include every call Codex recorded an output for, which may include calls a hook blocked.
+wt.restore-path  note.discards  Of 4 discarded paths: 4 in the agent's own copy. Codex counts here include every call Codex recorded an output for, which may include calls a hook blocked.
+wt.reset-hard  note.discards  Of 4 discarded paths: 4 in the agent's own copy. Codex counts here include every call Codex recorded an output for, which may include calls a hook blocked.
+require-approval-rm-rf  note.rm-targets  5 of 7 targets were scratch, temp or build folders. 1 target held untracked files in a repo. Codex counts here include every call Codex recorded an output for, which may include calls a hook blocked.
+dd.rm-rf-absolute  note.rm-targets  5 of 7 targets were scratch, temp or build folders. 1 target held untracked files in a repo. Codex counts here include every call Codex recorded an output for, which may include calls a hook blocked.
+dd.database-drop  (no note)
+block-destructive-sql  (no note)
 se.env-print  note.secrets-printed  Likely-real credentials printed by a command: 1.
 se.token-print  note.secrets-printed  Likely-real credentials printed by a command: 1.
 se.secret-manager-read  note.secrets-printed  Likely-real credentials printed by a command: 1.
@@ -65,13 +65,13 @@ pi.cloud-resource-delete  note.infra  1 production infrastructure command or edi
 pi.deploy-to-prod  note.infra  1 production infrastructure command or edit ran. It cannot be checked from this machine, so review it by hand. Codex counts here include every call Codex recorded an output for, which may include calls a hook blocked.
 block-prod-config-edit  note.infra  1 production infrastructure command or edit ran. It cannot be checked from this machine, so review it by hand. Codex counts here include every call Codex recorded an output for, which may include calls a hook blocked.
 ti.test-file-delete  note.tests-deleted  1 test file deleted, 1 after a test run reported it failing. Codex counts here include every call Codex recorded an output for, which may include calls a hook blocked.
-ti.test-config-edit  note.tests-config  No coverage floor went down: the 2 threshold drops undid an automatic raise. Codex counts here include every call Codex recorded an output for, which may include calls a hook blocked.
+ti.test-config-edit  (no note)
 ti.coverage-bypass  note.tests-pass  1 test run or config allowed passing with no tests. Codex counts here include every call Codex recorded an output for, which may include calls a hook blocked.
-ex.file-upload  note.uploads  False positive: the 3 upload-shaped calls that ran went to this machine or LocalStack. Codex counts here include every call Codex recorded an output for, which may include calls a hook blocked.
-se.secret-egress  note.uploads  False positive: the 3 upload-shaped calls that ran went to this machine or LocalStack. Codex counts here include every call Codex recorded an output for, which may include calls a hook blocked.
-ex.paste-service  note.uploads  False positive: the 3 upload-shaped calls that ran went to this machine or LocalStack. Codex counts here include every call Codex recorded an output for, which may include calls a hook blocked.
-ex.reverse-shell  note.uploads  False positive: the 3 upload-shaped calls that ran went to this machine or LocalStack. Codex counts here include every call Codex recorded an output for, which may include calls a hook blocked.
-ex.tunnel-expose  note.tunnels  No known tunnel or relay program was seen running now. Codex counts here include every call Codex recorded an output for, which may include calls a hook blocked.
+ex.file-upload  (no note)
+se.secret-egress  (no note)
+ex.paste-service  (no note)
+ex.reverse-shell  (no note)
+ex.tunnel-expose  (no note)
 flag-dependency-install  note.installs  2 package installs ran, not counting 3 lockfile restores. Package age is not checked: the scan runs offline. Codex counts here include every call Codex recorded an output for, which may include calls a hook blocked.
 rce.unverified-package  note.installs  2 package installs ran, not counting 3 lockfile restores. Package age is not checked: the scan runs offline. Codex counts here include every call Codex recorded an output for, which may include calls a hook blocked.
 # Cursor
