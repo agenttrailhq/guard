@@ -174,6 +174,31 @@ describe("the post fits in an X post", () => {
     expect(text).not.toContain("unguarded recursive deletes");
   });
 
+  it("keeps whole a post that weighs exactly the limit", () => {
+    const cards = [claim("secrets", 1000), claim("skipped-checks", 1000), claim("lost-work", 1000)];
+    const text = post(cards);
+    expect(postLength(text)).toBe(POST_LIMIT);
+    expect(text).toContain("1,000 pieces of deleted work still recoverable");
+  });
+
+  it("drops the last count when keeping it would weigh one over the limit", () => {
+    const cards = [
+      claim("secrets", 1000),
+      claim("skipped-checks", 1000),
+      claim("lost-work", 10000),
+    ];
+    const whole = `AgentTrail Guard checked 7 tool calls from Claude Code on my machine: ${[
+      sharePhrase("likely-real-credentials", 1000),
+      sharePhrase("commits-on-main-without-checks", 1000),
+      sharePhrase("recoverable-deleted-work", 10000),
+    ].join(" · ")}. Nothing uploaded.`;
+    expect(postLength(whole)).toBe(POST_LIMIT + 1);
+    const text = post(cards);
+    expect(text).not.toContain("deleted work");
+    expect(text).toContain("1,000 commits shipped to main without their checks");
+    expect(postLength(text)).toBeLessThanOrEqual(POST_LIMIT);
+  });
+
   it("states as many as fit, in order: the next one would not have", () => {
     const cards = HEADLINE_ORDER.map((c) => claim(c, 2));
     const text = post(cards);
