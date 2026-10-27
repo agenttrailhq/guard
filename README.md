@@ -1,4 +1,4 @@
-<!-- cspell:words guardrails jsonl mjs bpnpm agenttrailhq backtesting hostnames inspectable tasklist -->
+<!-- cspell:words guardrails jsonl mjs bpnpm agenttrailhq backtesting hostnames inspectable tasklist doas nohup setsid -->
 
 <div align="center">
 
@@ -410,8 +410,17 @@ run, and is not counted as ran. Where a command that ran, or may have run, uses 
 check does not read inside (a shell given a string to run or one this scan does not read,
 inline code or a piped script, `find -exec`, `xargs`, process substitution, a command
 substitution, `eval`, or git with its own `-c` settings, running a command it was given, or
-after a hook or its config was written), the card says **could not confirm** for that
-category, never none or clean. Cursor's session files record no command output, so on Cursor
+after a hook or its config was written, a quote left open, or a command one of that check's
+guardrails matched but the check could not read), the card says **could not confirm** for
+that category, never none or clean.
+
+The checks read past the usual wrappers before a program (`sudo`, `doas`, `env`, `nice`,
+`timeout`, `nohup`, `setsid`, `npx` and the like) and their options. A wrapper they do not
+know can still hide the program from the checks that read program names. Where one of that
+category's guardrails matches the command, the card says could not confirm; where none does,
+for example an IAM user created through an unknown wrapper, it can read clean.
+
+Cursor's session files record no command output, so on Cursor
 a check of commands that ran that would read clean says could not confirm instead. The
 report leads with a verified count only when a recorded result backs it, and otherwise leads
 with the totals. A card that could not confirm never leads, with one exception: a count git
