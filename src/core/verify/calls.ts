@@ -323,7 +323,9 @@ export function executedText(command: string): string {
 /**
  * The guardrails that match a shell call's command read as its words (`decodedCommand`), for a
  * command that spells its words with quotes or escapes (`$'\x6b'ubectl`, `r''m`): a guardrail
- * written against command text would miss them in the text itself. Empty for any other call.
+ * written against command text would miss them in the text itself. Only the part that runs is
+ * read this way (`executedText`): a message, a search or printed text is data, so a decoded
+ * match there is no match at all, as it is not one in the text. Empty for any other call.
  */
 function decodedMatches(
   catalog: readonly CompiledRule[],
@@ -334,7 +336,8 @@ function decodedMatches(
   if (mapped.tool !== SHELL_TOOL || command === undefined || !spellsWordsWithQuotes(command)) {
     return [];
   }
-  const decoded = { ...mapped, args: { ...mapped.args, full_command: decodedCommand(command) } };
+  const runs = decodedCommand(executedText(command));
+  const decoded = { ...mapped, args: { ...mapped.args, full_command: runs } };
   return evaluateAction(catalog, allowlist, [decoded]).decision.matches.map((m) => m.ruleId);
 }
 

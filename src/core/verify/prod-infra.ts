@@ -33,7 +33,13 @@ import {
   runStateOf,
   simpleCommands,
 } from "./calls.js";
-import { couldHideTemplate, counted, type FullCard, restsOnCodex } from "./card-parts.js";
+import {
+  couldHideTemplate,
+  counted,
+  type FullCard,
+  moreMatches,
+  restsOnCodex,
+} from "./card-parts.js";
 import {
   type CardContext,
   type ChipReason,
@@ -326,6 +332,13 @@ function when(
   return { id, render: (f) => (test(f) ? say(f) : undefined) };
 }
 
+/** Did the lines before the mentioned one state a match: a database target or an infra match? */
+function otherMatches(f: ProdInfraFacts): boolean {
+  const db = f.databaseTargets;
+  const databases = f.databaseCheck === "checked" ? db.other + db.local + db.scratch : 0;
+  return databases + f.infraMatches + f.localInfra > 0;
+}
+
 /** "What checking found". */
 export const PROD_FOUND: readonly SentenceTemplate<ProdInfraFacts>[] = [
   when(
@@ -383,7 +396,7 @@ export const PROD_FOUND: readonly SentenceTemplate<ProdInfraFacts>[] = [
     "prod.mentioned",
     (f) => f.mentioned > 0,
     (f) =>
-      `${counted(f.mentioned, "more match", "more matches")} only mentioned a production command and did not run.`,
+      `${moreMatches(f.mentioned, otherMatches(f))} only mentioned a production command and did not run.`,
   ),
   when(
     "prod.unconfirmed",

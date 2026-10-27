@@ -6,8 +6,10 @@
  */
 
 import { describe, expect, it } from "vitest";
+import { aggregateScan } from "../core/scan-report.js";
+import { CARD_BUILDERS } from "../core/verify/builders.js";
 import { couldHideCount, heldHidingForms } from "../core/verify/calls.js";
-import { type CardSentence, honestStatus } from "../core/verify/cards.js";
+import { type CardSentence, cardsFor, honestStatus } from "../core/verify/cards.js";
 import { checkCloud, cloudCard } from "../core/verify/cloud.js";
 import { checkDependencies, type DependencyFacts } from "../core/verify/deps.js";
 import { checkEgress, egressCard } from "../core/verify/egress.js";
@@ -817,6 +819,55 @@ describe("a call that holds a hiding form and a match this check could not read 
     if (!("facts" in result)) throw new Error("no facts");
     expect(result.facts.hidingCalls).toBe(1);
     expect(result.facts.hidingForms).toEqual(["shell-string"]);
+  });
+});
+
+describe("a card counts the matches the scan counts, and says more only after another", () => {
+  /** The scan's own matches, the cloud card, and its lines, for one call that ran. */
+  async function cloudOf(command: string) {
+    const { corpus } = await writeCorpus("claude", [
+      [{ kind: "call", command, result: { text: "" } }],
+    ]);
+    const scan = aggregateScan(corpus, SHIPPED.catalog, SHIPPED.allowlist);
+    const verification = await verificationOf(command);
+    const card = cardsFor(verification, CARD_BUILDERS).find((c) => c.category === "cloud");
+    return {
+      scanMatches: scan.findings.reduce((n, f) => n + f.count, 0),
+      card,
+      lines: card?.found.map((s) => s.text) ?? [],
+    };
+  }
+
+  it("a commit message whose words name an IAM grant: no match, as the scan has none", async () => {
+    const command = `git commit -m "don't run aws iam attach-user-policy --user-name x --policy-arn arn:aws:iam::aws:policy/AdministratorAccess"`;
+    const { scanMatches, card, lines } = await cloudOf(command);
+    expect(scanMatches).toBe(0);
+    expect(card?.tone).toBe("clean");
+    expect(card?.count).toBe(0);
+    expect(lines.join(" ")).not.toMatch(/match/);
+  });
+
+  it("a mention the scan counts: one match, only mentioned, with no 'more'", async () => {
+    const command = `echo "it's" && echo aws iam attach-user-policy --user-name x --policy-arn y`;
+    const { scanMatches, card, lines } = await cloudOf(command);
+    expect(scanMatches).toBe(1);
+    expect(card?.count).toBe(1);
+    expect(lines).toContain("1 match only mentioned a cloud command and did not run.");
+    expect(lines.join(" ")).not.toMatch(/\bmore\b/);
+  });
+
+  it("after a counted change, a mention is one more", async () => {
+    const command = `aws iam create-user --user-name synthetic-bot; echo aws iam attach-user-policy --user-name x --policy-arn y`;
+    const verification = await verificationOf(command);
+    const result = verification.categories.cloud;
+    if (!("facts" in result)) throw new Error("no facts");
+    const lines = cloudCard(result, { ranEvidence: "tool-result" }).found.map((s) => s.text);
+    expect(lines.join(" ")).not.toMatch(/only mentioned/);
+    const both = cloudCard(
+      { ...result, facts: { ...result.facts, mentioned: 1 } },
+      { ranEvidence: "tool-result" },
+    ).found.map((s) => s.text);
+    expect(both).toContain("1 more match only mentioned a cloud command and did not run.");
   });
 });
 

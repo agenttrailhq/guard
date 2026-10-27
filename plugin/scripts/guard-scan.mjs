@@ -12272,7 +12272,8 @@ function decodedMatches(catalog, allowlist, mapped) {
   if (mapped.tool !== SHELL_TOOL || command === void 0 || !spellsWordsWithQuotes(command)) {
     return [];
   }
-  const decoded = { ...mapped, args: { ...mapped.args, full_command: decodedCommand(command) } };
+  const runs = decodedCommand(executedText(command));
+  const decoded = { ...mapped, args: { ...mapped.args, full_command: runs } };
   return evaluateAction(catalog, allowlist, [decoded]).decision.matches.map((m) => m.ruleId);
 }
 function rulesMatcher(catalog, allowlist, keep) {
@@ -12386,6 +12387,9 @@ function isShell(call) {
 // src/core/verify/card-parts.ts
 function counted(count2, one, many) {
   return `${count2} ${count2 === 1 ? one : many}`;
+}
+function moreMatches(count2, others) {
+  return others ? counted(count2, "more match", "more matches") : counted(count2, "match", "matches");
 }
 function noun(count2, one, many) {
   return count2 === 1 ? one : many;
@@ -13054,7 +13058,7 @@ var CLOUD_FOUND = [
   whenAny(
     "cloud.mentioned",
     (f) => f.mentioned,
-    (n2) => `${counted(n2, "more match", "more matches")} only mentioned a cloud command and did not run.`
+    (n2, f) => `${moreMatches(n2, changesOf(f) + f.localStack > 0)} only mentioned a cloud command and did not run.`
   ),
   whenAny(
     "cloud.unconfirmed",
@@ -13605,7 +13609,7 @@ var EGRESS_FOUND = [
   when(
     "egress.mentioned",
     (f) => f.mentioned > 0,
-    (f) => `${counted(f.mentioned, "more match", "more matches")} only mentioned an upload or a tunnel (in a test, a search or a message) and did not run.`
+    (f) => `${moreMatches(f.mentioned, f.uploads + f.tunnelsStarted + f.localOnly > 0)} only mentioned an upload or a tunnel (in a test, a search or a message) and did not run.`
   ),
   when(
     "egress.unconfirmed",
@@ -13825,6 +13829,11 @@ var KIND_WORDS2 = {
 function when2(id, test, say) {
   return { id, render: (f) => test(f) ? say(f) : void 0 };
 }
+function otherMatches(f) {
+  const db = f.databaseTargets;
+  const databases = f.databaseCheck === "checked" ? db.other + db.local + db.scratch : 0;
+  return databases + f.infraMatches + f.localInfra > 0;
+}
 var PROD_FOUND = [
   when2(
     "prod.databases",
@@ -13870,7 +13879,7 @@ var PROD_FOUND = [
   when2(
     "prod.mentioned",
     (f) => f.mentioned > 0,
-    (f) => `${counted(f.mentioned, "more match", "more matches")} only mentioned a production command and did not run.`
+    (f) => `${moreMatches(f.mentioned, otherMatches(f))} only mentioned a production command and did not run.`
   ),
   when2(
     "prod.unconfirmed",
@@ -14368,7 +14377,7 @@ var TESTS_FOUND = [
   whenAny2(
     "tests.mentioned",
     (f) => f.mentioned,
-    (n2) => `${counted(n2, "more match", "more matches")} only mentioned one of these and did not run.`
+    (n2, f) => `${moreMatches(n2, signals(f) > 0)} only mentioned one of these and did not run.`
   ),
   whenAny2(
     "tests.unconfirmed",

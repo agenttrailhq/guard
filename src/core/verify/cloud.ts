@@ -42,6 +42,7 @@ import {
   counted,
   type FullCard,
   MAX_LOCAL_FIXES,
+  moreMatches,
   noun,
   restsOnCodex,
 } from "./card-parts.js";
@@ -579,8 +580,8 @@ export const CLOUD_FOUND: readonly SentenceTemplate<CloudFacts>[] = [
   whenAny(
     "cloud.mentioned",
     (f) => f.mentioned,
-    (n) =>
-      `${counted(n, "more match", "more matches")} only mentioned a cloud command and did not run.`,
+    (n, f) =>
+      `${moreMatches(n, changesOf(f) + f.localStack > 0)} only mentioned a cloud command and did not run.`,
   ),
   whenAny(
     "cloud.unconfirmed",

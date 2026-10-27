@@ -45,7 +45,13 @@ import {
   type SimpleCommand,
   simpleCommands,
 } from "./calls.js";
-import { couldHideTemplate, counted, type FullCard, restsOnCodex } from "./card-parts.js";
+import {
+  couldHideTemplate,
+  counted,
+  type FullCard,
+  moreMatches,
+  restsOnCodex,
+} from "./card-parts.js";
 import {
   type CardContext,
   type ChipReason,
@@ -757,7 +763,7 @@ export const EGRESS_FOUND: readonly SentenceTemplate<EgressFacts>[] = [
     "egress.mentioned",
     (f) => f.mentioned > 0,
     (f) =>
-      `${counted(f.mentioned, "more match", "more matches")} only mentioned an upload or a tunnel (in a test, a search or a message) and did not run.`,
+      `${moreMatches(f.mentioned, f.uploads + f.tunnelsStarted + f.localOnly > 0)} only mentioned an upload or a tunnel (in a test, a search or a message) and did not run.`,
   ),
   when(
     "egress.unconfirmed",

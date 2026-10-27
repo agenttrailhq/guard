@@ -40,6 +40,14 @@ export function counted(count: number, one: string, many: string): string {
   return `${count} ${count === 1 ? one : many}`;
 }
 
+/**
+ * `count` matches, as "more" after the lines above it stated other matches (`others`), and
+ * plainly when they stated none: "1 more match", or "1 match".
+ */
+export function moreMatches(count: number, others: boolean): string {
+  return others ? counted(count, "more match", "more matches") : counted(count, "match", "matches");
+}
+
 /** The singular or plural noun alone, for a chip whose number is shown apart. */
 export function noun(count: number, one: string, many: string): string {
   return count === 1 ? one : many;

@@ -44,6 +44,7 @@ import {
   counted,
   type FullCard,
   MAX_LOCAL_FIXES,
+  moreMatches,
   restsOnCodex,
 } from "./card-parts.js";
 import {
@@ -795,8 +796,7 @@ export const TESTS_FOUND: readonly SentenceTemplate<TestsFacts>[] = [
   whenAny(
     "tests.mentioned",
     (f) => f.mentioned,
-    (n) =>
-      `${counted(n, "more match", "more matches")} only mentioned one of these and did not run.`,
+    (n, f) => `${moreMatches(n, signals(f) > 0)} only mentioned one of these and did not run.`,
   ),
   whenAny(
     "tests.unconfirmed",
