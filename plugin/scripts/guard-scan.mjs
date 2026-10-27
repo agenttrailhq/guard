@@ -11727,6 +11727,9 @@ var HEADLINE_BASIS = {
   tests: "lowered-test-floors",
   destructive: "unguarded-recursive-deletes"
 };
+function isPositiveCount(value) {
+  return typeof value === "number" && Number.isInteger(value) && value > 0;
+}
 function pickHeadline(cards, context) {
   return leadingCards(cards, context)[0];
 }
@@ -11734,7 +11737,7 @@ function leadingCards(cards, context) {
   if (context.ranEvidence === "output-record") return [];
   return HEADLINE_ORDER.flatMap((category) => {
     const card = cards.find(
-      (c) => c.category === category && c.headline !== void 0 && c.tone === HEADLINE_TONES[category] && c.headline.basis === HEADLINE_BASIS[category] && c.headline.count > 0 && !c.headline.restsOnCodexRan && c.unconfirmed === void 0
+      (c) => c.category === category && c.headline !== void 0 && c.tone === HEADLINE_TONES[category] && c.headline.basis === HEADLINE_BASIS[category] && isPositiveCount(c.headline.count) && !c.headline.restsOnCodexRan && c.unconfirmed === void 0
     );
     return card === void 0 ? [] : [card];
   });
@@ -17250,7 +17253,7 @@ function topLibraryBlocker(result) {
 }
 var SHARE_TAIL = ". Checked locally, nothing uploaded.";
 function shareText(result, verified) {
-  const counts = verified === void 0 || result.toolCalls === 0 ? [] : shareCounts(verified.cards, verified.context);
+  const counts = verified === void 0 || !isPositiveCount(result.toolCalls) ? [] : shareCounts(verified.cards, verified.context);
   const calls = counted3(result.toolCalls, "tool call", "tool calls");
   const head = `AgentTrail Guard checked ${calls} from ${agentName(result.agent)} on my machine`;
   for (let n2 = counts.length; n2 > 0; n2--) {

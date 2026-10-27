@@ -430,6 +430,15 @@ export const HEADLINE_BASIS: Readonly<Record<HeadlineCategory, HeadlineBasis>> =
 };
 
 /**
+ * A count that may be stated: a whole number above zero. Not a fraction, NaN, Infinity or a
+ * value of another type, which a type-violating builder could pass and which would print as a
+ * count that means nothing.
+ */
+export function isPositiveCount(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value) && value > 0;
+}
+
+/**
  * The card whose claim leads the report, or `undefined` for the totals headline: the first of
  * `leadingCards`, so the headline and the share post follow one rule.
  */
@@ -447,7 +456,8 @@ export function pickHeadline(
  * Nothing leads a Codex scan (`ranEvidence: "output-record"`): Codex reading is limited and
  * unverified, so every finding of such a scan is Codex-only. Otherwise a claim may lead only
  * when its category is in `HEADLINE_ORDER`, its tone is the one that category may lead from,
- * its basis is the one that category may lead with, its count is above zero, it does not rest
+ * its basis is the one that category may lead with, its count is a whole number above zero
+ * (`isPositiveCount`), it does not rest
  * on Codex `ran` counts, and its card confirmed what it reports: a card that could not
  * confirm (`unconfirmed`) never leads, whatever its tone.
  */
@@ -460,7 +470,7 @@ export function leadingCards(cards: readonly CardView[], context: CardContext): 
         c.headline !== undefined &&
         c.tone === HEADLINE_TONES[category] &&
         c.headline.basis === HEADLINE_BASIS[category] &&
-        c.headline.count > 0 &&
+        isPositiveCount(c.headline.count) &&
         !c.headline.restsOnCodexRan &&
         c.unconfirmed === undefined,
     );

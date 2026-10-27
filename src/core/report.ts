@@ -98,6 +98,7 @@ import {
   cardsFor,
   honestStatus,
   isLocalFix,
+  isPositiveCount,
   LOCAL_FIX_SERIALIZED,
   pickHeadline,
   sentence,
@@ -810,8 +811,9 @@ export function shareText(
   result: ScanResult,
   verified?: { readonly cards: readonly CardView[]; readonly context: CardContext },
 ): string {
+  // Verified counts only over a scan that read a whole, positive number of tool calls.
   const counts =
-    verified === undefined || result.toolCalls === 0
+    verified === undefined || !isPositiveCount(result.toolCalls)
       ? []
       : shareCounts(verified.cards, verified.context);
   const calls = counted(result.toolCalls, "tool call", "tool calls");

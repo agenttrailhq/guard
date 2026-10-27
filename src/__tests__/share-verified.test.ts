@@ -20,6 +20,7 @@ import {
   HEADLINE_BASIS,
   HEADLINE_ORDER,
   notCheckedCard,
+  pickHeadline,
 } from "../core/verify/cards.js";
 import { sharePhrase } from "../core/verify/share-copy.js";
 import type { VerifyCategory, VerifyStatus } from "../core/verify/types.js";
@@ -157,6 +158,33 @@ describe("the totals post when nothing verified may be stated", () => {
     const empty = { ...RESULT, toolCalls: 0 };
     expect(shareText(empty, { cards: [claim("secrets", 3)], context: RECORDED })).toBe(
       totalsShareText(empty),
+    );
+  });
+
+  it.each([
+    ["a fraction", 2.5],
+    ["NaN", Number.NaN],
+    ["Infinity", Number.POSITIVE_INFINITY],
+    ["a negative count", -3],
+    ["a number in a string", "9"],
+  ] as const)("a claim whose count is %s, which only a type-violating builder could pass", (_n, bad) => {
+    const card = claim("secrets", 3);
+    const broken = {
+      ...card,
+      headline: { ...(card.headline as NonNullable<CardView["headline"]>), count: bad as number },
+    };
+    expect(post([broken])).toBe(TOTALS);
+    expect(pickHeadline([broken], RECORDED)).toBeUndefined();
+  });
+
+  it.each([
+    ["NaN", Number.NaN],
+    ["a fraction", 1.5],
+    ["a number in a string", "7"],
+  ] as const)("a scan whose tool-call count is %s", (_n, bad) => {
+    const odd = { ...RESULT, toolCalls: bad as number };
+    expect(shareText(odd, { cards: [claim("secrets", 3)], context: RECORDED })).toBe(
+      totalsShareText(odd),
     );
   });
 
