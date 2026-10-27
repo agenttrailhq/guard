@@ -157,6 +157,25 @@ describe("one prefix table for every reader of a command's program", () => {
     const simple = simpleCommands(text)[0];
     expect(simple && programAndArgs(simple).assignments).toEqual(["HUSKY=0"]);
   });
+
+  it("env -i takes no value: env -i git push names git, and the push is read", () => {
+    const text = `env -i git push origin ${"main"}`;
+    const words = shellCommands(text)[0]?.words ?? [];
+    expect(words[commandStart(words).index]?.value).toBe("git");
+    const simple = simpleCommands(text)[0];
+    expect(simple && programAndArgs(simple)).toMatchObject({
+      program: "git",
+      args: ["push", "origin", "main"],
+    });
+    expect(readPushes(text)).toMatchObject([{ remote: "origin", destinations: ["main"] }]);
+  });
+
+  it("a $( inside single quotes is literal text: the command after the quote is read", () => {
+    expect(values("echo 'cost $(5' ; git branch -D feature/x")).toEqual([
+      ["echo", "cost $(5"],
+      ["git", "branch", "-D", "feature/x"],
+    ]);
+  });
 });
 
 describe("one table of git's own options for every reader of a git command", () => {

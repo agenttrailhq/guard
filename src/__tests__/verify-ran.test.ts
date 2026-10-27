@@ -531,6 +531,15 @@ describe("text the shell expands, or a later program may run, is never hidden", 
     expect(runVerdict("claude", bash(command), ok, stillMatches).state).toBe("ran");
   });
 
+  // Git subcommands that run a program they are given: a file written, then run by one of them.
+  it.each([
+    ["git bisect run", `cat > x.sh <<'EOF'\n${RUN}\nEOF\ngit bisect run ./x.sh`],
+    ["git submodule foreach", `cat > x.sh <<'EOF'\n${RUN}\nEOF\ngit submodule foreach ./x.sh`],
+  ])("a heredoc written to x.sh, then %s, is ran", (_label, command) => {
+    expect(leftToRun(command), JSON.stringify(command)).toBeGreaterThanOrEqual(1);
+    expect(runVerdict("claude", bash(command), ok, stillMatches).state).toBe("ran");
+  });
+
   it.each([
     ["a quoted heredoc written to a file", `cat > notes.md <<'EOF'\n$(${RUN})\nEOF`],
     ["a backslash-quoted delimiter", `cat > notes.md <<\\EOF\n$(${RUN})\nEOF`],

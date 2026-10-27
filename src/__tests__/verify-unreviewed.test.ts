@@ -211,6 +211,12 @@ describe("pushes whose commits cannot be read", () => {
     expect(check.facts).toMatchObject({ pushesToMain: 1, commitsOnMain: 1 });
     expect(check.status).toBe("review");
   });
+
+  it("a push after env -i, which takes no value, is counted", async () => {
+    const check = await unreviewed(`env -i git push origin ${"main"}`, RANGE);
+    expect(check.facts).toMatchObject({ pushesToMain: 1, commitsOnMain: 1 });
+    expect(check.status).toBe("review");
+  });
 });
 
 describe("against real repos", () => {
