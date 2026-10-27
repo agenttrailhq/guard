@@ -1388,11 +1388,15 @@ describe("scan, against the built binary", () => {
   it("a plain scan verifies by default, from both bundles: no network call, nothing in HOME; --no-checks skips it", () => {
     // The checks run with no flag at all. The repo, the transcript and its token are made up.
     const base = mkdtempSync(join(tmpdir(), "agenttrail-guard-default-"));
-    const repo = join(base, "repo");
+    // The repo folder and the IAM user carry names of their own, so either one printed or
+    // written anywhere is found.
+    const repoName = "builtREPOname";
+    const userName = "builtUSERname";
+    const repo = join(base, repoName);
     mkdirSync(repo, { recursive: true });
     execFileSync("git", ["init", "-q"], { cwd: repo });
     const token = `ghp${"_"}BUILTdefault0aB1cD2eF3gH4iJ5kL6mN7oP8`;
-    const projects = join(base, "projects", "-repo");
+    const projects = join(base, "projects", `-${repoName}`);
     mkdirSync(projects, { recursive: true });
     writeFileSync(
       join(projects, "default-1.jsonl"),
@@ -1416,7 +1420,7 @@ describe("scan, against the built binary", () => {
                 type: "tool_use",
                 id: "t1",
                 name: "Bash",
-                input: { command: `aws iam create-access-key --user-name ${"default-bot"}` },
+                input: { command: `aws iam create-access-key --user-name ${userName}` },
               },
             ],
           },
@@ -1467,7 +1471,12 @@ describe("scan, against the built binary", () => {
         expect(readFileSync(log, "utf8")).toBe("");
         expect(readdirSync(home)).toEqual([]);
         const report = readFileSync(join(work, "agenttrail-guard-report.html"), "utf8");
-        expect(`${r.stdout}${r.stderr}${report}`).not.toContain("BUILTdefault");
+        for (const name of ["BUILTdefault", repoName]) {
+          expect(`${r.stdout}${r.stderr}${report}`, name).not.toContain(name);
+        }
+        // What the scan prints names no IAM user. The page's command shapes are the
+        // redactor's, as without the checks.
+        expect(`${r.stdout}${r.stderr}`).not.toContain(userName);
         if (skip) {
           expect(r.stdout).not.toContain("Checked on this machine");
           expect(decodedSurfaces(report).data).not.toContain("iamChanges");
