@@ -232,12 +232,20 @@ describe("where a note is shown", () => {
   });
 
   it("a verification with no note to give carries no notes field", () => {
+    // The page corpus's guardrails, with secrets set aside by a rule that can miss (so no
+    // reassuring zero), and every other check not run.
     const quiet = notesResult(
-      notesVerification({
-        secrets: checked("clean", SECRETS_CLEAN),
-        "lost-work": { status: "not-checked" },
-        tests: { status: "not-checked" },
-      }),
+      notesVerification(
+        {
+          secrets: checked("clean", SECRETS_CLEAN),
+          destructive: { status: "not-checked" },
+          "lost-work": { status: "not-checked" },
+          tests: { status: "not-checked" },
+          egress: { status: "not-checked" },
+        },
+        {},
+        null,
+      ),
     );
     expect(reportPayload(quiet, VERIFIED_META, TONE_BUILDERS).notes).toBeUndefined();
   });

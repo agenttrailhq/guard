@@ -1,6 +1,6 @@
 # Claude Code
 gb.git-no-verify  note.no-verify  4 commits skipped the hooks of a repo that has them; 3 are on main now.
-gb.hooks-disable  note.hooks-off  Hooks are on now in every repo where they were switched. 1 command turned Husky off for that command only.
+gb.hooks-disable  note.hooks-off  Hooks are on now in every repo where they were switched. 1 command turned hooks off for that command only.
 wt.branch-force-delete  note.branches  2 deleted branches can still be recovered by commit id.
 wt.stash-drop  note.stashes  1 dropped stash can still be recovered by commit id.
 wt.checkout-discard  note.discards  All 4 discarded paths were in the agent's own worktree or a scratch copy.
@@ -38,7 +38,7 @@ flag-dependency-install  note.installs  2 package installs ran, not counting 3 l
 rce.unverified-package  note.installs  2 package installs ran, not counting 3 lockfile restores. Package age is not checked: the scan runs offline.
 # Codex
 gb.git-no-verify  note.no-verify  4 commits skipped the hooks of a repo that has them; 3 are on main now. Codex counts here include every call Codex recorded an output for, which may include calls a hook blocked.
-gb.hooks-disable  note.hooks-off  1 command turned Husky off for that command only. Codex counts here include every call Codex recorded an output for, which may include calls a hook blocked.
+gb.hooks-disable  note.hooks-off  1 command turned hooks off for that command only. Codex counts here include every call Codex recorded an output for, which may include calls a hook blocked.
 wt.branch-force-delete  note.branches  2 deleted branches can still be recovered by commit id. Codex counts here include every call Codex recorded an output for, which may include calls a hook blocked.
 wt.stash-drop  note.stashes  1 dropped stash can still be recovered by commit id. Codex counts here include every call Codex recorded an output for, which may include calls a hook blocked.
 wt.checkout-discard  note.discards  Of 4 discarded paths: 4 in the agent's own copy. Codex counts here include every call Codex recorded an output for, which may include calls a hook blocked.

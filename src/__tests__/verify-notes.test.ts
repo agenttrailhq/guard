@@ -51,6 +51,7 @@ import {
   SKIPPED_FACTS,
   TESTS_FACTS,
   TONE_BUILDERS,
+  tally,
 } from "./notes-corpus.js";
 import { SECRETS_ACT, SECRETS_CLEAN } from "./verified-corpus.js";
 
@@ -257,7 +258,13 @@ const KIND_CASES: readonly [NoteKindName, string, object, string][] = [
     "hooks-off",
     "back on",
     SKIPPED_FACTS,
-    "Hooks are on now in every repo where they were switched. 1 command turned Husky off for that command only.",
+    "Hooks are on now in every repo where they were switched. 1 command turned hooks off for that command only.",
+  ],
+  [
+    "hooks-off",
+    "off for one command by other means",
+    { ...SKIPPED_FACTS, husky: tally(0), oneCommand: tally(2) },
+    "Hooks are on now in every repo where they were switched. 2 commands turned hooks off for that command only.",
   ],
   [
     "hooks-off",
@@ -354,6 +361,19 @@ const KIND_CASES: readonly [NoteKindName, string, object, string][] = [
   ],
   [
     "rm-targets",
+    "the home folder or above",
+    {
+      ...DESTRUCTIVE_FACTS,
+      rm: {
+        ...DESTRUCTIVE_FACTS.rm,
+        classes: { ...DESTRUCTIVE_FACTS.rm.classes, tracked: 0, "home-or-above": 1 },
+        trackedBack: 0,
+      },
+    },
+    "1 target was the home folder itself, a folder that holds it, or the root. 5 of 7 targets were scratch, temp or build folders. 1 target held untracked files in a repo.",
+  ],
+  [
+    "rm-targets",
     "a guarded variable",
     {
       ...DESTRUCTIVE_FACTS,
@@ -442,6 +462,12 @@ const KIND_CASES: readonly [NoteKindName, string, object, string][] = [
     "raises undone",
     TESTS_FACTS,
     "No coverage floor went down: the 2 threshold drops undid an automatic raise.",
+  ],
+  [
+    "tests-config",
+    "a config changed by a command not read",
+    { ...TESTS_FACTS, unreadEdits: 1 },
+    "1 test or CI config was changed by a command this check does not read.",
   ],
   [
     "tests-config",
@@ -900,6 +926,19 @@ describe("a reassuring note needs every part of its check settled", () => {
       },
     ],
     [
+      "rm-targets",
+      "a target that was the home folder or above",
+      {
+        ...DESTRUCTIVE_FACTS,
+        rm: {
+          ...DESTRUCTIVE_FACTS.rm,
+          classes: { ...DESTRUCTIVE_FACTS.rm.classes, scratch: 6, tracked: 0, "home-or-above": 1 },
+          trackedBack: 0,
+        },
+      },
+    ],
+    ["tests-config", "a config changed by a command not read", { ...TESTS_FACTS, unreadEdits: 1 }],
+    [
       "hooks-off",
       "a repo not checked",
       { ...SKIPPED_FACTS, hooksPath: { ...SKIPPED_FACTS.hooksPath, couldNotCheck: 1 } },
@@ -985,124 +1024,12 @@ describe("a note reads only counts", () => {
 
 // ── Registered keys only ──────────────────────────────────────────────────────
 
-/**
- * The fact keys and enum values the git-backed checks and the command checks register, as
- * `git-facts.ts` (`GIT_FACT_KEYS`, `RM_TARGET_CLASSES`, `DATABASE_CLASSES`) and
- * `command-facts.ts` (`COMMAND_FACT_KEYS`, `PROCESS_CHECKS`) export them. Those modules are not
- * in this build: when they are, these come from `FACT_KEYS` and `FACT_VALUE_ENUMS`, and this
- * list goes.
- */
-const KEYS_OF_CHECKS_NOT_IN_THIS_BUILD: ReadonlySet<string> = new Set([
-  // GIT_FACT_KEYS
-  "calls",
-  "ran",
-  "mentioned",
-  "unknown",
-  "couldNotCheck",
-  "noVerify",
-  "commits",
-  "notIdentified",
-  "withoutHooks",
-  "onMain",
-  "offMain",
-  "noMainToCheck",
-  "gone",
-  "otherNoVerify",
-  "husky",
-  "hooksPath",
-  "off",
-  "on",
-  "none",
-  "instructions",
-  "read",
-  "sayToSkip",
-  "agentWrote",
-  "agentWroteStill",
-  "agentWroteRemoved",
-  "couldNotRead",
-  "branches",
-  "deleted",
-  "recoverable",
-  "onAnotherRef",
-  "stashes",
-  "dropped",
-  "cleared",
-  "listed",
-  "discards",
-  "paths",
-  "ownCopy",
-  "agentEdited",
-  "mainCheckout",
-  "rm",
-  "targets",
-  "trackedBack",
-  "trackedGone",
-  "trackedPartlyBack",
-  "databases",
-  "unsafeFixes",
-  "hidingCalls",
-  // RM_TARGET_CLASSES, DATABASE_CLASSES
-  "unguarded-variable",
-  "guarded-variable",
-  "scratch",
-  "tracked",
-  "untracked",
-  "home",
-  "other",
-  "local",
-  "unresolved",
-  // COMMAND_FACT_KEYS
-  "thresholdsLowered",
-  "autoUpdateReverts",
-  "autoUpdateNow",
-  "unread",
-  "configsRewritten",
-  "excludesAdded",
-  "passWithNoTests",
-  "ciStepsForcedTrue",
-  "testFilesDeleted",
-  "deletedAfterFailing",
-  "deletedFailureUnknown",
-  "unconfirmed",
-  "couldHide",
-  "iamChanges",
-  "iamSubjects",
-  "autoScalingChanges",
-  "s3Changes",
-  "terraformChanges",
-  "terraformAutoApprove",
-  "localStack",
-  "databaseTargets",
-  "databaseCheck",
-  "infraMatches",
-  "infraKinds",
-  "pushesToMain",
-  "commitsOnMain",
-  "commitsNotOnMain",
-  "pushesNotChecked",
-  "uploads",
-  "uploadKinds",
-  "tunnelsStarted",
-  "localOnly",
-  "tunnelsRunning",
-  "tunnelPrograms",
-  "processCheck",
-  "dependencies",
-  "installs",
-  "lockfileRestores",
-  "managers",
-  "packageAge",
-  // PROCESS_CHECKS
-  "checked",
-  "could-not-check",
-]);
-
-/** Every key and enum value the report's boundary lets facts carry in this build. */
+/** Every key and enum value the report's boundary lets facts carry. */
 const REGISTERED: ReadonlySet<string> = new Set([...FACT_KEYS, ...FACT_VALUE_ENUMS.flat()]);
 
-/** The keys a note reads that neither this build nor the checks not in it register. */
+/** The keys of `keys` that are not registered. */
 function unregistered(keys: readonly string[]): string[] {
-  return keys.filter((key) => !REGISTERED.has(key) && !KEYS_OF_CHECKS_NOT_IN_THIS_BUILD.has(key));
+  return keys.filter((key) => !REGISTERED.has(key));
 }
 
 describe("a note reads registered keys only", () => {
@@ -1125,9 +1052,8 @@ describe("a note reads registered keys only", () => {
             ? [node]
             : [];
     const used = [...Object.values(FACTS), DEPENDENCY_FACTS].flatMap(keys);
-    // The enums the corpus holds as values that no note reads: still a check's own values.
-    const values = new Set(["access-keys", "policies", "kubernetes", "npm", "not-checked-offline"]);
-    expect(unregistered(used.filter((k) => !values.has(k)))).toEqual([]);
+    expect(used.length).toBeGreaterThan(100);
+    expect(unregistered(used)).toEqual([]);
   });
 
   it("the secrets notes read only what this build registers, so they reach the page", () => {

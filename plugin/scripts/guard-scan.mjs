@@ -16978,7 +16978,8 @@ var HOOKS_OFF = kind({
     on: ["hooksPath", "on"],
     couldNotCheck: ["hooksPath", "couldNotCheck"],
     unknown: ["hooksPath", "calls", "unknown"],
-    oneCommand: ["husky", "ran"]
+    husky: ["husky", "ran"],
+    otherMeans: ["oneCommand", "ran"]
   },
   ran: true,
   template: {
@@ -16986,7 +16987,7 @@ var HOOKS_OFF = kind({
     render: (f) => line([
       f.off > 0 ? `Hooks are switched off now in ${countOf(f.off, "repo")}.` : void 0,
       f.reassure && f.off === 0 && f.on > 0 && f.couldNotCheck + f.unknown === 0 ? "Hooks are on now in every repo where they were switched." : void 0,
-      f.oneCommand > 0 ? `${countOf(f.oneCommand, "command")} turned Husky off for that command only.` : void 0,
+      f.husky + f.otherMeans > 0 ? `${countOf(f.husky + f.otherMeans, "command")} turned hooks off for that command only.` : void 0,
       notLookedUp(f.couldNotCheck, "repo")
     ])
   }
@@ -17067,6 +17068,7 @@ var DISCARDS = kind({
 var RM_TARGETS = kind({
   reads: {
     targets: ["rm", "targets"],
+    homeOrAbove: ["rm", "classes", "home-or-above"],
     scratch: ["rm", "classes", "scratch"],
     untracked: ["rm", "classes", "untracked"],
     home: ["rm", "classes", "home"],
@@ -17083,8 +17085,9 @@ var RM_TARGETS = kind({
     render: (f) => {
       if (f.targets === 0) return void 0;
       const missing = f.trackedGone + f.trackedPartlyBack;
-      const settled = f.couldNotCheck + f.unknown + f.unguarded + f.guarded === 0;
+      const settled = f.couldNotCheck + f.unknown + f.unguarded + f.guarded + f.homeOrAbove === 0;
       return line([
+        f.homeOrAbove > 0 ? `${countOf(f.homeOrAbove, "target")} ${was2(f.homeOrAbove)} the home folder itself, a folder that holds it, or the root.` : void 0,
         f.reassure && settled && f.scratch === f.targets ? "All scratch, temp or build folders." : f.reassure && settled && f.scratch * 2 > f.targets ? "Mostly scratch, temp or build folders." : f.scratch > 0 ? `${formatCount(f.scratch)} of ${countOf(f.targets, "target")} ${was2(f.scratch)} scratch, temp or build folders.` : void 0,
         missing > 0 ? `${countOf(missing, "tracked target")} still ${missing === 1 ? "has" : "have"} files missing.` : f.reassure && settled ? "No tracked file is missing." : void 0,
         f.untracked > 0 ? `${countOf(f.untracked, "target")} held untracked files in a repo.` : void 0,
@@ -17190,7 +17193,7 @@ var TESTS_DELETED = kind({
   template: {
     id: "note.tests-deleted",
     render: (f) => f.deleted > 0 ? line([
-      `${countOf(f.deleted, "test file")} deleted, ${formatCount(f.afterFailing)} after a test run reported ${f.afterFailing === 1 ? "it" : "them"} failing.`,
+      `${countOf(f.deleted, "test file")} deleted, ${formatCount(f.afterFailing)} after a test run reported ${f.deleted === 1 ? "it" : "them"} failing.`,
       f.notKnown > 0 ? `For ${formatCount(f.notKnown)}, whether ${f.notKnown === 1 ? "it" : "they"} failed first is not known.` : void 0
     ]) : void 0
   }
@@ -17201,15 +17204,17 @@ var TESTS_CONFIG = kind({
     reverts: ["autoUpdateReverts"],
     excludes: ["excludesAdded"],
     rewritten: ["configsRewritten"],
+    unread: ["unreadEdits"],
     unconfirmed: ["unconfirmed"]
   },
   ran: true,
   template: {
     id: "note.tests-config",
     render: (f) => line([
-      f.lowered > 0 ? `${countOf(f.lowered, "coverage threshold")} lowered.` : f.reassure && f.reverts > 0 && f.rewritten + f.unconfirmed === 0 ? `No coverage floor went down: the ${countOf(f.reverts, "threshold drop")} undid an automatic raise.` : void 0,
+      f.lowered > 0 ? `${countOf(f.lowered, "coverage threshold")} lowered.` : f.reassure && f.reverts > 0 && f.rewritten + f.unread + f.unconfirmed === 0 ? `No coverage floor went down: the ${countOf(f.reverts, "threshold drop")} undid an automatic raise.` : void 0,
       f.excludes > 0 ? `${countOf(f.excludes, "exclude")} added to a test or coverage list.` : void 0,
-      f.rewritten > 0 ? `${countOf(f.rewritten, "test config")} rewritten whole, so whether a threshold went down cannot be told.` : void 0
+      f.rewritten > 0 ? `${countOf(f.rewritten, "test config")} rewritten whole, so whether a threshold went down cannot be told.` : void 0,
+      f.unread > 0 ? `${countOf(f.unread, "test or CI config")} ${was2(f.unread)} changed by a command this check does not read.` : void 0
     ])
   }
 });
@@ -17364,17 +17369,21 @@ function hidingIn(facts) {
   const counted6 = HIDING_COUNTS.some((path) => (asCount(at(facts, path)) ?? 0) > 0);
   return { forms, any: forms.length > 0 || counted6 };
 }
-function unconfirmedLine(rule, facts, card, verification) {
-  if (card?.unconfirmed?.reason === "hiding-forms") {
-    return sentence(UNCONFIRMED_SENTENCE, card.unconfirmed);
+function unconfirmedLine(rule, facts, status, verification) {
+  const recorded = verification.resultsRecorded;
+  if (rule.category !== "dependencies" && status !== void 0) {
+    const unconfirmed = unconfirmedOf(rule.category, status, facts, recorded);
+    if (unconfirmed?.reason === "hiding-forms") return sentence(UNCONFIRMED_SENTENCE, unconfirmed);
+    if (unconfirmed?.reason === "no-output") return sentence(NOTE_NO_OUTPUT, void 0);
   }
-  if (card?.unconfirmed?.reason === "no-output") return sentence(NOTE_NO_OUTPUT, void 0);
   const hiding = hidingIn(facts);
   if (hiding.forms.length > 0) {
     return sentence(UNCONFIRMED_SENTENCE, { reason: "hiding-forms", forms: hiding.forms });
   }
   if (hiding.any) return sentence(NOTE_COULD_HIDE, void 0);
-  if (card?.tone === "could-not-check") return sentence(NOTE_COULD_NOT_CHECK, void 0);
+  if (rule.category !== "dependencies" && status !== void 0 && honestStatus(rule.category, status, facts, recorded) === "could-not-check") {
+    return sentence(NOTE_COULD_NOT_CHECK, void 0);
+  }
   const spec = NOTE_KINDS[rule.kind];
   if ((spec.ran || spec.output === true) && !verification.resultsRecorded) {
     return sentence(NOTE_NO_OUTPUT, void 0);
@@ -17395,6 +17404,7 @@ function verifiedNote(finding, verification, cards) {
     return void 0;
   }
   const facts = factsFor(rule, verification);
+  const status = rule.category === "dependencies" ? void 0 : verification.categories[rule.category].status;
   const note = (made2, outcome2) => ({
     ruleId: finding.ruleId,
     category: rule.category,
@@ -17402,7 +17412,7 @@ function verifiedNote(finding, verification, cards) {
     sentence: made2
   });
   if (rule.category === "dependencies" && facts === void 0) return void 0;
-  const unconfirmed = unconfirmedLine(rule, facts, card, verification);
+  const unconfirmed = unconfirmedLine(rule, facts, status, verification);
   if (unconfirmed !== void 0) return note(unconfirmed, "could-not-confirm");
   const spec = NOTE_KINDS[rule.kind];
   const counts = readCounts(facts, spec.reads);

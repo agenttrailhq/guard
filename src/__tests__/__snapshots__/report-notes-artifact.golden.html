@@ -63,26 +63,26 @@
 <div class="stat"><div class="stat-value">0%</div><div class="stat-label">matched no guardrail</div></div>
 <div class="stat"><div class="stat-value">0</div><div class="stat-label">tokens</div><div class="stat-note">0 cache reads (cumulative)</div></div>
 </section>
-<section id="what-happened" class="what-happened">
-<div class="section-head"><h2>What actually happened</h2><p class="section-meta" data-template="cards.tally">3 to act on · 2 to review · 2 clean · 1 could not check · 1 not checked</p></div>
+<section id="what-happened" class="what-happened" aria-labelledby="what-happened-heading">
+<div class="section-head"><h2 id="what-happened-heading">What actually happened</h2><p class="section-meta" data-template="cards.tally">3 to act on · 2 to review · 2 clean · 1 could not check · 1 not checked</p></div>
 <p class="note">A match means a guardrail fired on a command. Each card says what checking that on this machine found, how things stand now, and how to fix it. The checks only read: they changed nothing on this machine.</p>
 <div class="verified-cards">
-<article class="card verified v-act" id="check-secrets" aria-labelledby="check-secrets-title">
-<div class="card-head"><span class="tone tone-act">Act on this</span><span class="times" data-template="card.count">3 matches</span></div>
+<article class="card verified v-act" id="check-secrets" aria-labelledby="check-secrets-title" aria-describedby="check-secrets-tone">
+<div class="card-head"><span class="tone tone-act" id="check-secrets-tone">Act on this</span><span class="times" data-template="card.count">3 matches</span></div>
 <h3 id="check-secrets-title">Secrets in transcripts</h3>
 <dl class="verified-facts">
 
 </dl>
 </article>
-<article class="card verified v-act" id="check-skipped-checks" aria-labelledby="check-skipped-checks-title">
-<div class="card-head"><span class="tone tone-act">Act on this</span><span class="times" data-template="card.count">3 matches</span></div>
+<article class="card verified v-act" id="check-skipped-checks" aria-labelledby="check-skipped-checks-title" aria-describedby="check-skipped-checks-tone">
+<div class="card-head"><span class="tone tone-act" id="check-skipped-checks-tone">Act on this</span><span class="times" data-template="card.count">3 matches</span></div>
 <h3 id="check-skipped-checks-title">Skipped safety checks</h3>
 <dl class="verified-facts">
 
 </dl>
 </article>
-<article class="card verified v-act" id="check-tests" aria-labelledby="check-tests-title">
-<div class="card-head"><span class="tone tone-act">Act on this</span><span class="times" data-template="card.count">3 matches</span></div>
+<article class="card verified v-act" id="check-tests" aria-labelledby="check-tests-title" aria-describedby="check-tests-tone">
+<div class="card-head"><span class="tone tone-act" id="check-tests-tone">Act on this</span><span class="times" data-template="card.count">3 matches</span></div>
 <h3 id="check-tests-title">Gaming tests</h3>
 <dl class="verified-facts">
 <div><dt>What checking found</dt><dd>
@@ -90,36 +90,36 @@
 </dd></div>
 </dl>
 </article>
-<article class="card verified v-review" id="check-cloud" aria-labelledby="check-cloud-title">
-<div class="card-head"><span class="tone tone-review">Review</span><span class="times" data-template="card.count">3 matches</span></div>
+<article class="card verified v-review" id="check-cloud" aria-labelledby="check-cloud-title" aria-describedby="check-cloud-tone">
+<div class="card-head"><span class="tone tone-review" id="check-cloud-tone">Review</span><span class="times" data-template="card.count">3 matches</span></div>
 <h3 id="check-cloud-title">Cloud and permissions</h3>
 <dl class="verified-facts">
 
 </dl>
 </article>
-<article class="card verified v-review" id="check-prod-infra" aria-labelledby="check-prod-infra-title">
-<div class="card-head"><span class="tone tone-review">Review</span><span class="times" data-template="card.count">3 matches</span></div>
+<article class="card verified v-review" id="check-prod-infra" aria-labelledby="check-prod-infra-title" aria-describedby="check-prod-infra-tone">
+<div class="card-head"><span class="tone tone-review" id="check-prod-infra-tone">Review</span><span class="times" data-template="card.count">3 matches</span></div>
 <h3 id="check-prod-infra-title">Production infrastructure</h3>
 <dl class="verified-facts">
 
 </dl>
 </article>
-<article class="card verified v-clean" id="check-destructive" aria-labelledby="check-destructive-title">
-<div class="card-head"><span class="tone tone-clean">Clean</span><span class="times" data-template="card.count">3 matches</span></div>
+<article class="card verified v-clean" id="check-destructive" aria-labelledby="check-destructive-title" aria-describedby="check-destructive-tone">
+<div class="card-head"><span class="tone tone-clean" id="check-destructive-tone">Clean</span><span class="times" data-template="card.count">3 matches</span></div>
 <h3 id="check-destructive-title">Destructive commands</h3>
 <dl class="verified-facts">
 
 </dl>
 </article>
-<article class="card verified v-clean" id="check-egress" aria-labelledby="check-egress-title">
-<div class="card-head"><span class="tone tone-clean">Clean</span><span class="times" data-template="card.count">3 matches</span></div>
+<article class="card verified v-clean" id="check-egress" aria-labelledby="check-egress-title" aria-describedby="check-egress-tone">
+<div class="card-head"><span class="tone tone-clean" id="check-egress-tone">Clean</span><span class="times" data-template="card.count">3 matches</span></div>
 <h3 id="check-egress-title">Data leaving the machine</h3>
 <dl class="verified-facts">
 
 </dl>
 </article>
-<article class="card verified v-could-not-check" id="check-lost-work" aria-labelledby="check-lost-work-title">
-<div class="card-head"><span class="tone tone-could-not-check">Could not check</span><span class="times" data-template="card.count">1 match</span></div>
+<article class="card verified v-could-not-check" id="check-lost-work" aria-labelledby="check-lost-work-title" aria-describedby="check-lost-work-tone">
+<div class="card-head"><span class="tone tone-could-not-check" id="check-lost-work-tone">Could not check</span><span class="times" data-template="card.count">1 match</span></div>
 <h3 id="check-lost-work-title">Lost work</h3>
 <dl class="verified-facts">
 <div><dt>What checking found</dt><dd>
@@ -127,12 +127,12 @@
 </dd></div>
 </dl>
 </article>
-<article class="card verified v-not-checked" id="check-unreviewed" aria-labelledby="check-unreviewed-title">
-<div class="card-head"><span class="tone tone-not-checked">Not checked</span></div>
+<article class="card verified v-not-checked" id="check-unreviewed" aria-labelledby="check-unreviewed-title" aria-describedby="check-unreviewed-tone">
+<div class="card-head"><span class="tone tone-not-checked" id="check-unreviewed-tone">Not checked</span></div>
 <h3 id="check-unreviewed-title">Unreviewed code</h3>
 <dl class="verified-facts">
 <div><dt>What checking found</dt><dd>
-<p data-template="not-checked">Not checked yet.</p>
+<p data-template="not-checked">Not checked.</p>
 </dd></div>
 </dl>
 </article>
@@ -221,6 +221,7 @@
 <div class="finding-meta"><span class="badge sev-high">high</span> <span class="chip act-block">would block</span><span class="num" data-label="Matches">1&times;</span></div>
 </div>
 <div class="guardrail-id"><code>dd.rm-rf-absolute</code> &middot; <span class="group">Destructive data</span></div>
+<p class="verified-note v-clean"><span class="verified-note-label">What checking found:</span> <span data-template="note.rm-targets">Mostly scratch, temp or build folders. No tracked file is missing. 1 target held untracked files in a repo.</span></p>
 <details class="commands"><summary>The command shape behind it</summary>
 <ul class="shapes">
 <li><code>rm -rf &lt;path&gt;</code><span class="times">1&times;</span></li>
@@ -237,6 +238,7 @@
 <div class="finding-meta"><span class="badge sev-high">high</span> <span class="chip act-ask">would ask</span><span class="num" data-label="Matches">1&times;</span></div>
 </div>
 <div class="guardrail-id"><code>ex.file-upload</code> &middot; <span class="group">Data leaving the machine</span></div>
+<p class="verified-note v-clean"><span class="verified-note-label">What checking found:</span> <span data-template="note.uploads">False positive: nothing that ran left this machine; 3 calls went to this machine or LocalStack.</span></p>
 <details class="commands"><summary>The command shape behind it</summary>
 <ul class="shapes">
 <li><code>curl -T report.txt &lt;path&gt;</code><span class="times">1&times;</span></li>
@@ -253,6 +255,7 @@
 <div class="finding-meta"><span class="badge sev-high">high</span> <span class="chip act-ask">would ask</span><span class="num" data-label="Matches">1&times;</span></div>
 </div>
 <div class="guardrail-id"><code>flag-dependency-install</code> &middot; <span class="group">Privileges and supply chain</span></div>
+<p class="verified-note"><span class="verified-note-label">What checking found:</span> <span data-template="note.installs">2 package installs ran, not counting 3 lockfile restores. Package age is not checked: the scan runs offline.</span></p>
 <details class="commands"><summary>The command shape behind it</summary>
 <ul class="shapes">
 <li><code>npm install left-pad</code><span class="times">1&times;</span></li>

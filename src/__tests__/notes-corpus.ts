@@ -1,12 +1,11 @@
 /**
  * Synthetic facts for the verified notes, made up and test-only.
  *
- * Each check's facts here have the shape that check's module exports: the field names of
- * `SkippedChecksFacts`, `LostWorkFacts` and `DestructiveFacts` (the git-backed checks), and of
- * `TestsFacts`, `CloudFacts`, `ProdInfraFacts`, `UnreviewedFacts`, `EgressFacts` and
- * `DependencyFacts` (the command checks), every key one those modules register. Where a check's
- * module is not in this build, its facts are written out by those names, so the notes are
- * tested against the shape the check produces.
+ * Each check's facts here satisfy that check's own facts type: `SkippedChecksFacts`,
+ * `LostWorkFacts` and `DestructiveFacts` (the git-backed checks), and `TestsFacts`, `CloudFacts`,
+ * `ProdInfraFacts`, `UnreviewedFacts`, `EgressFacts` and `DependencyFacts` (the command checks).
+ * A field a check adds, renames or drops fails to compile here, so the notes are tested against
+ * the shape the checks produce.
  *
  * The scan the page corpus renders matches guardrails by their shipped ids, through synthetic
  * rules written here: the notes table is keyed by shipped id.
@@ -17,6 +16,14 @@ import { compileCatalog } from "../core/rules.js";
 import { aggregateScan, type ScanResult } from "../core/scan-report.js";
 import type { GuardRule } from "../core/types.js";
 import type { CardBuilders, CardView } from "../core/verify/cards.js";
+import type { CloudFacts } from "../core/verify/cloud.js";
+import type { DependencyFacts } from "../core/verify/deps.js";
+import type { DestructiveFacts } from "../core/verify/destructive.js";
+import type { EgressFacts } from "../core/verify/egress.js";
+import type { LostWorkFacts } from "../core/verify/lost-work.js";
+import type { ProdInfraFacts } from "../core/verify/prod-infra.js";
+import type { SkippedChecksFacts } from "../core/verify/skipped.js";
+import type { TestsFacts } from "../core/verify/tests.js";
 import {
   type RunTally,
   VERIFY_CATEGORIES,
@@ -24,6 +31,7 @@ import {
   type VerifyCategory,
   type VerifyStatus,
 } from "../core/verify/types.js";
+import type { UnreviewedFacts } from "../core/verify/unreviewed.js";
 import { bash, session, turn } from "./scan-fixtures.js";
 import { SECRETS_ACT } from "./verified-corpus.js";
 
@@ -38,6 +46,7 @@ export const SKIPPED_FACTS = {
     calls: tally(4),
     commits: 4,
     notIdentified: 0,
+    failed: 0,
     withoutHooks: 0,
     onMain: 3,
     offMain: 1,
@@ -47,6 +56,7 @@ export const SKIPPED_FACTS = {
   },
   otherNoVerify: tally(0),
   husky: tally(1),
+  oneCommand: tally(0),
   hooksPath: { calls: tally(1), off: 0, on: 1, none: 0, couldNotCheck: 0 },
   instructions: {
     read: 2,
@@ -59,7 +69,7 @@ export const SKIPPED_FACTS = {
   unsafeFixes: 0,
   hidingCalls: 0,
   hidingForms: [],
-};
+} satisfies SkippedChecksFacts;
 
 /** Lost work: two branches and a stash recoverable, four discards in the agent's own copy. */
 export const LOST_WORK_FACTS = {
@@ -67,6 +77,7 @@ export const LOST_WORK_FACTS = {
     calls: tally(2),
     deleted: 2,
     notIdentified: 0,
+    failed: 0,
     recoverable: 2,
     onAnotherRef: 0,
     gone: 0,
@@ -77,6 +88,7 @@ export const LOST_WORK_FACTS = {
     dropped: 1,
     cleared: 0,
     notIdentified: 0,
+    failed: 0,
     recoverable: 1,
     listed: 0,
     gone: 0,
@@ -93,7 +105,7 @@ export const LOST_WORK_FACTS = {
   unsafeFixes: 0,
   hidingCalls: 0,
   hidingForms: [],
-};
+} satisfies LostWorkFacts;
 
 /** Destructive commands: seven recursive deletes, mostly build output, nothing tracked lost. */
 export const DESTRUCTIVE_FACTS = {
@@ -101,6 +113,7 @@ export const DESTRUCTIVE_FACTS = {
     calls: tally(7),
     targets: 7,
     classes: {
+      "home-or-above": 0,
       "unguarded-variable": 0,
       "guarded-variable": 0,
       scratch: 5,
@@ -121,7 +134,7 @@ export const DESTRUCTIVE_FACTS = {
   unsafeFixes: 0,
   hidingCalls: 0,
   hidingForms: [],
-};
+} satisfies DestructiveFacts;
 
 /** Cloud and permissions: two IAM changes and one Terraform apply that ran. */
 export const CLOUD_FACTS = {
@@ -136,7 +149,7 @@ export const CLOUD_FACTS = {
   unconfirmed: 0,
   couldHide: 0,
   hidingForms: [],
-};
+} satisfies CloudFacts;
 
 /** Production infrastructure: one Kubernetes change, databases all local. */
 export const PROD_INFRA_FACTS = {
@@ -144,11 +157,12 @@ export const PROD_INFRA_FACTS = {
   databaseCheck: "checked",
   infraMatches: 1,
   infraKinds: ["kubernetes"],
+  localInfra: 0,
   mentioned: 0,
   unconfirmed: 0,
   couldHide: 0,
   hidingForms: [],
-};
+} satisfies ProdInfraFacts;
 
 /** Gaming tests: a test deleted after it failed; two threshold drops that undid a raise. */
 export const TESTS_FACTS = {
@@ -162,11 +176,12 @@ export const TESTS_FACTS = {
   testFilesDeleted: 1,
   deletedAfterFailing: 1,
   deletedFailureUnknown: 0,
+  unreadEdits: 0,
   mentioned: 0,
   unconfirmed: 0,
   couldHide: 0,
   hidingForms: [],
-};
+} satisfies TestsFacts;
 
 /** Unreviewed code: one push straight to main with two commits still on it. */
 export const UNREVIEWED_FACTS = {
@@ -174,11 +189,12 @@ export const UNREVIEWED_FACTS = {
   commitsOnMain: 2,
   commitsNotOnMain: 0,
   pushesNotChecked: 0,
+  pushesCreatingMain: 0,
   mentioned: 0,
   unconfirmed: 0,
   couldHide: 0,
   hidingForms: [],
-};
+} satisfies UnreviewedFacts;
 
 /** Data leaving the machine: nothing left it; three calls went to this machine. */
 export const EGRESS_FACTS = {
@@ -193,7 +209,7 @@ export const EGRESS_FACTS = {
   unconfirmed: 0,
   couldHide: 0,
   hidingForms: [],
-};
+} satisfies EgressFacts;
 
 /** Dependencies: two installs, three lockfile restores left out. */
 export const DEPENDENCY_FACTS = {
@@ -205,7 +221,7 @@ export const DEPENDENCY_FACTS = {
   unconfirmed: 0,
   couldHide: 0,
   hidingForms: [],
-};
+} satisfies DependencyFacts;
 
 /** Every category's facts, by category. */
 export const FACTS: Readonly<Record<VerifyCategory, object>> = {
