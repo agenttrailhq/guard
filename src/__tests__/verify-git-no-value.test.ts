@@ -17,6 +17,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { runScan } from "../commands/scan.js";
 import { compileAllowlist } from "../core/evaluate.js";
+import { FIXES_FILENAME } from "../core/report.js";
 import { compileCatalog } from "../core/rules.js";
 import type { ScanCorpus } from "../core/scan-report.js";
 import { parseSession } from "../core/transcript/parse.js";
@@ -292,7 +293,12 @@ describe("no value the git-backed checks read leaves scan --verify", () => {
         ...variant,
       ]);
       expect(run.code).toBe(0);
-      const html = [...run.written.values()].join("\n");
+      // The local fixes file holds the exact commands, real names and all, by design: it is the
+      // one place they go, and it is not part of the report. Everything else written is checked.
+      const html = [...run.written.entries()]
+        .filter(([path]) => !path.endsWith(FIXES_FILENAME))
+        .map(([, text]) => text)
+        .join("\n");
       expect(html.length).toBeGreaterThan(1000);
       for (const [surface, text] of Object.entries({ raw: html, ...decodedSurfaces(html) })) {
         clean(text, surface);

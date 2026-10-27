@@ -983,7 +983,8 @@ describe("only the scrub path can write a transcript", () => {
 
     /**
      * Every reason the local modules `verify-io.ts` imports could hand it a writer: a local import
-     * that is not on the list, or a listed module that imports or re-exports from `node:fs`.
+     * that is not on the list, or a listed module, or any module it value-imports or re-exports
+     * in turn, that imports or re-exports from `node:fs`.
      * `read` returns a listed module's source, so a test can give a changed one in memory.
      */
     function localModuleProblems(
@@ -998,21 +999,30 @@ describe("only the scrub path can write a transcript", () => {
           problems.push(`imports local module ${specifier}`);
           continue;
         }
-        const module = read(path);
-        for (const name of fsWritersIn(module)) problems.push(`${specifier} hands on ${name}`);
-        for (const imported of parseImports(module)) {
-          if (/^(node:)?fs(\/promises)?$/.test(imported.specifier)) {
-            problems.push(`${specifier} loads ${imported.specifier}`);
-          }
-          if (imported.specifier.startsWith(".")) {
-            problems.push(`${specifier} imports ${imported.specifier}`);
+        // The listed module and every module it value-imports or re-exports in turn.
+        const seen = new Set<string>();
+        const queue = [path];
+        while (queue.length > 0) {
+          const file = queue.pop() as string;
+          if (seen.has(file)) continue;
+          seen.add(file);
+          const module = read(file);
+          const name = relative(SRC, file);
+          for (const writer of fsWritersIn(module)) problems.push(`${name} hands on ${writer}`);
+          for (const imported of parseImports(module)) {
+            if (/^(node:)?fs(\/promises)?$/.test(imported.specifier)) {
+              problems.push(`${name} loads ${imported.specifier}`);
+            }
+            if (!imported.typeOnly && imported.specifier.startsWith(".")) {
+              queue.push(join(dirname(file), imported.specifier.replace(/\.js$/, ".ts")));
+            }
           }
         }
       }
       return problems;
     }
 
-    it("its local imports are the listed modules, and they load nothing from node:fs", () => {
+    it("its local imports are the listed modules, and nothing they load loads node:fs", () => {
       expect(localModuleProblems(real)).toEqual([]);
       expect(
         parseImports(real)
@@ -1036,7 +1046,7 @@ describe("only the scrub path can write a transcript", () => {
       );
       expect(verifyWithPut).not.toBe(real);
       expect(localModuleProblems(verifyWithPut, read)).toContain(
-        "./core/verify/paths.js hands on writeFileSync",
+        "core/verify/paths.ts hands on writeFileSync",
       );
       // The whole-bundle writer check sees the re-export too.
       expect(fsWritersIn(pathsWithWriter)).toContain("writeFileSync");
