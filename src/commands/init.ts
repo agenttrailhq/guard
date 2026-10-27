@@ -460,19 +460,15 @@ export async function runInit(
       return unhandledAgent(agent);
   }
 
-  // Coexistence FIRST, before any write or any spawn. The agenttrail plugin already does
-  // what this hook does, and two hooks would mean two decisions, two prompts and twice
-  // the latency. Declining is a normal outcome, so it exits 0, not 1.
+  // Coexistence: AgentTrail OS's plugin decides only in the projects it was set up in, and
+  // the guard's hook steps aside there (`core/os-step-aside.ts`), so the guard installs for
+  // the rest and says so.
   try {
     if (agenttrailPluginPresent(io.runClaude)) {
       io.writeStdout(
-        `The agenttrail plugin (${AGENTTRAIL_PLUGIN_ID}) is already installed.\n\n` +
-          "It already does everything the guard does, and more. Running both would mean\n" +
-          "two hooks deciding on every tool call — two prompts, twice the latency, no\n" +
-          "benefit. Leaving your setup untouched.\n\n" +
-          "Nothing was written and nothing was changed.\n",
+        `The AgentTrail OS plugin (${AGENTTRAIL_PLUGIN_ID}) is installed. The guard steps aside\n` +
+          "in the projects where AgentTrail OS enforces, and protects every other project.\n\n",
       );
-      return 0;
     }
   } catch (error) {
     io.writeStdout(`agenttrail-guard: ${(error as Error).message}\n`);
