@@ -90,6 +90,7 @@ import { defaultProjectsRoot, scanTranscripts } from "../core/transcript/scan.js
 import type { ParsedSession } from "../core/transcript/transcript-types.js";
 import type { AgentSource, GuardRule } from "../core/types.js";
 import { parseUserRulesData } from "../core/user-rules-data.js";
+import { CODEX_TESTED_ON, CODEX_UNVERIFIED_TEXT } from "../core/verify/copy.js";
 import type { Verification, VerifyIO } from "../core/verify/types.js";
 import {
   UNAVAILABLE_VERIFY_IO,
@@ -143,11 +144,15 @@ They read only:
     (~/.claude/CLAUDE.md or ~/.codex/AGENTS.md), and the ones the sessions wrote.
     In ~/.claude, ~/.codex and ~/.cursor only .md and .mdc files are read.
     Only whether a file tells the agent to skip checks is kept, never its text;
-  - whether the paths the commands named still exist;
-  - test and coverage configs the sessions edited, each at most 1 MB, for their
-    coverage autoUpdate setting;
-  - the names of the running programs, never their arguments, cut down to the
-    agents and the tunnel and relay programs the checks look for.
+  - the test configs the sessions edited, inside their repo and each at most
+    1 MB. Only whether coverage thresholds are set to update themselves
+    (autoUpdate) is kept;
+  - the names of the programs running now (ps, or tasklist on Windows), never
+    their arguments. The list is cut down to known agent apps and tunnel
+    programs as it is read, and only the tunnel programs, such as ngrok or
+    cloudflared, are counted;
+  - whether the folders the sessions ran in, the paths the commands named and
+    each repo's commit hooks exist, never what a hook holds.
 The report and --json carry counts only, never these paths.
 Each git or process call has 5 seconds, and all the checks share 60 seconds. A
 check that cannot finish says so, and never reads as clean.
@@ -160,11 +165,28 @@ a substitution, git config or hooks), they say they could not confirm, never tha
 nothing ran. A script run by name (bash ./x.sh, source x.sh) is not read.
 Exact fix commands for this machine go to agenttrail-guard-fixes.txt next to the
 report, readable only by you (mode 0600), never into the report or --json.
-Codex is limited and unverified: tested only on synthetic sessions built from
-Codex's documented rollout format. A Codex "ran" may include calls a hook
-blocked, ids a Codex command printed are not identified, and a Codex scan never
-leads with a verified finding.`;
+${wrapText(CODEX_UNVERIFIED_TEXT, USAGE_WIDTH)}`;
   return { flags, reads };
+}
+
+/** The width `scan`'s usage is wrapped to. */
+const USAGE_WIDTH = 80;
+
+/**
+ * `text` wrapped at spaces to lines of at most `width` characters, each after `indent`, so a
+ * sentence shared with the page reads the same in the usage.
+ */
+function wrapText(text: string, width: number, indent = ""): string {
+  const lines: string[] = [];
+  let line = "";
+  for (const word of text.split(" ")) {
+    if (line !== "" && indent.length + line.length + 1 + word.length > width) {
+      lines.push(line);
+      line = word;
+    } else line = line === "" ? word : `${line} ${word}`;
+  }
+  if (line !== "") lines.push(line);
+  return lines.map((l) => `${indent}${l}`).join("\n");
 }
 
 /** `scan`'s usage, for one value of the verify-by-default switch. */
@@ -199,8 +221,7 @@ ${checks.flags}
                  [REDACTED-BY-AGENTTRAIL:<kind>]. Fixtures, placeholders and local
                  dev values are left alone. A dry run: it says what it would replace,
                  by kind, never by value, and changes nothing without --apply.
-                 Rotate each credential first, then scrub. For Codex this is tested
-                 only on synthetic session files, not on real Codex sessions.
+${wrapText(`Rotate each credential first, then scrub. For Codex this is ${CODEX_TESTED_ON}.`, USAGE_WIDTH, " ".repeat(17))}
   --apply        With --scrub: make the change. Refuses while the app is running and
                  skips files changed in the last 5 minutes. Backs up every file first
                  to a private folder under ~/.agenttrail/scrub-backups/, which still
@@ -902,21 +923,13 @@ export function verificationSummary(verification: Verification): string {
     parts.push(
       `${counted(calls.ran, "matched call")} ran, ${formatCount(calls.mentioned)} only mentioned a command, ${formatCount(calls.unknown)} could not be confirmed`,
     );
-    // Codex's output record may also be written for a call a hook blocked.
-    if (verification.ranEvidence === "output-record" && calls.ran > 0) {
-      parts.push(
-        "a Codex call with an output record counts as ran, which may include blocked calls",
-      );
-    }
-  }
-  // A Codex scan says, every time, how far its reading can be trusted.
-  if (verification.ranEvidence === "output-record") {
-    parts.push(
-      "the Codex reading is limited and unverified: it is tested on synthetic sessions only",
-    );
   }
 
-  return `Checked on this machine (read-only, offline): ${parts.join("; ")}.`;
+  const checked = `Checked on this machine (read-only, offline): ${parts.join("; ")}.`;
+  // A Codex scan says, every time, how far its reading can be trusted, in the page's words.
+  return verification.ranEvidence === "output-record"
+    ? `${checked} ${CODEX_UNVERIFIED_TEXT}`
+    : checked;
 }
 
 /**

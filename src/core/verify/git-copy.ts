@@ -17,6 +17,7 @@ import {
   sentences,
   type UnsafeFix,
 } from "./cards.js";
+import { CODEX_UNVERIFIED_TEXT } from "./copy.js";
 import type { RepoProbe } from "./repo-probe.js";
 import type { CallLog } from "./shell-calls.js";
 import type { RunTally, VerifyCategory, VerifyStatus } from "./types.js";
@@ -75,13 +76,12 @@ export function codexCaveat(context: CardContext, ran: number): boolean {
   return context.ranEvidence === "output-record" && ran > 0;
 }
 
-/** How far a Codex reading goes, said on every git-backed card of a Codex scan. */
-const CODEX_LIMITED =
-  "The Codex reading is limited and unverified: it is tested only on synthetic sessions built from Codex's documented rollout format, a Codex call counted as ran may be one a hook blocked, and ids a Codex command printed are not identified.";
-
-/** The template for a category's Codex line. */
+/**
+ * The template for a category's Codex line, said on every git-backed card of a Codex scan: the
+ * one Codex wording (`CODEX_UNVERIFIED_TEXT`).
+ */
 export function codexLimitedTemplate<F>(category: VerifyCategory): SentenceTemplate<F> {
-  return { id: `${category}.codex-limited`, render: () => CODEX_LIMITED };
+  return { id: `${category}.codex-limited`, render: () => CODEX_UNVERIFIED_TEXT };
 }
 
 /** The Codex line, on a Codex scan only. */

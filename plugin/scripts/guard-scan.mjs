@@ -13798,6 +13798,164 @@ var COMMAND_CHECK_CARDS = {
 // src/core/verify/destructive.ts
 import { dirname as dirname3, relative as relative2, sep as sep2 } from "path";
 
+// src/core/verify/copy.ts
+function countOf(n2, one, many = `${one}s`) {
+  return `${formatCount(n2)} ${n2 === 1 ? one : many}`;
+}
+var CATEGORY_TITLES = {
+  secrets: "Secrets in transcripts",
+  "skipped-checks": "Skipped safety checks",
+  "lost-work": "Lost work",
+  cloud: "Cloud and permissions",
+  "prod-infra": "Production infrastructure",
+  tests: "Gaming tests",
+  destructive: "Destructive commands",
+  unreviewed: "Unreviewed code",
+  egress: "Data leaving the machine"
+};
+var TONE_LABELS = {
+  act: "Act on this",
+  review: "Review",
+  clean: "Clean",
+  "could-not-check": "Could not check",
+  "not-checked": "Not checked"
+};
+var KIND_LABELS = {
+  "aws-access-key": "AWS access key",
+  "aws-secret-key": "AWS secret key",
+  "private-key": "Private key",
+  "github-token": "GitHub token",
+  "slack-token": "Slack token",
+  "api-key": "API key",
+  jwt: "JSON web token",
+  "bearer-token": "Bearer token",
+  "auth-header": "Authorization header",
+  "database-url": "Database URL with a password",
+  "url-credentials": "URL with a password",
+  password: "Password",
+  "named-secret": "A named secret",
+  "random-string": "Random-looking secret",
+  other: "Other credential"
+};
+var PROVENANCE_PHRASES = {
+  "pasted-into-prompt": "you pasted it into a prompt",
+  "typed-into-command": "typed into a command",
+  "printed-by-command": "printed by a command",
+  "in-agent-reply": "in an agent reply"
+};
+function evidenceRow(item) {
+  return {
+    kind: KIND_LABELS[item.kind] ?? KIND_LABELS.other,
+    how: item.via.map((via) => PROVENANCE_PHRASES[via]).filter((phrase) => phrase !== void 0).join(", "),
+    files: `in ${countOf(item.files, "transcript file")}`
+  };
+}
+var MORE_EVIDENCE = {
+  id: "evidence.more",
+  render: ({ more }) => more > 0 ? `And ${countOf(more, "more likely-real credential", "more likely-real credentials")}.` : void 0
+};
+var RAN_BASIS = {
+  id: "lead.ran-basis",
+  render: (v) => v.resultsRecorded ? "Checked against command output: a match counts only when the transcript records that its command ran." : void 0
+};
+var NO_RESULTS = {
+  id: "lead.no-results",
+  render: (v) => v.resultsRecorded ? void 0 : "These sessions record no command output, so no matched command could be confirmed as run. A count of commands that ran is zero here because nothing could be confirmed, not because nothing ran."
+};
+var MENTIONED = {
+  id: "lead.mentioned",
+  render: (v) => v.matchedCalls.mentioned > 0 ? `${countOf(v.matchedCalls.mentioned, "match", "matches")} only mentioned a command, in a search, a message or a file, and ${v.matchedCalls.mentioned === 1 ? "is" : "are"} left out.` : void 0
+};
+var UNCONFIRMED = {
+  id: "lead.unconfirmed",
+  render: (v) => v.resultsRecorded && v.matchedCalls.unknown > 0 ? `${countOf(v.matchedCalls.unknown, "matched call")} had no recorded output to show ${v.matchedCalls.unknown === 1 ? "it" : "they"} ran, and ${v.matchedCalls.unknown === 1 ? "is" : "are"} left out.` : void 0
+};
+var CODEX_TESTED_ON = "tested only on synthetic sessions built from Codex's documented rollout format, never on a real Codex session";
+var CODEX_UNVERIFIED_TEXT = `The Codex reading is limited and unverified: it is ${CODEX_TESTED_ON}. A Codex call counted as ran may be one a hook blocked, ids a Codex command printed show as not identified, and no Codex-only finding leads the report.`;
+var CODEX_UNVERIFIED = {
+  id: "lead.codex-unverified",
+  render: (v) => v.ranEvidence === "output-record" ? CODEX_UNVERIFIED_TEXT : void 0
+};
+var LEAD_NOTES = [
+  RAN_BASIS,
+  NO_RESULTS,
+  MENTIONED,
+  UNCONFIRMED,
+  CODEX_UNVERIFIED
+];
+function leadNotes(verification) {
+  return sentences(LEAD_NOTES, verification);
+}
+var CHIP_CANDIDATES = [
+  "secrets",
+  "skipped-checks",
+  "lost-work",
+  "cloud",
+  "prod-infra",
+  "destructive",
+  "egress"
+];
+var CHIP_COUNT = 6;
+function chipCategories(headline2) {
+  return CHIP_CANDIDATES.filter((c) => c !== headline2).slice(0, CHIP_COUNT);
+}
+var CHIP_TONE = {
+  id: "chip.tone",
+  render: ({ tone }) => TONE_LABELS[tone].toLowerCase()
+};
+function chipText(card) {
+  const counted5 = card.chip !== void 0 && (card.tone === "act" || card.tone === "review" || card.tone === "clean");
+  if (card.unconfirmed !== void 0 && (!counted5 || (card.chip?.count ?? 0) === 0)) {
+    return {
+      label: sentence(CHIP_UNCONFIRMED, card) ?? { template: CHIP_UNCONFIRMED.id, text: "" }
+    };
+  }
+  if (counted5 && card.chip !== void 0) {
+    return { count: card.chip.count, label: card.chip.label };
+  }
+  return { label: sentence(CHIP_TONE, card) ?? { template: CHIP_TONE.id, text: "" } };
+}
+var CHIP_UNCONFIRMED = {
+  id: "chip.could-not-confirm",
+  render: ({ unconfirmed }) => unconfirmed === void 0 ? void 0 : "could not confirm"
+};
+function toneLabel(card) {
+  return card.unconfirmed !== void 0 && card.tone === "could-not-check" ? "Could not confirm" : TONE_LABELS[card.tone];
+}
+var CODEX_CAVEAT = {
+  id: "card.codex-caveat",
+  render: ({ codexCaveat: codexCaveat2 }) => codexCaveat2 ? "Codex counts here include every call Codex recorded an output for, which may include calls a hook blocked." : void 0
+};
+var TONE_TALLY = {
+  id: "cards.tally",
+  render: (cards) => {
+    const parts = [];
+    const n2 = (tone) => cards.filter((c) => c.tone === tone).length;
+    if (n2("act") > 0) parts.push(`${formatCount(n2("act"))} to act on`);
+    if (n2("review") > 0) parts.push(`${formatCount(n2("review"))} to review`);
+    if (n2("clean") > 0) parts.push(`${formatCount(n2("clean"))} clean`);
+    if (n2("could-not-check") > 0)
+      parts.push(`${formatCount(n2("could-not-check"))} could not check`);
+    if (n2("not-checked") > 0) parts.push(`${formatCount(n2("not-checked"))} not checked`);
+    return parts.length === 0 ? void 0 : parts.join(" \xB7 ");
+  }
+};
+var FIXES_FILE_NOTE = {
+  id: "card.fixes-file",
+  render: ({ variant }) => variant === "artifact" ? `The exact commands, with real names and paths, are in ${FIXES_FILE} on the machine the scan ran on. That file was not published with this page.` : `The exact commands for this machine, with real names and paths, are in ${FIXES_FILE} next to this report. That file stays on this machine and is not part of this page.`
+};
+var FIXES_FILE = "agenttrail-guard-fixes.txt";
+function cardCount(card) {
+  if (card.tone === "not-checked" || card.tone === "could-not-check" && card.count === 0) {
+    return void 0;
+  }
+  return card.countLine ?? sentence(CARD_COUNT, card);
+}
+var CARD_COUNT = {
+  id: "card.count",
+  render: ({ tone, count: count2 }) => tone === "not-checked" || tone === "could-not-check" && count2 === 0 ? void 0 : countOf(count2, "match", "matches")
+};
+
 // src/core/verify/git-copy.ts
 function counted2(n2, singular, plural2 = `${singular}s`) {
   return `${formatCount(n2)} ${n2 === 1 ? singular : plural2}`;
@@ -13827,9 +13985,8 @@ function statusOf(found) {
 function codexCaveat(context, ran) {
   return context.ranEvidence === "output-record" && ran > 0;
 }
-var CODEX_LIMITED = "The Codex reading is limited and unverified: it is tested only on synthetic sessions built from Codex's documented rollout format, a Codex call counted as ran may be one a hook blocked, and ids a Codex command printed are not identified.";
 function codexLimitedTemplate(category) {
-  return { id: `${category}.codex-limited`, render: () => CODEX_LIMITED };
+  return { id: `${category}.codex-limited`, render: () => CODEX_UNVERIFIED_TEXT };
 }
 function codexLines(template, context, facts) {
   return context.ranEvidence === "output-record" ? sentences([template], facts) : [];
@@ -15815,168 +15972,6 @@ var LOST_WORK_TEMPLATES = [
   ...NOW2,
   ...FIX_STEPS2
 ];
-
-// src/core/verify/copy.ts
-function countOf(n2, one, many = `${one}s`) {
-  return `${formatCount(n2)} ${n2 === 1 ? one : many}`;
-}
-var CATEGORY_TITLES = {
-  secrets: "Secrets in transcripts",
-  "skipped-checks": "Skipped safety checks",
-  "lost-work": "Lost work",
-  cloud: "Cloud and permissions",
-  "prod-infra": "Production infrastructure",
-  tests: "Gaming tests",
-  destructive: "Destructive commands",
-  unreviewed: "Unreviewed code",
-  egress: "Data leaving the machine"
-};
-var TONE_LABELS = {
-  act: "Act on this",
-  review: "Review",
-  clean: "Clean",
-  "could-not-check": "Could not check",
-  "not-checked": "Not checked"
-};
-var KIND_LABELS = {
-  "aws-access-key": "AWS access key",
-  "aws-secret-key": "AWS secret key",
-  "private-key": "Private key",
-  "github-token": "GitHub token",
-  "slack-token": "Slack token",
-  "api-key": "API key",
-  jwt: "JSON web token",
-  "bearer-token": "Bearer token",
-  "auth-header": "Authorization header",
-  "database-url": "Database URL with a password",
-  "url-credentials": "URL with a password",
-  password: "Password",
-  "named-secret": "A named secret",
-  "random-string": "Random-looking secret",
-  other: "Other credential"
-};
-var PROVENANCE_PHRASES = {
-  "pasted-into-prompt": "you pasted it into a prompt",
-  "typed-into-command": "typed into a command",
-  "printed-by-command": "printed by a command",
-  "in-agent-reply": "in an agent reply"
-};
-function evidenceRow(item) {
-  return {
-    kind: KIND_LABELS[item.kind] ?? KIND_LABELS.other,
-    how: item.via.map((via) => PROVENANCE_PHRASES[via]).filter((phrase) => phrase !== void 0).join(", "),
-    files: `in ${countOf(item.files, "transcript file")}`
-  };
-}
-var MORE_EVIDENCE = {
-  id: "evidence.more",
-  render: ({ more }) => more > 0 ? `And ${countOf(more, "more likely-real credential", "more likely-real credentials")}.` : void 0
-};
-var RAN_BASIS = {
-  id: "lead.ran-basis",
-  render: (v) => v.resultsRecorded ? "Checked against command output: a match counts only when the transcript records that its command ran." : void 0
-};
-var NO_RESULTS = {
-  id: "lead.no-results",
-  render: (v) => v.resultsRecorded ? void 0 : "These sessions record no command output, so no matched command could be confirmed as run. A count of commands that ran is zero here because nothing could be confirmed, not because nothing ran."
-};
-var MENTIONED = {
-  id: "lead.mentioned",
-  render: (v) => v.matchedCalls.mentioned > 0 ? `${countOf(v.matchedCalls.mentioned, "match", "matches")} only mentioned a command, in a search, a message or a file, and ${v.matchedCalls.mentioned === 1 ? "is" : "are"} left out.` : void 0
-};
-var UNCONFIRMED = {
-  id: "lead.unconfirmed",
-  render: (v) => v.resultsRecorded && v.matchedCalls.unknown > 0 ? `${countOf(v.matchedCalls.unknown, "matched call")} had no recorded output to show ${v.matchedCalls.unknown === 1 ? "it" : "they"} ran, and ${v.matchedCalls.unknown === 1 ? "is" : "are"} left out.` : void 0
-};
-var CODEX_RAN = {
-  id: "lead.codex-ran",
-  render: (v) => v.ranEvidence === "output-record" && v.matchedCalls.ran > 0 ? "A Codex call counts as ran when Codex recorded an output for it, which may include calls a hook blocked." : void 0
-};
-var CODEX_UNVERIFIED_TEXT = "The Codex reading is limited and unverified: it is tested on synthetic sessions only.";
-var CODEX_UNVERIFIED = {
-  id: "lead.codex-unverified",
-  render: (v) => v.ranEvidence === "output-record" ? `${CODEX_UNVERIFIED_TEXT} No Codex finding leads this page.` : void 0
-};
-var LEAD_NOTES = [
-  RAN_BASIS,
-  NO_RESULTS,
-  MENTIONED,
-  UNCONFIRMED,
-  CODEX_UNVERIFIED,
-  CODEX_RAN
-];
-function leadNotes(verification) {
-  return sentences(LEAD_NOTES, verification);
-}
-var CHIP_CANDIDATES = [
-  "secrets",
-  "skipped-checks",
-  "lost-work",
-  "cloud",
-  "prod-infra",
-  "destructive",
-  "egress"
-];
-var CHIP_COUNT = 6;
-function chipCategories(headline2) {
-  return CHIP_CANDIDATES.filter((c) => c !== headline2).slice(0, CHIP_COUNT);
-}
-var CHIP_TONE = {
-  id: "chip.tone",
-  render: ({ tone }) => TONE_LABELS[tone].toLowerCase()
-};
-function chipText(card) {
-  const counted5 = card.chip !== void 0 && (card.tone === "act" || card.tone === "review" || card.tone === "clean");
-  if (card.unconfirmed !== void 0 && (!counted5 || (card.chip?.count ?? 0) === 0)) {
-    return {
-      label: sentence(CHIP_UNCONFIRMED, card) ?? { template: CHIP_UNCONFIRMED.id, text: "" }
-    };
-  }
-  if (counted5 && card.chip !== void 0) {
-    return { count: card.chip.count, label: card.chip.label };
-  }
-  return { label: sentence(CHIP_TONE, card) ?? { template: CHIP_TONE.id, text: "" } };
-}
-var CHIP_UNCONFIRMED = {
-  id: "chip.could-not-confirm",
-  render: ({ unconfirmed }) => unconfirmed === void 0 ? void 0 : "could not confirm"
-};
-function toneLabel(card) {
-  return card.unconfirmed !== void 0 && card.tone === "could-not-check" ? "Could not confirm" : TONE_LABELS[card.tone];
-}
-var CODEX_CAVEAT = {
-  id: "card.codex-caveat",
-  render: ({ codexCaveat: codexCaveat2 }) => codexCaveat2 ? "Codex counts here include every call Codex recorded an output for, which may include calls a hook blocked." : void 0
-};
-var TONE_TALLY = {
-  id: "cards.tally",
-  render: (cards) => {
-    const parts = [];
-    const n2 = (tone) => cards.filter((c) => c.tone === tone).length;
-    if (n2("act") > 0) parts.push(`${formatCount(n2("act"))} to act on`);
-    if (n2("review") > 0) parts.push(`${formatCount(n2("review"))} to review`);
-    if (n2("clean") > 0) parts.push(`${formatCount(n2("clean"))} clean`);
-    if (n2("could-not-check") > 0)
-      parts.push(`${formatCount(n2("could-not-check"))} could not check`);
-    if (n2("not-checked") > 0) parts.push(`${formatCount(n2("not-checked"))} not checked`);
-    return parts.length === 0 ? void 0 : parts.join(" \xB7 ");
-  }
-};
-var FIXES_FILE_NOTE = {
-  id: "card.fixes-file",
-  render: ({ variant }) => variant === "artifact" ? `The exact commands, with real names and paths, are in ${FIXES_FILE} on the machine the scan ran on. That file was not published with this page.` : `The exact commands for this machine, with real names and paths, are in ${FIXES_FILE} next to this report. That file stays on this machine and is not part of this page.`
-};
-var FIXES_FILE = "agenttrail-guard-fixes.txt";
-function cardCount(card) {
-  if (card.tone === "not-checked" || card.tone === "could-not-check" && card.count === 0) {
-    return void 0;
-  }
-  return card.countLine ?? sentence(CARD_COUNT, card);
-}
-var CARD_COUNT = {
-  id: "card.count",
-  render: ({ tone, count: count2 }) => tone === "not-checked" || tone === "could-not-check" && count2 === 0 ? void 0 : countOf(count2, "match", "matches")
-};
 
 // src/core/verify/secrets-card.ts
 function likelyReal(n2) {
@@ -20483,11 +20478,15 @@ They read only:
     (~/.claude/CLAUDE.md or ~/.codex/AGENTS.md), and the ones the sessions wrote.
     In ~/.claude, ~/.codex and ~/.cursor only .md and .mdc files are read.
     Only whether a file tells the agent to skip checks is kept, never its text;
-  - whether the paths the commands named still exist;
-  - test and coverage configs the sessions edited, each at most 1 MB, for their
-    coverage autoUpdate setting;
-  - the names of the running programs, never their arguments, cut down to the
-    agents and the tunnel and relay programs the checks look for.
+  - the test configs the sessions edited, inside their repo and each at most
+    1 MB. Only whether coverage thresholds are set to update themselves
+    (autoUpdate) is kept;
+  - the names of the programs running now (ps, or tasklist on Windows), never
+    their arguments. The list is cut down to known agent apps and tunnel
+    programs as it is read, and only the tunnel programs, such as ngrok or
+    cloudflared, are counted;
+  - whether the folders the sessions ran in, the paths the commands named and
+    each repo's commit hooks exist, never what a hook holds.
 The report and --json carry counts only, never these paths.
 Each git or process call has 5 seconds, and all the checks share 60 seconds. A
 check that cannot finish says so, and never reads as clean.
@@ -20500,11 +20499,21 @@ a substitution, git config or hooks), they say they could not confirm, never tha
 nothing ran. A script run by name (bash ./x.sh, source x.sh) is not read.
 Exact fix commands for this machine go to agenttrail-guard-fixes.txt next to the
 report, readable only by you (mode 0600), never into the report or --json.
-Codex is limited and unverified: tested only on synthetic sessions built from
-Codex's documented rollout format. A Codex "ran" may include calls a hook
-blocked, ids a Codex command printed are not identified, and a Codex scan never
-leads with a verified finding.`;
+${wrapText(CODEX_UNVERIFIED_TEXT, USAGE_WIDTH)}`;
   return { flags, reads };
+}
+var USAGE_WIDTH = 80;
+function wrapText(text2, width, indent = "") {
+  const lines2 = [];
+  let line2 = "";
+  for (const word of text2.split(" ")) {
+    if (line2 !== "" && indent.length + line2.length + 1 + word.length > width) {
+      lines2.push(line2);
+      line2 = word;
+    } else line2 = line2 === "" ? word : `${line2} ${word}`;
+  }
+  if (line2 !== "") lines2.push(line2);
+  return lines2.map((l) => `${indent}${l}`).join("\n");
 }
 function scanUsage(byDefault) {
   const checks = checksUsage(byDefault);
@@ -20537,8 +20546,7 @@ ${checks.flags}
                  [REDACTED-BY-AGENTTRAIL:<kind>]. Fixtures, placeholders and local
                  dev values are left alone. A dry run: it says what it would replace,
                  by kind, never by value, and changes nothing without --apply.
-                 Rotate each credential first, then scrub. For Codex this is tested
-                 only on synthetic session files, not on real Codex sessions.
+${wrapText(`Rotate each credential first, then scrub. For Codex this is ${CODEX_TESTED_ON}.`, USAGE_WIDTH, " ".repeat(17))}
   --apply        With --scrub: make the change. Refuses while the app is running and
                  skips files changed in the last 5 minutes. Backs up every file first
                  to a private folder under ~/.agenttrail/scrub-backups/, which still
@@ -20973,18 +20981,9 @@ function verificationSummary(verification) {
     parts.push(
       `${counted4(calls.ran, "matched call")} ran, ${formatCount(calls.mentioned)} only mentioned a command, ${formatCount(calls.unknown)} could not be confirmed`
     );
-    if (verification.ranEvidence === "output-record" && calls.ran > 0) {
-      parts.push(
-        "a Codex call with an output record counts as ran, which may include blocked calls"
-      );
-    }
   }
-  if (verification.ranEvidence === "output-record") {
-    parts.push(
-      "the Codex reading is limited and unverified: it is tested on synthetic sessions only"
-    );
-  }
-  return `Checked on this machine (read-only, offline): ${parts.join("; ")}.`;
+  const checked = `Checked on this machine (read-only, offline): ${parts.join("; ")}.`;
+  return verification.ranEvidence === "output-record" ? `${checked} ${CODEX_UNVERIFIED_TEXT}` : checked;
 }
 function renderReview(result, colorsEnabled, reportPath, mcpDisclosures = [], fixesFile) {
   const c = createColors(colorsEnabled);

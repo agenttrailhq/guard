@@ -11,6 +11,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parseScanFlags, runScan, SCAN_USAGE, scanUsage, shouldVerify } from "../commands/scan.js";
+import { CODEX_UNVERIFIED_TEXT } from "../core/verify/copy.js";
 import { VERIFY_BY_DEFAULT } from "../core/verify/verify.js";
 import { createRealScanIO, type ScanIO } from "../scan-io.js";
 import { RULE_RM_RF } from "./scan-fixtures.js";
@@ -171,16 +172,20 @@ describe("the usage", () => {
       "by kind, never by value",
       "read-only git (rev-parse,\n    ls-files, for-each-ref, log, stash list), never through a shell",
       "files, each at most 1 MB",
-      "test and coverage configs the sessions edited, each at most 1 MB",
-      "the names of the running programs, never their arguments",
+      "the test configs the sessions edited, inside their repo and each at most\n    1 MB. Only whether coverage thresholds are set to update themselves\n    (autoUpdate) is kept;",
+      "the names of the programs running now (ps, or tasklist on Windows), never\n    their arguments.",
+      "only the tunnel programs, such as ngrok or\n    cloudflared, are counted;",
       "Where a command that ran, or may have run, could run others",
       "they say they could not confirm, never that\nnothing ran.",
       "A script run by name (bash ./x.sh, source x.sh) is not read.",
       "agenttrail-guard-fixes.txt next to the\nreport, readable only by you (mode 0600), never into the report or --json.",
-      "Codex is limited and unverified",
     ]) {
       expect(usage).toContain(line);
     }
+    // The one Codex wording, every point of it, wrapped to the usage's width.
+    expect(usage.replace(/\s+/g, " ")).toContain(CODEX_UNVERIFIED_TEXT);
+    const codex = usage.slice(usage.indexOf("The Codex reading"));
+    for (const line of codex.split("\n")) expect(line.length, line).toBeLessThanOrEqual(80);
   });
 
   it("is what --help prints, for the injected value", async () => {

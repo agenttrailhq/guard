@@ -48,6 +48,7 @@ import {
 import type { ScanCorpus } from "../core/scan-report.js";
 import { scrubPlaceholder, sha256 } from "../core/scrub-transcripts.js";
 import type { AgentSource } from "../core/types.js";
+import { CODEX_TESTED_ON } from "../core/verify/copy.js";
 import { type VerifyIO, WATCHED_PROCESSES, type WatchedProcess } from "../core/verify/types.js";
 import { createRealScanIO, type ScanIO } from "../scan-io.js";
 import { createRealScrubIO, type ScrubIO } from "../scrub-io.js";
@@ -1373,8 +1374,10 @@ describe("Codex is limited and unverified", () => {
   it("is one fixed sentence", () => {
     expect(CODEX_SCRUB_NOTE).toBe(
       "Codex support is limited and unverified: scrubbing has been tested only on synthetic " +
-        "session files built from Codex's documented rollout format, not on real Codex sessions.",
+        "sessions built from Codex's documented rollout format, never on a real Codex session.",
     );
+    // From the one Codex wording's first point.
+    expect(CODEX_SCRUB_NOTE).toContain(CODEX_TESTED_ON);
   });
 
   it.each([
@@ -1393,9 +1396,12 @@ describe("Codex is limited and unverified", () => {
   });
 
   it("the usage says the same", () => {
+    expect(SCAN_USAGE.replace(/\s+/g, " ")).toContain(`For Codex this is ${CODEX_TESTED_ON}.`);
+    // Wrapped in the option's column, with the next option still in its own.
     expect(SCAN_USAGE).toContain(
-      "For Codex this is tested\n                 only on synthetic session files",
+      "                 Rotate each credential first, then scrub. For Codex this is\n",
     );
+    expect(SCAN_USAGE).toContain("\n  --apply        With --scrub: make the change.");
   });
 });
 

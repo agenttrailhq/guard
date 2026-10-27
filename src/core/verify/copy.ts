@@ -144,24 +144,25 @@ const UNCONFIRMED: SentenceTemplate<CallFacts> = {
       : undefined,
 };
 
-const CODEX_RAN: SentenceTemplate<CallFacts> = {
-  id: "lead.codex-ran",
-  render: (v) =>
-    v.ranEvidence === "output-record" && v.matchedCalls.ran > 0
-      ? "A Codex call counts as ran when Codex recorded an output for it, which may include calls a hook blocked."
-      : undefined,
-};
+// ── Codex: one wording ────────────────────────────────────────────────────────
 
-/** What every Codex scan says about its own reading, the same words the terminal uses. */
-export const CODEX_UNVERIFIED_TEXT =
-  "The Codex reading is limited and unverified: it is tested on synthetic sessions only.";
+/** What Codex support has been tested on. Every Codex line starts from it. */
+export const CODEX_TESTED_ON =
+  "tested only on synthetic sessions built from Codex's documented rollout format, never on a real Codex session";
+
+/**
+ * What every Codex scan says about its own reading, in the same words everywhere: the page's
+ * lead and its scanned section, the JSON notes, each git-backed card, the terminal summary and
+ * `scan --help`. It carries every point: synthetic sessions only, a call counted as ran may be
+ * one a hook blocked, ids are not identified, and no Codex-only finding leads. Two lines are
+ * scoped to one place, and say no more than this: `CODEX_CAVEAT`, on a card whose counts rest
+ * on Codex ran records, and the scrub's note, from `CODEX_TESTED_ON`.
+ */
+export const CODEX_UNVERIFIED_TEXT = `The Codex reading is limited and unverified: it is ${CODEX_TESTED_ON}. A Codex call counted as ran may be one a hook blocked, ids a Codex command printed show as not identified, and no Codex-only finding leads the report.`;
 
 const CODEX_UNVERIFIED: SentenceTemplate<CallFacts> = {
   id: "lead.codex-unverified",
-  render: (v) =>
-    v.ranEvidence === "output-record"
-      ? `${CODEX_UNVERIFIED_TEXT} No Codex finding leads this page.`
-      : undefined,
+  render: (v) => (v.ranEvidence === "output-record" ? CODEX_UNVERIFIED_TEXT : undefined),
 };
 
 /** The notes above the chips, in order. */
@@ -171,7 +172,6 @@ export const LEAD_NOTES: readonly SentenceTemplate<CallFacts>[] = [
   MENTIONED,
   UNCONFIRMED,
   CODEX_UNVERIFIED,
-  CODEX_RAN,
 ];
 
 /** The notes above the chips for one verification. */
@@ -244,7 +244,10 @@ export function toneLabel(card: Pick<CardView, "tone" | "unconfirmed">): string 
 
 // ── Card lines that are the same for every category ──────────────────────────
 
-/** The line on a card whose counts rest on Codex `ran` records. */
+/**
+ * The line on a card whose counts rest on Codex `ran` records: the one point of
+ * `CODEX_UNVERIFIED_TEXT` scoped to the card's own counts.
+ */
 export const CODEX_CAVEAT: SentenceTemplate<Pick<CardView, "codexCaveat">> = {
   id: "card.codex-caveat",
   render: ({ codexCaveat }) =>

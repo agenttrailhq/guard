@@ -50,6 +50,7 @@ import {
 } from "../core/scrub-transcripts.js";
 import { formatCount } from "../core/tokens.js";
 import type { AgentSource } from "../core/types.js";
+import { CODEX_TESTED_ON } from "../core/verify/copy.js";
 import { createFingerprinter } from "../core/verify/fingerprint.js";
 import { findLikelyReal, type LikelyRealValues } from "../core/verify/secrets.js";
 import type { SecretKind, VerifyIO, WatchedProcess } from "../core/verify/types.js";
@@ -58,10 +59,10 @@ import type { ScrubIO, ScrubStat } from "../scrub-io.js";
 
 /**
  * Said on every Codex run. The Codex format is supported as far as synthetic session files
- * built from its documented rollout format show, and no further.
+ * built from its documented rollout format show, and no further: the one Codex wording's first
+ * point (`CODEX_TESTED_ON`), scoped to scrubbing, which counts no ran calls and reads no ids.
  */
-export const CODEX_SCRUB_NOTE =
-  "Codex support is limited and unverified: scrubbing has been tested only on synthetic session files built from Codex's documented rollout format, not on real Codex sessions.";
+export const CODEX_SCRUB_NOTE = `Codex support is limited and unverified: scrubbing has been ${CODEX_TESTED_ON}.`;
 
 /** A file changed this recently may belong to a session still in use, and is skipped. */
 export const RECENT_WRITE_WINDOW_MS = 5 * 60 * 1000;

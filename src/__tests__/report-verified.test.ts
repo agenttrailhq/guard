@@ -25,6 +25,7 @@ import {
   CATEGORY_TITLES,
   CHIP_CANDIDATES,
   CHIP_COUNT,
+  CODEX_UNVERIFIED_TEXT,
   chipText,
   KIND_LABELS,
   PROVENANCE_PHRASES,
@@ -244,7 +245,7 @@ describe("Also checked on this machine", () => {
       agent: "codex" as const,
     };
     expect(section(renderReport(codex, VERIFIED_META, OPTIONS), "also-checked")).toContain(
-      "which may include calls a hook blocked",
+      "A Codex call counted as ran may be one a hook blocked",
     );
     expect(section(HTML, "also-checked")).not.toContain("hook blocked");
   });
@@ -539,9 +540,10 @@ describe("the verified sections print", () => {
 });
 
 describe("every Codex page says its reading is limited and unverified", () => {
+  // Every point, in one wording: synthetic sessions only, ran may include a blocked call, ids
+  // not identified, and no Codex-only finding leads.
   const NOTE =
-    "The Codex reading is limited and unverified: it is tested on synthetic sessions only.";
-  const BLOCKED = "which may include calls a hook blocked";
+    "The Codex reading is limited and unverified: it is tested only on synthetic sessions built from Codex's documented rollout format, never on a real Codex session. A Codex call counted as ran may be one a hook blocked, ids a Codex command printed show as not identified, and no Codex-only finding leads the report.";
   const codexPage = (ran: number, verified = true): string => {
     const v = verification(verifiedCategories(), { ranEvidence: "output-record" });
     const result = {
@@ -550,25 +552,30 @@ describe("every Codex page says its reading is limited and unverified", () => {
     };
     return renderReport(result, VERIFIED_META, OPTIONS);
   };
+  /** How many times the note is in a section, as its text reads. */
+  const notesIn = (html: string, id: string): number =>
+    decodeEntities(section(html, id)).split(NOTE).length - 1;
 
-  it("a verified Codex scan where no matched call ran still says so, above the chips", () => {
-    const html = codexPage(0);
-    expect(section(html, "also-checked")).toContain(NOTE);
-    expect(section(html, "also-checked")).toContain("No Codex finding leads this page.");
-    expect(section(html, "also-checked")).not.toContain(BLOCKED);
-    expect(section(html, "scanned")).toContain(NOTE);
+  it("is the one shared wording", () => {
+    expect(CODEX_UNVERIFIED_TEXT).toBe(NOTE);
   });
 
-  it("and with calls that ran, adds that they may include blocked calls", () => {
-    const notes = section(codexPage(5), "also-checked");
-    expect(notes).toContain(NOTE);
-    expect(notes).toContain(BLOCKED);
+  it("a verified Codex scan where no matched call ran still says so, once, above the chips", () => {
+    const html = codexPage(0);
+    expect(notesIn(html, "also-checked")).toBe(1);
+    expect(notesIn(html, "scanned")).toBe(1);
+  });
+
+  it("and with calls that ran, says the same once, with no second wording", () => {
+    const html = codexPage(5);
+    expect(notesIn(html, "also-checked")).toBe(1);
+    expect(section(html, "also-checked")).not.toContain("recorded an output for it");
   });
 
   it("a Codex scan with no verification says it under what was scanned", () => {
     const html = codexPage(0, false);
     expect(html).not.toContain('id="also-checked"');
-    expect(section(html, "scanned")).toContain(NOTE);
+    expect(notesIn(html, "scanned")).toBe(1);
   });
 
   it("no other app's page says it", () => {
@@ -898,9 +905,7 @@ describe("a counted chip that could not confirm never shows a zero", () => {
 describe("--json and an empty scan's data block", () => {
   it("--json for a Codex scan carries the limited-and-unverified note; no other app's does", () => {
     const codex = JSON.parse(renderJson(CODEX_ONLY_RESULT, VERIFIED_META));
-    expect(codex.notes).toEqual([
-      "The Codex reading is limited and unverified: it is tested on synthetic sessions only.",
-    ]);
+    expect(codex.notes).toEqual([CODEX_UNVERIFIED_TEXT]);
     for (const agent of ["claude", "cursor"] as const) {
       expect(JSON.parse(renderJson({ ...VERIFIED_RESULT, agent }, VERIFIED_META)).notes).toBe(
         undefined,

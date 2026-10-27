@@ -1511,7 +1511,10 @@ describe("scan, against the built binary", () => {
       expect(readFileSync(log, "utf8")).toBe("");
       expect(r.stdout).toContain("Checked on this machine (read-only, offline)");
       if (agent === "codex") {
-        expect(r.stdout).toContain("the Codex reading is limited and unverified");
+        // The page's one Codex wording, every point of it, from the built bundle.
+        expect(r.stdout.replace(/\s+/g, " ")).toContain(
+          "The Codex reading is limited and unverified: it is tested only on synthetic sessions built from Codex's documented rollout format, never on a real Codex session. A Codex call counted as ran may be one a hook blocked, ids a Codex command printed show as not identified, and no Codex-only finding leads the report.",
+        );
       } else {
         expect(r.stdout).toContain("this app records no command output");
       }

@@ -12,6 +12,7 @@ import { compileAllowlist } from "../core/evaluate.js";
 import { MAX_ROWS, renderReport, reportPayload } from "../core/report.js";
 import { compileCatalog } from "../core/rules.js";
 import { aggregateScan } from "../core/scan-report.js";
+import { CODEX_UNVERIFIED_TEXT } from "../core/verify/copy.js";
 import type { SecretsFacts, Verification } from "../core/verify/types.js";
 import { createRealScanIO, type ScanIO } from "../scan-io.js";
 import { RULE_RM_RF } from "./scan-fixtures.js";
@@ -70,7 +71,7 @@ describe("the --verify flag", () => {
       "each at most 1 MB",
       "Only whether a file tells the agent to skip checks is",
       "read-only git (rev-parse,",
-      "whether the paths the commands named still exist",
+      "the paths the commands named and\n    each repo's commit hooks exist, never what a hook holds",
       "counts only, never these paths",
     ]) {
       expect(SCAN_USAGE).toContain(name);
@@ -300,45 +301,28 @@ describe("the terminal line", () => {
     expect(none).not.toContain("only mentioned");
   });
 
-  it("says a Codex ran count may include blocked calls, and only when it has one", () => {
-    const codex = verificationSummary(verification({}, "clean", { ranEvidence: "output-record" }));
-    expect(codex).toContain(
-      "a Codex call with an output record counts as ran, which may include blocked calls",
-    );
-    const none = verificationSummary(
-      verification({}, "clean", {
-        ranEvidence: "output-record",
-        matchedCalls: { ran: 0, mentioned: 1, unknown: 1 },
-      }),
-    );
-    expect(none).not.toContain("blocked");
-    expect(verificationSummary(verification())).not.toContain("blocked");
-  });
-
-  it("on a Codex scan, always says the Codex reading is limited and unverified", () => {
-    const unverified =
-      "the Codex reading is limited and unverified: it is tested on synthetic sessions only";
+  it("on a Codex scan, always says the page's one Codex wording, every point of it, once", () => {
     for (const matchedCalls of [
       { ran: 2, mentioned: 0, unknown: 0 },
       { ran: 0, mentioned: 0, unknown: 0 },
     ]) {
-      expect(
-        verificationSummary(
-          verification({}, "clean", { ranEvidence: "output-record", matchedCalls }),
-        ),
-      ).toContain(unverified);
+      const line = verificationSummary(
+        verification({}, "clean", { ranEvidence: "output-record", matchedCalls }),
+      );
+      expect(line.endsWith(` ${CODEX_UNVERIFIED_TEXT}`)).toBe(true);
+      expect(line.split("hook blocked").length - 1).toBe(1);
     }
     for (const ranEvidence of ["tool-result", "none"] as const) {
-      expect(verificationSummary(verification({}, "clean", { ranEvidence }))).not.toContain(
-        "unverified",
-      );
+      const line = verificationSummary(verification({}, "clean", { ranEvidence }));
+      expect(line).not.toContain("unverified");
+      expect(line).not.toContain("blocked");
     }
   });
 
   it("a real Codex scan's terminal line says so", async () => {
     const { root } = await writeCorpus("codex", [[{ kind: "prompt", text: "hello" }]]);
     const { stdout } = await scan(["--agent", "codex", "--dir", root, "--verify"]);
-    expect(stdout).toContain("the Codex reading is limited and unverified");
+    expect(stdout).toContain(CODEX_UNVERIFIED_TEXT);
   });
 
   it("is one line", () => {
