@@ -430,14 +430,8 @@ export const HEADLINE_BASIS: Readonly<Record<HeadlineCategory, HeadlineBasis>> =
 };
 
 /**
- * The card whose claim leads the report, or `undefined` for the totals headline.
- *
- * Nothing leads a Codex scan (`ranEvidence: "output-record"`): Codex reading is limited and
- * unverified, so every finding of such a scan is Codex-only. Otherwise a claim leads only when
- * its category is in `HEADLINE_ORDER`, its tone is the one that category may lead from, its
- * basis is the one that category may lead with, its count is above zero, it does not rest on
- * Codex `ran` counts, and its card confirmed what it reports (`unconfirmed` is unset): a card
- * that could not confirm never leads. Among those, the highest priority wins.
+ * The card whose claim leads the report, or `undefined` for the totals headline: the first of
+ * `leadingCards`, so the headline and the share post follow one rule.
  */
 export function pickHeadline(
   cards: readonly CardView[],
@@ -447,9 +441,15 @@ export function pickHeadline(
 }
 
 /**
- * Every card whose claim may lead, highest priority first: the rule `pickHeadline` applies,
- * kept whole so anything else that states a verified count (the share post) uses the same
- * one. Empty on a Codex scan.
+ * Every card whose claim may lead, highest priority first. `pickHeadline` takes the first; the
+ * share post states them all, as many as fit.
+ *
+ * Nothing leads a Codex scan (`ranEvidence: "output-record"`): Codex reading is limited and
+ * unverified, so every finding of such a scan is Codex-only. Otherwise a claim may lead only
+ * when its category is in `HEADLINE_ORDER`, its tone is the one that category may lead from,
+ * its basis is the one that category may lead with, its count is above zero, it does not rest
+ * on Codex `ran` counts, and its card confirmed what it reports: a card that could not
+ * confirm (`unconfirmed`) never leads, whatever its tone.
  */
 export function leadingCards(cards: readonly CardView[], context: CardContext): CardView[] {
   if (context.ranEvidence === "output-record") return [];

@@ -16901,7 +16901,7 @@ function sharePhrase(basis, count2) {
   return `${formatCount(count2)} ${count2 === 1 ? one : many}`;
 }
 function shareCounts(cards, context) {
-  return leadingCards(cards, context).filter((card) => card.unconfirmed === void 0).flatMap(
+  return leadingCards(cards, context).flatMap(
     (card) => card.headline === void 0 ? [] : [sharePhrase(card.headline.basis, card.headline.count)]
   );
 }

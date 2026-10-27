@@ -39,13 +39,11 @@ export function sharePhrase(basis: HeadlineBasis, count: number): string {
 
 /**
  * The verified counts a post may state, highest priority first: every claim that may lead the
- * page (`leadingCards`: result-backed, not clean, not could-not-check, never on a Codex scan),
- * less any card that could not confirm what it reports.
+ * page (`leadingCards`: result-backed, confirmed, not clean, not could-not-check, never on a
+ * Codex scan), the same rule the headline follows.
  */
 export function shareCounts(cards: readonly CardView[], context: CardContext): string[] {
-  return leadingCards(cards, context)
-    .filter((card) => card.unconfirmed === undefined)
-    .flatMap((card) =>
-      card.headline === undefined ? [] : [sharePhrase(card.headline.basis, card.headline.count)],
-    );
+  return leadingCards(cards, context).flatMap((card) =>
+    card.headline === undefined ? [] : [sharePhrase(card.headline.basis, card.headline.count)],
+  );
 }

@@ -16,8 +16,17 @@ import { describe, expect, it } from "vitest";
 import { headline, renderReport } from "../core/report.js";
 import type { ScanResult } from "../core/scan-report.js";
 import { CARD_BUILDERS } from "../core/verify/builders.js";
-import { type CardBuilders, type CardView, HEADLINE_ORDER } from "../core/verify/cards.js";
 import {
+  type CardBuilders,
+  type CardView,
+  HEADLINE_BASIS,
+  HEADLINE_ORDER,
+  notCheckedCard,
+  pickHeadline,
+  type Unconfirmed,
+} from "../core/verify/cards.js";
+import {
+  type HidingForm,
   type RanEvidence,
   type SecretsFacts,
   VERIFY_CATEGORIES,
@@ -34,6 +43,8 @@ interface Entry {
   readonly claim: number;
   /** Its claim rests on Codex `ran` records. Secrets never does. */
   readonly codex?: boolean;
+  /** Hiding forms its check names, so it could not confirm what it reports. */
+  readonly forms?: readonly HidingForm[];
 }
 
 /** TEST-ONLY: a card whose headline claim is `facts.claim`, named after its category. */
@@ -110,7 +121,10 @@ function verificationOf(
           : {
               status: entry.status,
               matches: entry.claim,
-              facts: { items: [entry.claim, entry.codex === true ? 1 : 0] },
+              facts: {
+                items: [entry.claim, entry.codex === true ? 1 : 0],
+                ...(entry.forms === undefined ? {} : { hidingForms: entry.forms }),
+              },
             },
       ];
     }),
@@ -191,6 +205,47 @@ describe("what never leads", () => {
 
   it.each(HEADLINE_ORDER.filter((c) => c !== "cloud"))("a %s finding in review", (category) => {
     expect(h1(page({ [category]: { status: "review", claim: 4 } })).template).toBeUndefined();
+  });
+
+  it.each(
+    HEADLINE_ORDER.flatMap((category) =>
+      (
+        [
+          { reason: "hiding-forms", forms: ["eval"] },
+          { reason: "no-output", forms: [] },
+        ] as const satisfies readonly Unconfirmed[]
+      ).map((unconfirmed) => [category, unconfirmed.reason, unconfirmed] as const),
+    ),
+  )("a %s finding whose card could not confirm (%s), whatever its tone", (category, _r, unconfirmed) => {
+    const card: CardView = {
+      ...notCheckedCard(category),
+      tone: leading(category),
+      count: 4,
+      headline: {
+        basis: HEADLINE_BASIS[category],
+        count: 4,
+        restsOnCodexRan: false,
+        sentence: { template: "x", text: "x" },
+      },
+    };
+    // The same card, confirmed, leads, so the test is not vacuous.
+    expect(pickHeadline([card], { ranEvidence: "tool-result" })?.category).toBe(category);
+    expect(
+      pickHeadline([{ ...card, unconfirmed }], { ranEvidence: "tool-result" }),
+    ).toBeUndefined();
+  });
+
+  it.each(
+    HEADLINE_ORDER.filter((c) => c !== "secrets"),
+  )("a %s finding to act on whose calls held hiding forms, on the page", (category) => {
+    // Its card keeps its tone, and says it could not confirm; the page's headline is the totals.
+    const html = page({ [category]: { status: leading(category), claim: 4, forms: ["eval"] } });
+    expect(html).toContain(`id="check-${category}"`);
+    expect(html).toContain("Could not confirm: commands that ran here used eval");
+    expect(h1(html)).toEqual({ template: undefined, text: TOTALS });
+    expect(h1(page({ [category]: { status: leading(category), claim: 4 } })).template).toBe(
+      templateOf(category),
+    );
   });
 
   it.each([
