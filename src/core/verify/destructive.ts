@@ -1052,12 +1052,15 @@ export const destructiveCard: ToCard<"destructive"> = (result, context: CardCont
   };
 };
 
-/** The templates, for a test that every card line comes from one. */
-export const DESTRUCTIVE_TEMPLATES: readonly T[] = [
+/**
+ * The templates, for a test that every card line comes from one. Only a test reads it, so it is
+ * marked pure and left out of the bundles.
+ */
+export const DESTRUCTIVE_TEMPLATES: readonly T[] = /* @__PURE__ */ (() => [
   HEADLINE,
   CHIP,
   ...FOUND,
   CODEX,
   ...NOW,
   ...FIX_STEPS,
-];
+])();

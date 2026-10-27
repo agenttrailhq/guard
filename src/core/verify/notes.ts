@@ -756,8 +756,11 @@ export const NOTE_RULES: Readonly<Record<string, NoteRule>> = {
 /** The fact keys that say a check's commands held a form that can hide others. */
 const HIDING_COUNTS: readonly FactPath[] = [["couldHide"], ["hidingCalls"]];
 
-/** Every fact key and enum value a note reads, for the registered-keys test. */
-export const NOTE_FACT_KEYS: readonly string[] = [
+/**
+ * Every fact key and enum value a note reads, for the registered-keys test. Only that test reads
+ * it, so it is marked pure and left out of the bundles.
+ */
+export const NOTE_FACT_KEYS: readonly string[] = /* @__PURE__ */ (() => [
   ...new Set([
     "dependencies",
     "hidingForms",
@@ -772,7 +775,7 @@ export const NOTE_FACT_KEYS: readonly string[] = [
       ),
     ),
   ]),
-];
+])();
 
 // ── Before a template runs ────────────────────────────────────────────────────
 
@@ -799,13 +802,16 @@ export const NOTE_NO_OUTPUT: SentenceTemplate<unknown> = {
   render: () => "Could not confirm: these sessions record no command output to check this against.",
 };
 
-/** The templates of the notes that could not confirm. */
-export const UNCONFIRMED_NOTES: readonly string[] = [
+/**
+ * The templates of the notes that could not confirm. Only a test reads it, so it is marked pure
+ * and left out of the bundles.
+ */
+export const UNCONFIRMED_NOTES: readonly string[] = /* @__PURE__ */ (() => [
   UNCONFIRMED_SENTENCE.id,
   NOTE_COULD_NOT_CHECK.id,
   NOTE_COULD_HIDE.id,
   NOTE_NO_OUTPUT.id,
-];
+])();
 
 /** The hiding forms a check's facts name, and whether it counted any call holding one. */
 function hidingIn(facts: unknown): { readonly forms: HidingForm[]; readonly any: boolean } {

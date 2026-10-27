@@ -22,6 +22,13 @@ const MARKERS = [
   "claimCard",
   "testFacts",
   "hostileCard",
+  // Exports only a test reads, marked pure so the bundler leaves them out.
+  "LOST_WORK_TEMPLATES",
+  "DESTRUCTIVE_TEMPLATES",
+  "SKIPPED_CHECKS_TEMPLATES",
+  "NOTE_FACT_KEYS",
+  "UNCONFIRMED_NOTES",
+  "AGENT_REPLY",
 ] as const;
 
 const BUNDLES = ["plugin/scripts/guard-scan.mjs", "plugin/scripts/guard-hook.mjs"] as const;

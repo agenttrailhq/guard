@@ -1393,8 +1393,11 @@ export function isResultBackedRun(run: RunVerdict): boolean {
   return run.state === "ran" && (run.why === "result" || run.why === "exit-code");
 }
 
-/** Text in the agent's own reply is never a command that ran. */
-export const AGENT_REPLY: RunVerdict = verdict("mentioned", "agent-reply");
+/**
+ * Text in the agent's own reply is never a command that ran. Only a test reads it, so it is
+ * marked pure and left out of the bundles.
+ */
+export const AGENT_REPLY: RunVerdict = /* @__PURE__ */ verdict("mentioned", "agent-reply");
 
 /** The matched calls of a corpus, by whether they ran, and what a `ran` rests on. */
 export interface MatchedCallTally {

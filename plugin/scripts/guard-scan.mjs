@@ -11249,7 +11249,6 @@ function runVerdict(agent, mapped, result, stillMatches) {
 function isResultBackedRun(run) {
   return run.state === "ran" && (run.why === "result" || run.why === "exit-code");
 }
-var AGENT_REPLY = verdict("mentioned", "agent-reply");
 function tallyMatchedCalls(corpus, catalog, allowlist) {
   const agent = corpus.agent ?? "claude";
   const tally = { ran: 0, mentioned: 0, unknown: 0 };
@@ -15414,14 +15413,6 @@ var destructiveCard = (result, context) => {
     }
   };
 };
-var DESTRUCTIVE_TEMPLATES = [
-  HEADLINE,
-  CHIP,
-  ...FOUND,
-  CODEX,
-  ...NOW,
-  ...FIX_STEPS
-];
 
 // src/core/verify/lost-work.ts
 import { resolve as resolve3, sep as sep3 } from "path";
@@ -15964,14 +15955,6 @@ var lostWorkCard = (result, context) => {
     }
   };
 };
-var LOST_WORK_TEMPLATES = [
-  HEADLINE2,
-  CHIP2,
-  ...FOUND2,
-  CODEX2,
-  ...NOW2,
-  ...FIX_STEPS2
-];
 
 // src/core/verify/secrets-card.ts
 function likelyReal(n2) {
@@ -16775,14 +16758,6 @@ var skippedChecksCard = (result, context) => {
     }
   };
 };
-var SKIPPED_CHECKS_TEMPLATES = [
-  HEADLINE3,
-  CHIP3,
-  ...FOUND3,
-  CODEX3,
-  ...NOW3,
-  ...FIX_STEPS3
-];
 
 // src/core/verify/builders.ts
 var CARD_BUILDERS = {
@@ -17245,18 +17220,6 @@ var NOTE_RULES = {
   "rce.unverified-package": { category: "dependencies", kind: "installs" }
 };
 var HIDING_COUNTS = [["couldHide"], ["hidingCalls"]];
-var NOTE_FACT_KEYS = [
-  .../* @__PURE__ */ new Set([
-    "dependencies",
-    "hidingForms",
-    ...HIDING_COUNTS.flat(),
-    ...Object.values(NOTE_KINDS).flatMap(
-      (k) => Object.values(k.reads).flatMap(
-        (read) => isPath(read) ? [...read] : "equals" in read ? [...read.path, read.equals] : [...read.list, ...read.where]
-      )
-    )
-  ])
-];
 var NOTE_COULD_NOT_CHECK = {
   id: "note.could-not-check",
   render: () => "Could not confirm: the check behind this could not settle everything it looked for on this machine."
@@ -17269,12 +17232,6 @@ var NOTE_NO_OUTPUT = {
   id: "note.no-output",
   render: () => "Could not confirm: these sessions record no command output to check this against."
 };
-var UNCONFIRMED_NOTES = [
-  UNCONFIRMED_SENTENCE.id,
-  NOTE_COULD_NOT_CHECK.id,
-  NOTE_COULD_HIDE.id,
-  NOTE_NO_OUTPUT.id
-];
 function hidingIn(facts) {
   const named = at(facts, ["hidingForms"]);
   const forms = Array.isArray(named) ? HIDING_FORMS.filter((form) => named.includes(form)) : [];
