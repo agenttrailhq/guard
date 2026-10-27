@@ -22,6 +22,7 @@ import {
   existsSync,
   linkSync,
   lstatSync,
+  mkdirSync,
   mkdtempSync,
   readdirSync,
   readFileSync,
@@ -217,5 +218,19 @@ describe("writing a file at 0600 through a new file renamed into place", () => {
     const dir = folder();
     writePrivateFile(join(dir, "out.txt"), "x");
     expect(readdirSync(dir)).toEqual(["out.txt"]);
+  });
+
+  it("fails after the temporary file exists, and removes it: the target is a folder with files", () => {
+    // The temporary file is created and written; only the rename fails, since a file cannot
+    // replace a folder that is not empty. Every earlier test fails before anything is created.
+    const dir = folder();
+    const target = join(dir, "out.txt");
+    mkdirSync(target);
+    writeFileSync(join(target, "inside.txt"), "keep me\n");
+    expect(writePrivateFile(target, "new\n")).toBe(false);
+    expect(readdirSync(dir)).toEqual(["out.txt"]);
+    expect(statSync(target).isDirectory()).toBe(true);
+    expect(readdirSync(target)).toEqual(["inside.txt"]);
+    expect(readFileSync(join(target, "inside.txt"), "utf8")).toBe("keep me\n");
   });
 });

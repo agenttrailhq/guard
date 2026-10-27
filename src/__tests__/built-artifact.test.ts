@@ -35,6 +35,7 @@ import {
   mkdtempSync,
   readdirSync,
   readFileSync,
+  statSync,
   writeFileSync,
 } from "node:fs";
 import { homedir, tmpdir, userInfo } from "node:os";
@@ -46,6 +47,7 @@ import { NOT_CHECKED_MESSAGE } from "../commands/hook.js";
 import { silenceCommand } from "../commands/status.js";
 import { RELAY_INSTRUCTION } from "../core/cursor-emit.js";
 import { PRODUCT_NOTE } from "../core/report.js";
+import { writeCorpus } from "./verify-fixtures.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PKG_ROOT = join(HERE, "..", "..");
@@ -1296,6 +1298,98 @@ describe("scan, against the built binary", () => {
       );
       expect(readdirSync(home)).toEqual([]);
     }
+  });
+
+  it.each([
+    "codex",
+    "cursor",
+  ] as const)("scan --verify for %s, from both bundles: only the report is written, nothing else changes", async (agent) => {
+    // A real repo the sessions name, and synthetic sessions with a made-up token assembled here.
+    const base = mkdtempSync(join(tmpdir(), `agenttrail-guard-verify-${agent}-`));
+    const repo = join(base, "repo");
+    mkdirSync(repo, { recursive: true });
+    execFileSync("git", ["init", "-q"], { cwd: repo });
+    writeFileSync(join(repo, "tracked.txt"), "tracked\n");
+    execFileSync("git", ["add", "tracked.txt"], { cwd: repo });
+    const token = `ghp${"_"}BUILTagents0aB1cD2eF3gH4iJ5kL6mN7oP8q`;
+    const { root } = await writeCorpus(
+      agent,
+      [
+        [
+          { kind: "prompt", text: `deploy with ${token}` },
+          { kind: "call", command: `rm -rf ${join(repo, "build")}`, result: { text: "" } },
+        ],
+      ],
+      { cwd: repo },
+    );
+
+    /** Every file under `dir`, with its size, mtime and mode. */
+    const listing = (dir: string): string[] =>
+      readdirSync(dir, { recursive: true, withFileTypes: true })
+        .map((entry) => {
+          const path = join(entry.parentPath, entry.name);
+          const s = statSync(path);
+          return `${path} ${s.size} ${s.mtimeMs} ${s.mode}`;
+        })
+        .sort();
+    /** Every transcript file's bytes. */
+    const transcripts = (): string[] =>
+      readdirSync(root, { recursive: true, withFileTypes: true })
+        .filter((entry) => entry.isFile())
+        .map((entry) => readFileSync(join(entry.parentPath, entry.name), "utf8"))
+        .sort();
+    const repoBefore = listing(repo);
+    const indexBefore = statSync(join(repo, ".git", "index")).mtimeMs;
+    const transcriptsBefore = transcripts();
+
+    for (const [bundle, prefix] of [
+      [CLI_BUNDLE, ["scan"]],
+      [SCAN_BUNDLE, []],
+    ] as const) {
+      const work = mkdtempSync(join(base, "work-"));
+      const home = scratchHome();
+      const log = join(base, `net-${agent}-${prefix.length}.log`);
+      writeFileSync(log, "");
+      const r = spawnSync(
+        "node",
+        [
+          "--import",
+          join(HERE, "preload", "net-recorder.mjs"),
+          bundle,
+          ...prefix,
+          "--agent",
+          agent,
+          "--dir",
+          root,
+          "--verify",
+          "--no-open",
+        ],
+        {
+          cwd: work,
+          encoding: "utf8",
+          env: { ...envWithHome(home), AGENTTRAIL_TEST_NET_LOG: log },
+        },
+      );
+      expect(r.status, r.stderr).toBe(0);
+      expect(readFileSync(log, "utf8")).toBe("");
+      expect(r.stdout).toContain("Checked on this machine (read-only, offline)");
+      if (agent === "codex") {
+        expect(r.stdout).toContain("the Codex reading is limited and unverified");
+      } else {
+        expect(r.stdout).toContain("this app records no command output");
+      }
+      expect(`${r.stdout}${r.stderr}`).not.toContain("BUILTagents");
+      // The work folder holds the report and nothing else: no fixes file, no temporary file.
+      expect(readdirSync(work)).toEqual(["agenttrail-guard-report.html"]);
+      expect(readFileSync(join(work, "agenttrail-guard-report.html"), "utf8")).not.toContain(
+        "BUILTagents",
+      );
+      expect(readdirSync(home)).toEqual([]);
+    }
+    // The repo, its index and the transcripts are exactly as they were.
+    expect(listing(repo)).toEqual(repoBefore);
+    expect(statSync(join(repo, ".git", "index")).mtimeMs).toBe(indexBefore);
+    expect(transcripts()).toEqual(transcriptsBefore);
   });
 
   it("scan --scrub, from both bundles: a dry run that writes nothing, sends nothing and prints no value", () => {
