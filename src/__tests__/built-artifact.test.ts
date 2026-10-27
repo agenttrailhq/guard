@@ -1171,29 +1171,60 @@ describe("scan, against the built binary", () => {
   });
 
   // ── The plugin's scan-only bundle, as the share-report skill runs it ──────────
-  const stripTimes = (path: string): string =>
-    readFileSync(path, "utf8").replace(/\d{4}-\d{2}-\d{2}T[\d:.]+Z/g, "<time>");
 
   it("the plugin's scan bundle writes the same page content as the CLI", () => {
     const { projects, work } = fixture();
     const fromBundle = join(work, "bundle.html");
     const fromCli = join(work, "cli.html");
+    // Both runs on one fixed clock, so every time the page prints (the generated time, the
+    // title's date, the data block, the guardrail library's age) is the same in both, whatever
+    // the minute or the day the test runs on.
+    const clock = {
+      cwd: work,
+      encoding: "utf8" as const,
+      env: { ...process.env, AGENTTRAIL_TEST_NOW: "2026-10-01T09:00:00.000Z" },
+    };
+    const fixedClock = ["--import", join(HERE, "preload", "fixed-clock.mjs")];
     const a = spawnSync(
       "node",
-      [SCAN_BUNDLE, "--agent", "claude", "--dir", projects, "--artifact", "--out", fromBundle],
-      { cwd: work, encoding: "utf8" },
+      [
+        ...fixedClock,
+        SCAN_BUNDLE,
+        "--agent",
+        "claude",
+        "--dir",
+        projects,
+        "--artifact",
+        "--out",
+        fromBundle,
+      ],
+      clock,
     );
     const b = spawnSync(
       "node",
-      [CLI_BUNDLE, "scan", "--agent", "claude", "--dir", projects, "--artifact", "--out", fromCli],
-      { cwd: work, encoding: "utf8" },
+      [
+        ...fixedClock,
+        CLI_BUNDLE,
+        "scan",
+        "--agent",
+        "claude",
+        "--dir",
+        projects,
+        "--artifact",
+        "--out",
+        fromCli,
+      ],
+      clock,
     );
     expect(a.status, a.stderr).toBe(0);
     expect(b.status, b.stderr).toBe(0);
-    const page = stripTimes(fromBundle);
+    const page = readFileSync(fromBundle, "utf8");
+    // The clock took: the page states the fixed time, not this run's.
+    expect(page).toContain("2026-10-01T09:00:00.000Z");
+    expect(page).toContain("1 Oct 2026, 09:00 UTC");
     expect(page.startsWith("<title>")).toBe(true);
     expect(page).not.toMatch(/<!doctype|<html\b|<head\b|<body\b/i);
-    expect(page).toBe(stripTimes(fromCli));
+    expect(page).toBe(readFileSync(fromCli, "utf8"));
   });
 
   it("the plugin's scan bundle takes a --review answer from stdin, as a terminal user gives it", () => {
