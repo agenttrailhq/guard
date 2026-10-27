@@ -36,6 +36,7 @@ import type { VerifyCategory } from "../core/verify/types.js";
 import { type VerifyInput, verifyScan } from "../core/verify/verify.js";
 import { createRealScanIO, type ScanIO } from "../scan-io.js";
 import { RULE_RM_RF } from "./scan-fixtures.js";
+import { fakeIO } from "./verify-command-fixtures.js";
 import { writeCorpus } from "./verify-fixtures.js";
 
 /** An exact fix, built from quoted parts as the checks build them. Throws if it is not safe. */
@@ -445,6 +446,39 @@ describe("when the fixes file cannot be written", () => {
     expect(html.startsWith("<!doctype html>")).toBe(true);
     expect(html).not.toContain(`in <code>${FIXES_FILENAME}</code>`);
     expect(run.stdout).not.toContain("Fix commands for this machine");
+  });
+});
+
+describe("a tunnel running now, through runScan", () => {
+  it("writes its exact command to the fixes file, and its card names the file", async () => {
+    // A call, so the page has cards; the tunnel is found in the process list, not the session.
+    const { root } = await writeCorpus("claude", [
+      [{ kind: "call", command: "ls", result: { text: "" } }],
+    ]);
+    const work = mkdtempSync(join(tmpdir(), "agenttrail-fixes-tunnel-"));
+    const real = createRealScanIO();
+    const io: ScanIO = {
+      ...real,
+      homedir: () => mkdtempSync(join(tmpdir(), "agenttrail-fixes-home-")),
+      cwd: () => work,
+      writeStdout: () => {},
+      openInBrowser: () => true,
+      env: { CI: "1" },
+      isTTY: () => false,
+    };
+    const code = await runScan(["--agent", "claude", "--dir", root, "--no-open"], io, {
+      catalog: [RULE_RM_RF],
+      now: AT,
+      createVerifyIO: () => fakeIO({ processes: ["zsh", "ngrok"] }),
+    });
+    expect(code).toBe(0);
+    const text = readFileSync(join(work, FIXES_FILENAME), "utf8");
+    // cspell:disable-next-line
+    expect(text).toContain(["Data leaving the machine", "'pgrep' '-lx' 'ngrok'"].join("\n"));
+    const report = readFileSync(join(work, REPORT_FILENAME), "utf8");
+    const at = report.indexOf('id="check-egress"');
+    const card = report.slice(report.lastIndexOf("<article", at), report.indexOf("</article>", at));
+    expect(card).toContain('data-template="card.fixes-file"');
   });
 });
 
