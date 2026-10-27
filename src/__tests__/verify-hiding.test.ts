@@ -822,6 +822,41 @@ describe("a call that holds a hiding form and a match this check could not read 
   });
 });
 
+describe("the backstop leaves out a call refused before it ran", () => {
+  const PUSH = "my-wrapper git push origin HEAD:main";
+  const DELETE = `my-wrapper git branch -D ${"topic"}`;
+
+  it("command checks (backstopCalls): refused, no form; ran or no result, unread-match", async () => {
+    const formsFor = async (result: EventResult | undefined) => {
+      const event = { kind: "shell", command: PUSH, ...(result === undefined ? {} : { result }) };
+      const calls = await callsOf("claude", [[event as CommandEvent]]);
+      return (await checkUnreviewed({ calls, io: fakeIO() })).check.facts;
+    };
+    expect(await formsFor(REFUSED)).toMatchObject({ couldHide: 0, hidingForms: [] });
+    expect(await formsFor(OK)).toMatchObject({ couldHide: 1, hidingForms: ["unread-match"] });
+    expect(await formsFor(undefined)).toMatchObject({
+      couldHide: 1,
+      hidingForms: ["unread-match"],
+    });
+  });
+
+  it("git-backed checks (backstopIds): refused, no form; ran, unread-match", async () => {
+    const formsFor = async (result: { text: string; isError?: boolean }) => {
+      const { corpus } = await writeCorpus("claude", [[{ kind: "call", command: DELETE, result }]]);
+      const { verification } = await verifyScan({
+        corpus,
+        ...SHIPPED,
+        readLines: () => (async function* () {})(),
+        io: UNAVAILABLE_VERIFY_IO,
+        home: "/nonexistent/home",
+      });
+      return formsIn(verification, "lost-work");
+    };
+    expect(await formsFor({ text: REFUSED.text, isError: true })).toEqual([]);
+    expect(await formsFor({ text: "" })).toEqual(["unread-match"]);
+  });
+});
+
 describe("a card counts the matches the scan counts, and says more only after another", () => {
   /** The scan's own matches, the cloud card, and its lines, for one call that ran. */
   async function cloudOf(command: string) {
