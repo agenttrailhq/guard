@@ -513,9 +513,8 @@ td.num { font-weight: 600; }
 .verified { border-left: 4px solid var(--border); }
 .verified:target { border-color: var(--brand-text); }
 .verified h3 { font-size: 16px; margin: 8px 0 6px; }
-.verified-note { margin: 8px 0 4px; padding: 4px 0 4px 10px; border-left: 3px solid var(--tone-none-fg); }
-.verified-note p { margin: 0; }
-.verified-note-label { font-size: 12px; font-weight: 600; color: var(--muted-fg); }
+.verified-note { margin: 8px 0 0; padding: 2px 0 2px 10px; border-left: 3px solid var(--tone-none-fg); font-size: 14px; }
+.verified-note-label { font-weight: 600; color: var(--muted-fg); }
 .tone {
   display: inline-flex;
   align-items: center;

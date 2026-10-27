@@ -1667,11 +1667,10 @@ function noteTone(note: VerifiedNote, cards: readonly CardView[]): VerificationS
   }
 }
 
-/** A finding's verified note, as the first thing its expander shows. */
+/** A finding's verified note: a line of its own under the guardrail's id, always shown. */
 function noteHtml(note: VerifiedNote, tone: VerificationStatus | undefined): string {
   const cls = tone === undefined ? "verified-note" : `verified-note v-${tone}`;
-  return `<div class="${cls}"><p class="verified-note-label">What checking found on this machine</p>
-${sentenceHtml(note.sentence)}</div>`;
+  return `<p class="${cls}"><span class="verified-note-label">What checking found:</span> <span data-template="${escapeHtml(note.sentence.template)}">${escapeHtml(note.sentence.text)}</span></p>`;
 }
 
 /** One row of All findings. */
@@ -1714,8 +1713,8 @@ ${f.owasp.map((id) => `<li>${outLink(owaspRiskLink(id, agent), riskLabel(id))}</
 <div class="guardrail-title">${inlineTitle(f.title)}</div>
 <div class="finding-meta">${severityBadge(f.severity)} ${actionChip(f.action)}<span class="num" data-label="Matches">${escapeHtml(formatCount(f.count))}&times;</span></div>
 </div>
-<div class="guardrail-id"><code>${escapeHtml(f.ruleId)}</code> &middot; <span class="group">${escapeHtml(group)}</span></div>${risks}
-<details class="commands"><summary>The ${escapeHtml(shapes)} behind it${note === undefined ? "" : ", and what checking found"}</summary>${note === undefined ? "" : `\n${noteHtml(note.note, note.tone)}`}
+<div class="guardrail-id"><code>${escapeHtml(f.ruleId)}</code> &middot; <span class="group">${escapeHtml(group)}</span></div>${note === undefined ? "" : `\n${noteHtml(note.note, note.tone)}`}${risks}
+<details class="commands"><summary>The ${escapeHtml(shapes)} behind it</summary>
 <ul class="shapes">
 ${examples}${more}
 </ul>

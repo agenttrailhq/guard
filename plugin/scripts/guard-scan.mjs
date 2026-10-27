@@ -7368,9 +7368,8 @@ td.num { font-weight: 600; }
 .verified { border-left: 4px solid var(--border); }
 .verified:target { border-color: var(--brand-text); }
 .verified h3 { font-size: 16px; margin: 8px 0 6px; }
-.verified-note { margin: 8px 0 4px; padding: 4px 0 4px 10px; border-left: 3px solid var(--tone-none-fg); }
-.verified-note p { margin: 0; }
-.verified-note-label { font-size: 12px; font-weight: 600; color: var(--muted-fg); }
+.verified-note { margin: 8px 0 0; padding: 2px 0 2px 10px; border-left: 3px solid var(--tone-none-fg); font-size: 14px; }
+.verified-note-label { font-weight: 600; color: var(--muted-fg); }
 .tone {
   display: inline-flex;
   align-items: center;
@@ -18359,8 +18358,7 @@ function noteTone(note, cards) {
 }
 function noteHtml(note, tone) {
   const cls = tone === void 0 ? "verified-note" : `verified-note v-${tone}`;
-  return `<div class="${cls}"><p class="verified-note-label">What checking found on this machine</p>
-${sentenceHtml(note.sentence)}</div>`;
+  return `<p class="${cls}"><span class="verified-note-label">What checking found:</span> <span data-template="${escapeHtml(note.sentence.template)}">${escapeHtml(note.sentence.text)}</span></p>`;
 }
 function findingRow(f, index, r, agent, note) {
   const group = f.category === void 0 ? YOUR_GUARDRAILS : packLabel(f.category);
@@ -18386,9 +18384,9 @@ ${f.owasp.map((id) => `<li>${outLink(owaspRiskLink(id, agent), riskLabel(id))}</
 <div class="guardrail-title">${inlineTitle(f.title)}</div>
 <div class="finding-meta">${severityBadge(f.severity)} ${actionChip(f.action)}<span class="num" data-label="Matches">${escapeHtml(formatCount(f.count))}&times;</span></div>
 </div>
-<div class="guardrail-id"><code>${escapeHtml(f.ruleId)}</code> &middot; <span class="group">${escapeHtml(group)}</span></div>${risks}
-<details class="commands"><summary>The ${escapeHtml(shapes)} behind it${note === void 0 ? "" : ", and what checking found"}</summary>${note === void 0 ? "" : `
-${noteHtml(note.note, note.tone)}`}
+<div class="guardrail-id"><code>${escapeHtml(f.ruleId)}</code> &middot; <span class="group">${escapeHtml(group)}</span></div>${note === void 0 ? "" : `
+${noteHtml(note.note, note.tone)}`}${risks}
+<details class="commands"><summary>The ${escapeHtml(shapes)} behind it</summary>
 <ul class="shapes">
 ${examples}${more}
 </ul>

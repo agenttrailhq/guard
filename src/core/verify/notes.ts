@@ -164,7 +164,7 @@ function reviewByHand(n: number): string {
 
 // ── Note kinds ────────────────────────────────────────────────────────────────
 
-/** A kind of note: the counts it reads, its template, and whether it rests on commands that ran. */
+/** A kind of note: the counts it reads, its template, and what it rests on. */
 interface NoteKind<K extends string> {
   readonly reads: CountReads<K>;
   readonly template: SentenceTemplate<NoteFacts<K>>;

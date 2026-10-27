@@ -1,6 +1,8 @@
+// cspell:words middot
 /**
- * The verified notes on the page: in each row's expander, in the data block and `--review`,
- * never in the share text, styled for both themes and print, and carrying no value.
+ * The verified notes on the page: a line of its own in each row, outside every expander, marked
+ * by what it says; in the data block and `--review`; never in the share text; styled for both
+ * themes and print; and carrying no value.
  */
 
 import { describe, expect, it } from "vitest";
@@ -102,20 +104,26 @@ describe("the notes on the page corpus", () => {
 describe("where a note is shown", () => {
   const html = renderReport(RESULT, VERIFIED_META, OPTIONS);
 
-  it("first in its row's command expander, which says it holds one", () => {
+  /** A row's note line, or "" when it has none. */
+  const noteLine = (r: string): string =>
+    r.match(/<p class="verified-note[^"]*">.*<\/p>/)?.[0] ?? "";
+
+  it("is a line of its own under the guardrail's id, outside every expander", () => {
     const r = row(html, "se.env-print");
-    const expander = commands(r);
-    expect(expander).toMatch(
-      /^<details class="commands"><summary>The command shape behind it, and what checking found<\/summary>\n<div class="verified-note v-act"><p class="verified-note-label">What checking found on this machine<\/p>\n<p data-template="note\.secrets-printed">Likely-real credentials printed by a command: 1\.<\/p><\/div>\n<ul class="shapes">/,
+    expect(r).toMatch(
+      /<div class="guardrail-id"><code>se\.env-print<\/code> &middot; <span class="group">[^<]*<\/span><\/div>\n<p class="verified-note v-act"><span class="verified-note-label">What checking found:<\/span> <span data-template="note\.secrets-printed">Likely-real credentials printed by a command: 1\.<\/span><\/p>\n/,
     );
+    expect(r.indexOf('class="verified-note')).toBeLessThan(r.indexOf("<details"));
+    expect(commands(r)).not.toContain("verified-note");
+    expect(commands(r)).toContain("<summary>The command shape behind it</summary>");
   });
 
   it("a note that could not confirm takes the neutral mark, not its card's tone", () => {
-    expect(commands(row(html, "ti.test-file-delete"))).toContain(
-      '<div class="verified-note v-could-not-check">',
+    expect(noteLine(row(html, "ti.test-file-delete"))).toContain(
+      '<p class="verified-note v-could-not-check">',
     );
-    expect(commands(row(html, "wt.stash-drop"))).toContain(
-      '<div class="verified-note v-could-not-check">',
+    expect(noteLine(row(html, "wt.stash-drop"))).toContain(
+      '<p class="verified-note v-could-not-check">',
     );
   });
 
@@ -163,9 +171,14 @@ describe("where a note is shown", () => {
     expect(r).toContain("<summary>The command shape behind it</summary>");
   });
 
-  it("the artifact shows the same notes", () => {
+  it("the artifact, which has no script, shows the same notes outside its expanders", () => {
     const artifact = renderReport(RESULT, VERIFIED_META, { ...OPTIONS, variant: "artifact" });
-    expect(commands(row(artifact, "se.env-print"))).toBe(commands(row(html, "se.env-print")));
+    for (const id of ["se.env-print", "wt.stash-drop", "ti.test-file-delete"]) {
+      const r = row(artifact, id);
+      expect(noteLine(r), id).not.toBe("");
+      expect(noteLine(r), id).toBe(noteLine(row(html, id)));
+      expect(r.indexOf('class="verified-note'), id).toBeLessThan(r.indexOf("<details"));
+    }
   });
 
   it("the data block carries the notes", () => {
@@ -228,7 +241,7 @@ describe("how a note looks", () => {
   });
 
   it("is in sentence case, with no all-caps label", () => {
-    for (const selector of [".verified-note", ".verified-note-label", ".verified-note p"]) {
+    for (const selector of [".verified-note", ".verified-note-label"]) {
       expect(rule(selector)).not.toMatch(/text-transform|letter-spacing/);
     }
   });
@@ -239,8 +252,13 @@ describe("how a note looks", () => {
     }
   });
 
-  it("prints whole and in its colors", () => {
+  it("prints whole and in its colors, and nothing in print hides it", () => {
     const print = REPORT_STYLES.slice(REPORT_STYLES.indexOf("@media print"));
+    for (const rule of print.split("}")) {
+      if (/display:\s*none/.test(rule)) {
+        expect(rule).not.toMatch(/verified-note|guardrail-id|\.finding\b/);
+      }
+    }
     expect(print).toMatch(
       /\.verified-note \{ break-inside: avoid; \}|\.verified-note[^{]*\{ break-inside: avoid; \}/,
     );
@@ -285,8 +303,8 @@ describe("no value reaches the page through a note", () => {
 
   it("negative control: the same search finds a canary that is on the page", () => {
     const html = renderReport(hostile, VERIFIED_META, OPTIONS).replace(
-      "What checking found on this machine",
-      `What checking found on this machine ${CANARY}`,
+      "What checking found:",
+      `What checking found: ${CANARY}`,
     );
     expect(decodedSurfaces(html).text).toContain(CANARY);
   });

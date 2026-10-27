@@ -285,9 +285,8 @@
 <div class="finding-meta"><span class="badge sev-high">high</span> <span class="chip act-warn">would warn</span><span class="num" data-label="Matches">1&times;</span></div>
 </div>
 <div class="guardrail-id"><code>se.env-print</code> &middot; <span class="group">Secret exposure</span></div>
-<details class="commands"><summary>The command shape behind it, and what checking found</summary>
-<div class="verified-note v-act"><p class="verified-note-label">What checking found on this machine</p>
-<p data-template="note.secrets-printed">Likely-real credentials printed by a command: 1.</p></div>
+<p class="verified-note v-act"><span class="verified-note-label">What checking found:</span> <span data-template="note.secrets-printed">Likely-real credentials printed by a command: 1.</span></p>
+<details class="commands"><summary>The command shape behind it</summary>
 <ul class="shapes">
 <li><code>printenv</code><span class="times">1&times;</span></li>
 </ul>
@@ -303,9 +302,8 @@
 <div class="finding-meta"><span class="badge sev-high">high</span> <span class="chip act-ask">would ask</span><span class="num" data-label="Matches">1&times;</span></div>
 </div>
 <div class="guardrail-id"><code>ti.test-file-delete</code> &middot; <span class="group">Test integrity</span></div>
-<details class="commands"><summary>The command shape behind it, and what checking found</summary>
-<div class="verified-note v-could-not-check"><p class="verified-note-label">What checking found on this machine</p>
-<p data-template="could-not-confirm">Could not confirm: commands that ran here used xargs, which can run commands this reading does not take apart, so this is not a clean result.</p></div>
+<p class="verified-note v-could-not-check"><span class="verified-note-label">What checking found:</span> <span data-template="could-not-confirm">Could not confirm: commands that ran here used xargs, which can run commands this reading does not take apart, so this is not a clean result.</span></p>
+<details class="commands"><summary>The command shape behind it</summary>
 <ul class="shapes">
 <li><code>rm &lt;path&gt;</code><span class="times">1&times;</span></li>
 </ul>
@@ -333,9 +331,8 @@
 <div class="finding-meta"><span class="badge sev-high">high</span> <span class="chip act-ask">would ask</span><span class="num" data-label="Matches">1&times;</span></div>
 </div>
 <div class="guardrail-id"><code>wt.stash-drop</code> &middot; <span class="group">Working tree</span></div>
-<details class="commands"><summary>The command shape behind it, and what checking found</summary>
-<div class="verified-note v-could-not-check"><p class="verified-note-label">What checking found on this machine</p>
-<p data-template="note.could-not-check">Could not confirm: the check behind this could not finish on this machine.</p></div>
+<p class="verified-note v-could-not-check"><span class="verified-note-label">What checking found:</span> <span data-template="note.could-not-check">Could not confirm: the check behind this could not finish on this machine.</span></p>
+<details class="commands"><summary>The command shape behind it</summary>
 <ul class="shapes">
 <li><code>git stash drop</code><span class="times">1&times;</span></li>
 </ul>
