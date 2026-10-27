@@ -1,4 +1,4 @@
-<!-- cspell:words guardrails jsonl mjs bpnpm agenttrailhq backtesting hostnames inspectable -->
+<!-- cspell:words guardrails jsonl mjs bpnpm agenttrailhq backtesting hostnames inspectable tasklist -->
 
 <div align="center">
 
@@ -361,13 +361,15 @@ to choose where, `--json` for JSON only). The report loads nothing from outside 
 The report opens with what Guard would have done: how many actions it would have blocked,
 asked you about, or warned on. It then lists the guardrails to fix first, the OWASP risks
 the matched guardrails name, every matched guardrail with filters (by action and by OWASP
-risk) and sort, repeated command shapes, next steps, and a suggested post that carries
-totals only. Each OWASP id shown is one the guardrail carries itself; the section covers
-coding-agent actions only, not full OWASP coverage. Its PDF and JSON buttons save the report
-as shown. One inline script runs the filters, copy buttons and exports. The page's
-Content-Security-Policy allows that script and blocks the page from loading or fetching
-anything. Links to agenttrail.sh carry UTM tags naming the report and the agent, and open
-only when you click them. The two OWASP lists are linked where OWASP publishes them.
+risk) and sort, repeated command shapes, next steps, and a suggested post. The post carries
+counts only: the verified counts that may lead the report, as many as fit, or otherwise the
+totals and at most one library guardrail's name. Each OWASP id shown is one the guardrail
+carries itself; the section covers coding-agent actions only, not full OWASP coverage. Its
+PDF and JSON buttons save the report as shown. One inline script runs the filters, copy
+buttons and exports. The page's Content-Security-Policy allows that script and blocks the
+page from loading or fetching anything. Links to agenttrail.sh carry UTM tags naming the
+report and the agent, and open only when you click them. The two OWASP lists are linked
+where OWASP publishes them.
 
 **A scan shows what would match now, not what was blocked then.** It applies today's
 guardrails and settings to past calls, so its results can differ from what Guard enforced
@@ -378,9 +380,9 @@ guarantee. Use `--review` and read the report before sharing it. The review outp
 include raw MCP values that the report itself redacts. Details:
 [Seeing what already happened](#seeing-what-already-happened).
 
-**`scan --verify` (preview) checks the matches against this machine, read-only and
-offline.** Nothing is written or sent, and no command from a session is run again. It reads
-only:
+**`scan` also checks the matches against this machine, read-only and offline.** The checks
+run by default; `--no-checks` skips them. Nothing is written but the report and its local
+fixes file, nothing is sent, and no command from a session is run again. They read only:
 
 - the transcripts again;
 - in each git repo a session ran in: read-only `git` (`rev-parse`, `ls-files`,
@@ -392,9 +394,42 @@ only:
   (`~/.claude/CLAUDE.md` or `~/.codex/AGENTS.md`); and the ones the sessions wrote. In
   `~/.claude`, `~/.codex` and `~/.cursor` only `.md` and `.mdc` files are read. Only whether
   a file tells the agent to skip checks is kept, never its text;
-- whether the paths the commands named still exist.
+- the test configs the sessions edited, inside their repo and each at most 1 MB. Only
+  whether coverage thresholds are set to update themselves (`autoUpdate`) is kept;
+- the names of the programs running now (`ps`, or `tasklist` on Windows), never their
+  arguments. The list is cut down to known agent apps and tunnel programs as it is read, and
+  only the tunnel programs, such as `ngrok` or `cloudflared`, are counted;
+- whether the folders the sessions ran in, the paths the commands named and each repo's
+  commit hooks exist, never what a hook holds.
 
 The report and `--json` carry counts only, never these paths.
+
+**Every claim on a card comes from a check's result.** A matched command counts as ran only
+when the session recorded a result that shows it ran; one with no result either way may have
+run, and is not counted as ran. Where a command that ran, or may have run, uses a form the
+check does not read inside (a shell given a string to run or one this scan does not read,
+inline code or a piped script, `find -exec`, `xargs`, process substitution, a command
+substitution, `eval`, or git with its own `-c` settings, running a command it was given, or
+after a hook or its config was written), the card says **could not confirm** for that
+category, never none or clean. Cursor's session files record no command output, so on Cursor
+a check of commands that ran that would read clean says could not confirm instead. The
+report leads with a verified count only when a recorded result backs it, and otherwise leads
+with the totals. A card that could not confirm never leads, with one exception: a count git
+itself confirms (commits on main without their checks, deleted work still recoverable) may
+lead, since what could not be read could only add to it, and its card still says it could
+not confirm all of it.
+
+**Codex: limited and unverified.** For Codex, the checks:
+
+- has been tested only on synthetic sessions built from Codex's documented rollout format,
+  never on a real Codex session;
+- counts a call as ran when Codex recorded an output for it, which may include a call a hook
+  blocked: it is not yet known whether a blocked call leaves an output record;
+- shows ids a Codex command printed as "not identified";
+- never gives a Codex scan a verified headline: its report leads with the totals.
+
+On every Codex scan, the terminal summary, the report and each git-backed card say all four
+points, in the same words; so does `scan --help`.
 
 ### Scrub credentials from transcripts
 
@@ -407,7 +442,8 @@ agenttrail-guard scan --agent claude --scrub --apply   # makes the change
 ```
 
 **Rotate the credential first, then scrub.** Taking it out of a transcript does not undo
-the exposure.
+the exposure. Scrubbing runs from the CLI only: the Claude Code plugin's scanner leaves it
+out and refuses `--scrub` and `--apply`.
 
 - **What it replaces:** only values classed as likely real. A value that is also in a
   git-tracked file of a repo the sessions ran in (a committed fixture), a placeholder, and
