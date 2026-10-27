@@ -4,12 +4,14 @@
  *
  * Asserted on the RENDERED page, so the wiring from verification to `<h1>` is what is tested:
  * each category leading on its own, each losing to every higher one, a clean, not-checked or
- * could-not-check category never leading, nothing leading a Codex scan (its reading is limited
- * and unverified) or resting on Codex ran records, and the totals headline whenever nothing may
- * lead, verification absent included.
+ * could-not-check category never leading, a card that could not confirm never leading (but a
+ * skipped-checks or lost-work count read from git state, which may), nothing leading a Codex
+ * scan (its reading is limited and unverified) or resting on Codex ran records, and the totals
+ * headline whenever nothing may lead, verification absent included.
  *
  * Secrets is driven through its real card. Every other category's claim comes from a TEST-ONLY
- * builder, since those checks do not exist in this build.
+ * builder (`claimCard`), so the picking order and its rules are tested apart from what each
+ * category's own check finds; each real card's headline claim is tested with that card.
  */
 
 import { describe, expect, it } from "vitest";

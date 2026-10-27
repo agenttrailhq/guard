@@ -39,8 +39,9 @@ export function sharePhrase(basis: HeadlineBasis, count: number): string {
 
 /**
  * The verified counts a post may state, highest priority first: every claim that may lead the
- * page (`leadingCards`: result-backed, confirmed, not clean, not could-not-check, never on a
- * Codex scan), the same rule the headline follows.
+ * page (`leadingCards`: result-backed, not clean, not could-not-check, never on a Codex scan,
+ * and confirmed, except a skipped-checks or lost-work count read from git state, which may lead
+ * where its card could not confirm), the same rule the headline follows.
  */
 export function shareCounts(cards: readonly CardView[], context: CardContext): string[] {
   return leadingCards(cards, context).flatMap((card) =>

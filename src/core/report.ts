@@ -818,9 +818,11 @@ const SHARE_TAIL = ". Checked locally, nothing uploaded.";
 /**
  * The prefilled post. The user can edit it before posting.
  *
- * With verified counts that may lead (`shareCounts`: result-backed, not clean, not could-not-
- * check or could-not-confirm, never on a Codex scan), it states them, most important first, as
- * many as fit in a post. Otherwise it is the totals post (`totalsShareText`).
+ * With verified counts that may lead (`shareCounts`, by the headline's own rule in
+ * `leadingCards`: result-backed, not clean, not could-not-check, never on a Codex scan, and
+ * confirmed, except a skipped-checks or lost-work count read from git state, which may lead
+ * where its card could not confirm), it states them, most important first, as many as fit in a
+ * post. Otherwise it is the totals post (`totalsShareText`).
  *
  * Built from counts, the agent's display name, fixed phrases and at most one shipped guardrail
  * title — never a command, a path, a project name, a card's own sentence, or a guardrail the

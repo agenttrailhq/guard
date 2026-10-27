@@ -421,15 +421,16 @@ not confirm all of it.
 
 **Codex: limited and unverified.** For Codex, the checks:
 
-- has been tested only on synthetic sessions built from Codex's documented rollout format,
+- have been tested only on synthetic sessions built from Codex's documented rollout format,
   never on a real Codex session;
-- counts a call as ran when Codex recorded an output for it, which may include a call a hook
+- count a call as ran when Codex recorded an output for it, which may include a call a hook
   blocked: it is not yet known whether a blocked call leaves an output record;
-- shows ids a Codex command printed as "not identified";
-- never gives a Codex scan a verified headline: its report leads with the totals.
+- show ids a Codex command printed as "not identified";
+- never give a Codex scan a verified headline: its report leads with the totals.
 
-On every Codex scan, the terminal summary, the report and each git-backed card say all four
-points, in the same words; so does `scan --help`.
+On every Codex scan that runs the checks, the terminal summary, the report and each
+git-backed card say all four points, in the same words; so does `scan --help`. A Codex scan
+with `--no-checks` makes no claim about the checks.
 
 ### Scrub credentials from transcripts
 
