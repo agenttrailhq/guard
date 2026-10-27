@@ -11619,7 +11619,7 @@ function hidingFormLabel(form) {
 }
 var UNCONFIRMED_SENTENCE = {
   id: "could-not-confirm",
-  render: (u) => u.reason === "no-output" ? "Could not confirm: these sessions record no command output, so a count of commands that ran is zero because nothing could be confirmed, not because nothing ran." : `Could not confirm: commands that ran here used ${u.forms.map(hidingFormLabel).join(", ")}, which can run commands this reading does not take apart, so this is not a clean result.`
+  render: (u) => u.reason === "no-output" ? "Could not confirm: these sessions record no command output, so a count of commands that ran is zero because nothing could be confirmed, not because nothing ran." : u.found === true ? `Could not confirm all of it: commands that ran, or may have run, here used ${u.forms.map(hidingFormLabel).join(", ")}, which can run commands this reading does not take apart, so there may be more than this card shows.` : `Could not confirm: commands that ran, or may have run, here used ${u.forms.map(hidingFormLabel).join(", ")}, which can run commands this reading does not take apart, so this is not a clean result.`
 };
 function notCheckedCard(category) {
   return {
@@ -11678,7 +11678,8 @@ function honestStatus(category, status, facts, resultsRecorded) {
 function confirmedCard(built, facts, verification) {
   const recorded = verification.resultsRecorded;
   const tone = KNOWN_TONES.has(built.tone) ? built.tone : "could-not-check";
-  const unconfirmed = unconfirmedOf(built.category, tone, facts, recorded);
+  const found = unconfirmedOf(built.category, tone, facts, recorded);
+  const unconfirmed = found === void 0 ? void 0 : tone === "act" || tone === "review" ? { ...found, found: true } : found;
   const finalTone = honestStatus(built.category, tone, facts, recorded);
   const lead = unconfirmed !== void 0 ? sentences([UNCONFIRMED_SENTENCE], unconfirmed) : finalTone === "could-not-check" ? sentences([COULD_NOT_CHECK_SENTENCE], void 0) : [];
   return {
@@ -13867,25 +13868,6 @@ var FixList = class {
     else this.unsafe.push(fix);
   }
 };
-var FORM_WORDS = {
-  "shell-string": "a shell given a string to run",
-  "inline-code": "inline code given to an interpreter",
-  "piped-script": "a script piped into a shell or an interpreter",
-  "find-exec": "find -exec",
-  xargs: "xargs",
-  "process-substitution": "process substitution",
-  "command-substitution": "a command substitution",
-  eval: "eval",
-  "git-config": "git with its own -c settings",
-  "git-exec": "git running a command it was given",
-  "git-hook": "git after a hook or its config was written",
-  "unread-shell": "a shell this scan does not read"
-};
-function couldNotConfirmLine(n2, forms, what) {
-  if (n2 === 0) return void 0;
-  const words2 = forms.map((form) => FORM_WORDS[form]).join(", ");
-  return `Could not confirm that no ${what} ran: ${counted2(n2, "command")} that ran, or may have run, ${n2 === 1 ? "uses" : "use"} a form this check does not read inside (${words2}).`;
-}
 function unsafeFixLine(n2) {
   return n2 > 0 ? `Could not make a safe command for ${counted2(n2, "fix", "fixes")}: a name or path in ${n2 === 1 ? "it" : "them"} holds characters a command cannot carry safely, so the local fixes file lists ${n2 === 1 ? "it" : "them"} as could not make a safe command, with no command.` : void 0;
 }
@@ -15251,10 +15233,6 @@ var FOUND = [
   {
     id: "destructive.none",
     render: (f) => allCalls(f).ran === 0 && f.hidingCalls === 0 ? "No rm -rf and no database wipe that this check could read ran." : void 0
-  },
-  {
-    id: "destructive.could-not-confirm",
-    render: (f) => couldNotConfirmLine(f.hidingCalls, f.hidingForms, "rm -rf or database wipe")
   }
 ];
 var NOW = [
@@ -15783,14 +15761,6 @@ var FOUND2 = [
   {
     id: "lost-work.none",
     render: (f) => allCalls2(f).ran === 0 && f.hidingCalls === 0 ? "No command this check could read deleted a branch or a stash, or discarded changes." : void 0
-  },
-  {
-    id: "lost-work.could-not-confirm",
-    render: (f) => couldNotConfirmLine(
-      f.hidingCalls,
-      f.hidingForms,
-      "command deleting a branch or a stash, or discarding changes,"
-    )
   }
 ];
 var NOW2 = [
@@ -16760,10 +16730,6 @@ var FOUND3 = [
         return void 0;
       return f.instructions.read > 0 ? `No command this check could read skipped a hook, and none of the ${counted2(f.instructions.read, "instruction file")} read says to.` : "No command this check could read skipped a hook.";
     }
-  },
-  {
-    id: "skipped-checks.could-not-confirm",
-    render: (f) => couldNotConfirmLine(f.hidingCalls, f.hidingForms, "command skipping a check")
   }
 ];
 var NOW3 = [

@@ -10,7 +10,7 @@ import { existsSync, mkdirSync, readdirSync, rmSync, statSync, writeFileSync } f
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { runScan } from "../commands/scan.js";
-import { isLocalFix } from "../core/verify/cards.js";
+import { isLocalFix, unconfirmedOf } from "../core/verify/cards.js";
 import { checkGitBacked, GIT_CARD_BUILDERS } from "../core/verify/git-checks.js";
 import { lostWorkCard } from "../core/verify/lost-work.js";
 import type { GitOutcome, VerifyIO } from "../core/verify/types.js";
@@ -448,8 +448,13 @@ describe("a hiding form in a call that ran keeps every git-backed category from 
       expect(result.facts.hidingForms, name).toEqual(["eval"]);
       const card = GIT_CARD_BUILDERS[name](result as never, { ranEvidence: "tool-result" });
       const found = card.found.map((s) => s.template);
-      expect(found, name).toContain(`${name}.could-not-confirm`);
       expect(found, name).not.toContain(`${name}.none`);
+      // The frame's one could-not-confirm line says it; the card has no line of its own.
+      expect(
+        found.filter((t) => t.endsWith("could-not-confirm")),
+        name,
+      ).toEqual([]);
+      expect(unconfirmedOf(name, result.status, result.facts, true)?.forms, name).toEqual(["eval"]);
     }
   });
 });

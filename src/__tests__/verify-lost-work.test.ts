@@ -11,7 +11,8 @@
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { pickHeadline } from "../core/verify/cards.js";
+import { cardsFor, pickHeadline } from "../core/verify/cards.js";
+import { GIT_CARD_BUILDERS } from "../core/verify/git-checks.js";
 import type { CardExtras } from "../core/verify/git-copy.js";
 import {
   discardedPaths,
@@ -637,16 +638,42 @@ describe("the card", () => {
     ]);
   });
 
-  it("says, as one readable sentence, that it could not confirm when a call could hide a deletion", () => {
-    const card = lostWorkCard(
-      { status: "clean", matches: 0, facts: facts({ hidingCalls: 2, hidingForms: ["eval"] }) },
-      { ranEvidence: "tool-result" },
-    );
-    const line = card.found.find((s) => s.template === "lost-work.could-not-confirm")?.text;
-    expect(line).toMatch(
-      /^Could not confirm that no command deleting a branch or a stash, or discarding changes, ran: 2 commands that ran, or may have run, use a form this check does not read inside \(.+\)\.$/,
-    );
-    expect(line).not.toMatch(/discarded ran|deleted ran/);
+  it("says once, in the frame's words, that it could not confirm when a call could hide a deletion", () => {
+    const result = {
+      status: "could-not-check" as const,
+      matches: 0,
+      facts: facts({ hidingCalls: 2, hidingForms: ["eval"] }),
+    };
+    // The builder writes no could-not-confirm line of its own.
+    const built = lostWorkCard(result, { ranEvidence: "tool-result" });
+    expect(built.found.filter((s) => s.template.endsWith("could-not-confirm"))).toEqual([]);
+    // Through the frame, the card says it once.
+    const pending = { status: "not-checked" } as const;
+    const card = cardsFor(
+      {
+        matchedCalls: { ran: 2, mentioned: 0, unknown: 0 },
+        resultsRecorded: true,
+        ranEvidence: "tool-result",
+        categories: {
+          secrets: pending,
+          "skipped-checks": pending,
+          "lost-work": result,
+          cloud: pending,
+          "prod-infra": pending,
+          tests: pending,
+          destructive: pending,
+          unreviewed: pending,
+          egress: pending,
+        },
+      } as never,
+      { ...GIT_CARD_BUILDERS, secrets: () => ({}) as never } as never,
+    ).find((c) => c.category === "lost-work");
+    const lines = (card?.found ?? [])
+      .map((s) => s.text)
+      .filter((t) => t.startsWith("Could not confirm"));
+    expect(lines).toEqual([
+      "Could not confirm: commands that ran, or may have run, here used eval, which can run commands this reading does not take apart, so this is not a clean result.",
+    ]);
   });
 
   it("a clean result states zero on its chip and makes no claim that can lead", () => {

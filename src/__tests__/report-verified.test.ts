@@ -590,7 +590,7 @@ describe("a card never reads clean, or shows a zero, where nothing could be conf
       '<span class="tone tone-could-not-check" id="check-destructive-tone">Could not confirm</span>',
     );
     expect(destructive).toContain(
-      "Could not confirm: commands that ran here used a shell given a string to run, xargs, which can run commands this reading does not take apart, so this is not a clean result.",
+      "Could not confirm: commands that ran, or may have run, here used a shell given a string to run, xargs, which can run commands this reading does not take apart, so this is not a clean result.",
     );
     expect(destructive).not.toContain("tone-clean");
     expect(chip(html, "destructive")).toBe("could not confirm");

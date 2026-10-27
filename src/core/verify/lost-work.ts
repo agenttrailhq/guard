@@ -38,7 +38,6 @@ import {
   codexCaveat,
   codexLimitedTemplate,
   codexLines,
-  couldNotConfirmLine,
   counted,
   FixList,
   type GitCheckContext,
@@ -755,15 +754,6 @@ const FOUND: readonly T[] = [
       allCalls(f).ran === 0 && f.hidingCalls === 0
         ? "No command this check could read deleted a branch or a stash, or discarded changes."
         : undefined,
-  },
-  {
-    id: "lost-work.could-not-confirm",
-    render: (f) =>
-      couldNotConfirmLine(
-        f.hidingCalls,
-        f.hidingForms,
-        "command deleting a branch or a stash, or discarding changes,",
-      ),
   },
 ];
 

@@ -44,7 +44,6 @@ import {
   codexCaveat,
   codexLimitedTemplate,
   codexLines,
-  couldNotConfirmLine,
   counted,
   FixList,
   type GitCheckContext,
@@ -894,10 +893,6 @@ const FOUND: readonly T[] = [
         ? `No command this check could read skipped a hook, and none of the ${counted(f.instructions.read, "instruction file")} read says to.`
         : "No command this check could read skipped a hook.";
     },
-  },
-  {
-    id: "skipped-checks.could-not-confirm",
-    render: (f) => couldNotConfirmLine(f.hidingCalls, f.hidingForms, "command skipping a check"),
   },
 ];
 

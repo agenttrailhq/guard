@@ -160,6 +160,11 @@ export interface CardView {
 export interface Unconfirmed {
   readonly reason: "hiding-forms" | "no-output";
   readonly forms: readonly HidingForm[];
+  /**
+   * The card still found something (its tone is act or review), so what it could not confirm is
+   * whether there is more, not whether it is clean.
+   */
+  readonly found?: boolean;
 }
 
 /** What a card builder may know beyond its own category's result. */
@@ -221,7 +226,9 @@ export const UNCONFIRMED_SENTENCE: SentenceTemplate<Unconfirmed> = {
   render: (u) =>
     u.reason === "no-output"
       ? "Could not confirm: these sessions record no command output, so a count of commands that ran is zero because nothing could be confirmed, not because nothing ran."
-      : `Could not confirm: commands that ran here used ${u.forms.map(hidingFormLabel).join(", ")}, which can run commands this reading does not take apart, so this is not a clean result.`,
+      : u.found === true
+        ? `Could not confirm all of it: commands that ran, or may have run, here used ${u.forms.map(hidingFormLabel).join(", ")}, which can run commands this reading does not take apart, so there may be more than this card shows.`
+        : `Could not confirm: commands that ran, or may have run, here used ${u.forms.map(hidingFormLabel).join(", ")}, which can run commands this reading does not take apart, so this is not a clean result.`,
 };
 
 /** The card for a category with no check yet. */
@@ -341,7 +348,15 @@ export function honestStatus(
 function confirmedCard(built: CardView, facts: unknown, verification: Verification): CardView {
   const recorded = verification.resultsRecorded;
   const tone: VerifyStatus = KNOWN_TONES.has(built.tone) ? built.tone : "could-not-check";
-  const unconfirmed = unconfirmedOf(built.category, tone, facts, recorded);
+  const found = unconfirmedOf(built.category, tone, facts, recorded);
+  // A card that still found something could not confirm whether there is more, not whether it is
+  // clean, and says so.
+  const unconfirmed: Unconfirmed | undefined =
+    found === undefined
+      ? undefined
+      : tone === "act" || tone === "review"
+        ? { ...found, found: true }
+        : found;
   const finalTone = honestStatus(built.category, tone, facts, recorded);
   const lead =
     unconfirmed !== undefined

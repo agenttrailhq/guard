@@ -11,7 +11,7 @@
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { pickHeadline } from "../core/verify/cards.js";
+import { pickHeadline, UNCONFIRMED_SENTENCE, unconfirmedOf } from "../core/verify/cards.js";
 import {
   DESTRUCTIVE_TEMPLATES,
   type DestructiveFacts,
@@ -399,8 +399,10 @@ describe("commands this reading cannot open: could not confirm, never clean", ()
     expect(result.status).toBe("could-not-check");
     const card = destructiveCard(result, TOOL_RESULT);
     const found = card.found.map((s) => s.template);
-    expect(found).toContain("destructive.could-not-confirm");
     expect(found).not.toContain("destructive.none");
+    // The frame's one could-not-confirm line names the form; the card has no line of its own.
+    expect(found.filter((t) => t.endsWith("could-not-confirm"))).toEqual([]);
+    expect(unconfirmedOf("destructive", result.status, result.facts, true)?.forms).toContain(form);
   });
 
   it("a command inside a shell string or a substitution is read too", async () => {
@@ -463,10 +465,14 @@ describe("commands this reading cannot open: could not confirm, never clean", ()
       expect(category.facts.hidingCalls, name).toBe(1);
       const card = GIT_CARD_BUILDERS[name](category as never, TOOL_RESULT);
       const found = card.found.map((s) => s.template);
-      expect(found, name).toContain(`${name}.could-not-confirm`);
       expect(found, name).not.toContain(`${name}.none`);
-      const text = card.found.map((s) => s.text).join(" ");
-      expect(text, name).toContain("that ran, or may have run,");
+      // The frame says it could not confirm, for a call that ran or may have run.
+      const unconfirmed = unconfirmedOf(name, category.status, category.facts, agent === "claude");
+      expect(unconfirmed, name).toBeDefined();
+      expect(
+        UNCONFIRMED_SENTENCE.render(unconfirmed as NonNullable<typeof unconfirmed>),
+        name,
+      ).toContain("that ran, or may have run,");
     }
   });
 });

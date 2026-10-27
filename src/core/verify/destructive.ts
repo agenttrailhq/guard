@@ -56,7 +56,6 @@ import {
   codexCaveat,
   codexLimitedTemplate,
   codexLines,
-  couldNotConfirmLine,
   counted,
   FixList,
   type GitCheckContext,
@@ -941,10 +940,6 @@ const FOUND: readonly T[] = [
       allCalls(f).ran === 0 && f.hidingCalls === 0
         ? "No rm -rf and no database wipe that this check could read ran."
         : undefined,
-  },
-  {
-    id: "destructive.could-not-confirm",
-    render: (f) => couldNotConfirmLine(f.hidingCalls, f.hidingForms, "rm -rf or database wipe"),
   },
 ];
 
