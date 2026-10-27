@@ -7464,7 +7464,9 @@ function evaluate(input) {
   const repoSets = (key) => scanned.some((text) => {
     if (text === void 0) return false;
     const parsed = parseJson(text);
-    return !isRecord3(parsed) || isRecord3(parsed.env) && key in parsed.env;
+    if (!isRecord3(parsed)) return true;
+    if (!("env" in parsed) || parsed.env === void 0) return false;
+    return !isRecord3(parsed.env) || key in parsed.env;
   });
   const configDir = repoSets(ENV_CONFIG_DIR) ? join2(input.home, ".claude") : claudeDir(input.home, env);
   let localRoot;

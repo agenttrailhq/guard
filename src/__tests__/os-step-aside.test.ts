@@ -403,6 +403,24 @@ describe("evaluateStepAside — stands down only when every check passes", () =>
     });
   });
 
+  it.each([
+    ["null", null],
+    ["a list", []],
+    ["a string", "x"],
+    ["a number", 5],
+  ])("a committed settings.json whose env is %s: enforces (it may set anything)", (_why, value) => {
+    for (const folder of [PROJECT, "/work"]) {
+      const files = {
+        ...world(),
+        [`${folder}/.claude/settings.json`]: JSON.stringify({ env: value }),
+      };
+      expect(evaluateStepAside(input(files)), folder).toEqual({
+        standDown: false,
+        failed: "sentinel",
+      });
+    }
+  });
+
   it("a token rotated without a record update: enforces", () => {
     const env = { ...ENV, AGENTTRAIL_PEP_TOKEN: "dlv_ingest_rotated" };
     expect(evaluateStepAside(input(world(), env))).toEqual({ standDown: false, failed: "token" });

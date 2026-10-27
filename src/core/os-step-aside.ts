@@ -351,12 +351,16 @@ function evaluate(input: StepAsideInput): StepAsideResult {
   const scanned = projectSettingsFolders(scanStarts, homeReal).map((folder) =>
     input.readFile(join(folder, ".claude", "settings.json")),
   );
-  // A file that exists but doesn't parse counts as setting every key.
+  // A file that exists but doesn't parse to an object, or whose `env` is present but not an
+  // object (`null`, a list, a string, a number), counts as setting every key, as the OS hook
+  // reads it.
   const repoSets = (key: string) =>
     scanned.some((text) => {
       if (text === undefined) return false;
       const parsed = parseJson(text);
-      return !isRecord(parsed) || (isRecord(parsed.env) && key in parsed.env);
+      if (!isRecord(parsed)) return true;
+      if (!("env" in parsed) || parsed.env === undefined) return false;
+      return !isRecord(parsed.env) || key in parsed.env;
     });
   const configDir = repoSets(ENV_CONFIG_DIR)
     ? join(input.home, ".claude")
