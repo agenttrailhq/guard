@@ -73,6 +73,11 @@ export interface UnreviewedFacts {
    * (`* [new branch]`): the output was read, but it names no range of commits.
    */
   readonly pushesCreatingMain: number;
+  /**
+   * Of the pushes not checked, those in a command with several pushes whose output was read but
+   * cannot be put to one of them: which push a line, or "up to date", is about is not known.
+   */
+  readonly pushesUnattributed: number;
   /** Pushes only mentioned, which did not run. */
   readonly mentioned: number;
   /** Pushes that could not be confirmed as run. */
@@ -280,6 +285,7 @@ export async function checkUnreviewed(input: UnreviewedInput): Promise<Unreviewe
     commitsNotOnMain: 0,
     pushesNotChecked: 0,
     pushesCreatingMain: 0,
+    pushesUnattributed: 0,
     mentioned: 0,
     unconfirmed: 0,
   };
@@ -326,13 +332,20 @@ export async function checkUnreviewed(input: UnreviewedInput): Promise<Unreviewe
       // No main update read. One push is not checked unless its recorded output says what
       // happened to each ref. With several, what the output says cannot be put to one of them,
       // so each that could have gone to main is not checked.
-      if (pushes.length > 1) counts.pushesNotChecked += mainPushes;
-      else if (mainPushes > 0 && !saysWhatHappened(output)) counts.pushesNotChecked += 1;
+      if (pushes.length > 1) {
+        counts.pushesNotChecked += mainPushes;
+        // An output that says what happened, read but not put to one push.
+        if (saysWhatHappened(output)) counts.pushesUnattributed += mainPushes;
+      } else if (mainPushes > 0 && !saysWhatHappened(output)) counts.pushesNotChecked += 1;
       continue;
     }
     // With several pushes, each that could have gone to main beyond the main updates read
     // printed nothing to read: not checked.
-    if (pushes.length > 1) counts.pushesNotChecked += Math.max(0, mainPushes - updates.length);
+    if (pushes.length > 1) {
+      const extra = Math.max(0, mainPushes - updates.length);
+      counts.pushesNotChecked += extra;
+      counts.pushesUnattributed += extra;
+    }
     counts.pushesToMain += updates.length;
     // A branch the push created carries no ids to ask about, so each is one not checked, below.
     counts.pushesCreatingMain += updates.filter((u) => u.from === undefined).length;
@@ -341,8 +354,13 @@ export async function checkUnreviewed(input: UnreviewedInput): Promise<Unreviewe
     const oneTarget = pushes.every((p) => p.remote === push.remote && p.dir === push.dir);
     const dir = placed(push.dir ?? call.cwd ?? "", call.cwd);
     const root = dir === undefined || dir === "" ? undefined : await repoRoot(input.io, dir, cache);
-    if (root === undefined || !root.ok || push.remote !== "origin" || !oneTarget) {
+    if (root === undefined || !root.ok || push.remote !== "origin") {
       counts.pushesNotChecked += updates.length;
+      continue;
+    }
+    if (!oneTarget) {
+      counts.pushesNotChecked += updates.length;
+      counts.pushesUnattributed += updates.length;
       continue;
     }
     for (const update of updates) {
@@ -427,11 +445,19 @@ export const UNREVIEWED_FOUND: readonly SentenceTemplate<UnreviewedFacts>[] = [
       `${counted(f.pushesCreatingMain, "push", "pushes")} created a main branch on the remote, so its output names no range of commits, and ${f.pushesCreatingMain === 1 ? "it was" : "they were"} not checked.`,
   ),
   when(
-    "unreviewed.not-checked",
-    (f) => f.pushesNotChecked > f.pushesCreatingMain,
+    "unreviewed.unattributed",
+    (f) => f.pushesUnattributed > 0,
     (f) => {
-      const n = f.pushesNotChecked - f.pushesCreatingMain;
       const other = f.pushesCreatingMain > 0;
+      return `${counted(f.pushesUnattributed, other ? "more push" : "push", other ? "more pushes" : "pushes")} could not be checked: the command ran several pushes, and what their output says cannot be put to one of them.`;
+    },
+  ),
+  when(
+    "unreviewed.not-checked",
+    (f) => f.pushesNotChecked > f.pushesCreatingMain + f.pushesUnattributed,
+    (f) => {
+      const n = f.pushesNotChecked - f.pushesCreatingMain - f.pushesUnattributed;
+      const other = f.pushesCreatingMain + f.pushesUnattributed > 0;
       return `${counted(n, other ? "more push" : "push", other ? "more pushes" : "pushes")} could not be checked: the output or the repo could not be read.`;
     },
   ),
@@ -439,8 +465,10 @@ export const UNREVIEWED_FOUND: readonly SentenceTemplate<UnreviewedFacts>[] = [
   when(
     "unreviewed.mentioned",
     (f) => f.mentioned > 0,
-    (f) =>
-      `${counted(f.mentioned, "more push was", "more pushes were")} only mentioned and did not run.`,
+    (f) => {
+      const other = f.pushesToMain + f.pushesNotChecked > 0;
+      return `${counted(f.mentioned, other ? "more push was" : "push was", other ? "more pushes were" : "pushes were")} only mentioned and did not run.`;
+    },
   ),
   when(
     "unreviewed.unconfirmed",

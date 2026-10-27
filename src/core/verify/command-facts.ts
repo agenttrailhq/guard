@@ -146,6 +146,7 @@ export const COMMAND_FACT_KEYS: readonly string[] = [
   "commitsNotOnMain",
   "pushesNotChecked",
   "pushesCreatingMain",
+  "pushesUnattributed",
   // Egress.
   "uploads",
   "uploadKinds",

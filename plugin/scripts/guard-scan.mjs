@@ -10791,6 +10791,7 @@ var COMMAND_FACT_KEYS = [
   "commitsNotOnMain",
   "pushesNotChecked",
   "pushesCreatingMain",
+  "pushesUnattributed",
   // Egress.
   "uploads",
   "uploadKinds",
@@ -14616,6 +14617,7 @@ async function checkUnreviewed(input) {
     commitsNotOnMain: 0,
     pushesNotChecked: 0,
     pushesCreatingMain: 0,
+    pushesUnattributed: 0,
     mentioned: 0,
     unconfirmed: 0
   };
@@ -14651,18 +14653,29 @@ async function checkUnreviewed(input) {
     const updates = pushedRefs(output).filter((u) => MAIN_BRANCH.test(u.branch));
     const mainPushes = pushes.filter(couldReachMain).length;
     if (updates.length === 0) {
-      if (pushes.length > 1) counts.pushesNotChecked += mainPushes;
-      else if (mainPushes > 0 && !saysWhatHappened(output)) counts.pushesNotChecked += 1;
+      if (pushes.length > 1) {
+        counts.pushesNotChecked += mainPushes;
+        if (saysWhatHappened(output)) counts.pushesUnattributed += mainPushes;
+      } else if (mainPushes > 0 && !saysWhatHappened(output)) counts.pushesNotChecked += 1;
       continue;
     }
-    if (pushes.length > 1) counts.pushesNotChecked += Math.max(0, mainPushes - updates.length);
+    if (pushes.length > 1) {
+      const extra = Math.max(0, mainPushes - updates.length);
+      counts.pushesNotChecked += extra;
+      counts.pushesUnattributed += extra;
+    }
     counts.pushesToMain += updates.length;
     counts.pushesCreatingMain += updates.filter((u) => u.from === void 0).length;
     const oneTarget = pushes.every((p) => p.remote === push.remote && p.dir === push.dir);
     const dir = placed(push.dir ?? call.cwd ?? "", call.cwd);
     const root = dir === void 0 || dir === "" ? void 0 : await repoRoot(input.io, dir, cache);
-    if (root === void 0 || !root.ok || push.remote !== "origin" || !oneTarget) {
+    if (root === void 0 || !root.ok || push.remote !== "origin") {
       counts.pushesNotChecked += updates.length;
+      continue;
+    }
+    if (!oneTarget) {
+      counts.pushesNotChecked += updates.length;
+      counts.pushesUnattributed += updates.length;
       continue;
     }
     for (const update of updates) {
@@ -14727,11 +14740,19 @@ var UNREVIEWED_FOUND = [
     (f) => `${counted(f.pushesCreatingMain, "push", "pushes")} created a main branch on the remote, so its output names no range of commits, and ${f.pushesCreatingMain === 1 ? "it was" : "they were"} not checked.`
   ),
   when3(
-    "unreviewed.not-checked",
-    (f) => f.pushesNotChecked > f.pushesCreatingMain,
+    "unreviewed.unattributed",
+    (f) => f.pushesUnattributed > 0,
     (f) => {
-      const n2 = f.pushesNotChecked - f.pushesCreatingMain;
       const other = f.pushesCreatingMain > 0;
+      return `${counted(f.pushesUnattributed, other ? "more push" : "push", other ? "more pushes" : "pushes")} could not be checked: the command ran several pushes, and what their output says cannot be put to one of them.`;
+    }
+  ),
+  when3(
+    "unreviewed.not-checked",
+    (f) => f.pushesNotChecked > f.pushesCreatingMain + f.pushesUnattributed,
+    (f) => {
+      const n2 = f.pushesNotChecked - f.pushesCreatingMain - f.pushesUnattributed;
+      const other = f.pushesCreatingMain + f.pushesUnattributed > 0;
       return `${counted(n2, other ? "more push" : "push", other ? "more pushes" : "pushes")} could not be checked: the output or the repo could not be read.`;
     }
   ),
@@ -14739,7 +14760,10 @@ var UNREVIEWED_FOUND = [
   when3(
     "unreviewed.mentioned",
     (f) => f.mentioned > 0,
-    (f) => `${counted(f.mentioned, "more push was", "more pushes were")} only mentioned and did not run.`
+    (f) => {
+      const other = f.pushesToMain + f.pushesNotChecked > 0;
+      return `${counted(f.mentioned, other ? "more push was" : "push was", other ? "more pushes were" : "pushes were")} only mentioned and did not run.`;
+    }
   ),
   when3(
     "unreviewed.unconfirmed",

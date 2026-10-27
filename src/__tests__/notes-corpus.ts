@@ -190,6 +190,7 @@ export const UNREVIEWED_FACTS = {
   commitsNotOnMain: 0,
   pushesNotChecked: 0,
   pushesCreatingMain: 0,
+  pushesUnattributed: 0,
   mentioned: 0,
   unconfirmed: 0,
   couldHide: 0,

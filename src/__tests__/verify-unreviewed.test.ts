@@ -220,8 +220,51 @@ describe("pushes whose commits cannot be read", () => {
       `git push origin feature/x && git push origin ${"main"}`,
       "Everything up-to-date",
     );
-    expect(check.facts.pushesNotChecked).toBe(1);
+    expect(check.facts).toMatchObject({ pushesNotChecked: 1, pushesUnattributed: 1 });
     expect(check.status).toBe("could-not-check");
+    // The card says why: the output was read, not lost.
+    const lines = unreviewedCard(check, { ranEvidence: "tool-result" }).found.map((s) => s.text);
+    expect(lines).toContain(
+      "1 push could not be checked: the command ran several pushes, and what their output says cannot be put to one of them.",
+    );
+    expect(lines.join("\n")).not.toContain("the output or the repo could not be read");
+  });
+
+  it("two quiet pushes with no output: the output could not be read, the old reason", async () => {
+    const check = await unreviewed(
+      `git push -q origin feature/x && git push -q origin HEAD:${"main"}`,
+      "",
+    );
+    expect(check.facts).toMatchObject({ pushesNotChecked: 1, pushesUnattributed: 0 });
+    const lines = unreviewedCard(check, { ranEvidence: "tool-result" }).found.map((s) => s.text);
+    expect(lines).toContain(
+      "1 push could not be checked: the output or the repo could not be read.",
+    );
+  });
+
+  it("each reason counts its own pushes, and the second says 'more'", () => {
+    const facts = {
+      pushesToMain: 0,
+      commitsOnMain: 0,
+      commitsNotOnMain: 0,
+      pushesNotChecked: 3,
+      pushesCreatingMain: 0,
+      pushesUnattributed: 2,
+      mentioned: 0,
+      unconfirmed: 0,
+      couldHide: 0,
+      hidingForms: [],
+    };
+    const lines = unreviewedCard(
+      { status: "could-not-check", matches: 2, facts },
+      { ranEvidence: "tool-result" },
+    ).found.map((s) => s.text);
+    expect(lines).toContain(
+      "2 pushes could not be checked: the command ran several pushes, and what their output says cannot be put to one of them.",
+    );
+    expect(lines).toContain(
+      "1 more push could not be checked: the output or the repo could not be read.",
+    );
   });
 
   it("two pushes that could reach main, one main line printed: the other is not checked", async () => {
@@ -229,7 +272,12 @@ describe("pushes whose commits cannot be read", () => {
       `git push origin ${"main"} && git push -q origin HEAD:${"master"}`,
       RANGE,
     );
-    expect(check.facts).toMatchObject({ pushesToMain: 1, commitsOnMain: 1, pushesNotChecked: 1 });
+    expect(check.facts).toMatchObject({
+      pushesToMain: 1,
+      commitsOnMain: 1,
+      pushesNotChecked: 1,
+      pushesUnattributed: 1,
+    });
     expect(check.status).toBe("review");
   });
 
@@ -238,7 +286,12 @@ describe("pushes whose commits cannot be read", () => {
       `git push origin feature/x && git push upstream ${"main"}`,
       RANGE,
     );
-    expect(check.facts).toMatchObject({ pushesToMain: 1, commitsOnMain: 0, pushesNotChecked: 1 });
+    expect(check.facts).toMatchObject({
+      pushesToMain: 1,
+      commitsOnMain: 0,
+      pushesNotChecked: 1,
+      pushesUnattributed: 1,
+    });
     expect(check.status).toBe("could-not-check");
   });
 
