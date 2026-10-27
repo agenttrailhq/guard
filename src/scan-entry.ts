@@ -8,21 +8,21 @@
  * scanner it runs are always the same version.
  *
  * Separate from `cli.ts` so the bundle carries `scan` and what it needs, and nothing else:
- * no install commands, no process for Claude Code's own CLI, and not crash reporting — the
- * one module in this package that can reach the network. `no-network.test.ts` walks this
- * entry and asserts it; `bundle-graph.test.ts` asserts what it may not import.
+ * no install commands, no process for Claude Code's own CLI, not crash reporting — the
+ * one module in this package that can reach the network — and not `--scrub`, which changes
+ * transcripts: it passes no `scrub`, so `scan` refuses `--scrub` and `--apply` here.
+ * `no-network.test.ts` walks this entry and asserts it; `bundle-graph.test.ts` asserts what
+ * it may not import.
  */
 
 import { runScan } from "./commands/scan.js";
 import { createRealScanIO } from "./scan-io.js";
-import { createRealScrubIO } from "./scrub-io.js";
 import { createRealVerifyIO } from "./verify-io.js";
 
 // The skill's output is read by the agent, so the AgentTrail OS line is left out.
 const code = await runScan(process.argv.slice(2), createRealScanIO(), {
   productLine: false,
   createVerifyIO: () => createRealVerifyIO(),
-  createScrubIO: () => createRealScrubIO(),
 });
 if (code !== 0) {
   process.exitCode = code;

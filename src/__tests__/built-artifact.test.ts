@@ -1209,6 +1209,42 @@ describe("scan, against the built binary", () => {
     expect(readFileSync(out, "utf8").startsWith("<title>")).toBe(true);
   });
 
+  it.each([
+    ["--scrub"],
+    ["--scrub", "--apply"],
+    ["--apply"],
+  ])("the plugin's scan bundle carries no scrub, and refuses %s", (...flags) => {
+    // The run is left out of the bundle, not only refused: none of its code is in the file.
+    const bundle = readFileSync(SCAN_BUNDLE, "utf8");
+    for (const name of [
+      "function runScrub(",
+      "function createRealScrubIO(",
+      "function scrubPlaceholder(",
+    ]) {
+      expect(bundle).not.toContain(name);
+      // The CLI carries it, so the names are the right ones to look for.
+      expect(readFileSync(CLI_BUNDLE, "utf8")).toContain(name);
+    }
+    const { projects, work } = fixture();
+    const transcript = join(
+      projects,
+      "-Users-priya-clients-acme-secret-client-app",
+      "built-1.jsonl",
+    );
+    const before = readFileSync(transcript, "utf8");
+    const r = spawnSync("node", [SCAN_BUNDLE, "--agent", "claude", "--dir", projects, ...flags], {
+      cwd: work,
+      encoding: "utf8",
+      env: { ...process.env, HOME: work },
+    });
+    expect(r.status).toBe(1);
+    expect(r.stdout).toBe(
+      "agenttrail-guard scan: --scrub and --apply are not available here. Run them with the agenttrail-guard CLI.\n",
+    );
+    expect(readFileSync(transcript, "utf8")).toBe(before);
+    expect(existsSync(join(work, ".agenttrail"))).toBe(false);
+  });
+
   it("scan --verify, from both bundles: no network call, nothing in HOME, no value printed or written", () => {
     // The verify path runs `git` in a real repo and reads the transcript again. Its token is
     // assembled at runtime and made up.
@@ -1493,9 +1529,10 @@ describe("scan, against the built binary", () => {
     expect(transcripts()).toEqual(transcriptsBefore);
   });
 
-  it("scan --scrub, from both bundles: a dry run that writes nothing, sends nothing and prints no value", () => {
+  it("scan --scrub, from the CLI: a dry run that writes nothing, sends nothing and prints no value", () => {
     // Only the dry run here: `--apply` depends on which programs are running on the machine
-    // that runs the tests. The token is assembled at runtime and made up.
+    // that runs the tests. The token is assembled at runtime and made up. The plugin's scan
+    // bundle carries no scrub, and its refusal is tested above.
     const base = mkdtempSync(join(tmpdir(), "agenttrail-guard-scrub-"));
     const token = `ghp${"_"}BUILTscrub0aB1cD2eF3gH4iJ5kL6mN7oP8qR9`;
     const projects = join(base, "projects", "-repo");
@@ -1510,10 +1547,7 @@ describe("scan, against the built binary", () => {
     })}\n`;
     writeFileSync(transcript, text);
 
-    for (const [bundle, prefix] of [
-      [CLI_BUNDLE, ["scan"]],
-      [SCAN_BUNDLE, []],
-    ] as const) {
+    for (const [bundle, prefix] of [[CLI_BUNDLE, ["scan"]]] as const) {
       const work = mkdtempSync(join(base, "work-"));
       const home = scratchHome();
       const log = join(work, "net.log");

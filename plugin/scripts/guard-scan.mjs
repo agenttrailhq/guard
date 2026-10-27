@@ -624,7 +624,7 @@ var require_scan = __commonJS({
 var require_parse = __commonJS({
   "node_modules/picomatch/lib/parse.js"(exports, module) {
     "use strict";
-    var constants4 = require_constants();
+    var constants3 = require_constants();
     var utils = require_utils();
     var {
       MAX_LENGTH,
@@ -632,7 +632,7 @@ var require_parse = __commonJS({
       REGEX_NON_SPECIAL_CHARS,
       REGEX_SPECIAL_CHARS_BACKREF,
       REPLACEMENTS
-    } = constants4;
+    } = constants3;
     var expandRange = (args2, options) => {
       if (typeof options.expandRange === "function") {
         return options.expandRange(...args2, options);
@@ -838,7 +838,7 @@ var require_parse = __commonJS({
       if (options.maxExtglobRecursion === false) {
         return { risky: false };
       }
-      const max = typeof options.maxExtglobRecursion === "number" ? options.maxExtglobRecursion : constants4.DEFAULT_MAX_EXTGLOB_RECURSION;
+      const max = typeof options.maxExtglobRecursion === "number" ? options.maxExtglobRecursion : constants3.DEFAULT_MAX_EXTGLOB_RECURSION;
       const branches = splitTopLevel(body).map((branch) => branch.trim());
       if (branches.length > 1) {
         if (branches.some((branch) => branch === "") || branches.some((branch) => /^[*?]+$/.test(branch)) || hasRepeatedCharPrefixOverlap(branches)) {
@@ -870,8 +870,8 @@ var require_parse = __commonJS({
       const bos = { type: "bos", value: "", output: opts.prepend || "" };
       const tokens = [bos];
       const capture = opts.capture ? "" : "?:";
-      const PLATFORM_CHARS = constants4.globChars(opts.windows);
-      const EXTGLOB_CHARS = constants4.extglobChars(PLATFORM_CHARS);
+      const PLATFORM_CHARS = constants3.globChars(opts.windows);
+      const EXTGLOB_CHARS = constants3.extglobChars(PLATFORM_CHARS);
       const {
         DOT_LITERAL,
         PLUS_LITERAL,
@@ -1566,7 +1566,7 @@ var require_parse = __commonJS({
         NO_DOTS_SLASH,
         STAR,
         START_ANCHOR
-      } = constants4.globChars(opts.windows);
+      } = constants3.globChars(opts.windows);
       const nodot = opts.dot ? NO_DOTS : NO_DOT;
       const slashDot = opts.dot ? NO_DOTS_SLASH : NO_DOT;
       const capture = opts.capture ? "" : "?:";
@@ -1624,7 +1624,7 @@ var require_picomatch = __commonJS({
     var scan = require_scan();
     var parse = require_parse();
     var utils = require_utils();
-    var constants4 = require_constants();
+    var constants3 = require_constants();
     var isObject = (val) => val && typeof val === "object" && !Array.isArray(val);
     var picomatch3 = (glob, options, returnState = false) => {
       if (Array.isArray(glob)) {
@@ -1734,14 +1734,14 @@ var require_picomatch = __commonJS({
       if (!input || typeof input !== "string") {
         throw new TypeError("Expected a non-empty string");
       }
-      let parsed2 = { negated: false, fastpaths: true };
+      let parsed = { negated: false, fastpaths: true };
       if (options.fastpaths !== false && (input[0] === "." || input[0] === "*")) {
-        parsed2.output = parse.fastpaths(input, options);
+        parsed.output = parse.fastpaths(input, options);
       }
-      if (!parsed2.output) {
-        parsed2 = parse(input, options);
+      if (!parsed.output) {
+        parsed = parse(input, options);
       }
-      return picomatch3.compileRe(parsed2, options, returnOutput, returnState);
+      return picomatch3.compileRe(parsed, options, returnOutput, returnState);
     };
     picomatch3.toRegex = (source, options) => {
       try {
@@ -1752,7 +1752,7 @@ var require_picomatch = __commonJS({
         return /$^/;
       }
     };
-    picomatch3.constants = constants4;
+    picomatch3.constants = constants3;
     module.exports = picomatch3;
   }
 });
@@ -1775,7 +1775,7 @@ var require_picomatch2 = __commonJS({
 });
 
 // src/commands/scan.ts
-import { basename as basename3, dirname as dirname5, join as join10, resolve as resolve4 } from "path";
+import { basename as basename3, dirname as dirname5, join as join9, resolve as resolve4 } from "path";
 import { pathToFileURL } from "url";
 
 // src/core/types.ts
@@ -8346,7 +8346,7 @@ function redactCloudIds(text2) {
     (_m, name, sep4, quote) => `${name}${sep4}${quote}${NAME_PLACEHOLDER}${quote}`
   ).replace(
     CLOUD_ID_FLAG,
-    (_m, flag, join14, quote) => `${flag}${join14}${quote}${NAME_PLACEHOLDER}${quote}`
+    (_m, flag, join12, quote) => `${flag}${join12}${quote}${NAME_PLACEHOLDER}${quote}`
   ).replace(AWS_ARN_ACCOUNT, NAME_PLACEHOLDER);
 }
 function sshUserOption(word) {
@@ -8754,14 +8754,14 @@ function redactJsonTextValues(text2) {
 }
 function redactMcpPayload(serialized) {
   if (serialized.length === 0) return serialized;
-  let parsed2;
+  let parsed;
   try {
-    parsed2 = JSON.parse(serialized);
+    parsed = JSON.parse(serialized);
   } catch {
     return redactJsonTextValues(serialized);
   }
   try {
-    return JSON.stringify(redactNode(parsed2)) ?? MCP_VALUE_PLACEHOLDER;
+    return JSON.stringify(redactNode(parsed)) ?? MCP_VALUE_PLACEHOLDER;
   } catch {
     return redactJsonTextValues(serialized);
   }
@@ -11089,9 +11089,9 @@ function segmentHidingForms(segment, command, gitConfigured, gitRunnableWritten,
   return forms;
 }
 function readCommand(command, trustWrites) {
-  const parsed2 = parseShell(command);
-  const regions = parsed2.comments.map((c) => ({ ...c, kind: "doc" }));
-  const segments = parsed2.segments;
+  const parsed = parseShell(command);
+  const regions = parsed.comments.map((c) => ({ ...c, kind: "doc" }));
+  const segments = parsed.segments;
   const count2 = segments.length;
   const hooksPaths = [...new Set(hooksPathsNamed(segments))];
   const commands = segments.map(commandOf);
@@ -11119,8 +11119,8 @@ function readCommand(command, trustWrites) {
   }
   const pipesOnlyToConsumers = (index) => consumersFrom[index + 1];
   const forms = /* @__PURE__ */ new Set();
-  if (parsed2.processSubstitution) forms.add("process-substitution");
-  if (parsed2.targetRuns) forms.add("command-substitution");
+  if (parsed.processSubstitution) forms.add("process-substitution");
+  if (parsed.targetRuns) forms.add("command-substitution");
   let gitConfigured = false;
   segments.forEach((segment, index) => {
     const keep = segment.pipedOut && !pipesOnlyToConsumers(index) || writesAFile(segment) && laterMayRun(index);
@@ -15986,13 +15986,13 @@ var CHIP_TONE = {
   render: ({ tone }) => TONE_LABELS[tone].toLowerCase()
 };
 function chipText(card) {
-  const counted6 = card.chip !== void 0 && (card.tone === "act" || card.tone === "review" || card.tone === "clean");
-  if (card.unconfirmed !== void 0 && (!counted6 || (card.chip?.count ?? 0) === 0)) {
+  const counted5 = card.chip !== void 0 && (card.tone === "act" || card.tone === "review" || card.tone === "clean");
+  if (card.unconfirmed !== void 0 && (!counted5 || (card.chip?.count ?? 0) === 0)) {
     return {
       label: sentence(CHIP_UNCONFIRMED, card) ?? { template: CHIP_UNCONFIRMED.id, text: "" }
     };
   }
-  if (counted6 && card.chip !== void 0) {
+  if (counted5 && card.chip !== void 0) {
     return { count: card.chip.count, label: card.chip.label };
   }
   return { label: sentence(CHIP_TONE, card) ?? { template: CHIP_TONE.id, text: "" } };
@@ -17343,8 +17343,8 @@ var UNCONFIRMED_NOTES = [
 function hidingIn(facts) {
   const named = at(facts, ["hidingForms"]);
   const forms = Array.isArray(named) ? HIDING_FORMS.filter((form) => named.includes(form)) : [];
-  const counted6 = HIDING_COUNTS.some((path) => (asCount(at(facts, path)) ?? 0) > 0);
-  return { forms, any: forms.length > 0 || counted6 };
+  const counted5 = HIDING_COUNTS.some((path) => (asCount(at(facts, path)) ?? 0) > 0);
+  return { forms, any: forms.length > 0 || counted5 };
 }
 function unconfirmedLine(rule, facts, status, verification) {
   const recorded = verification.resultsRecorded;
@@ -19588,15 +19588,15 @@ function hasSelectableMatch(match) {
 }
 function parseUserRulesData(text2) {
   if (text2 === void 0 || text2.trim().length === 0) return [];
-  let parsed2;
+  let parsed;
   try {
-    parsed2 = JSON.parse(text2);
+    parsed = JSON.parse(text2);
   } catch {
     return [];
   }
-  if (!Array.isArray(parsed2)) return [];
+  if (!Array.isArray(parsed)) return [];
   const out = [];
-  for (const raw of parsed2) {
+  for (const raw of parsed) {
     if (raw === null || typeof raw !== "object" || Array.isArray(raw)) continue;
     const rec = raw;
     const { id, category, defaultAction, match } = rec;
@@ -20226,13 +20226,13 @@ async function searchFixtures(io, workingDirs, held, now) {
     }
     const tracked = listing.stdout.split("\0").filter((p) => p !== "");
     let complete = tracked.length <= MAX_TRACKED_FILES;
-    for (const relative6 of tracked.slice(0, MAX_TRACKED_FILES)) {
+    for (const relative5 of tracked.slice(0, MAX_TRACKED_FILES)) {
       if (held.size === 0) break;
       if (bytes >= MAX_FIXTURE_BYTES) {
         complete = false;
         break;
       }
-      const read = await io.readFile(`${root}/${relative6}`);
+      const read = await io.readFile(`${root}/${relative5}`);
       if (!read.ok) {
         if (read.reason === "budget") {
           exhausted = true;
@@ -20285,9 +20285,6 @@ function itemsOf(candidates) {
 }
 async function checkSecrets(input) {
   return (await classifySecrets(input, false)).check;
-}
-async function findLikelyReal(input) {
-  return await classifySecrets(input, true);
 }
 async function classifySecrets(input, keep) {
   const candidates = /* @__PURE__ */ new Map();
@@ -20518,675 +20515,6 @@ function agentChoiceMessage(command) {
 ${lines2.join("")}`;
 }
 
-// src/commands/scan-scrub.ts
-import { join as join9, relative as relative4 } from "path";
-
-// src/core/scrub-transcripts.ts
-import { createHash as createHash2 } from "crypto";
-var SCRUB_MARKER = "REDACTED-BY-AGENTTRAIL";
-function scrubPlaceholder(kind2) {
-  return `[${SCRUB_MARKER}:${kind2}]`;
-}
-function sha256(bytes) {
-  return createHash2("sha256").update(bytes).digest("hex");
-}
-function jsonForm(text2) {
-  return JSON.stringify(text2).slice(1, -1);
-}
-function asciiForm(form) {
-  let out = "";
-  for (const ch of form) {
-    const code2 = ch.charCodeAt(0);
-    if (code2 <= 126) {
-      out += ch;
-      continue;
-    }
-    for (let i = 0; i < ch.length; i++) {
-      out += `\\u${ch.charCodeAt(i).toString(16).padStart(4, "0")}`;
-    }
-  }
-  return out;
-}
-function formsOf(targets) {
-  const forms = [];
-  const sorted = [...targets].sort((a, b) => b.value.length - a.value.length);
-  for (const target of sorted) {
-    if (target.value === "") continue;
-    const json = jsonForm(target.value);
-    const raws = /* @__PURE__ */ new Set([json, asciiForm(json), json.replaceAll("/", "\\/")]);
-    for (const raw of raws) {
-      forms.push({ raw, kind: target.kind, placeholder: scrubPlaceholder(target.kind) });
-    }
-  }
-  return forms;
-}
-function escapedAt(text2, at2) {
-  let slashes = 0;
-  for (let i = at2 - 1; i >= 0 && text2.charCodeAt(i) === 92; i--) slashes += 1;
-  return slashes % 2 === 1;
-}
-function replaceInString(inner, forms, counts) {
-  let text2 = inner;
-  for (const form of forms) {
-    if (!text2.includes(form.raw)) continue;
-    let out = "";
-    let from = 0;
-    for (; ; ) {
-      const at2 = text2.indexOf(form.raw, from);
-      if (at2 < 0) break;
-      if (escapedAt(text2, at2)) {
-        out += text2.slice(from, at2 + 1);
-        from = at2 + 1;
-        continue;
-      }
-      out += text2.slice(from, at2) + form.placeholder;
-      from = at2 + form.raw.length;
-      counts.set(form.kind, (counts.get(form.kind) ?? 0) + 1);
-    }
-    text2 = out + text2.slice(from);
-  }
-  return text2;
-}
-function replaceInLine(line2, forms, counts) {
-  let out = "";
-  let i = 0;
-  while (i < line2.length) {
-    const open = line2.indexOf('"', i);
-    if (open < 0) {
-      out += line2.slice(i);
-      break;
-    }
-    let end = open + 1;
-    while (end < line2.length) {
-      const code2 = line2.charCodeAt(end);
-      if (code2 === 92) end += 2;
-      else if (code2 === 34) break;
-      else end += 1;
-    }
-    if (end >= line2.length) {
-      out += line2.slice(i);
-      break;
-    }
-    out += line2.slice(i, open + 1);
-    out += replaceInString(line2.slice(open + 1, end), forms, counts);
-    out += '"';
-    i = end + 1;
-  }
-  return out;
-}
-var MAX_STRINGS = 1e5;
-function holdsValue(parsed2, values) {
-  const stack = [parsed2];
-  let seen = 0;
-  while (stack.length > 0 && seen < MAX_STRINGS) {
-    const item = stack.pop();
-    if (typeof item === "string") {
-      seen += 1;
-      if (values.some((v) => item.includes(v))) return true;
-    } else if (Array.isArray(item)) {
-      for (const x of item) stack.push(x);
-    } else if (item !== null && typeof item === "object") {
-      for (const [key, x] of Object.entries(item)) {
-        stack.push(key);
-        stack.push(x);
-      }
-    }
-  }
-  return stack.length > 0;
-}
-function parsed(line2) {
-  try {
-    return { value: JSON.parse(line2) };
-  } catch {
-    return void 0;
-  }
-}
-function planFileScrub(text2, targets, held = []) {
-  const forms = formsOf(targets).filter((form) => text2.includes(form.raw));
-  const heldValues = [...new Set(held.filter((v) => v !== ""))];
-  const counts = /* @__PURE__ */ new Map();
-  if (forms.length === 0 && heldValues.length === 0) {
-    return {
-      text: text2,
-      changed: false,
-      replaced: {},
-      total: 0,
-      linesChanged: 0,
-      linesLeft: 0,
-      linesIncomplete: 0
-    };
-  }
-  const values = [...new Set(targets.map((t) => t.value).filter((v) => v !== ""))];
-  const lines2 = text2.split("\n");
-  let linesChanged = 0;
-  let linesLeft = 0;
-  let linesIncomplete = 0;
-  for (const [index, line2] of lines2.entries()) {
-    if (!forms.some((form) => line2.includes(form.raw))) {
-      if (heldValues.length > 0 && line2.includes("\\")) {
-        const decoded = parsed(line2);
-        if (decoded !== void 0 && holdsValue(decoded.value, heldValues)) linesLeft += 1;
-      }
-      continue;
-    }
-    const lineCounts = /* @__PURE__ */ new Map();
-    const next = replaceInLine(line2, forms, lineCounts);
-    if (next === line2) {
-      const before = parsed(line2);
-      if (before === void 0 || holdsValue(before.value, values)) linesLeft += 1;
-      continue;
-    }
-    const after = parsed(next);
-    if (parsed(line2) === void 0 || after === void 0) {
-      linesLeft += 1;
-      continue;
-    }
-    lines2[index] = next;
-    linesChanged += 1;
-    for (const [kind2, n2] of lineCounts) counts.set(kind2, (counts.get(kind2) ?? 0) + n2);
-    if (holdsValue(after.value, values)) linesIncomplete += 1;
-  }
-  const replaced = {};
-  let total = 0;
-  for (const [kind2, n2] of [...counts].sort(([a], [b]) => a.localeCompare(b))) {
-    replaced[kind2] = n2;
-    total += n2;
-  }
-  const changed = linesChanged > 0;
-  return {
-    text: changed ? lines2.join("\n") : text2,
-    changed,
-    replaced,
-    total,
-    linesChanged,
-    linesLeft,
-    linesIncomplete
-  };
-}
-
-// src/commands/scan-scrub.ts
-var CODEX_SCRUB_NOTE = "Codex support is limited and unverified: scrubbing has been tested only on synthetic session files built from Codex's documented rollout format, not on real Codex sessions.";
-var RECENT_WRITE_WINDOW_MS = 5 * 60 * 1e3;
-var MAX_SCRUB_VALUES = 5e4;
-var MAX_RESTORE_LINES_SHOWN = 10;
-function scrubBackupsRoot(home) {
-  return join9(home, ".agenttrail", "scrub-backups");
-}
-function backupFolderName(now) {
-  return now.toISOString().replace(/[:.]/g, "-");
-}
-function watchedIdOf(agent) {
-  return agent;
-}
-async function agentProcessCheck(io, agent) {
-  const listed = await io.processNames();
-  if (!listed.ok) return { state: "could-not-check" };
-  return listed.running.includes(watchedIdOf(agent)) ? { state: "running" } : { state: "not-running" };
-}
-var PROCESS_NAME_GAP = `If an agent is running under a generic name (for example "node"), this check can't see it; files changed in the last 5 minutes are skipped for that reason.`;
-function isRecentlyModified(mtimeMs, nowMs) {
-  return nowMs - mtimeMs < RECENT_WRITE_WINDOW_MS;
-}
-var UNSAFE_PATH_SOURCE = "[\\u0000-\\u001f\\u007f-\\u009f\\u00ad\\u061c\\u180e\\u200b-\\u200f\\u2028-\\u202e\\u2060-\\u2064\\u2066-\\u2069\\ufeff]";
-var UNSAFE_PATH_CHARS = new RegExp(UNSAFE_PATH_SOURCE);
-var BACKUP_NAME_UNSAFE = /[^A-Za-z0-9._-]/g;
-var MAX_BACKUP_NAME = 100;
-function isSafePath(path) {
-  return !UNSAFE_PATH_CHARS.test(path);
-}
-function displayPath(path) {
-  return path.replace(new RegExp(UNSAFE_PATH_SOURCE, "g"), "?");
-}
-function backupFileName(index, count2, original) {
-  const cut = Math.max(original.lastIndexOf("/"), original.lastIndexOf("\\"));
-  const base = original.slice(cut + 1).replace(BACKUP_NAME_UNSAFE, "_");
-  const number = String(index).padStart(String(count2).length, "0");
-  return `${number}-${(base === "" ? "file" : base).slice(-MAX_BACKUP_NAME)}`;
-}
-function shellQuote(path) {
-  return `'${path.replaceAll("'", `'\\''`)}'`;
-}
-function powershellQuote(path) {
-  return `'${path.replace(/['\u2018\u2019\u201a\u201b]/g, "$&$&")}'`;
-}
-function restoreCommand(platform, backup, original) {
-  if (!isSafePath(backup) || !isSafePath(original)) return void 0;
-  if (platform === "win32") {
-    return `Copy-Item -LiteralPath ${powershellQuote(backup)} -Destination ${powershellQuote(original)} -Force`;
-  }
-  return `cp -p -- ${shellQuote(backup)} ${shellQuote(original)}`;
-}
-function skipText(reason, code2) {
-  switch (reason) {
-    case "unsupported":
-      return "not a supported transcript format (JSON Lines); left alone";
-    case "link":
-      return "a symbolic link, which is never replaced or followed; left alone";
-    case "hard-link":
-      return "has other names (hard links) that would keep the old text; left alone";
-    case "unreadable":
-      return "could not be read; left alone";
-    case "too-large":
-      return "too large to scrub safely; left alone";
-    case "not-utf8":
-      return "not UTF-8 text, so it cannot be edited without changing other bytes; left alone";
-    case "recent":
-      return "changed in the last 5 minutes, so a session may still be writing it; skipped";
-    case "changed":
-      return "changed since it was read; left as it is";
-    case "write-failed":
-      return "the scrubbed copy could not be written beside it; left as it is";
-    case "rename-failed":
-      return `could not be replaced${code2 === void 0 ? "" : ` (${code2})`}, which happens when another program holds it open; left as it is`;
-    case "verify-failed":
-      return "did not read back as written; restore it from the backup";
-    default:
-      return reason;
-  }
-}
-var HOLDS_VALUE = "; it holds a likely-real value, which stays in it";
-function heldByFile(found) {
-  const held = /* @__PURE__ */ new Map();
-  for (const { value, files } of found.values) {
-    for (const file2 of files) {
-      const list = held.get(file2);
-      if (list === void 0) held.set(file2, [value]);
-      else list.push(value);
-    }
-  }
-  return held;
-}
-function utf8(bytes) {
-  try {
-    return new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
-  } catch {
-    return void 0;
-  }
-}
-function planFiles(files, found, held, scrubIO) {
-  const planning = { changes: [], skipped: [], stuck: [], notFound: [] };
-  for (const path of files) {
-    if (!path.endsWith(".jsonl")) {
-      planning.skipped.push({ path, reason: "unsupported" });
-      continue;
-    }
-    const read = scrubIO.read(path);
-    if (!read.ok) {
-      planning.skipped.push({
-        path,
-        reason: read.reason === "too-large" || read.reason === "changed" || read.reason === "link" ? read.reason : "unreadable"
-      });
-      continue;
-    }
-    if (read.stat.nlink > 1) {
-      planning.skipped.push({ path, reason: "hard-link" });
-      continue;
-    }
-    const text2 = utf8(read.bytes);
-    if (text2 === void 0) {
-      planning.skipped.push({ path, reason: "not-utf8" });
-      continue;
-    }
-    const { text: _text, ...plan } = planFileScrub(text2, found.values, held.get(path));
-    const entry = { path, stat: read.stat, sha256: sha256(read.bytes), plan };
-    if (plan.changed) planning.changes.push(entry);
-    else if (plan.linesLeft > 0) planning.stuck.push(entry);
-    else if (held.has(path)) planning.notFound.push(path);
-  }
-  return planning;
-}
-function replacementText(plan) {
-  const kinds = Object.entries(plan.replaced);
-  const parts = kinds.map(([kind2, n2]) => `${formatCount(n2)} ${kind2}`).join(", ");
-  return `${formatCount(plan.total)} ${plan.total === 1 ? "replacement" : "replacements"}: ${parts}`;
-}
-function counted4(n2, singular, plural2 = `${singular}s`) {
-  return `${formatCount(n2)} ${n2 === 1 ? singular : plural2}`;
-}
-function sessionFilesName(agent) {
-  switch (agent) {
-    case "claude":
-      return "Claude Code transcripts";
-    case "codex":
-      return "Codex session files";
-    case "cursor":
-      return "Cursor agent transcripts";
-    default:
-      return unhandledAgent(agent);
-  }
-}
-async function runScrub(input) {
-  const { agent, io, scrubIO } = input;
-  const c = createColors(input.colors);
-  const app = agentName(agent);
-  const shown = (path) => {
-    const rel = relative4(input.root, path);
-    return displayPath(rel === "" || rel.startsWith("..") ? path : rel);
-  };
-  const lines2 = [];
-  const flush = () => {
-    if (lines2.length > 0) io.writeStdout(`${lines2.join("\n")}
-`);
-    lines2.length = 0;
-  };
-  lines2.push(
-    c.bold(
-      `${input.apply ? "Scrub" : "Scrub, dry run"}: ${sessionFilesName(agent)} in ${displayPath(input.root)}`
-    )
-  );
-  if (!input.apply) lines2.push("Nothing is changed without --apply.");
-  if (agent === "codex") lines2.push(c.yellow(CODEX_SCRUB_NOTE));
-  const files = [...new Set(input.corpus.files ?? [])];
-  const found = await findLikelyReal({
-    agent,
-    files: files.filter((f) => f.endsWith(".jsonl")),
-    readLines: (path) => io.readLines(path),
-    io: input.verifyIO,
-    fingerprint: createFingerprinter(),
-    maxHeldValues: input.maxValues ?? MAX_SCRUB_VALUES
-  });
-  const facts = found.check.facts;
-  const held = heldByFile(found);
-  const planning = planFiles(files, found, held, scrubIO);
-  const heldSkips = planning.skipped.filter((skip) => held.has(skip.path));
-  const skipLine = (skip) => `  ${shown(skip.path)}: ${skipText(skip.reason)}${held.has(skip.path) ? HOLDS_VALUE : ""}`;
-  lines2.push("");
-  const likely = facts.classes["likely-real"];
-  lines2.push(
-    `${counted4(likely, "likely-real credential")} in ${counted4(facts.filesRead, "transcript file")}.`
-  );
-  const leftAlone = [];
-  if (facts.classes["committed-fixture"] > 0) {
-    leftAlone.push(counted4(facts.classes["committed-fixture"], "committed fixture"));
-  }
-  if (facts.classes.placeholder > 0) {
-    leftAlone.push(
-      counted4(
-        facts.classes.placeholder,
-        "placeholder or false positive",
-        "placeholders or false positives"
-      )
-    );
-  }
-  if (facts.classes["local-dev"] > 0) {
-    leftAlone.push(counted4(facts.classes["local-dev"], "local dev value"));
-  }
-  if (leftAlone.length > 0) lines2.push(c.dim(`Left alone: ${leftAlone.join(", ")}.`));
-  const gaps = [];
-  const notRead = input.corpus.notRead + input.corpus.quarantined + facts.filesNotRead;
-  if (notRead > 0) gaps.push(`${counted4(notRead, "transcript file")} could not be read or checked`);
-  if (facts.unplaced > 0)
-    gaps.push(`${counted4(facts.unplaced, "redacted text")} could not be classed`);
-  if (found.notHeld > 0) {
-    gaps.push(
-      `${counted4(found.notHeld, "likely-real value")} past the limit of ${formatCount(input.maxValues ?? MAX_SCRUB_VALUES)} cannot be replaced in this run`
-    );
-  }
-  if (facts.reposNotChecked > 0) {
-    lines2.push(
-      c.dim(
-        `${counted4(facts.reposNotChecked, "repo")} could not be searched for committed fixtures, so a fixture there counts as likely real.`
-      )
-    );
-  } else if (likely > 0 && facts.fixtureCheck === "unavailable") {
-    lines2.push(
-      c.dim(
-        "No repo was found to search for committed fixtures, so a fixture counts as likely real."
-      )
-    );
-  }
-  for (const entry of planning.stuck) {
-    gaps.push(
-      `${shown(entry.path)}: ${counted4(entry.plan.linesLeft, "line")} holding a value could not be edited (not JSON, or in a form this command does not edit)`
-    );
-  }
-  for (const path of planning.notFound) {
-    gaps.push(`${shown(path)}: holds a likely-real value this command could not find to replace`);
-  }
-  if (planning.changes.length === 0) {
-    lines2.push("");
-    lines2.push(
-      likely === 0 ? "Nothing to scrub." : "Nothing could be replaced: no file holds these values in a form this command can edit."
-    );
-    for (const skip of planning.skipped) lines2.push(skipLine(skip));
-    for (const gap of gaps) lines2.push(c.yellow(`  ${gap}.`));
-    flush();
-    return likely === 0 && gaps.length === 0 && heldSkips.length === 0 ? 0 : input.apply ? 1 : 0;
-  }
-  lines2.push("");
-  lines2.push(input.apply ? "To scrub:" : "Would scrub:");
-  for (const entry of planning.changes) {
-    lines2.push(`  ${shown(entry.path)}  ${replacementText(entry.plan)}`);
-  }
-  for (const skip of planning.skipped) lines2.push(skipLine(skip));
-  for (const gap of gaps) lines2.push(c.yellow(`  ${gap}.`));
-  lines2.push(c.dim(`Each value becomes [${SCRUB_MARKER}:<kind>].`));
-  const advice = () => {
-    lines2.push("");
-    lines2.push(c.bold("Before you scrub"));
-    lines2.push(
-      "  1. Rotate each credential first. Taking it out of the transcripts does not undo the exposure."
-    );
-    lines2.push(
-      `  2. Close every ${app} session. A running session keeps appending to its transcript.`
-    );
-    lines2.push(
-      c.dim(
-        `Not scrubbed by this command: anything ${app} keeps outside these session files (such as its prompt history and caches), your shell history, and the backup --apply makes.`
-      )
-    );
-  };
-  const running = await agentProcessCheck(input.verifyIO, agent);
-  const nowMs = input.now.getTime();
-  const recent = planning.changes.filter((f) => isRecentlyModified(f.stat.mtimeMs, nowMs));
-  if (!input.apply) {
-    lines2.push("");
-    lines2.push("With --apply:");
-    lines2.push(
-      `  every file above is first copied to a new private folder under ${displayPath(scrubBackupsRoot(io.homedir()))},`
-    );
-    lines2.push("  and then each one is replaced in a single step.");
-    lines2.push(`  It refuses while ${app} is running, which it finds by process name.`);
-    lines2.push(`  ${PROCESS_NAME_GAP}`);
-    if (running.state === "running") {
-      lines2.push(c.yellow(`  It would refuse to run now: ${app} is running.`));
-    } else if (running.state === "could-not-check") {
-      lines2.push(
-        c.yellow(
-          "  It would refuse to run now: the list of running programs could not be read in full."
-        )
-      );
-    }
-    for (const entry of recent) {
-      lines2.push(c.yellow(`  It would skip ${shown(entry.path)}: ${skipText("recent")}.`));
-    }
-    advice();
-    flush();
-    return 0;
-  }
-  if (running.state !== "not-running") {
-    lines2.push("");
-    lines2.push(
-      c.yellow(
-        running.state === "running" ? `Refused: ${app} is running. Nothing was changed.` : "Refused: the list of running programs could not be read in full, so a running session cannot be ruled out. Nothing was changed."
-      )
-    );
-    lines2.push(`Close every ${app} session, then run this again.`);
-    advice();
-    flush();
-    return 1;
-  }
-  lines2.push("");
-  lines2.push(c.dim(`No ${app} process was found by name. ${PROCESS_NAME_GAP}`));
-  const outcomes = recent.map((f) => ({ path: f.path, reason: "recent" }));
-  const targets = planning.changes.filter((f) => !isRecentlyModified(f.stat.mtimeMs, nowMs));
-  if (targets.length === 0) {
-    lines2.push("");
-    for (const o of outcomes) lines2.push(c.yellow(`  ${shown(o.path)}: ${skipText(o.reason)}.`));
-    lines2.push("Nothing was changed.");
-    advice();
-    flush();
-    return 1;
-  }
-  const backupDir = scrubIO.createBackupDir(
-    scrubBackupsRoot(io.homedir()),
-    backupFolderName(input.now)
-  );
-  if (backupDir === void 0) {
-    lines2.push("");
-    lines2.push(
-      c.yellow(
-        `Refused: a private backup folder could not be made under ${displayPath(scrubBackupsRoot(io.homedir()))}. Nothing was changed.`
-      )
-    );
-    flush();
-    return 1;
-  }
-  const backedUp = [];
-  const written = [];
-  let backupFailed = false;
-  for (const [i, file2] of targets.entries()) {
-    const read = scrubIO.read(file2.path);
-    if (!read.ok || sha256(read.bytes) !== file2.sha256) {
-      outcomes.push({ path: file2.path, reason: "changed" });
-      continue;
-    }
-    const text2 = new TextDecoder("utf-8", { ignoreBOM: true }).decode(read.bytes);
-    const name = backupFileName(i + 1, targets.length, file2.path);
-    const backup = join9(backupDir, name);
-    if (!scrubIO.writeBackupFile(backup, read.bytes)) {
-      backupFailed = true;
-      break;
-    }
-    written.push(backup);
-    const after = new TextEncoder().encode(planFileScrub(text2, found.values).text);
-    backedUp.push({
-      file: { ...file2, stat: read.stat },
-      backup,
-      after,
-      afterSha: sha256(after)
-    });
-  }
-  const manifest = {
-    format: 1,
-    createdAt: input.now.toISOString(),
-    agent,
-    note: "These files still hold the credentials that were scrubbed. Delete this folder once you have checked the scrubbed files. sha256After is the hash each file has once scrubbed.",
-    files: backedUp.map((b) => ({
-      original: b.file.path,
-      backup: b.backup,
-      size: b.file.stat.size,
-      mtimeMs: b.file.stat.mtimeMs,
-      sha256Before: b.file.sha256,
-      sha256After: b.afterSha
-    }))
-  };
-  const restoreLines = backedUp.map(
-    (b) => restoreCommand(input.platform, b.backup, b.file.path) ?? `# could not make a safe restore command for ${displayPath(b.file.path)}; copy ${displayPath(b.backup)} back by hand`
-  );
-  const encoder = new TextEncoder();
-  const manifestPath = join9(backupDir, "manifest.json");
-  const restorePath = join9(backupDir, "restore.txt");
-  if (!backupFailed && backedUp.length > 0) {
-    if (scrubIO.writeBackupFile(
-      manifestPath,
-      encoder.encode(`${JSON.stringify(manifest, null, 2)}
-`)
-    )) {
-      written.push(manifestPath);
-    } else backupFailed = true;
-  }
-  if (!backupFailed && backedUp.length > 0) {
-    if (scrubIO.writeBackupFile(restorePath, encoder.encode(`${restoreLines.join("\n")}
-`))) {
-      written.push(restorePath);
-    } else backupFailed = true;
-  }
-  if (backupFailed || backedUp.length === 0) {
-    scrubIO.discardBackup(backupDir, written);
-    lines2.push("");
-    for (const o of outcomes) lines2.push(c.yellow(`  ${shown(o.path)}: ${skipText(o.reason)}.`));
-    lines2.push(
-      c.yellow(
-        backupFailed ? "Refused: the backup could not be written in full. Nothing was changed, and the partial backup was removed." : "Nothing was changed."
-      )
-    );
-    flush();
-    return 1;
-  }
-  lines2.push("");
-  lines2.push(
-    `Backed up ${counted4(backedUp.length, "file")} to ${displayPath(backupDir)} (readable only by you).`
-  );
-  lines2.push(
-    c.yellow(
-      "That backup still holds the credentials. Delete it once you have checked the scrubbed files."
-    )
-  );
-  flush();
-  const scrubbed = [];
-  for (const b of backedUp) {
-    const replaced = scrubIO.replaceFile(b.file.path, b.after, {
-      stat: b.file.stat,
-      sha256: b.file.sha256
-    });
-    if (!replaced.ok) {
-      outcomes.push({ path: b.file.path, reason: replaced.reason, code: replaced.code });
-      continue;
-    }
-    const back = scrubIO.read(b.file.path);
-    if (!back.ok || sha256(back.bytes) !== b.afterSha) {
-      outcomes.push({ path: b.file.path, reason: "verify-failed" });
-      continue;
-    }
-    scrubbed.push(b);
-  }
-  lines2.push("");
-  if (scrubbed.length > 0) {
-    lines2.push("Scrubbed:");
-    for (const b of scrubbed) {
-      lines2.push(`  ${shown(b.file.path)}  ${replacementText(b.file.plan)}`);
-      if (b.file.plan.linesIncomplete > 0) {
-        lines2.push(
-          c.yellow(
-            `    ${counted4(b.file.plan.linesIncomplete, "line")} still ${b.file.plan.linesIncomplete === 1 ? "holds" : "hold"} a value written in a form this command does not edit`
-          )
-        );
-      }
-      if (b.file.plan.linesLeft > 0) {
-        lines2.push(
-          c.yellow(
-            `    ${counted4(b.file.plan.linesLeft, "line")} holding a value could not be edited (not JSON, or in a form this command does not edit), and ${b.file.plan.linesLeft === 1 ? "was" : "were"} left as ${b.file.plan.linesLeft === 1 ? "it was" : "they were"}`
-          )
-        );
-      }
-    }
-  }
-  if (outcomes.length > 0 || heldSkips.length > 0) {
-    lines2.push("Not scrubbed:");
-    for (const o of outcomes)
-      lines2.push(c.yellow(`  ${shown(o.path)}: ${skipText(o.reason, o.code)}.`));
-    for (const skip of heldSkips) lines2.push(c.yellow(`${skipLine(skip)}.`));
-  }
-  lines2.push("");
-  lines2.push("To put a file back as it was:");
-  for (const line2 of restoreLines.slice(0, MAX_RESTORE_LINES_SHOWN)) lines2.push(`  ${line2}`);
-  if (restoreLines.length > MAX_RESTORE_LINES_SHOWN) {
-    lines2.push(c.dim(`  and ${formatCount(restoreLines.length - MAX_RESTORE_LINES_SHOWN)} more`));
-  }
-  lines2.push(c.dim(`Every restore command is in ${displayPath(restorePath)}.`));
-  lines2.push("");
-  lines2.push("Rotate each credential if you have not: scrubbing does not undo the exposure.");
-  lines2.push(
-    c.dim(
-      `Not scrubbed by this command: anything ${app} keeps outside these session files (such as its prompt history and caches), your shell history, and the backup above.`
-    )
-  );
-  flush();
-  const complete = outcomes.length === 0 && gaps.length === 0 && heldSkips.length === 0 && scrubbed.every((b) => b.file.plan.linesLeft === 0 && b.file.plan.linesIncomplete === 0);
-  return complete ? 0 : 1;
-}
-
 // src/commands/scan.ts
 var TOP_REPEATS = 5;
 var TOP_FINDINGS = 5;
@@ -21375,10 +20703,10 @@ function shouldOpen(flags, env) {
   return (env.CI ?? "") === "";
 }
 function reportPathFor(out, filename, io) {
-  if (out === void 0) return join10(io.cwd(), filename);
+  if (out === void 0) return join9(io.cwd(), filename);
   const target = resolve4(io.cwd(), out);
   try {
-    if (io.stat(target).isDirectory()) return join10(target, filename);
+    if (io.stat(target).isDirectory()) return join9(target, filename);
   } catch {
   }
   return target;
@@ -21413,7 +20741,7 @@ async function readClaudeSession(io, item) {
   }
   let opened = 1;
   const files = [item.file];
-  const subDir = join10(dirname5(item.file), basename3(item.file, ".jsonl"), "subagents");
+  const subDir = join9(dirname5(item.file), basename3(item.file, ".jsonl"), "subagents");
   let names;
   try {
     names = io.readdir(subDir);
@@ -21427,7 +20755,7 @@ async function readClaudeSession(io, item) {
   let skippedLines = session.skippedLines;
   for (const name of [...names].sort()) {
     if (!name.endsWith(".jsonl")) continue;
-    const subPath = join10(subDir, name);
+    const subPath = join9(subDir, name);
     try {
       if (io.stat(subPath).isDirectory()) continue;
     } catch {
@@ -21639,7 +20967,7 @@ function samePath(a, b, platform) {
   return platform === "darwin" || platform === "win32" ? a.toLowerCase() === b.toLowerCase() : a === b;
 }
 var CHECKS_FAILED_LINE = "Checked on this machine: the checks could not run, so this report shows no verified results.";
-function counted5(n2, singular, plural2 = `${singular}s`) {
+function counted4(n2, singular, plural2 = `${singular}s`) {
   return `${formatCount(n2)} ${n2 === 1 ? singular : plural2}`;
 }
 function verificationSummary(verification) {
@@ -21648,18 +20976,18 @@ function verificationSummary(verification) {
   const parts = [];
   if (secrets.status === "not-checked") parts.push("no transcript files to check for secrets");
   else {
-    let line2 = `${counted5(facts.classes["likely-real"], "likely-real credential")} in ${counted5(facts.filesRead, "transcript file")}`;
+    let line2 = `${counted4(facts.classes["likely-real"], "likely-real credential")} in ${counted4(facts.filesRead, "transcript file")}`;
     const also = [];
     const fixtures = facts.classes["committed-fixture"];
     const placeholders = facts.classes.placeholder;
     const local = facts.classes["local-dev"];
-    if (fixtures > 0) also.push(counted5(fixtures, "committed fixture"));
+    if (fixtures > 0) also.push(counted4(fixtures, "committed fixture"));
     if (placeholders > 0) {
       also.push(
-        counted5(placeholders, "placeholder or false positive", "placeholders or false positives")
+        counted4(placeholders, "placeholder or false positive", "placeholders or false positives")
       );
     }
-    if (local > 0) also.push(counted5(local, "local dev value"));
+    if (local > 0) also.push(counted4(local, "local dev value"));
     if (also.length > 0) line2 += ` (and ${also.join(", ")})`;
     parts.push(line2);
     const { unnamedOutputOnly, namedNotCredentialShaped } = facts.setAside;
@@ -21672,18 +21000,18 @@ function verificationSummary(verification) {
         why.push(`${formatCount(namedNotCredentialShaped)} named but not shaped like a credential`);
       }
       parts.push(
-        `${counted5(unnamedOutputOnly + namedNotCredentialShaped, "value")} not counted as likely real: ${why.join(", ")}`
+        `${counted4(unnamedOutputOnly + namedNotCredentialShaped, "value")} not counted as likely real: ${why.join(", ")}`
       );
     }
     if (facts.filesNotRead > 0) {
-      parts.push(`${counted5(facts.filesNotRead, "transcript file")} could not be read`);
+      parts.push(`${counted4(facts.filesNotRead, "transcript file")} could not be read`);
     }
     if (facts.unplaced > 0) {
-      parts.push(`${counted5(facts.unplaced, "redacted text")} could not be classed`);
+      parts.push(`${counted4(facts.unplaced, "redacted text")} could not be classed`);
     }
     if (facts.reposNotChecked > 0) {
       parts.push(
-        `${counted5(facts.reposNotChecked, "repo")} could not be searched for committed fixtures`
+        `${counted4(facts.reposNotChecked, "repo")} could not be searched for committed fixtures`
       );
     } else if (facts.fixtureCheck === "unavailable") {
       parts.push("no repo was found to search for committed fixtures");
@@ -21692,18 +21020,18 @@ function verificationSummary(verification) {
   const skipped = verification.categories["skipped-checks"];
   if ("facts" in skipped && skipped.facts !== void 0) {
     const files = skipped.facts.instructions;
-    let line2 = `${counted5(files.read, "instruction or memory file")} read for an instruction to skip checks, keeping only yes or no`;
+    let line2 = `${counted4(files.read, "instruction or memory file")} read for an instruction to skip checks, keeping only yes or no`;
     if (files.couldNotRead > 0) line2 += ` (${formatCount(files.couldNotRead)} could not be read)`;
     parts.push(line2);
   }
   const calls = verification.matchedCalls;
   if (!verification.resultsRecorded) {
     parts.push(
-      "this app records no command output, so no matched call could be confirmed as run" + (calls.mentioned > 0 ? ` (${counted5(calls.mentioned, "match", "matches")} only mentioned a command)` : "")
+      "this app records no command output, so no matched call could be confirmed as run" + (calls.mentioned > 0 ? ` (${counted4(calls.mentioned, "match", "matches")} only mentioned a command)` : "")
     );
   } else {
     parts.push(
-      `${counted5(calls.ran, "matched call")} ran, ${formatCount(calls.mentioned)} only mentioned a command, ${formatCount(calls.unknown)} could not be confirmed`
+      `${counted4(calls.ran, "matched call")} ran, ${formatCount(calls.mentioned)} only mentioned a command, ${formatCount(calls.unknown)} could not be confirmed`
     );
     if (verification.ranEvidence === "output-record" && calls.ran > 0) {
       parts.push(
@@ -21793,6 +21121,12 @@ ${usage}`);
     );
     return 1;
   }
+  if ((flags.scrub || flags.apply) && deps.scrub === void 0) {
+    io.writeStdout(
+      "agenttrail-guard scan: --scrub and --apply are not available here. Run them with the agenttrail-guard CLI.\n"
+    );
+    return 1;
+  }
   if (flags.apply && !flags.scrub) {
     io.writeStdout("agenttrail-guard scan: --apply only works with --scrub.\n");
     return 1;
@@ -21819,13 +21153,9 @@ ${usage}`);
   const allowlist = compileAllowlist(config.allowlist);
   const readRoot = flags.scrub ? resolve4(io.cwd(), root) : root;
   const corpus = await readCorpusFor(agent, readRoot, io);
-  if (flags.scrub) {
-    const scrubIO = deps.createScrubIO?.();
-    if (scrubIO === void 0) {
-      io.writeStdout("agenttrail-guard scan: --scrub is not available in this build.\n");
-      return 1;
-    }
-    return await runScrub({
+  if (flags.scrub && deps.scrub !== void 0) {
+    const scrubIO = deps.scrub.createIO();
+    return await deps.scrub.run({
       agent,
       root: readRoot,
       corpus,
@@ -21867,7 +21197,7 @@ ${usage}`);
   );
   const colors = createColors(shouldUseColor({ env: io.env, isTTY: io.isTTY() }));
   const fixes = outcome?.localFixes ?? [];
-  const fixesTarget = join10(dirname5(reportPath), FIXES_FILENAME);
+  const fixesTarget = join9(dirname5(reportPath), FIXES_FILENAME);
   const fixesIsReport = samePath(fixesTarget, reportPath, deps.platform ?? process.platform);
   const writesFixes = hasFileFixes(fixes) && !fixesIsReport;
   if (flags.review) {
@@ -21990,7 +21320,7 @@ import {
   writeFileSync
 } from "fs";
 import { homedir as homedir3 } from "os";
-import { basename as basename4, dirname as dirname6, join as join11 } from "path";
+import { basename as basename4, dirname as dirname6, join as join10 } from "path";
 import { createInterface as createInterface2 } from "readline";
 function openCommand(platform, path) {
   if (platform === "darwin") return ["open", path];
@@ -21998,7 +21328,7 @@ function openCommand(platform, path) {
   return ["xdg-open", path];
 }
 function writePrivateFile(path, text2) {
-  const temporary = join11(
+  const temporary = join10(
     dirname6(path),
     `.${basename4(path)}.${process.pid}.${randomBytes2(6).toString("hex")}.tmp`
   );
@@ -22103,251 +21433,19 @@ function createRealScanIO() {
   };
 }
 
-// src/scrub-io.ts
-import { randomBytes as randomBytes3 } from "crypto";
-import {
-  chmodSync,
-  closeSync as closeSync2,
-  constants as constants2,
-  fchmodSync as fchmodSync2,
-  fstatSync,
-  fsyncSync as fsyncSync2,
-  lstatSync,
-  mkdirSync,
-  openSync as openSync2,
-  readSync,
-  renameSync as renameSync2,
-  rmdirSync,
-  unlinkSync as unlinkSync2,
-  writeSync
-} from "fs";
-import { basename as basename5, dirname as dirname7, join as join12 } from "path";
-var MAX_SCRUB_FILE_BYTES = 256 * 1024 * 1024;
-var BACKUP_DIR_MODE = 448;
-var BACKUP_FILE_MODE = 384;
-var NODE_FS = {
-  openSync: (path, flags, mode) => openSync2(path, flags, mode),
-  fstatSync: (fd) => fstatSync(fd),
-  readSync: (fd, buffer, offset, length, position) => readSync(fd, buffer, offset, length, position),
-  writeSync: (fd, buffer, offset, length) => writeSync(fd, buffer, offset, length),
-  fsyncSync: (fd) => fsyncSync2(fd),
-  closeSync: (fd) => closeSync2(fd),
-  chmodSync: (path, mode) => chmodSync(path, mode),
-  fchmodSync: (fd, mode) => fchmodSync2(fd, mode),
-  mkdirSync: (path, options) => {
-    mkdirSync(path, options);
-  },
-  lstatSync: (path) => lstatSync(path),
-  renameSync: (from, to) => renameSync2(from, to),
-  unlinkSync: (path) => unlinkSync2(path),
-  rmdirSync: (path) => rmdirSync(path)
-};
-function readAll(fs, fd, size) {
-  const bytes = new Uint8Array(size);
-  let at2 = 0;
-  while (at2 < size) {
-    const n2 = fs.readSync(fd, bytes, at2, size - at2, at2);
-    if (n2 <= 0) return void 0;
-    at2 += n2;
-  }
-  return bytes;
-}
-function writeAll(fs, fd, bytes) {
-  let at2 = 0;
-  while (at2 < bytes.length) {
-    const n2 = fs.writeSync(fd, bytes, at2, bytes.length - at2);
-    if (n2 <= 0) throw new Error("write made no progress");
-    at2 += n2;
-  }
-}
-function closeQuietly(fs, fd) {
-  try {
-    fs.closeSync(fd);
-  } catch {
-  }
-}
-var READ_NO_FOLLOW = constants2.O_RDONLY | (constants2.O_NOFOLLOW ?? 0);
-var LINK_CODES = /* @__PURE__ */ new Set(["ELOOP", "EMLINK"]);
-function readWithStat(fs, path, maxBytes) {
-  let fd;
-  try {
-    fd = fs.openSync(path, READ_NO_FOLLOW);
-  } catch (error) {
-    const code2 = error?.code;
-    return {
-      ok: false,
-      reason: typeof code2 === "string" && LINK_CODES.has(code2) ? "link" : "missing"
-    };
-  }
-  try {
-    const stat2 = fs.fstatSync(fd);
-    if (!stat2.isFile()) return { ok: false, reason: "not-a-file" };
-    if (stat2.size > maxBytes) return { ok: false, reason: "too-large" };
-    const bytes = readAll(fs, fd, stat2.size);
-    if (bytes === void 0) return { ok: false, reason: "changed" };
-    return {
-      ok: true,
-      bytes,
-      stat: {
-        size: stat2.size,
-        mtimeMs: stat2.mtimeMs,
-        ino: stat2.ino,
-        mode: stat2.mode & 511,
-        nlink: stat2.nlink
-      }
-    };
-  } catch {
-    return { ok: false, reason: "missing" };
-  } finally {
-    closeQuietly(fs, fd);
-  }
-}
-function removeQuietly(fs, path) {
-  try {
-    fs.unlinkSync(path);
-  } catch {
-  }
-}
-function writeSyncClose(fs, fd, bytes, mode) {
-  try {
-    writeAll(fs, fd, bytes);
-    fs.fchmodSync(fd, mode);
-    fs.fsyncSync(fd);
-  } catch {
-    closeQuietly(fs, fd);
-    return false;
-  }
-  try {
-    fs.closeSync(fd);
-    return true;
-  } catch {
-    return false;
-  }
-}
-function syncFolder(fs, path) {
-  try {
-    const fd = fs.openSync(path, "r");
-    try {
-      fs.fsyncSync(fd);
-    } finally {
-      closeQuietly(fs, fd);
-    }
-  } catch {
-  }
-}
-var MAX_BACKUP_DIR_ATTEMPTS = 100;
-function createRealScrubIO(options = {}) {
-  const platform = options.platform ?? process.platform;
-  const fs = { ...NODE_FS, ...options.fs };
-  const maxBytes = options.maxFileBytes ?? MAX_SCRUB_FILE_BYTES;
-  return {
-    read(path) {
-      return readWithStat(fs, path, maxBytes);
-    },
-    createBackupDir(root, name) {
-      try {
-        fs.mkdirSync(root, { recursive: true, mode: BACKUP_DIR_MODE });
-        for (const folder of [dirname7(root), root]) {
-          const stat2 = fs.lstatSync(folder);
-          if (stat2.isSymbolicLink() || !stat2.isDirectory()) return void 0;
-        }
-      } catch {
-        return void 0;
-      }
-      for (let attempt = 0; attempt < MAX_BACKUP_DIR_ATTEMPTS; attempt++) {
-        const dir = join12(root, attempt === 0 ? name : `${name}-${attempt}`);
-        try {
-          fs.mkdirSync(dir, { mode: BACKUP_DIR_MODE });
-        } catch (error) {
-          if (error.code === "EEXIST") continue;
-          return void 0;
-        }
-        let isPrivate = false;
-        try {
-          fs.chmodSync(dir, BACKUP_DIR_MODE);
-          const stat2 = fs.lstatSync(dir);
-          isPrivate = stat2.isDirectory() && (platform === "win32" || (stat2.mode & 511) === BACKUP_DIR_MODE);
-        } catch {
-          isPrivate = false;
-        }
-        if (isPrivate) return dir;
-        try {
-          fs.rmdirSync(dir);
-        } catch {
-        }
-        return void 0;
-      }
-      return void 0;
-    },
-    writeBackupFile(path, bytes) {
-      let fd;
-      try {
-        fd = fs.openSync(path, "wx", BACKUP_FILE_MODE);
-      } catch {
-        return false;
-      }
-      if (!writeSyncClose(fs, fd, bytes, BACKUP_FILE_MODE)) {
-        removeQuietly(fs, path);
-        return false;
-      }
-      syncFolder(fs, dirname7(path));
-      return true;
-    },
-    replaceFile(path, bytes, expected) {
-      const folder = dirname7(path);
-      const temp = join12(folder, `.${basename5(path)}.${randomBytes3(6).toString("hex")}.scrub-tmp`);
-      let fd;
-      try {
-        fd = fs.openSync(temp, "wx", expected.stat.mode);
-      } catch {
-        return { ok: false, reason: "write-failed" };
-      }
-      if (!writeSyncClose(fs, fd, bytes, expected.stat.mode)) {
-        removeQuietly(fs, temp);
-        return { ok: false, reason: "write-failed" };
-      }
-      const now = readWithStat(fs, path, Number.POSITIVE_INFINITY);
-      if (!now.ok || now.stat.size !== expected.stat.size || now.stat.mtimeMs !== expected.stat.mtimeMs || now.stat.ino !== expected.stat.ino || sha256(now.bytes) !== expected.sha256) {
-        removeQuietly(fs, temp);
-        return { ok: false, reason: "changed" };
-      }
-      try {
-        fs.renameSync(temp, path);
-      } catch (error) {
-        removeQuietly(fs, temp);
-        const code2 = error?.code;
-        return {
-          ok: false,
-          reason: "rename-failed",
-          ...typeof code2 === "string" ? { code: code2 } : {}
-        };
-      }
-      syncFolder(fs, folder);
-      return { ok: true };
-    },
-    discardBackup(dir, files) {
-      for (const file2 of files) removeQuietly(fs, file2);
-      try {
-        fs.rmdirSync(dir);
-      } catch {
-      }
-    }
-  };
-}
-
 // src/verify-io.ts
 import { execFile } from "child_process";
 import {
   accessSync,
-  closeSync as closeSync3,
-  constants as constants3,
-  fstatSync as fstatSync2,
-  openSync as openSync3,
-  readSync as readSync2,
+  closeSync as closeSync2,
+  constants as constants2,
+  fstatSync,
+  openSync as openSync2,
+  readSync,
   realpathSync,
   statSync as statSync3
 } from "fs";
-import { isAbsolute as isAbsolute5, join as join13, posix, relative as relative5, win32 } from "path";
+import { isAbsolute as isAbsolute5, join as join11, posix, relative as relative4, win32 } from "path";
 var SHA2 = { slot: "sha" };
 var LITERAL_PATH = { slot: "literal-path" };
 var GIT_ALLOW_LIST = [
@@ -22492,7 +21590,7 @@ function watchedInPs(stdout) {
 function watchedInTasklist(stdout) {
   return watchedIn(stdout.split(/\r?\n/), (line2) => /^"([^"]*)"/.exec(line2.trim())?.[1] ?? "");
 }
-function isInside(root, path, paths = { relative: relative5, isAbsolute: isAbsolute5 }) {
+function isInside(root, path, paths = { relative: relative4, isAbsolute: isAbsolute5 }) {
   const rel = paths.relative(root, path);
   return rel !== "" && !rel.startsWith("..") && !paths.isAbsolute(rel);
 }
@@ -22500,7 +21598,7 @@ function defaultIsExecutable(platform) {
   return (path) => {
     try {
       if (!statSync3(path).isFile()) return false;
-      if (platform !== "win32") accessSync(path, constants3.X_OK);
+      if (platform !== "win32") accessSync(path, constants2.X_OK);
       return true;
     } catch {
       return false;
@@ -22524,7 +21622,7 @@ function agentRoots(home) {
   const roots = [];
   for (const folder of AGENT_FOLDERS) {
     try {
-      roots.push(realpathSync(join13(home, folder)));
+      roots.push(realpathSync(join11(home, folder)));
     } catch {
     }
   }
@@ -22633,17 +21731,17 @@ function createRealVerifyIO(options = {}) {
           const inAgentFolder = AGENT_FILE.test(real) && agents.some((root) => isInside(root, real));
           if (!inAgentFolder) return Promise.resolve({ ok: false, reason: "refused" });
         }
-        fd = openSync3(
+        fd = openSync2(
           real,
-          constants3.O_RDONLY | (constants3.O_NOFOLLOW ?? 0) | (constants3.O_NONBLOCK ?? 0)
+          constants2.O_RDONLY | (constants2.O_NOFOLLOW ?? 0) | (constants2.O_NONBLOCK ?? 0)
         );
-        const stat2 = fstatSync2(fd);
+        const stat2 = fstatSync(fd);
         if (!stat2.isFile()) return Promise.resolve({ ok: false, reason: "failed" });
         if (stat2.size > MAX_FILE_BYTES) return Promise.resolve({ ok: false, reason: "too-large" });
         scratch ??= Buffer.allocUnsafe(MAX_FILE_BYTES + 1);
         let total = 0;
         for (; ; ) {
-          const read = readSync2(fd, scratch, total, scratch.length - total, null);
+          const read = readSync(fd, scratch, total, scratch.length - total, null);
           if (read === 0) break;
           total += read;
           if (total === scratch.length) break;
@@ -22653,7 +21751,7 @@ function createRealVerifyIO(options = {}) {
       } catch {
         return Promise.resolve({ ok: false, reason: "missing" });
       } finally {
-        if (fd !== void 0) closeSync3(fd);
+        if (fd !== void 0) closeSync2(fd);
         spent += Math.max(0, now() - started);
       }
     },
@@ -22676,8 +21774,7 @@ function createRealVerifyIO(options = {}) {
 // src/scan-entry.ts
 var code = await runScan(process.argv.slice(2), createRealScanIO(), {
   productLine: false,
-  createVerifyIO: () => createRealVerifyIO(),
-  createScrubIO: () => createRealScrubIO()
+  createVerifyIO: () => createRealVerifyIO()
 });
 if (code !== 0) {
   process.exitCode = code;

@@ -48,6 +48,7 @@ import { runHook } from "./commands/hook.js";
 import { runInit } from "./commands/init.js";
 import { runRules } from "./commands/rules.js";
 import { runScan } from "./commands/scan.js";
+import { runScrub } from "./commands/scan-scrub.js";
 import { runStatus } from "./commands/status.js";
 import { runUninstall } from "./commands/uninstall.js";
 import { agentFromArgv } from "./core/agent.js";
@@ -180,7 +181,7 @@ export async function runCli(
   if (command === "scan") {
     return await runScan(argv.slice(1), scanIo ?? createRealScanIO(), {
       createVerifyIO: () => createRealVerifyIO(),
-      createScrubIO: () => createRealScrubIO(),
+      scrub: { createIO: () => createRealScrubIO(), run: runScrub },
     });
   }
 

@@ -102,7 +102,8 @@ import { VERSION } from "../core/version.js";
 import type { ScanIO } from "../scan-io.js";
 import type { ScrubIO } from "../scrub-io.js";
 import { agentChoiceMessage, chosenAgent } from "./agent-choice.js";
-import { runScrub } from "./scan-scrub.js";
+// Type only: the run arrives through `ScanDeps.scrub`, so a bundle without it carries no scrub.
+import type { ScrubRunInput } from "./scan-scrub.js";
 
 /** How many repeats the terminal summary lists. The report carries the rest. */
 const TOP_REPEATS = 5;
@@ -415,10 +416,16 @@ export interface ScanDeps {
   /** Runs the checks. For tests; production uses `verifyScan`. */
   readonly verify?: (input: VerifyInput) => Promise<VerifyOutcome>;
   /**
-   * Makes the seam `--scrub` reads and writes transcripts through. The CLI entries pass the
-   * real one (`scrub-io.ts`); `scan` alone never calls it. With none, `--scrub` refuses.
+   * `--scrub`: the seam it reads and writes transcripts through (`scrub-io.ts`) and the run
+   * itself (`scan-scrub.ts`). Only the CLI (`cli.ts`) passes them, so the plugin's scan bundle
+   * (`scan-entry.ts`) carries neither and refuses `--scrub` and `--apply`. Injected, not
+   * imported here or loaded with `import()`, which would put a second file beside that
+   * single-file bundle. `scan` alone never calls either.
    */
-  readonly createScrubIO?: () => ScrubIO;
+  readonly scrub?: {
+    readonly createIO: () => ScrubIO;
+    readonly run: (input: ScrubRunInput) => Promise<number>;
+  };
   /** For tests: the platform the restore commands are written for. */
   readonly platform?: string;
   /** The verify-by-default switch. Production gets `VERIFY_BY_DEFAULT`; tests run both values. */
@@ -1045,6 +1052,13 @@ export async function runScan(
     );
     return 1;
   }
+  if ((flags.scrub || flags.apply) && deps.scrub === undefined) {
+    // The plugin's scanner only reads: scrubbing changes transcripts, so it is the CLI's alone.
+    io.writeStdout(
+      "agenttrail-guard scan: --scrub and --apply are not available here. Run them with the agenttrail-guard CLI.\n",
+    );
+    return 1;
+  }
   if (flags.apply && !flags.scrub) {
     io.writeStdout("agenttrail-guard scan: --apply only works with --scrub.\n");
     return 1;
@@ -1082,13 +1096,9 @@ export async function runScan(
   // `--scrub` writes paths into its manifest and restore commands, so they must be absolute.
   const readRoot = flags.scrub ? resolve(io.cwd(), root) : root;
   const corpus: ScanCorpus = await readCorpusFor(agent, readRoot, io);
-  if (flags.scrub) {
-    const scrubIO = deps.createScrubIO?.();
-    if (scrubIO === undefined) {
-      io.writeStdout("agenttrail-guard scan: --scrub is not available in this build.\n");
-      return 1;
-    }
-    return await runScrub({
+  if (flags.scrub && deps.scrub !== undefined) {
+    const scrubIO = deps.scrub.createIO();
+    return await deps.scrub.run({
       agent,
       root: readRoot,
       corpus,

@@ -254,7 +254,9 @@ async function scan(
   try {
     const code = await runScan(["--agent", agent, "--dir", s.root, ...argv], io, {
       createVerifyIO: () => deps.verify ?? processes(),
-      ...(deps.scrub === null ? {} : { createScrubIO: () => deps.scrub ?? createRealScrubIO() }),
+      ...(deps.scrub === null
+        ? {}
+        : { scrub: { createIO: () => deps.scrub ?? createRealScrubIO(), run: runScrub } }),
       platform: "linux",
     });
     return { code, stdout: out.join(""), stderr: err.join("") };
@@ -1323,6 +1325,7 @@ describe("the flags", () => {
   it("a plain scan never makes the scrub seam", async () => {
     const s = await setup("claude");
     const make = vi.fn(() => createRealScrubIO());
+    const run = vi.fn(runScrub);
     const real = createRealScanIO();
     const code = await runScan(
       ["--agent", "claude", "--dir", s.root, "--no-open"],
@@ -1335,17 +1338,34 @@ describe("the flags", () => {
         env: { CI: "1" },
         isTTY: () => false,
       },
-      { createScrubIO: make, createVerifyIO: () => processes() },
+      { scrub: { createIO: make, run }, createVerifyIO: () => processes() },
     );
     expect(code).toBe(0);
     expect(make).not.toHaveBeenCalled();
+    expect(run).not.toHaveBeenCalled();
   });
 
-  it("--scrub with no scrub seam refuses", async () => {
+  it.each([
+    [["--scrub"]],
+    [["--scrub", "--apply"]],
+    [["--apply"]],
+  ])("with no scrub given, as in the plugin's scan bundle, %j refuses before reading anything", async (flags) => {
     const s = await setup("claude");
-    const run = await scan(s, "claude", ["--scrub"], { scrub: null });
+    const before = readFileSync(s.files[0] as string, "utf8");
+    const run = await scan(s, "claude", flags, { scrub: null });
     expect(run.code).toBe(1);
-    expect(run.stdout).toContain("--scrub is not available in this build");
+    expect(run.stdout).toBe(
+      "agenttrail-guard scan: --scrub and --apply are not available here. Run them with the agenttrail-guard CLI.\n",
+    );
+    expect(readFileSync(s.files[0] as string, "utf8")).toBe(before);
+    expect(backupFolders(s.home)).toEqual([]);
+  });
+
+  it("with the scrub given, as in the CLI, --apply alone keeps its own message", async () => {
+    const s = await setup("claude");
+    const run = await scan(s, "claude", ["--apply"]);
+    expect(run.code).toBe(1);
+    expect(run.stdout).toBe("agenttrail-guard scan: --apply only works with --scrub.\n");
   });
 });
 

@@ -73,16 +73,20 @@ function parseImports(source: string): ParsedImport[] {
  * Every module reachable from the hook entry by RELATIVE value import — exactly the set of
  * this package's own files that tsup inlines into the hook. Walking the graph rather
  * than globbing `src/` keeps the fence accurate as modules are added, and keeps it off
- * CLI-only files that never reach the hook bundle.
+ * CLI-only files that never reach the hook bundle. `read` lets a negative control walk an
+ * edited source without writing it to disk.
  */
-function hookBundleGraph(entry: string = HOOK_ENTRY): string[] {
+function hookBundleGraph(
+  entry: string = HOOK_ENTRY,
+  read: (file: string) => string = (file) => readFileSync(file, "utf8"),
+): string[] {
   const seen = new Set<string>();
   const queue = [entry];
   while (queue.length > 0) {
     const file = queue.pop();
     if (file === undefined || seen.has(file)) continue;
     seen.add(file);
-    for (const { specifier, typeOnly } of parseImports(readFileSync(file, "utf8"))) {
+    for (const { specifier, typeOnly } of parseImports(read(file))) {
       // A type-only import is erased at build time, so it adds nothing to the bundle.
       if (typeOnly || !specifier.startsWith(".")) continue;
       // Source is ESM-with-extension: `./config.js` is `config.ts` on disk.
@@ -447,21 +451,66 @@ describe("only the scrub path can write a transcript", () => {
     );
   });
 
-  it("the scan command does not import the scrub seam; only the two CLI entries do", () => {
+  /** The scrub modules: the run, its seam, and the replacing. Only the CLI carries them. */
+  const SCRUB_MODULES = [
+    join(SRC, "commands", "scan-scrub.ts"),
+    SCRUB_IO,
+    join(SRC, "core", "scrub-transcripts.ts"),
+  ];
+  const SCAN_ENTRY = join(SRC, "scan-entry.ts");
+
+  it("the scan command does not import the scrub seam or run; only the CLI entry does", () => {
     expect(hookBundleGraph(join(SRC, "commands", "scan.ts"))).not.toContain(SCRUB_IO);
     expect(hookBundleGraph(join(SRC, "commands", "scan-scrub.ts"))).not.toContain(SCRUB_IO);
-    expect(hookBundleGraph(join(SRC, "scan-entry.ts"))).toContain(SCRUB_IO);
-    expect(hookBundleGraph(join(SRC, "cli.ts"))).toContain(SCRUB_IO);
+    for (const module of SCRUB_MODULES) {
+      expect(existsSync(module)).toBe(true);
+      expect(hookBundleGraph(join(SRC, "commands", "scan.ts"))).not.toContain(module);
+      expect(hookBundleGraph(join(SRC, "cli.ts"))).toContain(module);
+    }
   });
 
-  it("in the scan bundle, only scan-io.ts and scrub-io.ts can change a file", () => {
-    // `scan-io.ts` writes the report; `scrub-io.ts` writes backups and replaces transcripts.
-    // `verify-io.ts` imports `openSync` to read files, and is checked to open read-only below.
-    // Everything else `scan` and `scan --scrub` run is read-only.
-    const writers = hookBundleGraph(join(SRC, "scan-entry.ts"))
+  it("the plugin's scan bundle carries none of the scrub modules", () => {
+    const graph = hookBundleGraph(SCAN_ENTRY);
+    expect(SCRUB_MODULES.filter((module) => graph.includes(module))).toEqual([]);
+  });
+
+  it.each([
+    ["the entry", SCAN_ENTRY, 'import { runScrub } from "./commands/scan-scrub.js";'],
+    ["the entry", SCAN_ENTRY, 'import { createRealScrubIO } from "./scrub-io.js";'],
+    ["the entry", SCAN_ENTRY, 'export { scrubPlaceholder } from "./core/scrub-transcripts.js";'],
+    [
+      "the scan command",
+      join(SRC, "commands", "scan.ts"),
+      'import { runScrub } from "./scan-scrub.js";',
+    ],
+  ])("negative control: the scrub fence fails when %s loads one again: %s", (_where, file, line) => {
+    const graph = hookBundleGraph(SCAN_ENTRY, (f) => {
+      const source = readFileSync(f, "utf8");
+      return f === file ? `${line}\n${source}` : source;
+    });
+    expect(SCRUB_MODULES.filter((module) => graph.includes(module))).not.toEqual([]);
+  });
+
+  it("in the scan bundle, only scan-io.ts can change a file", () => {
+    // `scan-io.ts` writes the report. `verify-io.ts` imports `openSync` to read files, and is
+    // checked to open read-only below. Everything else `scan` runs is read-only; the scrub
+    // seam, which writes backups and replaces transcripts, is the CLI's alone.
+    const writers = hookBundleGraph(SCAN_ENTRY)
       .filter((f) => fsWriters(f).length > 0)
       .map((f) => relative(SRC, f));
-    expect(writers.sort()).toEqual(["scan-io.ts", "scrub-io.ts", "verify-io.ts"]);
+    expect(writers.sort()).toEqual(["scan-io.ts", "verify-io.ts"]);
+  });
+
+  it("in the CLI, the scrub seam is the one more module that can change a file", () => {
+    const writers = new Set(
+      hookBundleGraph(join(SRC, "cli.ts"))
+        .filter((f) => fsWriters(f).length > 0)
+        .map((f) => relative(SRC, f)),
+    );
+    expect(writers.has("scrub-io.ts")).toBe(true);
+    for (const module of ["commands/scan-scrub.ts", "core/scrub-transcripts.ts"]) {
+      expect(writers.has(module)).toBe(false);
+    }
   });
 
   /**
