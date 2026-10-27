@@ -140,6 +140,35 @@ export interface ChipClaim {
   readonly label: CardSentence;
 }
 
+/** One thing a chip can count: its template id, the count, and its noun for one and for many. */
+export interface ChipReason<F> {
+  readonly id: string;
+  readonly count: (facts: F) => number;
+  readonly one: string;
+  readonly many: string;
+}
+
+/** A chip reason as a template, for the lists of a card's templates. */
+export function chipTemplate<F>(reason: ChipReason<F>): SentenceTemplate<F> {
+  return { id: reason.id, render: (f) => (reason.count(f) === 1 ? reason.one : reason.many) };
+}
+
+/**
+ * A card's chip. `reasons` are what can make the card act or review, in tone order: the act
+ * reasons first, then the review reasons. The chip states the first one with a count above
+ * zero, so a chip in an act or review colour always counts what put it there. With none, it
+ * states `fallback`, the card's usual claim, at its count: zero on a clean card.
+ */
+export function chipFor<F>(
+  facts: F,
+  reasons: readonly ChipReason<F>[],
+  fallback: ChipReason<F>,
+): ChipClaim {
+  const reason = reasons.find((r) => r.count(facts) > 0) ?? fallback;
+  const count = reason.count(facts);
+  return { count, label: { template: reason.id, text: count === 1 ? reason.one : reason.many } };
+}
+
 /** One category's card: what the report renders. */
 export interface CardView {
   readonly category: VerifyCategory;

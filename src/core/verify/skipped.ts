@@ -29,6 +29,9 @@ import { dirname, join } from "node:path";
 import {
   type CardContext,
   type CardView,
+  type ChipReason,
+  chipFor,
+  chipTemplate,
   type FixShape,
   type LocalFix,
   type SentenceTemplate,
@@ -1001,14 +1004,42 @@ const NOW: readonly T[] = [
 
 const CODEX: T = codexLimitedTemplate("skipped-checks");
 
-/** The chip label: the number is shown apart. */
-const CHIP: T = {
+/** The chip's usual claim: the number is shown apart. */
+const CHIP_ON_MAIN: ChipReason<SkippedChecksFacts> = {
   id: "skipped-checks.chip",
-  render: (f) =>
-    f.noVerify.onMain === 1
-      ? "commit reached main without its checks"
-      : "commits reached main without their checks",
+  count: (f) => f.noVerify.onMain,
+  one: "commit reached main without its checks",
+  many: "commits reached main without their checks",
 };
+
+/** What can make the card act, then review, in the order `skippedChecksStatus` reads them. */
+const CHIP_REASONS: readonly ChipReason<SkippedChecksFacts>[] = [
+  CHIP_ON_MAIN,
+  {
+    id: "skipped-checks.chip.hooks-off",
+    count: (f) => f.hooksPath.off,
+    one: "repo with hooks turned off",
+    many: "repos with hooks turned off",
+  },
+  {
+    id: "skipped-checks.chip.instructions",
+    count: (f) => f.instructions.sayToSkip,
+    one: "instruction file that says to skip checks",
+    many: "instruction files that say to skip checks",
+  },
+  {
+    id: "skipped-checks.chip.commits",
+    count: (f) => f.noVerify.offMain + f.noVerify.noMainToCheck,
+    one: "commit made without its checks",
+    many: "commits made without their checks",
+  },
+  {
+    id: "skipped-checks.chip.commands",
+    count: (f) => f.otherNoVerify.ran + f.husky.ran + f.oneCommand.ran,
+    one: "command that ran with hooks skipped",
+    many: "commands that ran with hooks skipped",
+  },
+];
 
 const FIX_STEPS: readonly T[] = [
   {
@@ -1050,10 +1081,7 @@ export const skippedChecksCard: ToCard<"skipped-checks"> = (
 ): CardView => {
   const f = result.facts;
   const headline = sentence(HEADLINE, f);
-  const extras = cardExtras(
-    { count: f.noVerify.onMain, label: sentence(CHIP, f) },
-    sentences(FIX_STEPS, f),
-  );
+  const extras = cardExtras(chipFor(f, CHIP_REASONS, CHIP_ON_MAIN), sentences(FIX_STEPS, f));
   return {
     ...extras,
     category: "skipped-checks",
@@ -1084,7 +1112,7 @@ export const skippedChecksCard: ToCard<"skipped-checks"> = (
  */
 export const SKIPPED_CHECKS_TEMPLATES: readonly T[] = /* @__PURE__ */ (() => [
   HEADLINE,
-  CHIP,
+  ...CHIP_REASONS.map(chipTemplate),
   ...FOUND,
   CODEX,
   ...NOW,

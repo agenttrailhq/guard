@@ -24,6 +24,9 @@ import { resolve, sep } from "node:path";
 import {
   type CardContext,
   type CardView,
+  type ChipReason,
+  chipFor,
+  chipTemplate,
   type FixShape,
   type LocalFix,
   type SentenceTemplate,
@@ -837,14 +840,24 @@ const NOW: readonly T[] = [
 
 const CODEX: T = codexLimitedTemplate("lost-work");
 
-/** The chip label: the number is shown apart. */
-const CHIP: T = {
+/** The chip's usual claim: the number is shown apart. */
+const CHIP_RECOVERABLE: ChipReason<LostWorkFacts> = {
   id: "lost-work.chip",
-  render: (f) =>
-    recoverable(f) === 1
-      ? "deleted branch or stash still recoverable"
-      : "deleted branches or stashes still recoverable",
+  count: (f) => recoverable(f),
+  one: "deleted branch or stash still recoverable",
+  many: "deleted branches or stashes still recoverable",
 };
+
+/** What can make the card act, then review, in the order `lostWorkStatus` reads them. */
+const CHIP_REASONS: readonly ChipReason<LostWorkFacts>[] = [
+  CHIP_RECOVERABLE,
+  {
+    id: "lost-work.chip.discards",
+    count: (f) => f.discards.mainCheckout,
+    one: "path discarded in a main checkout",
+    many: "paths discarded in a main checkout",
+  },
+];
 
 const FIX_STEPS: readonly T[] = [
   {
@@ -875,10 +888,7 @@ function fixShapes(f: LostWorkFacts): FixShape[] {
 export const lostWorkCard: ToCard<"lost-work"> = (result, context: CardContext): CardView => {
   const f = result.facts;
   const headline = sentence(HEADLINE, f);
-  const extras = cardExtras(
-    { count: recoverable(f), label: sentence(CHIP, f) },
-    sentences(FIX_STEPS, f),
-  );
+  const extras = cardExtras(chipFor(f, CHIP_REASONS, CHIP_RECOVERABLE), sentences(FIX_STEPS, f));
   return {
     ...extras,
     category: "lost-work",
@@ -909,7 +919,7 @@ export const lostWorkCard: ToCard<"lost-work"> = (result, context: CardContext):
  */
 export const LOST_WORK_TEMPLATES: readonly T[] = /* @__PURE__ */ (() => [
   HEADLINE,
-  CHIP,
+  ...CHIP_REASONS.map(chipTemplate),
   ...FOUND,
   CODEX,
   ...NOW,

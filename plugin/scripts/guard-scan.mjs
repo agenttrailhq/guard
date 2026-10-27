@@ -12050,6 +12050,11 @@ var GIT_STATE_CLAIMS = /* @__PURE__ */ new Set([
 function confirmedByGitState(card) {
   return card.headline?.confirmedBy === "git-state" && GIT_STATE_CLAIMS.has(card.category);
 }
+function chipFor(facts, reasons, fallback) {
+  const reason = reasons.find((r) => r.count(facts) > 0) ?? fallback;
+  const count2 = reason.count(facts);
+  return { count: count2, label: { template: reason.id, text: count2 === 1 ? reason.one : reason.many } };
+}
 var NOT_CHECKED_SENTENCE = {
   id: "not-checked",
   render: () => "Not checked."
@@ -13260,8 +13265,25 @@ var EGRESS_FIX_STEPS = [
 ];
 var EGRESS_CHIP = {
   id: "egress.chip",
-  render: (f) => noun(f.uploads, "upload off this machine", "uploads off this machine")
+  count: (f) => f.uploads,
+  one: "upload off this machine",
+  many: "uploads off this machine"
 };
+var EGRESS_CHIP_REASONS = [
+  {
+    id: "egress.chip.running",
+    count: (f) => f.tunnelsRunning,
+    one: "tunnel or relay program running now",
+    many: "tunnel or relay programs running now"
+  },
+  EGRESS_CHIP,
+  {
+    id: "egress.chip.tunnels",
+    count: (f) => f.tunnelsStarted,
+    one: "tunnel started",
+    many: "tunnels started"
+  }
+];
 var egressCard = (result, context) => {
   const f = result.facts;
   const card = {
@@ -13272,10 +13294,7 @@ var egressCard = (result, context) => {
     now: sentences(EGRESS_NOW, f),
     fixes: f.tunnelsRunning > 0 ? [{ shape: "pgrep -lx <program>" }] : [],
     fixSteps: sentences(EGRESS_FIX_STEPS, f),
-    chip: {
-      count: f.uploads,
-      label: sentence(EGRESS_CHIP, f) ?? { template: EGRESS_CHIP.id, text: "" }
-    },
+    chip: chipFor(f, EGRESS_CHIP_REASONS, EGRESS_CHIP),
     codexCaveat: restsOnCodex(context) && f.uploads + f.tunnelsStarted > 0
   };
   return card;
@@ -13499,8 +13518,19 @@ var PROD_FIX_STEPS = [
 ];
 var PROD_CHIP = {
   id: "prod.chip",
-  render: (f) => noun(f.databaseTargets.other, "production database touched", "production databases touched")
+  count: (f) => f.databaseTargets.other,
+  one: "production database touched",
+  many: "production databases touched"
 };
+var PROD_CHIP_REASONS = [
+  PROD_CHIP,
+  {
+    id: "prod.chip.infra",
+    count: (f) => f.infraMatches,
+    one: "command matched a production infrastructure guardrail",
+    many: "commands matched a production infrastructure guardrail"
+  }
+];
 var prodInfraCard = (result, context) => {
   const f = result.facts;
   const card = {
@@ -13511,10 +13541,7 @@ var prodInfraCard = (result, context) => {
     now: sentences(PROD_NOW, f),
     fixes: [],
     fixSteps: sentences(PROD_FIX_STEPS, f),
-    chip: {
-      count: f.databaseTargets.other,
-      label: sentence(PROD_CHIP, f) ?? { template: PROD_CHIP.id, text: "" }
-    },
+    chip: chipFor(f, PROD_CHIP_REASONS, PROD_CHIP),
     codexCaveat: restsOnCodex(context) && anyTarget(f)
   };
   return card;
@@ -14009,8 +14036,55 @@ var TESTS_HEADLINE = whenAny2(
 );
 var TESTS_CHIP = {
   id: "tests.chip",
-  render: (f) => noun(f.thresholdsLowered, "test floor lowered", "test floors lowered")
+  count: (f) => f.thresholdsLowered,
+  one: "test floor lowered",
+  many: "test floors lowered"
 };
+var TESTS_CHIP_REASONS = [
+  TESTS_CHIP,
+  {
+    id: "tests.chip.pass-with-no-tests",
+    count: (f) => f.passWithNoTests,
+    one: "test run or config set to pass with no tests",
+    many: "test runs or configs set to pass with no tests"
+  },
+  {
+    id: "tests.chip.ci-forced",
+    count: (f) => f.ciStepsForcedTrue,
+    one: "CI step forced to pass",
+    many: "CI steps forced to pass"
+  },
+  {
+    id: "tests.chip.deleted-after-failing",
+    count: (f) => f.deletedAfterFailing,
+    one: "test deleted after it failed",
+    many: "tests deleted after they failed"
+  },
+  {
+    id: "tests.chip.excludes",
+    count: (f) => f.excludesAdded,
+    one: "test or coverage exclude added",
+    many: "test or coverage excludes added"
+  },
+  {
+    id: "tests.chip.deleted",
+    count: (f) => f.testFilesDeleted,
+    one: "test file deleted",
+    many: "test files deleted"
+  },
+  {
+    id: "tests.chip.reverts",
+    count: (f) => f.autoUpdateReverts,
+    one: "threshold set back after an automatic raise",
+    many: "thresholds set back after an automatic raise"
+  },
+  {
+    id: "tests.chip.rewritten",
+    count: (f) => f.configsRewritten,
+    one: "test config or CI file rewritten whole",
+    many: "test configs or CI files rewritten whole"
+  }
+];
 var testsCard = (result, context) => {
   const f = result.facts;
   const headline2 = sentence(TESTS_HEADLINE, f);
@@ -14026,10 +14100,7 @@ var testsCard = (result, context) => {
       ...f.testFilesDeleted > 0 ? [{ shape: "git log --diff-filter=D --oneline -- <test file>" }] : []
     ],
     fixSteps: sentences(TESTS_FIX_STEPS, f),
-    chip: {
-      count: f.thresholdsLowered,
-      label: sentence(TESTS_CHIP, f) ?? { template: TESTS_CHIP.id, text: "" }
-    },
+    chip: chipFor(f, TESTS_CHIP_REASONS, TESTS_CHIP),
     codexCaveat: restsOnCodex(context) && ran,
     ...headline2 === void 0 ? {} : {
       headline: {
@@ -15576,10 +15647,45 @@ var HEADLINE = {
   render: (f) => n(f, "unguarded-variable") > 0 ? `${counted2(n(f, "unguarded-variable"), "rm -rf target")} ${was(n(f, "unguarded-variable"))} built from a variable with no guard.` : void 0
 };
 var CODEX = codexLimitedTemplate("destructive");
-var CHIP = {
+var CHIP_UNGUARDED = {
   id: "destructive.chip",
-  render: (f) => n(f, "unguarded-variable") === 1 ? "rm -rf target built from an unguarded variable" : "rm -rf targets built from an unguarded variable"
+  count: (f) => n(f, "unguarded-variable"),
+  one: "rm -rf target built from an unguarded variable",
+  many: "rm -rf targets built from an unguarded variable"
 };
+var CHIP_REASONS = [
+  CHIP_UNGUARDED,
+  {
+    id: "destructive.chip.home-or-above",
+    count: (f) => n(f, "home-or-above"),
+    one: "rm -rf target at or above the home folder",
+    many: "rm -rf targets at or above the home folder"
+  },
+  {
+    id: "destructive.chip.tracked",
+    count: (f) => trackedMissing(f),
+    one: "deleted target with tracked files still missing",
+    many: "deleted targets with tracked files still missing"
+  },
+  {
+    id: "destructive.chip.untracked",
+    count: (f) => n(f, "untracked"),
+    one: "deleted folder git keeps no copy of",
+    many: "deleted folders git keeps no copy of"
+  },
+  {
+    id: "destructive.chip.outside",
+    count: (f) => n(f, "home") + n(f, "other"),
+    one: "deleted folder outside any repo",
+    many: "deleted folders outside any repo"
+  },
+  {
+    id: "destructive.chip.databases",
+    count: (f) => f.databases.classes.other + f.databases.classes.unresolved,
+    one: "database beyond local and scratch dropped or wiped",
+    many: "databases beyond local and scratch dropped or wiped"
+  }
+];
 function classLine(c, what) {
   return {
     id: `destructive.rm.${c}`,
@@ -15696,10 +15802,7 @@ function fixShapes(f) {
 var destructiveCard = (result, context) => {
   const f = result.facts;
   const headline2 = sentence(HEADLINE, f);
-  const extras = cardExtras(
-    { count: n(f, "unguarded-variable"), label: sentence(CHIP, f) },
-    sentences(FIX_STEPS, f)
-  );
+  const extras = cardExtras(chipFor(f, CHIP_REASONS, CHIP_UNGUARDED), sentences(FIX_STEPS, f));
   return {
     ...extras,
     category: "destructive",
@@ -16217,10 +16320,21 @@ var NOW2 = [
   }
 ];
 var CODEX2 = codexLimitedTemplate("lost-work");
-var CHIP2 = {
+var CHIP_RECOVERABLE = {
   id: "lost-work.chip",
-  render: (f) => recoverable(f) === 1 ? "deleted branch or stash still recoverable" : "deleted branches or stashes still recoverable"
+  count: (f) => recoverable(f),
+  one: "deleted branch or stash still recoverable",
+  many: "deleted branches or stashes still recoverable"
 };
+var CHIP_REASONS2 = [
+  CHIP_RECOVERABLE,
+  {
+    id: "lost-work.chip.discards",
+    count: (f) => f.discards.mainCheckout,
+    one: "path discarded in a main checkout",
+    many: "paths discarded in a main checkout"
+  }
+];
 var FIX_STEPS2 = [
   {
     id: "lost-work.fix.recover",
@@ -16240,10 +16354,7 @@ function fixShapes2(f) {
 var lostWorkCard = (result, context) => {
   const f = result.facts;
   const headline2 = sentence(HEADLINE2, f);
-  const extras = cardExtras(
-    { count: recoverable(f), label: sentence(CHIP2, f) },
-    sentences(FIX_STEPS2, f)
-  );
+  const extras = cardExtras(chipFor(f, CHIP_REASONS2, CHIP_RECOVERABLE), sentences(FIX_STEPS2, f));
   return {
     ...extras,
     category: "lost-work",
@@ -17039,10 +17150,39 @@ var NOW3 = [
   }
 ];
 var CODEX3 = codexLimitedTemplate("skipped-checks");
-var CHIP3 = {
+var CHIP_ON_MAIN = {
   id: "skipped-checks.chip",
-  render: (f) => f.noVerify.onMain === 1 ? "commit reached main without its checks" : "commits reached main without their checks"
+  count: (f) => f.noVerify.onMain,
+  one: "commit reached main without its checks",
+  many: "commits reached main without their checks"
 };
+var CHIP_REASONS3 = [
+  CHIP_ON_MAIN,
+  {
+    id: "skipped-checks.chip.hooks-off",
+    count: (f) => f.hooksPath.off,
+    one: "repo with hooks turned off",
+    many: "repos with hooks turned off"
+  },
+  {
+    id: "skipped-checks.chip.instructions",
+    count: (f) => f.instructions.sayToSkip,
+    one: "instruction file that says to skip checks",
+    many: "instruction files that say to skip checks"
+  },
+  {
+    id: "skipped-checks.chip.commits",
+    count: (f) => f.noVerify.offMain + f.noVerify.noMainToCheck,
+    one: "commit made without its checks",
+    many: "commits made without their checks"
+  },
+  {
+    id: "skipped-checks.chip.commands",
+    count: (f) => f.otherNoVerify.ran + f.husky.ran + f.oneCommand.ran,
+    one: "command that ran with hooks skipped",
+    many: "commands that ran with hooks skipped"
+  }
+];
 var FIX_STEPS3 = [
   {
     id: "skipped-checks.fix.review-commits",
@@ -17067,10 +17207,7 @@ function fixShapes3(f) {
 var skippedChecksCard = (result, context) => {
   const f = result.facts;
   const headline2 = sentence(HEADLINE3, f);
-  const extras = cardExtras(
-    { count: f.noVerify.onMain, label: sentence(CHIP3, f) },
-    sentences(FIX_STEPS3, f)
-  );
+  const extras = cardExtras(chipFor(f, CHIP_REASONS3, CHIP_ON_MAIN), sentences(FIX_STEPS3, f));
   return {
     ...extras,
     category: "skipped-checks",

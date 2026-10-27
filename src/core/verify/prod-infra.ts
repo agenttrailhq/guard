@@ -33,11 +33,12 @@ import {
   runStateOf,
   simpleCommands,
 } from "./calls.js";
-import { couldHideTemplate, counted, type FullCard, noun, restsOnCodex } from "./card-parts.js";
+import { couldHideTemplate, counted, type FullCard, restsOnCodex } from "./card-parts.js";
 import {
   type CardContext,
+  type ChipReason,
+  chipFor,
   type SentenceTemplate,
-  sentence,
   sentences,
   type ToCard,
 } from "./cards.js";
@@ -414,12 +415,24 @@ export const PROD_FIX_STEPS: readonly SentenceTemplate<ProdInfraFacts>[] = [
   ),
 ];
 
-/** The chip label: the number is shown apart. */
-const PROD_CHIP: SentenceTemplate<ProdInfraFacts> = {
+/** The chip's usual claim: the number is shown apart. */
+const PROD_CHIP: ChipReason<ProdInfraFacts> = {
   id: "prod.chip",
-  render: (f) =>
-    noun(f.databaseTargets.other, "production database touched", "production databases touched"),
+  count: (f) => f.databaseTargets.other,
+  one: "production database touched",
+  many: "production databases touched",
 };
+
+/** What can make the card review, in the order `prodInfraStatus` reads them. */
+const PROD_CHIP_REASONS: readonly ChipReason<ProdInfraFacts>[] = [
+  PROD_CHIP,
+  {
+    id: "prod.chip.infra",
+    count: (f) => f.infraMatches,
+    one: "command matched a production infrastructure guardrail",
+    many: "commands matched a production infrastructure guardrail",
+  },
+];
 
 /** The card for the production infrastructure check. */
 export const prodInfraCard: ToCard<"prod-infra"> = (result, context: CardContext) => {
@@ -432,10 +445,7 @@ export const prodInfraCard: ToCard<"prod-infra"> = (result, context: CardContext
     now: sentences(PROD_NOW, f),
     fixes: [],
     fixSteps: sentences(PROD_FIX_STEPS, f),
-    chip: {
-      count: f.databaseTargets.other,
-      label: sentence(PROD_CHIP, f) ?? { template: PROD_CHIP.id, text: "" },
-    },
+    chip: chipFor(f, PROD_CHIP_REASONS, PROD_CHIP),
     codexCaveat: restsOnCodex(context) && anyTarget(f),
   };
   return card;

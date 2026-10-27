@@ -44,7 +44,10 @@ import type { MappedCall } from "../types.js";
 import {
   type CardContext,
   type CardView,
+  type ChipReason,
   type CommandPart,
+  chipFor,
+  chipTemplate,
   type FixShape,
   type LocalFix,
   type SentenceTemplate,
@@ -908,14 +911,48 @@ const HEADLINE: T = {
 
 const CODEX: T = codexLimitedTemplate("destructive");
 
-/** The chip label: the number is shown apart. */
-const CHIP: T = {
+/** The chip's usual claim: the number is shown apart. */
+const CHIP_UNGUARDED: ChipReason<DestructiveFacts> = {
   id: "destructive.chip",
-  render: (f) =>
-    n(f, "unguarded-variable") === 1
-      ? "rm -rf target built from an unguarded variable"
-      : "rm -rf targets built from an unguarded variable",
+  count: (f) => n(f, "unguarded-variable"),
+  one: "rm -rf target built from an unguarded variable",
+  many: "rm -rf targets built from an unguarded variable",
 };
+
+/** What can make the card act, then review, in the order `destructiveStatus` reads them. */
+const CHIP_REASONS: readonly ChipReason<DestructiveFacts>[] = [
+  CHIP_UNGUARDED,
+  {
+    id: "destructive.chip.home-or-above",
+    count: (f) => n(f, "home-or-above"),
+    one: "rm -rf target at or above the home folder",
+    many: "rm -rf targets at or above the home folder",
+  },
+  {
+    id: "destructive.chip.tracked",
+    count: (f) => trackedMissing(f),
+    one: "deleted target with tracked files still missing",
+    many: "deleted targets with tracked files still missing",
+  },
+  {
+    id: "destructive.chip.untracked",
+    count: (f) => n(f, "untracked"),
+    one: "deleted folder git keeps no copy of",
+    many: "deleted folders git keeps no copy of",
+  },
+  {
+    id: "destructive.chip.outside",
+    count: (f) => n(f, "home") + n(f, "other"),
+    one: "deleted folder outside any repo",
+    many: "deleted folders outside any repo",
+  },
+  {
+    id: "destructive.chip.databases",
+    count: (f) => f.databases.classes.other + f.databases.classes.unresolved,
+    one: "database beyond local and scratch dropped or wiped",
+    many: "databases beyond local and scratch dropped or wiped",
+  },
+];
 
 /** A class sentence. */
 function classLine(c: RmTargetClass, what: (count: number) => string): T {
@@ -1078,10 +1115,7 @@ function fixShapes(f: DestructiveFacts): FixShape[] {
 export const destructiveCard: ToCard<"destructive"> = (result, context: CardContext): CardView => {
   const f = result.facts;
   const headline = sentence(HEADLINE, f);
-  const extras = cardExtras(
-    { count: n(f, "unguarded-variable"), label: sentence(CHIP, f) },
-    sentences(FIX_STEPS, f),
-  );
+  const extras = cardExtras(chipFor(f, CHIP_REASONS, CHIP_UNGUARDED), sentences(FIX_STEPS, f));
   return {
     ...extras,
     category: "destructive",
@@ -1110,7 +1144,7 @@ export const destructiveCard: ToCard<"destructive"> = (result, context: CardCont
  */
 export const DESTRUCTIVE_TEMPLATES: readonly T[] = /* @__PURE__ */ (() => [
   HEADLINE,
-  CHIP,
+  ...CHIP_REASONS.map(chipTemplate),
   ...FOUND,
   CODEX,
   ...NOW,

@@ -45,13 +45,14 @@ import {
   type SimpleCommand,
   simpleCommands,
 } from "./calls.js";
-import { couldHideTemplate, counted, type FullCard, noun, restsOnCodex } from "./card-parts.js";
+import { couldHideTemplate, counted, type FullCard, restsOnCodex } from "./card-parts.js";
 import {
   type CardContext,
+  type ChipReason,
+  chipFor,
   type LocalFix,
   localFixCommand,
   type SentenceTemplate,
-  sentence,
   sentences,
   type ToCard,
   type UnsafeFix,
@@ -790,11 +791,30 @@ export const EGRESS_FIX_STEPS: readonly SentenceTemplate<EgressFacts>[] = [
   ),
 ];
 
-/** The chip label: the number is shown apart. */
-const EGRESS_CHIP: SentenceTemplate<EgressFacts> = {
+/** The chip's usual claim: the number is shown apart. */
+const EGRESS_CHIP: ChipReason<EgressFacts> = {
   id: "egress.chip",
-  render: (f) => noun(f.uploads, "upload off this machine", "uploads off this machine"),
+  count: (f) => f.uploads,
+  one: "upload off this machine",
+  many: "uploads off this machine",
 };
+
+/** What can make the card act, then review, in the order `egressStatus` reads them. */
+const EGRESS_CHIP_REASONS: readonly ChipReason<EgressFacts>[] = [
+  {
+    id: "egress.chip.running",
+    count: (f) => f.tunnelsRunning,
+    one: "tunnel or relay program running now",
+    many: "tunnel or relay programs running now",
+  },
+  EGRESS_CHIP,
+  {
+    id: "egress.chip.tunnels",
+    count: (f) => f.tunnelsStarted,
+    one: "tunnel started",
+    many: "tunnels started",
+  },
+];
 
 /** The card for the egress check. */
 export const egressCard: ToCard<"egress"> = (result, context: CardContext) => {
@@ -807,10 +827,7 @@ export const egressCard: ToCard<"egress"> = (result, context: CardContext) => {
     now: sentences(EGRESS_NOW, f),
     fixes: f.tunnelsRunning > 0 ? [{ shape: "pgrep -lx <program>" }] : [],
     fixSteps: sentences(EGRESS_FIX_STEPS, f),
-    chip: {
-      count: f.uploads,
-      label: sentence(EGRESS_CHIP, f) ?? { template: EGRESS_CHIP.id, text: "" },
-    },
+    chip: chipFor(f, EGRESS_CHIP_REASONS, EGRESS_CHIP),
     codexCaveat: restsOnCodex(context) && f.uploads + f.tunnelsStarted > 0,
   };
   return card;

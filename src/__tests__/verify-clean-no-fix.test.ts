@@ -91,6 +91,72 @@ function variants(base: object): object[] {
   return out;
 }
 
+/**
+ * The chip claims that may stand on an act card and on a review card, by category: each is one
+ * of the reasons that check's own rule reads for that tone.
+ */
+const CHIP_IDS: Record<VerifyCategory, { act: readonly string[]; review: readonly string[] }> = {
+  secrets: { act: ["secrets.chip"], review: [] },
+  "skipped-checks": {
+    act: [
+      "skipped-checks.chip",
+      "skipped-checks.chip.hooks-off",
+      "skipped-checks.chip.instructions",
+    ],
+    review: ["skipped-checks.chip.commits", "skipped-checks.chip.commands"],
+  },
+  "lost-work": { act: ["lost-work.chip"], review: ["lost-work.chip.discards"] },
+  cloud: { act: [], review: ["cloud.chip"] },
+  "prod-infra": { act: [], review: ["prod.chip", "prod.chip.infra"] },
+  tests: {
+    act: [
+      "tests.chip",
+      "tests.chip.pass-with-no-tests",
+      "tests.chip.ci-forced",
+      "tests.chip.deleted-after-failing",
+    ],
+    review: [
+      "tests.chip.excludes",
+      "tests.chip.deleted",
+      "tests.chip.reverts",
+      "tests.chip.rewritten",
+    ],
+  },
+  destructive: {
+    act: ["destructive.chip", "destructive.chip.home-or-above", "destructive.chip.tracked"],
+    review: [
+      "destructive.chip.untracked",
+      "destructive.chip.outside",
+      "destructive.chip.databases",
+    ],
+  },
+  unreviewed: { act: [], review: ["unreviewed.chip"] },
+  egress: { act: ["egress.chip.running"], review: ["egress.chip", "egress.chip.tunnels"] },
+};
+
+describe("over the real card builders, an act or review chip counts what made it so", () => {
+  it.each(VERIFY_CATEGORIES)("%s", (category) => {
+    const builder = (CARD_BUILDERS as CardBuilders)[category] as unknown as (
+      result: object,
+      context: object,
+    ) => { chip?: { count: number; label: { template: string; text: string } } };
+    let flagged = 0;
+    for (const facts of variants(FACTS[category])) {
+      const status = statusOf(category, facts);
+      if (status !== "act" && status !== "review") continue;
+      flagged += 1;
+      const chip = builder({ status, matches: 3, facts }, { ranEvidence: "tool-result" }).chip;
+      const where = `${category} ${status} ${JSON.stringify(facts)}`;
+      expect(chip?.count, where).toBeGreaterThanOrEqual(1);
+      expect(CHIP_IDS[category][status], where).toContain(chip?.label.template);
+      // The count is stated once: the label holds no number of its own.
+      expect(chip?.label.text, where).not.toMatch(/\d/);
+    }
+    // Not vacuous: the rule flags some of these.
+    expect(flagged).toBeGreaterThan(0);
+  });
+});
+
 describe("over the real card builders, a clean card gives no fix", () => {
   it.each(VERIFY_CATEGORIES)("%s", (category) => {
     const builder = (CARD_BUILDERS as CardBuilders)[category] as unknown as (

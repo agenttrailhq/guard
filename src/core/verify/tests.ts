@@ -44,11 +44,12 @@ import {
   counted,
   type FullCard,
   MAX_LOCAL_FIXES,
-  noun,
   restsOnCodex,
 } from "./card-parts.js";
 import {
   type CardContext,
+  type ChipReason,
+  chipFor,
   type LocalFix,
   localFixCommand,
   type SentenceTemplate,
@@ -846,11 +847,60 @@ export const TESTS_HEADLINE: SentenceTemplate<TestsFacts> = whenAny(
   (n) => `${counted(n, "edit", "edits")} lowered a test coverage threshold`,
 );
 
-/** The chip label: the number is shown apart. */
-const TESTS_CHIP: SentenceTemplate<TestsFacts> = {
+/** The chip's usual claim: the number is shown apart. */
+const TESTS_CHIP: ChipReason<TestsFacts> = {
   id: "tests.chip",
-  render: (f) => noun(f.thresholdsLowered, "test floor lowered", "test floors lowered"),
+  count: (f) => f.thresholdsLowered,
+  one: "test floor lowered",
+  many: "test floors lowered",
 };
+
+/** What can make the card act, then review, in the order `testsStatus` reads them. */
+const TESTS_CHIP_REASONS: readonly ChipReason<TestsFacts>[] = [
+  TESTS_CHIP,
+  {
+    id: "tests.chip.pass-with-no-tests",
+    count: (f) => f.passWithNoTests,
+    one: "test run or config set to pass with no tests",
+    many: "test runs or configs set to pass with no tests",
+  },
+  {
+    id: "tests.chip.ci-forced",
+    count: (f) => f.ciStepsForcedTrue,
+    one: "CI step forced to pass",
+    many: "CI steps forced to pass",
+  },
+  {
+    id: "tests.chip.deleted-after-failing",
+    count: (f) => f.deletedAfterFailing,
+    one: "test deleted after it failed",
+    many: "tests deleted after they failed",
+  },
+  {
+    id: "tests.chip.excludes",
+    count: (f) => f.excludesAdded,
+    one: "test or coverage exclude added",
+    many: "test or coverage excludes added",
+  },
+  {
+    id: "tests.chip.deleted",
+    count: (f) => f.testFilesDeleted,
+    one: "test file deleted",
+    many: "test files deleted",
+  },
+  {
+    id: "tests.chip.reverts",
+    count: (f) => f.autoUpdateReverts,
+    one: "threshold set back after an automatic raise",
+    many: "thresholds set back after an automatic raise",
+  },
+  {
+    id: "tests.chip.rewritten",
+    count: (f) => f.configsRewritten,
+    one: "test config or CI file rewritten whole",
+    many: "test configs or CI files rewritten whole",
+  },
+];
 
 /** The card for the test check. */
 export const testsCard: ToCard<"tests"> = (result, context: CardContext) => {
@@ -870,10 +920,7 @@ export const testsCard: ToCard<"tests"> = (result, context: CardContext) => {
         : []),
     ],
     fixSteps: sentences(TESTS_FIX_STEPS, f),
-    chip: {
-      count: f.thresholdsLowered,
-      label: sentence(TESTS_CHIP, f) ?? { template: TESTS_CHIP.id, text: "" },
-    },
+    chip: chipFor(f, TESTS_CHIP_REASONS, TESTS_CHIP),
     codexCaveat: restsOnCodex(context) && ran,
     ...(headline === undefined
       ? {}

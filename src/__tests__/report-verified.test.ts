@@ -974,7 +974,11 @@ describe("the chips the shipped card builders write state their count once", () 
     const byHref = Object.fromEntries(chips.map((c) => [c.href, c.text]));
     expect(byHref["#check-skipped-checks"]).toBe("3 commits reached main without their checks");
     expect(byHref["#check-lost-work"]).toBe("3 deleted branches or stashes still recoverable");
-    expect(byHref["#check-destructive"]).toBe("0 rm -rf targets built from an unguarded variable");
+    // A review card's chip counts what made it review, never a zero of something else.
+    expect(byHref["#check-destructive"]).toBe("1 deleted folder git keeps no copy of");
+    expect(byHref["#check-prod-infra"]).toBe(
+      "1 command matched a production infrastructure guardrail",
+    );
   });
 
   it("one of each reads in the singular, with its count once", () => {
