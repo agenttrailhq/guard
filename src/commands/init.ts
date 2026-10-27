@@ -445,8 +445,12 @@ export async function runInit(
   // Code plugin and reported success for an app that has none.
   switch (agent) {
     case "cursor":
-      // AgentTrail OS is per project in Cursor: say so, and install for the rest.
-      if (osCursorPresent((p) => io.readFile(p), home)) io.writeStdout(osCursorNote());
+      // AgentTrail OS is per project in Cursor: say so, and install for the rest. Someone
+      // who already runs AgentTrail OS gets the note, not the line inviting them to try it.
+      if (osCursorPresent((p) => io.readFile(p), home)) {
+        io.writeStdout(osCursorNote());
+        return initCursor(io, dryRun, scaffoldDir, deps, catalog, now, true);
+      }
       return initCursor(io, dryRun, scaffoldDir, deps, catalog, now, argv.quiet === true);
     case "codex":
       if (osCodexPresent((p) => io.readFile(p), home)) {
@@ -462,9 +466,12 @@ export async function runInit(
 
   // Coexistence: AgentTrail OS's plugin decides only in the projects it was set up in, and
   // the guard's hook steps aside there (`core/os-step-aside.ts`), so the guard installs for
-  // the rest and says so.
+  // the rest and says so. That note replaces the AgentTrail OS line at the end: it would
+  // only invite someone to try what they already run.
+  let osInstalled = false;
   try {
-    if (agenttrailPluginPresent(io.runClaude)) {
+    osInstalled = agenttrailPluginPresent(io.runClaude);
+    if (osInstalled) {
       io.writeStdout(
         `The AgentTrail OS plugin (${AGENTTRAIL_PLUGIN_ID}) is installed. The guard steps aside\n` +
           "in projects where AgentTrail OS setup recorded enforcement on this machine, and\n" +
@@ -595,7 +602,7 @@ export async function runInit(
   io.writeStdout(
     `${lines.join("\n")}\n\n${closing(catalog, "claude", now, invokedViaNpx(deps.cliPath), overrideBlock)}`,
   );
-  const osLine = productLineAfterInstall(io, "claude", argv.quiet === true, now);
+  const osLine = productLineAfterInstall(io, "claude", argv.quiet === true || osInstalled, now);
   if (osLine !== "") io.writeStdout(osLine);
   return 0;
 }

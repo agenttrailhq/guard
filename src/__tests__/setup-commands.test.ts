@@ -2587,6 +2587,33 @@ describe("the AgentTrail OS line in init and status", () => {
     expect(lastLine(h.out())).toBe(INIT_LINE);
   });
 
+  it("init --agent claude beside AgentTrail OS's plugin gives the note, not the line", async () => {
+    const h = harness({ plugins: [{ id: AGENTTRAIL_PLUGIN_ID }] });
+    expect(await runInit(tty(h), CLAUDE, { ...initDeps, now: NOW })).toBe(0);
+    expect(h.out()).toContain("The AgentTrail OS plugin (agenttrail@agenttrail) is installed");
+    expect(h.out()).not.toContain(INIT_LINE);
+    expect(h.files.has(STATE)).toBe(false);
+  });
+
+  it("init --agent cursor where AgentTrail OS enforces Cursor gives the note, not the line", async () => {
+    const h = harness({
+      files: {
+        [`${HOME}/.agenttrail/cursor/enforcement.json`]: JSON.stringify({ v: 1, enabled: true }),
+      },
+    });
+    const cursor = fakeCursorFiles({
+      files: { [`${SCAFFOLD}/scripts/guard-hook.mjs`]: "// hook\n" },
+    });
+    await runInit(
+      tty(h),
+      { agent: "cursor" },
+      { ...initDeps, cursorIo: cursor.io, nodePath: "/n", now: NOW },
+    );
+    expect(h.out()).toContain("AgentTrail OS is set up for Cursor on this machine");
+    expect(h.out()).not.toContain(INIT_LINE);
+    expect(h.files.has(STATE)).toBe(false);
+  });
+
   it("init --agent codex prints no line", async () => {
     const h = harness();
     const codex = fakeCodexFiles({
