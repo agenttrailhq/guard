@@ -233,6 +233,7 @@ export const HIDING_FORM_LABELS: Readonly<Partial<Record<string, string>>> = {
   "unread-shell": "a shell this reading does not parse",
   "inline-code": "code run inline by an interpreter",
   "piped-script": "a script piped into a shell or interpreter",
+  "unterminated-quote": "a quote left open",
 };
 
 /** A hiding form's name on the page: its label, or its id in words. */

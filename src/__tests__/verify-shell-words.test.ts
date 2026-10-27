@@ -133,7 +133,34 @@ describe("shellItems", () => {
 
   it("never fails on unbalanced text", () => {
     expect(() => shellItems(`echo "unterminated $(x 'y`)).not.toThrow();
+    expect(() => shellItems("echo $'unterminated \\'")).not.toThrow();
     expect(shellItems("")).toEqual([]);
+  });
+
+  it("reads an ANSI-C string to its real end: an escaped quote does not close it", () => {
+    expect(values("echo $'a\\'b'; git stash drop")).toEqual([
+      ["echo", "a'b"],
+      ["git", "stash", "drop"],
+    ]);
+    // Inside a substitution too.
+    expect(values("X=$(printf $'it\\'s'); git stash drop")).toEqual([
+      ["X=$(printf $'it\\'s')"],
+      ["git", "stash", "drop"],
+    ]);
+  });
+
+  it("decodes an ANSI-C string's escapes, and nothing in it expands", () => {
+    const [cmd] = shellCommands("x $'a\\tb' $'\\x72m' $'$HOME' $\"c d\"");
+    expect(cmd?.words.map((w) => w.value)).toEqual(["x", "a\tb", "rm", "$HOME", "c d"]);
+    expect(cmd?.words.map((w) => w.expands)).toEqual([false, false, false, false, false]);
+  });
+
+  it("follows a cd that comes after an ANSI-C string", () => {
+    const seen: string[] = [];
+    walkCommands("echo $'it\\'s' && cd /x && make", "/repo", "/home/u", (command, folder) => {
+      if (command.words[0]?.value === "make") seen.push(folder ?? "");
+    });
+    expect(seen).toEqual(["/x"]);
   });
 });
 

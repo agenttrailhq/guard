@@ -8,10 +8,10 @@
  * blanked. What is left is what the shell ran, and this module says which program each part
  * started and with which words.
  *
- * A best-effort reading of POSIX shell: quotes, escapes, `$(…)` and backticks, the control
- * operators, subshell parentheses, redirections and heredocs. It never fails; text it cannot
- * place stays in a word. A word keeps its `$` expansions as written, so a check can tell a
- * literal path from one built from a variable.
+ * A best-effort reading of POSIX shell: quotes, ANSI-C `$'…'` strings, escapes, `$(…)` and
+ * backticks, the control operators, subshell parentheses, redirections and heredocs. It never
+ * fails; text it cannot place stays in a word. A word keeps its `$` expansions as written, so a
+ * check can tell a literal path from one built from a variable.
  *
  * Pure. No I/O.
  */
@@ -49,11 +49,84 @@ export type ShellItem = ShellCommand | { readonly kind: "open" } | { readonly ki
 const SHELLS: ReadonlySet<string> = new Set(["sh", "bash", "zsh", "dash", "ksh"]);
 
 /**
- * Where a quoted string ends, from its opening quote. Inside double quotes a `$(…)` is skipped
- * whole, as `ran.ts` reads it, so a quote inside the substitution does not end the string:
- * `"$(printf '"')"; git stash drop` is two commands, not one open string.
+ * Where an ANSI-C quoted string `$'…'` ends, from its `$`, or `-1` when it is never closed.
+ * Inside it a backslash escapes the next character, so `$'it\'s'` is one string, where a plain
+ * `'…'` would end at the escaped quote.
  */
-function skipQuoted(text: string, at: number, quote: string): number {
+export function ansiQuoteEnd(text: string, at: number): number {
+  let i = at + 2;
+  while (i < text.length) {
+    const ch = text[i];
+    if (ch === "\\") {
+      i += 2;
+      continue;
+    }
+    if (ch === "'") return i + 1;
+    i += 1;
+  }
+  return -1;
+}
+
+/** The one-letter escapes of an ANSI-C quoted string, and what each stands for. */
+const ANSI_ESCAPES: Readonly<Record<string, string>> = {
+  a: "\x07",
+  b: "\b",
+  e: "\x1b",
+  E: "\x1b",
+  f: "\f",
+  n: "\n",
+  r: "\r",
+  t: "\t",
+  v: "\v",
+  "\\": "\\",
+  "'": "'",
+  '"': '"',
+  "?": "?",
+};
+
+/** An escape of an ANSI-C quoted string: hex, Unicode, octal, a control character, or one letter. */
+const ANSI_ESCAPE =
+  /\\(?:x([0-9A-Fa-f]{1,2})|u([0-9A-Fa-f]{1,4})|U([0-9A-Fa-f]{1,8})|([0-7]{1,3})|c([\s\S])|([\s\S]))/g;
+
+/**
+ * The text an ANSI-C quoted string stands for, from what is between `$'` and `'`: `\n`, `\t`,
+ * `\\`, `\'`, `\xHH`, `\uHHHH`, `\nnn`, `\cX`, as the shell reads them, so `$'\x72m'` is the
+ * word `rm`. A NUL ends the string, as it does in the shell. An escape the shell does not know
+ * is kept as written.
+ */
+export function ansiQuoteValue(inner: string): string {
+  const value = inner.replace(
+    ANSI_ESCAPE,
+    (
+      whole,
+      hex?: string,
+      u4?: string,
+      u8?: string,
+      octal?: string,
+      control?: string,
+      one?: string,
+    ) => {
+      const code = hex ?? u4 ?? u8;
+      if (code !== undefined) {
+        const point = Number.parseInt(code, 16);
+        return point <= 0x10ffff ? String.fromCodePoint(point) : whole;
+      }
+      if (octal !== undefined) return String.fromCharCode(Number.parseInt(octal, 8) & 0xff);
+      if (control !== undefined) return String.fromCharCode(control.charCodeAt(0) & 0x1f);
+      return ANSI_ESCAPES[one ?? ""] ?? whole;
+    },
+  );
+  const nul = value.indexOf("\0");
+  return nul < 0 ? value : value.slice(0, nul);
+}
+
+/**
+ * Where a quoted string ends, from its opening quote, or `-1` when it is never closed. Inside
+ * double quotes a `$(…)` is skipped whole, as `ran.ts` reads it, so a quote inside the
+ * substitution does not end the string: `"$(printf '"')"; git stash drop` is two commands, not
+ * one open string.
+ */
+function quoteEnd(text: string, at: number, quote: string): number {
   let i = at + 1;
   while (i < text.length) {
     const ch = text[i];
@@ -62,23 +135,45 @@ function skipQuoted(text: string, at: number, quote: string): number {
       continue;
     }
     if (quote === '"' && ch === "$" && text[i + 1] === "(") {
-      i = skipSubstitution(text, i + 1);
+      i = substitutionEnd(text, i + 1);
+      if (i < 0) return -1;
       continue;
     }
     if (ch === quote) return i + 1;
     i += 1;
   }
-  return text.length;
+  return -1;
 }
 
-/** Where a `$(…)` or `$((…))` ends, from its `(`, counting nested parentheses. */
+/** `quoteEnd`, with a string never closed running to the end of the text. */
+function skipQuoted(text: string, at: number, quote: string): number {
+  const end = quoteEnd(text, at, quote);
+  return end < 0 ? text.length : end;
+}
+
+/** `substitutionEnd`, with a substitution never closed running to the end of the text. */
 function skipSubstitution(text: string, at: number): number {
+  const end = substitutionEnd(text, at);
+  return end < 0 ? text.length : end;
+}
+
+/**
+ * Where a `$(…)` or `$((…))` ends, from its `(`, counting nested parentheses, or `-1` when it is
+ * never closed.
+ */
+function substitutionEnd(text: string, at: number): number {
   let depth = 0;
   let i = at;
   while (i < text.length) {
     const ch = text[i];
+    if (ch === "$" && text[i + 1] === "'") {
+      i = ansiQuoteEnd(text, i);
+      if (i < 0) return -1;
+      continue;
+    }
     if (ch === "'" || ch === '"' || ch === "`") {
-      i = skipQuoted(text, i, ch);
+      i = quoteEnd(text, i, ch);
+      if (i < 0) return -1;
       continue;
     }
     if (ch === "\\") {
@@ -92,7 +187,7 @@ function skipSubstitution(text: string, at: number): number {
     }
     i += 1;
   }
-  return text.length;
+  return -1;
 }
 
 /** What the next completed word is. */
@@ -205,6 +300,19 @@ export function shellItems(text: string): ShellItem[] {
 
     if (ch === "$") {
       begin(i);
+      if (text[i + 1] === "'") {
+        // An ANSI-C quoted string: escapes are read, and nothing in it expands.
+        const end = ansiQuoteEnd(text, i);
+        const stop = end < 0 ? text.length : end - 1;
+        value += ansiQuoteValue(text.slice(i + 2, Math.max(i + 2, stop)));
+        i = end < 0 ? text.length : end;
+        continue;
+      }
+      if (text[i + 1] === '"') {
+        // `$"…"` is read as `"…"`.
+        i += 1;
+        continue;
+      }
       if (text[i + 1] === "(") {
         const end = skipSubstitution(text, i + 1);
         value += text.slice(i, end);

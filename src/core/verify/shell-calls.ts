@@ -34,6 +34,7 @@ import type { ToolResult } from "../transcript/transcript-types.js";
 import type { AgentSource, MappedCall } from "../types.js";
 import { executedView, hidingFormsOf, isResultBackedRun, runVerdict } from "./ran.js";
 import {
+  ansiQuoteEnd,
   commandStart,
   directoryChange,
   programName,
@@ -194,6 +195,13 @@ export function substitutions(raw: string): string[] {
     const ch = raw[i];
     if (ch === "\\" && !inSingle) {
       i += 1;
+      continue;
+    }
+    if (!inSingle && ch === "$" && raw[i + 1] === "'") {
+      // An ANSI-C quoted string, where `\'` does not end it. Nothing in it runs.
+      const end = ansiQuoteEnd(raw, i);
+      if (end < 0) break;
+      i = end - 1;
       continue;
     }
     if (ch === "'") inSingle = !inSingle;

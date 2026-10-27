@@ -61,7 +61,8 @@
  * ── What a call could hide ───────────────────────────────────────────────────
  * `hidingFormsOf` reports, per call, the forms that run something this reading does not take
  * apart: `bash -c`, `find -exec`, `xargs`, `<(…)`/`>(…)`, a `$(…)`, `eval`, `git` with a `-c`
- * or after the call wrote a hook, and a PowerShell command. A check may not report a category
+ * or after the call wrote a hook, a quote left open at the end of the command, and a PowerShell
+ * command. A check may not report a category
  * clean while a call that ran holds one that could hide what it looks for. See `HIDING_FORMS`.
  */
 
@@ -72,6 +73,7 @@ import { evaluateAction, type ScanCorpus, toolUseCalls } from "../scan-report.js
 import type { ToolResult } from "../transcript/transcript-types.js";
 import type { AgentSource, MappedCall } from "../types.js";
 import { programNameOf, programStart } from "./prefix-words.js";
+import { ansiQuoteEnd, ansiQuoteValue } from "./shell-words.js";
 import {
   HIDING_FORMS,
   type HidingForm,
@@ -175,13 +177,19 @@ interface Parsed {
   readonly processSubstitution: boolean;
   /** A redirection target holds a `$(…)` or backticks, which run. */
   readonly targetRuns: boolean;
+  /**
+   * A quote, a `$'…'`, a backtick or a `$(` is still open at the end of the text, so where the
+   * text after it splits into commands is not known.
+   */
+  readonly open: boolean;
 }
 
 /**
- * Where a quoted string ends, starting at its opening character. Inside double quotes a
- * `$(…)` is skipped whole, so a quote inside the substitution does not end the string.
+ * Where a quoted string ends, starting at its opening character, or `-1` when it is never
+ * closed. Inside double quotes a `$(…)` is skipped whole, so a quote inside the substitution
+ * does not end the string.
  */
-function skipQuoted(text: string, at: number, quote: string): number {
+function quoteEnd(text: string, at: number, quote: string): number {
   let i = at + 1;
   while (i < text.length) {
     const ch = text[i];
@@ -190,13 +198,20 @@ function skipQuoted(text: string, at: number, quote: string): number {
       continue;
     }
     if (quote === '"' && ch === "$" && text[i + 1] === "(") {
-      i = skipSubstitution(text, i + 1);
+      i = substitutionEnd(text, i + 1);
+      if (i < 0) return -1;
       continue;
     }
     if (ch === quote) return i + 1;
     i += 1;
   }
-  return text.length;
+  return -1;
+}
+
+/** `substitutionEnd`, with a substitution never closed running to the end of the text. */
+function skipSubstitution(text: string, at: number): number {
+  const end = substitutionEnd(text, at);
+  return end < 0 ? text.length : end;
 }
 
 /** A heredoc delimiter at `at` (just past `<<` or `<<-`): its text, and where it ends. */
@@ -216,9 +231,10 @@ function readDelimiter(text: string, at: number): { delimiter: string; end: numb
 
 /**
  * Where a `$(…)` ends, counting nested parentheses, skipping quoted text and skipping the body
- * of any heredoc opened inside it, so an apostrophe in a heredoc message is not a quote.
+ * of any heredoc opened inside it, so an apostrophe in a heredoc message is not a quote. `-1`
+ * when it is never closed.
  */
-function skipSubstitution(text: string, at: number): number {
+function substitutionEnd(text: string, at: number): number {
   let depth = 0;
   let i = at;
   const pending: { delimiter: string; stripTabs: boolean }[] = [];
@@ -246,8 +262,14 @@ function skipSubstitution(text: string, at: number): number {
         continue;
       }
     }
+    if (ch === "$" && text[i + 1] === "'") {
+      i = ansiQuoteEnd(text, i);
+      if (i < 0) return -1;
+      continue;
+    }
     if (ch === "'" || ch === '"' || ch === "`") {
-      i = skipQuoted(text, i, ch);
+      i = quoteEnd(text, i, ch);
+      if (i < 0) return -1;
       continue;
     }
     if (ch === "\\") {
@@ -261,7 +283,7 @@ function skipSubstitution(text: string, at: number): number {
     }
     i += 1;
   }
-  return text.length;
+  return -1;
 }
 
 /**
@@ -284,6 +306,7 @@ function parseShell(text: string): Parsed {
   let targetWrites = false;
   let processSubstitution = false;
   let targetRuns = false;
+  let open = false;
   let segment: Segment = emptySegment();
   // What the next completed word is: an ordinary word, a redirection target, a heredoc
   // delimiter or a here-string.
@@ -397,11 +420,33 @@ function parseShell(text: string): Parsed {
       continue;
     }
 
+    if (ch === "$" && text[i + 1] === "'") {
+      // An ANSI-C quoted string: a backslash escapes the next character, `\'` included, and
+      // nothing in it expands.
+      startWord(i);
+      quotedWord = true;
+      const end = ansiQuoteEnd(text, i);
+      if (end < 0) open = true;
+      const stop = end < 0 ? text.length : end - 1;
+      value += ansiQuoteValue(text.slice(i + 2, Math.max(i + 2, stop)));
+      i = end < 0 ? text.length : end;
+      continue;
+    }
+
+    if (ch === "$" && text[i + 1] === '"') {
+      // `$"…"` is read as `"…"`.
+      startWord(i);
+      i += 1;
+      continue;
+    }
+
     if (ch === "'" || ch === '"') {
       startWord(i);
       quotedWord = true;
-      const end = skipQuoted(text, i, ch);
-      const inner = text.slice(i + 1, Math.max(i + 1, end - 1));
+      const closed = quoteEnd(text, i, ch);
+      if (closed < 0) open = true;
+      const end = closed < 0 ? text.length : closed;
+      const inner = text.slice(i + 1, closed < 0 ? end : Math.max(i + 1, end - 1));
       if (ch === '"' && (inner.includes("$(") || inner.includes("`"))) runs = true;
       value += ch === '"' ? inner.replace(/\\(["\\$`])/g, "$1") : inner;
       i = end;
@@ -419,7 +464,9 @@ function parseShell(text: string): Parsed {
 
     if (ch === "$" && text[i + 1] === "(") {
       startWord(i);
-      const end = skipSubstitution(text, i + 1);
+      const closed = substitutionEnd(text, i + 1);
+      if (closed < 0) open = true;
+      const end = closed < 0 ? text.length : closed;
       value += text.slice(i, end);
       runs = true;
       i = end;
@@ -428,7 +475,9 @@ function parseShell(text: string): Parsed {
 
     if (ch === "`") {
       startWord(i);
-      const end = skipQuoted(text, i, "`");
+      const closed = quoteEnd(text, i, "`");
+      if (closed < 0) open = true;
+      const end = closed < 0 ? text.length : closed;
       value += text.slice(i, end);
       runs = true;
       i = end;
@@ -525,7 +574,7 @@ function parseShell(text: string): Parsed {
     i += 1;
   }
   endSegment(text.length);
-  return { segments, comments, processSubstitution, targetRuns };
+  return { segments, comments, processSubstitution, targetRuns, open };
 }
 
 /** The program's name: its file name, lower-cased, without `.exe`. */
@@ -1182,6 +1231,7 @@ function readCommand(command: string, trustWrites: boolean): Reading {
   const forms = new Set<HidingForm>();
   if (parsed.processSubstitution) forms.add("process-substitution");
   if (parsed.targetRuns) forms.add("command-substitution");
+  if (parsed.open) forms.add("unterminated-quote");
   let gitConfigured = false;
   segments.forEach((segment, index) => {
     // What a command prints into a pipe may be run by the next program; what it writes to a

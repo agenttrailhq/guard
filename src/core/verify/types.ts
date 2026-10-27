@@ -161,6 +161,8 @@ export interface RunTally {
  *   any `hooks/…` or a `core.hooksPath` it names) or git's own config or attributes.
  * - `unread-shell`: a shell whose syntax this reading does not parse (PowerShell): the whole
  *   command is unread.
+ * - `unterminated-quote`: a quote, an ANSI-C `$'…'` string, a backtick or a `$(` still open at
+ *   the end of the command, so where the text after it splits into commands is not known.
  *
  * Not a hiding form: a local script run by name (`./x.sh`, `bash x.sh`, `source x.sh`). Its
  * file is not read; that is a stated limit, not a signal.
@@ -178,6 +180,7 @@ export const HIDING_FORMS = [
   "git-exec",
   "git-hook",
   "unread-shell",
+  "unterminated-quote",
 ] as const;
 
 /** One of `HIDING_FORMS`. */

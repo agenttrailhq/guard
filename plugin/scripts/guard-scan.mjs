@@ -10086,6 +10086,341 @@ function programStart(values) {
   return { index: k, assignments };
 }
 
+// src/core/verify/shell-words.ts
+var SHELLS = /* @__PURE__ */ new Set(["sh", "bash", "zsh", "dash", "ksh"]);
+function ansiQuoteEnd(text2, at2) {
+  let i = at2 + 2;
+  while (i < text2.length) {
+    const ch = text2[i];
+    if (ch === "\\") {
+      i += 2;
+      continue;
+    }
+    if (ch === "'") return i + 1;
+    i += 1;
+  }
+  return -1;
+}
+var ANSI_ESCAPES = {
+  a: "\x07",
+  b: "\b",
+  e: "\x1B",
+  E: "\x1B",
+  f: "\f",
+  n: "\n",
+  r: "\r",
+  t: "	",
+  v: "\v",
+  "\\": "\\",
+  "'": "'",
+  '"': '"',
+  "?": "?"
+};
+var ANSI_ESCAPE = /\\(?:x([0-9A-Fa-f]{1,2})|u([0-9A-Fa-f]{1,4})|U([0-9A-Fa-f]{1,8})|([0-7]{1,3})|c([\s\S])|([\s\S]))/g;
+function ansiQuoteValue(inner) {
+  const value = inner.replace(
+    ANSI_ESCAPE,
+    (whole, hex, u4, u8, octal, control, one) => {
+      const code2 = hex ?? u4 ?? u8;
+      if (code2 !== void 0) {
+        const point = Number.parseInt(code2, 16);
+        return point <= 1114111 ? String.fromCodePoint(point) : whole;
+      }
+      if (octal !== void 0) return String.fromCharCode(Number.parseInt(octal, 8) & 255);
+      if (control !== void 0) return String.fromCharCode(control.charCodeAt(0) & 31);
+      return ANSI_ESCAPES[one ?? ""] ?? whole;
+    }
+  );
+  const nul = value.indexOf("\0");
+  return nul < 0 ? value : value.slice(0, nul);
+}
+function quoteEnd(text2, at2, quote) {
+  let i = at2 + 1;
+  while (i < text2.length) {
+    const ch = text2[i];
+    if (quote !== "'" && ch === "\\") {
+      i += 2;
+      continue;
+    }
+    if (quote === '"' && ch === "$" && text2[i + 1] === "(") {
+      i = substitutionEnd(text2, i + 1);
+      if (i < 0) return -1;
+      continue;
+    }
+    if (ch === quote) return i + 1;
+    i += 1;
+  }
+  return -1;
+}
+function skipQuoted(text2, at2, quote) {
+  const end = quoteEnd(text2, at2, quote);
+  return end < 0 ? text2.length : end;
+}
+function skipSubstitution(text2, at2) {
+  const end = substitutionEnd(text2, at2);
+  return end < 0 ? text2.length : end;
+}
+function substitutionEnd(text2, at2) {
+  let depth = 0;
+  let i = at2;
+  while (i < text2.length) {
+    const ch = text2[i];
+    if (ch === "$" && text2[i + 1] === "'") {
+      i = ansiQuoteEnd(text2, i);
+      if (i < 0) return -1;
+      continue;
+    }
+    if (ch === "'" || ch === '"' || ch === "`") {
+      i = quoteEnd(text2, i, ch);
+      if (i < 0) return -1;
+      continue;
+    }
+    if (ch === "\\") {
+      i += 2;
+      continue;
+    }
+    if (ch === "(") depth += 1;
+    else if (ch === ")") {
+      depth -= 1;
+      if (depth === 0) return i + 1;
+    }
+    i += 1;
+  }
+  return -1;
+}
+function shellItems(text2) {
+  const items = [];
+  const pending = [];
+  let words2 = [];
+  let writes = [];
+  let next = "word";
+  let start = -1;
+  let value = "";
+  let expands = false;
+  let globAt = -1;
+  const endWord = (end) => {
+    if (start < 0) return;
+    const word = { raw: text2.slice(start, end), value, expands, globAt };
+    if (next === "word") words2.push(word);
+    else if (next === "write") writes.push(word);
+    else if (next === "heredoc" || next === "heredoc-tabs") {
+      pending.push({ delimiter: value, stripTabs: next === "heredoc-tabs", words: words2 });
+    }
+    next = "word";
+    start = -1;
+    value = "";
+    expands = false;
+    globAt = -1;
+  };
+  const endCommand = (end) => {
+    endWord(end);
+    if (words2.length > 0 || writes.length > 0) items.push({ kind: "command", words: words2, writes });
+    words2 = [];
+    writes = [];
+  };
+  const begin = (at2) => {
+    if (start < 0) start = at2;
+  };
+  let i = 0;
+  while (i < text2.length) {
+    const ch = text2[i];
+    if (ch === "\n") {
+      endCommand(i);
+      i += 1;
+      while (pending.length > 0) {
+        const doc = pending.shift();
+        const program = doc.words[commandStart(doc.words).index];
+        if (program !== void 0 && SHELLS.has(programName(program))) {
+          pending.length = 0;
+          break;
+        }
+        while (i < text2.length) {
+          const lineEnd = text2.indexOf("\n", i);
+          const stop = lineEnd < 0 ? text2.length : lineEnd;
+          const line2 = text2.slice(i, stop);
+          i = lineEnd < 0 ? text2.length : lineEnd + 1;
+          if ((doc.stripTabs ? line2.replace(/^\t+/, "") : line2) === doc.delimiter) break;
+        }
+      }
+      continue;
+    }
+    if (ch === " " || ch === "	" || ch === "\r") {
+      endWord(i);
+      i += 1;
+      continue;
+    }
+    if (ch === "#" && start < 0) {
+      const lineEnd = text2.indexOf("\n", i);
+      i = lineEnd < 0 ? text2.length : lineEnd;
+      continue;
+    }
+    if (ch === "'" || ch === '"') {
+      begin(i);
+      const end = skipQuoted(text2, i, ch);
+      const inner = text2.slice(i + 1, Math.max(i + 1, end - 1));
+      if (ch === '"') {
+        if (inner.includes("$") || inner.includes("`")) expands = true;
+        value += inner.replace(/\\(["\\$`])/g, "$1");
+      } else value += inner;
+      i = end;
+      continue;
+    }
+    if (ch === "\\") {
+      begin(i);
+      if (text2[i + 1] !== "\n") value += text2[i + 1] ?? "";
+      i += 2;
+      continue;
+    }
+    if (ch === "$") {
+      begin(i);
+      if (text2[i + 1] === "'") {
+        const end = ansiQuoteEnd(text2, i);
+        const stop = end < 0 ? text2.length : end - 1;
+        value += ansiQuoteValue(text2.slice(i + 2, Math.max(i + 2, stop)));
+        i = end < 0 ? text2.length : end;
+        continue;
+      }
+      if (text2[i + 1] === '"') {
+        i += 1;
+        continue;
+      }
+      if (text2[i + 1] === "(") {
+        const end = skipSubstitution(text2, i + 1);
+        value += text2.slice(i, end);
+        expands = true;
+        i = end;
+        continue;
+      }
+      if (/[A-Za-z_{0-9@*#?$!-]/.test(text2[i + 1] ?? "")) expands = true;
+      value += ch;
+      i += 1;
+      continue;
+    }
+    if (ch === "`") {
+      begin(i);
+      const end = skipQuoted(text2, i, "`");
+      value += text2.slice(i, end);
+      expands = true;
+      i = end;
+      continue;
+    }
+    if (ch === "<" || ch === ">") {
+      if (start >= 0 && /^\d+$/.test(value)) {
+        start = -1;
+        value = "";
+      } else endWord(i);
+      if (text2.startsWith("<<<", i)) {
+        next = "herestring";
+        i += 3;
+      } else if (text2.startsWith("<<-", i)) {
+        next = "heredoc-tabs";
+        i += 3;
+      } else if (text2.startsWith("<<", i)) {
+        next = "heredoc";
+        i += 2;
+      } else {
+        const writing = ch === ">" || text2[i + 1] === ">";
+        i += 1;
+        const duplicating = text2[i] === "&";
+        while (i < text2.length && /[>|&<]/.test(text2[i])) i += 1;
+        next = duplicating ? "read" : writing ? "write" : "read";
+      }
+      continue;
+    }
+    if (ch === "&" && text2[i + 1] === ">") {
+      endWord(i);
+      i += 2;
+      if (text2[i] === ">") i += 1;
+      next = "write";
+      continue;
+    }
+    if (ch === "(" || ch === ")") {
+      endCommand(i);
+      items.push({ kind: ch === "(" ? "open" : "close" });
+      i += 1;
+      continue;
+    }
+    if (ch === ";" || ch === "&" || ch === "|") {
+      endCommand(i);
+      i += 1;
+      if (/[&|;]/.test(text2[i] ?? "")) i += 1;
+      continue;
+    }
+    begin(i);
+    if (globAt < 0 && (ch === "*" || ch === "?" || ch === "[")) globAt = value.length;
+    value += ch;
+    i += 1;
+  }
+  endCommand(text2.length);
+  return items;
+}
+function shellCommands(text2) {
+  return shellItems(text2).filter((item) => item.kind === "command");
+}
+function programName(word) {
+  return programNameOf(word.value);
+}
+function commandStart(words2) {
+  const { index, assignments } = programStart(words2.map((word) => word.value));
+  return { index, assignments: assignments.map((i) => words2[i]) };
+}
+var GIT_VALUE_OPTIONS = /* @__PURE__ */ new Set([
+  "-C",
+  "-c",
+  "--git-dir",
+  "--work-tree",
+  "--namespace",
+  "--config-env",
+  "--exec-path"
+]);
+function gitCommand(words2) {
+  const at2 = commandStart(words2).index;
+  const program = words2[at2];
+  if (program === void 0 || programName(program) !== "git") return void 0;
+  const folders = [];
+  let elsewhere = false;
+  let k = at2 + 1;
+  while (k < words2.length && words2[k].value.startsWith("-")) {
+    const option = words2[k].value;
+    if (option.startsWith("--git-dir") || option.startsWith("--work-tree")) elsewhere = true;
+    if (option === "-C" && words2[k + 1] !== void 0) folders.push(words2[k + 1]);
+    k += GIT_VALUE_OPTIONS.has(option) ? 2 : 1;
+  }
+  const sub = words2[k]?.value ?? "";
+  return { sub, args: words2.slice(k + 1), folders, elsewhere };
+}
+function operands(args2, valueOptions = /* @__PURE__ */ new Set()) {
+  const out = [];
+  let k = 0;
+  while (k < args2.length) {
+    const word = args2[k];
+    if (word.value === "--") {
+      out.push(...args2.slice(k + 1));
+      break;
+    }
+    if (word.value.startsWith("-") && word.value !== "-") {
+      k += valueOptions.has(word.value) ? 2 : 1;
+      continue;
+    }
+    out.push(word);
+    k += 1;
+  }
+  return out;
+}
+function directoryChange(words2) {
+  const at2 = commandStart(words2).index;
+  const program = words2[at2];
+  if (program === void 0) return { kind: "none" };
+  const name = programName(program);
+  if (name === "popd") return { kind: "unknown" };
+  if (name !== "cd" && name !== "pushd") return { kind: "none" };
+  const targets = operands(words2.slice(at2 + 1));
+  if (targets.length === 0) return name === "cd" ? { kind: "home" } : { kind: "unknown" };
+  const target = targets[0];
+  if (targets.length > 1 || target.expands || target.value === "-") return { kind: "unknown" };
+  return { kind: "to", path: target.value };
+}
+
 // src/core/verify/command-facts.ts
 var IAM_SUBJECTS = [
   "access-keys",
@@ -10320,7 +10655,8 @@ var HIDING_FORMS = [
   "git-config",
   "git-exec",
   "git-hook",
-  "unread-shell"
+  "unread-shell",
+  "unterminated-quote"
 ];
 var SECRET_PROVENANCES = [
   "pasted-into-prompt",
@@ -10403,7 +10739,7 @@ function emptySegment() {
 function holdsSubstitution(text2) {
   return text2.includes("$(") || text2.includes("`");
 }
-function skipQuoted(text2, at2, quote) {
+function quoteEnd2(text2, at2, quote) {
   let i = at2 + 1;
   while (i < text2.length) {
     const ch = text2[i];
@@ -10412,13 +10748,18 @@ function skipQuoted(text2, at2, quote) {
       continue;
     }
     if (quote === '"' && ch === "$" && text2[i + 1] === "(") {
-      i = skipSubstitution(text2, i + 1);
+      i = substitutionEnd2(text2, i + 1);
+      if (i < 0) return -1;
       continue;
     }
     if (ch === quote) return i + 1;
     i += 1;
   }
-  return text2.length;
+  return -1;
+}
+function skipSubstitution2(text2, at2) {
+  const end = substitutionEnd2(text2, at2);
+  return end < 0 ? text2.length : end;
 }
 function readDelimiter(text2, at2) {
   let i = at2;
@@ -10433,7 +10774,7 @@ function readDelimiter(text2, at2) {
   if (match === null) return void 0;
   return { delimiter: match[0].replace(/\\/g, ""), end: i + match[0].length };
 }
-function skipSubstitution(text2, at2) {
+function substitutionEnd2(text2, at2) {
   let depth = 0;
   let i = at2;
   const pending = [];
@@ -10461,8 +10802,14 @@ function skipSubstitution(text2, at2) {
         continue;
       }
     }
+    if (ch === "$" && text2[i + 1] === "'") {
+      i = ansiQuoteEnd(text2, i);
+      if (i < 0) return -1;
+      continue;
+    }
     if (ch === "'" || ch === '"' || ch === "`") {
-      i = skipQuoted(text2, i, ch);
+      i = quoteEnd2(text2, i, ch);
+      if (i < 0) return -1;
       continue;
     }
     if (ch === "\\") {
@@ -10476,7 +10823,7 @@ function skipSubstitution(text2, at2) {
     }
     i += 1;
   }
-  return text2.length;
+  return -1;
 }
 function parseShell(text2) {
   const segments = [];
@@ -10487,6 +10834,7 @@ function parseShell(text2) {
   let targetWrites = false;
   let processSubstitution = false;
   let targetRuns = false;
+  let open = false;
   let segment = emptySegment();
   let next = "word";
   let wordStart = -1;
@@ -10584,11 +10932,28 @@ function parseShell(text2) {
       i = stop;
       continue;
     }
+    if (ch === "$" && text2[i + 1] === "'") {
+      startWord(i);
+      quotedWord = true;
+      const end = ansiQuoteEnd(text2, i);
+      if (end < 0) open = true;
+      const stop = end < 0 ? text2.length : end - 1;
+      value += ansiQuoteValue(text2.slice(i + 2, Math.max(i + 2, stop)));
+      i = end < 0 ? text2.length : end;
+      continue;
+    }
+    if (ch === "$" && text2[i + 1] === '"') {
+      startWord(i);
+      i += 1;
+      continue;
+    }
     if (ch === "'" || ch === '"') {
       startWord(i);
       quotedWord = true;
-      const end = skipQuoted(text2, i, ch);
-      const inner = text2.slice(i + 1, Math.max(i + 1, end - 1));
+      const closed = quoteEnd2(text2, i, ch);
+      if (closed < 0) open = true;
+      const end = closed < 0 ? text2.length : closed;
+      const inner = text2.slice(i + 1, closed < 0 ? end : Math.max(i + 1, end - 1));
       if (ch === '"' && (inner.includes("$(") || inner.includes("`"))) runs = true;
       value += ch === '"' ? inner.replace(/\\(["\\$`])/g, "$1") : inner;
       i = end;
@@ -10603,7 +10968,9 @@ function parseShell(text2) {
     }
     if (ch === "$" && text2[i + 1] === "(") {
       startWord(i);
-      const end = skipSubstitution(text2, i + 1);
+      const closed = substitutionEnd2(text2, i + 1);
+      if (closed < 0) open = true;
+      const end = closed < 0 ? text2.length : closed;
       value += text2.slice(i, end);
       runs = true;
       i = end;
@@ -10611,7 +10978,9 @@ function parseShell(text2) {
     }
     if (ch === "`") {
       startWord(i);
-      const end = skipQuoted(text2, i, "`");
+      const closed = quoteEnd2(text2, i, "`");
+      if (closed < 0) open = true;
+      const end = closed < 0 ? text2.length : closed;
       value += text2.slice(i, end);
       runs = true;
       i = end;
@@ -10692,9 +11061,9 @@ function parseShell(text2) {
     i += 1;
   }
   endSegment(text2.length);
-  return { segments, comments, processSubstitution, targetRuns };
+  return { segments, comments, processSubstitution, targetRuns, open };
 }
-function programName(word) {
+function programName2(word) {
   return programNameOf(word.value);
 }
 function programIndex(words2) {
@@ -10805,7 +11174,7 @@ function commandOf(segment) {
   const at2 = programIndex(segment.words);
   const program = segment.words[at2];
   if (program === void 0) return void 0;
-  const name = programName(program);
+  const name = programName2(program);
   const rest = segment.words.slice(at2 + 1);
   if (name !== "git") return { name, sub: "", globals: [], args: rest };
   let k = 0;
@@ -10882,11 +11251,11 @@ function writesAFile(segment) {
   return segment.writesFile || writtenBy(segment).length > 0;
 }
 function isHeredocValue(raw) {
-  if (!raw.startsWith("$(") || skipSubstitution(raw, 1) !== raw.length) return false;
+  if (!raw.startsWith("$(") || skipSubstitution2(raw, 1) !== raw.length) return false;
   const inner = parseShell(raw.slice(2, -1));
   if (inner.segments.length !== 1 || inner.comments.length > 0) return false;
   const only = inner.segments[0];
-  return only.words.length === 1 && programName(only.words[0]) === "cat" && only.inputs.length === 1 && only.inputs[0]?.expands === false && !only.pipedOut && !only.writesFile;
+  return only.words.length === 1 && programName2(only.words[0]) === "cat" && only.inputs.length === 1 && only.inputs[0]?.expands === false && !only.pipedOut && !only.writesFile;
 }
 function isDataValue(word, value = word.value) {
   return !word.runs || isHeredocValue(value);
@@ -10984,7 +11353,7 @@ function segmentRegions(segment, keep) {
   const at2 = programIndex(words2);
   const program = words2[at2];
   if (program === void 0) return [];
-  const name = programName(program);
+  const name = programName2(program);
   const rest = words2.slice(at2 + 1);
   const regions = [];
   const blank = (list, kind2) => {
@@ -11028,7 +11397,7 @@ function segmentRegions(segment, keep) {
   }
   return regions;
 }
-var SHELLS = /* @__PURE__ */ new Set([
+var SHELLS2 = /* @__PURE__ */ new Set([
   "bash",
   "sh",
   "zsh",
@@ -11071,7 +11440,7 @@ function runsInlineCode(name, args2) {
 }
 var STDIN_INTERPRETER = /^(?:python[0-9.]*|node|nodejs|perl|ruby|php|pwsh|powershell)$/;
 function runsPipedScript(name, args2) {
-  const shell = SHELLS.has(name);
+  const shell = SHELLS2.has(name);
   if (!shell && !STDIN_INTERPRETER.test(name)) return false;
   for (const word of args2) {
     if (word.value === "-" || shell && /^-[A-Za-z]*s[A-Za-z]*$/.test(word.value)) return true;
@@ -11092,10 +11461,10 @@ function segmentHidingForms(segment, command, gitConfigured, gitRunnableWritten,
   }
   if (command === void 0) return forms;
   const { name, args: args2 } = command;
-  if (SHELLS.has(name) && runsAString(args2)) forms.push("shell-string");
+  if (SHELLS2.has(name) && runsAString(args2)) forms.push("shell-string");
   if (runsInlineCode(name, args2)) forms.push("inline-code");
   const fed = fedByPipe || segment.inputs.length > 0;
-  if (fed && !(SHELLS.has(name) && runsAString(args2)) && runsPipedScript(name, args2)) {
+  if (fed && !(SHELLS2.has(name) && runsAString(args2)) && runsPipedScript(name, args2)) {
     forms.push("piped-script");
   }
   if (name === "eval") forms.push("eval");
@@ -11146,6 +11515,7 @@ function readCommand(command, trustWrites) {
   const forms = /* @__PURE__ */ new Set();
   if (parsed.processSubstitution) forms.add("process-substitution");
   if (parsed.targetRuns) forms.add("command-substitution");
+  if (parsed.open) forms.add("unterminated-quote");
   let gitConfigured = false;
   segments.forEach((segment, index) => {
     const keep = segment.pipedOut && !pipesOnlyToConsumers(index) || writesAFile(segment) && laterMayRun(index);
@@ -11554,7 +11924,7 @@ var MAX_LOCAL_FIXES = 50;
 function couldHideTemplate(id) {
   return {
     id,
-    render: (f) => f.couldHide > 0 ? `${counted(f.couldHide, "command that ran, or may have run,", "commands that ran, or may have run,")} could run other commands this check does not read (code given to a shell or an interpreter, a script piped into one, find -exec, xargs, eval, a substitution, git config, exec or hooks, or a shell this reading does not parse), so it could not confirm it saw everything.` : void 0
+    render: (f) => f.couldHide > 0 ? `${counted(f.couldHide, "command that ran, or may have run,", "commands that ran, or may have run,")} could run other commands this check does not read (code given to a shell or an interpreter, a script piped into one, find -exec, xargs, eval, a substitution, git config, exec or hooks, a quote left open, or a shell this reading does not parse), so it could not confirm it saw everything.` : void 0
   };
 }
 
@@ -11598,7 +11968,8 @@ var HIDING_FORM_LABELS = {
   "git-hook": "git after a hook was written",
   "unread-shell": "a shell this reading does not parse",
   "inline-code": "code run inline by an interpreter",
-  "piped-script": "a script piped into a shell or interpreter"
+  "piped-script": "a script piped into a shell or interpreter",
+  "unterminated-quote": "a quote left open"
 };
 function hidingFormLabel(form) {
   return HIDING_FORM_LABELS[form] ?? form.replace(/-/g, " ");
@@ -11896,7 +12267,7 @@ function optionValue(args2, name) {
   }
   return void 0;
 }
-function operands(args2) {
+function operands2(args2) {
   const out = [];
   for (let k = 0; k < args2.length; k++) {
     const arg = args2[k];
@@ -11977,7 +12348,7 @@ function readAws(args2, local) {
       }
     };
   } else if (service === "s3") {
-    const targets = operands(rest);
+    const targets = operands2(rest);
     const last = targets[targets.length - 1] ?? "";
     const writes = ["rm", "rb", "mb", "website"].includes(operation) || ["cp", "mv", "sync"].includes(operation) && last.startsWith("s3://");
     const bucket = targets.map((t) => /^s3:\/\/([^/\s]+)/.exec(t)?.[1]).find((b) => b !== void 0);
@@ -13529,7 +13900,7 @@ var testsCard = (result, context) => {
 };
 
 // src/core/verify/unreviewed.ts
-var GIT_VALUE_OPTIONS = /* @__PURE__ */ new Set(["-C", "-c", "--git-dir", "--work-tree"]);
+var GIT_VALUE_OPTIONS2 = /* @__PURE__ */ new Set(["-C", "-c", "--git-dir", "--work-tree"]);
 var PUSH_VALUE_OPTIONS = /* @__PURE__ */ new Set([
   "-o",
   "--push-option",
@@ -13553,7 +13924,7 @@ function readPushes(command) {
     while (k < args2.length && args2[k].startsWith("-")) {
       const arg = args2[k];
       if (arg === "-C") here = args2[k + 1];
-      k += GIT_VALUE_OPTIONS.has(arg) ? 2 : 1;
+      k += GIT_VALUE_OPTIONS2.has(arg) ? 2 : 1;
     }
     if (args2[k] !== "push") continue;
     let remote;
@@ -14262,271 +14633,6 @@ function entries(text2) {
 
 // src/core/verify/shell-calls.ts
 import { isAbsolute as isAbsolute3, join as join5, resolve as resolve2 } from "path";
-
-// src/core/verify/shell-words.ts
-var SHELLS2 = /* @__PURE__ */ new Set(["sh", "bash", "zsh", "dash", "ksh"]);
-function skipQuoted2(text2, at2, quote) {
-  let i = at2 + 1;
-  while (i < text2.length) {
-    const ch = text2[i];
-    if (quote !== "'" && ch === "\\") {
-      i += 2;
-      continue;
-    }
-    if (quote === '"' && ch === "$" && text2[i + 1] === "(") {
-      i = skipSubstitution2(text2, i + 1);
-      continue;
-    }
-    if (ch === quote) return i + 1;
-    i += 1;
-  }
-  return text2.length;
-}
-function skipSubstitution2(text2, at2) {
-  let depth = 0;
-  let i = at2;
-  while (i < text2.length) {
-    const ch = text2[i];
-    if (ch === "'" || ch === '"' || ch === "`") {
-      i = skipQuoted2(text2, i, ch);
-      continue;
-    }
-    if (ch === "\\") {
-      i += 2;
-      continue;
-    }
-    if (ch === "(") depth += 1;
-    else if (ch === ")") {
-      depth -= 1;
-      if (depth === 0) return i + 1;
-    }
-    i += 1;
-  }
-  return text2.length;
-}
-function shellItems(text2) {
-  const items = [];
-  const pending = [];
-  let words2 = [];
-  let writes = [];
-  let next = "word";
-  let start = -1;
-  let value = "";
-  let expands = false;
-  let globAt = -1;
-  const endWord = (end) => {
-    if (start < 0) return;
-    const word = { raw: text2.slice(start, end), value, expands, globAt };
-    if (next === "word") words2.push(word);
-    else if (next === "write") writes.push(word);
-    else if (next === "heredoc" || next === "heredoc-tabs") {
-      pending.push({ delimiter: value, stripTabs: next === "heredoc-tabs", words: words2 });
-    }
-    next = "word";
-    start = -1;
-    value = "";
-    expands = false;
-    globAt = -1;
-  };
-  const endCommand = (end) => {
-    endWord(end);
-    if (words2.length > 0 || writes.length > 0) items.push({ kind: "command", words: words2, writes });
-    words2 = [];
-    writes = [];
-  };
-  const begin = (at2) => {
-    if (start < 0) start = at2;
-  };
-  let i = 0;
-  while (i < text2.length) {
-    const ch = text2[i];
-    if (ch === "\n") {
-      endCommand(i);
-      i += 1;
-      while (pending.length > 0) {
-        const doc = pending.shift();
-        const program = doc.words[commandStart(doc.words).index];
-        if (program !== void 0 && SHELLS2.has(programName2(program))) {
-          pending.length = 0;
-          break;
-        }
-        while (i < text2.length) {
-          const lineEnd = text2.indexOf("\n", i);
-          const stop = lineEnd < 0 ? text2.length : lineEnd;
-          const line2 = text2.slice(i, stop);
-          i = lineEnd < 0 ? text2.length : lineEnd + 1;
-          if ((doc.stripTabs ? line2.replace(/^\t+/, "") : line2) === doc.delimiter) break;
-        }
-      }
-      continue;
-    }
-    if (ch === " " || ch === "	" || ch === "\r") {
-      endWord(i);
-      i += 1;
-      continue;
-    }
-    if (ch === "#" && start < 0) {
-      const lineEnd = text2.indexOf("\n", i);
-      i = lineEnd < 0 ? text2.length : lineEnd;
-      continue;
-    }
-    if (ch === "'" || ch === '"') {
-      begin(i);
-      const end = skipQuoted2(text2, i, ch);
-      const inner = text2.slice(i + 1, Math.max(i + 1, end - 1));
-      if (ch === '"') {
-        if (inner.includes("$") || inner.includes("`")) expands = true;
-        value += inner.replace(/\\(["\\$`])/g, "$1");
-      } else value += inner;
-      i = end;
-      continue;
-    }
-    if (ch === "\\") {
-      begin(i);
-      if (text2[i + 1] !== "\n") value += text2[i + 1] ?? "";
-      i += 2;
-      continue;
-    }
-    if (ch === "$") {
-      begin(i);
-      if (text2[i + 1] === "(") {
-        const end = skipSubstitution2(text2, i + 1);
-        value += text2.slice(i, end);
-        expands = true;
-        i = end;
-        continue;
-      }
-      if (/[A-Za-z_{0-9@*#?$!-]/.test(text2[i + 1] ?? "")) expands = true;
-      value += ch;
-      i += 1;
-      continue;
-    }
-    if (ch === "`") {
-      begin(i);
-      const end = skipQuoted2(text2, i, "`");
-      value += text2.slice(i, end);
-      expands = true;
-      i = end;
-      continue;
-    }
-    if (ch === "<" || ch === ">") {
-      if (start >= 0 && /^\d+$/.test(value)) {
-        start = -1;
-        value = "";
-      } else endWord(i);
-      if (text2.startsWith("<<<", i)) {
-        next = "herestring";
-        i += 3;
-      } else if (text2.startsWith("<<-", i)) {
-        next = "heredoc-tabs";
-        i += 3;
-      } else if (text2.startsWith("<<", i)) {
-        next = "heredoc";
-        i += 2;
-      } else {
-        const writing = ch === ">" || text2[i + 1] === ">";
-        i += 1;
-        const duplicating = text2[i] === "&";
-        while (i < text2.length && /[>|&<]/.test(text2[i])) i += 1;
-        next = duplicating ? "read" : writing ? "write" : "read";
-      }
-      continue;
-    }
-    if (ch === "&" && text2[i + 1] === ">") {
-      endWord(i);
-      i += 2;
-      if (text2[i] === ">") i += 1;
-      next = "write";
-      continue;
-    }
-    if (ch === "(" || ch === ")") {
-      endCommand(i);
-      items.push({ kind: ch === "(" ? "open" : "close" });
-      i += 1;
-      continue;
-    }
-    if (ch === ";" || ch === "&" || ch === "|") {
-      endCommand(i);
-      i += 1;
-      if (/[&|;]/.test(text2[i] ?? "")) i += 1;
-      continue;
-    }
-    begin(i);
-    if (globAt < 0 && (ch === "*" || ch === "?" || ch === "[")) globAt = value.length;
-    value += ch;
-    i += 1;
-  }
-  endCommand(text2.length);
-  return items;
-}
-function shellCommands(text2) {
-  return shellItems(text2).filter((item) => item.kind === "command");
-}
-function programName2(word) {
-  return programNameOf(word.value);
-}
-function commandStart(words2) {
-  const { index, assignments } = programStart(words2.map((word) => word.value));
-  return { index, assignments: assignments.map((i) => words2[i]) };
-}
-var GIT_VALUE_OPTIONS2 = /* @__PURE__ */ new Set([
-  "-C",
-  "-c",
-  "--git-dir",
-  "--work-tree",
-  "--namespace",
-  "--config-env",
-  "--exec-path"
-]);
-function gitCommand(words2) {
-  const at2 = commandStart(words2).index;
-  const program = words2[at2];
-  if (program === void 0 || programName2(program) !== "git") return void 0;
-  const folders = [];
-  let elsewhere = false;
-  let k = at2 + 1;
-  while (k < words2.length && words2[k].value.startsWith("-")) {
-    const option = words2[k].value;
-    if (option.startsWith("--git-dir") || option.startsWith("--work-tree")) elsewhere = true;
-    if (option === "-C" && words2[k + 1] !== void 0) folders.push(words2[k + 1]);
-    k += GIT_VALUE_OPTIONS2.has(option) ? 2 : 1;
-  }
-  const sub = words2[k]?.value ?? "";
-  return { sub, args: words2.slice(k + 1), folders, elsewhere };
-}
-function operands2(args2, valueOptions = /* @__PURE__ */ new Set()) {
-  const out = [];
-  let k = 0;
-  while (k < args2.length) {
-    const word = args2[k];
-    if (word.value === "--") {
-      out.push(...args2.slice(k + 1));
-      break;
-    }
-    if (word.value.startsWith("-") && word.value !== "-") {
-      k += valueOptions.has(word.value) ? 2 : 1;
-      continue;
-    }
-    out.push(word);
-    k += 1;
-  }
-  return out;
-}
-function directoryChange(words2) {
-  const at2 = commandStart(words2).index;
-  const program = words2[at2];
-  if (program === void 0) return { kind: "none" };
-  const name = programName2(program);
-  if (name === "popd") return { kind: "unknown" };
-  if (name !== "cd" && name !== "pushd") return { kind: "none" };
-  const targets = operands2(words2.slice(at2 + 1));
-  if (targets.length === 0) return name === "cd" ? { kind: "home" } : { kind: "unknown" };
-  const target = targets[0];
-  if (targets.length > 1 || target.expands || target.value === "-") return { kind: "unknown" };
-  return { kind: "to", path: target.value };
-}
-
-// src/core/verify/shell-calls.ts
 var EDIT_TOOLS = /* @__PURE__ */ new Set(["Edit", "Write", "MultiEdit", "NotebookEdit"]);
 var NOT_WRITTEN_KEYS = /* @__PURE__ */ new Set([
   "file_path",
@@ -14594,6 +14700,12 @@ function substitutions(raw) {
       i += 1;
       continue;
     }
+    if (!inSingle && ch === "$" && raw[i + 1] === "'") {
+      const end = ansiQuoteEnd(raw, i);
+      if (end < 0) break;
+      i = end - 1;
+      continue;
+    }
     if (ch === "'") inSingle = !inSingle;
     if (inSingle) continue;
     if (ch === "$" && raw[i + 1] === "(" && raw[i + 2] !== "(") {
@@ -14624,7 +14736,7 @@ function innerCommands(command) {
   }
   const start = commandStart(command.words).index;
   const program = command.words[start];
-  if (program !== void 0 && SHELL_PROGRAMS.has(programName2(program))) {
+  if (program !== void 0 && SHELL_PROGRAMS.has(programName(program))) {
     const args2 = command.words.slice(start + 1);
     const flag = args2.findIndex((a) => /^-[A-Za-z]*c[A-Za-z]*$/.test(a.value));
     const script = flag >= 0 ? args2[flag + 1] : void 0;
@@ -14860,14 +14972,14 @@ function recursiveRmTargets(args2) {
     if (value === "--recursive") recursive = true;
     else if (/^-[A-Za-z]+$/.test(value) && /[rR]/.test(value)) recursive = true;
   }
-  return recursive ? operands2(args2) : [];
+  return recursive ? operands(args2) : [];
 }
 var rmTargets = (text2, cwd, home) => {
   const out = [];
   walkCommands(text2, cwd, home, (command, folder) => {
     const start = commandStart(command.words).index;
     const program = command.words[start];
-    if (program === void 0 || programName2(program) !== "rm") return;
+    if (program === void 0 || programName(program) !== "rm") return;
     for (const word of recursiveRmTargets(command.words.slice(start + 1))) {
       out.push({ folder, word });
     }
@@ -15053,7 +15165,7 @@ function serverOf(args2, assignments, options, sql = "") {
   const infoWord = args2.find((a) => CONNINFO.test(a.value));
   const info = infoWord === void 0 ? void 0 : conninfoOf(infoWord.value);
   const pgHost = assignments.find((a) => a.value.startsWith("PGHOST="));
-  const rest = operands2(args2, DATABASE_VALUE_OPTIONS);
+  const rest = operands(args2, DATABASE_VALUE_OPTIONS);
   const positional = options.positionalHost === true && rest[0] !== void 0 && !rest[0].value.includes("://") && /^[^/\s]+(?::\d+)?\//.test(rest[0].value) ? rest[0] : void 0;
   const host = fromUrl?.[1] ?? info?.get("host") ?? info?.get("hostaddr") ?? positional?.value.split("/")[0]?.replace(/:\d+$/, "") ?? hostWord?.value ?? pgHost?.value.slice("PGHOST=".length);
   const service = host === void 0 && info?.has("service") === true;
@@ -15115,14 +15227,14 @@ function databaseTargets(words2, scratchRoots, view, depth = 0) {
   let at2 = start.index;
   let program = words2[at2];
   if (program === void 0 || depth > 3) return [];
-  let name = programName2(program);
+  let name = programName(program);
   if (LAUNCHERS2.has(name)) {
     at2 += 1;
     while (words2[at2] !== void 0 && ["exec", "dlx", "run", "x"].includes(words2[at2].value))
       at2 += 1;
     program = words2[at2];
     if (program === void 0) return [];
-    name = programName2(program);
+    name = programName(program);
   }
   const args2 = words2.slice(at2 + 1);
   const values = args2.map((a) => a.value);
@@ -15151,7 +15263,7 @@ function databaseTargets(words2, scratchRoots, view, depth = 0) {
       return values[k] === "exec" && dash > k ? relay(args2.slice(dash + 1), "remote") : [];
     }
     case "ssh": {
-      const rest = operands2(args2, /* @__PURE__ */ new Set(["-p", "-i", "-l", "-o", "-F", "-J", "-L", "-R", "-D"]));
+      const rest = operands(args2, /* @__PURE__ */ new Set(["-p", "-i", "-l", "-o", "-F", "-J", "-L", "-R", "-D"]));
       const text2 = rest.slice(1).map((w) => w.value).join(" ");
       return shellCommands(text2).flatMap((c) => relay(c.words, "remote"));
     }
@@ -15202,7 +15314,7 @@ function databaseTargets(words2, scratchRoots, view, depth = 0) {
       ] : [];
     }
     case "sqlite3": {
-      const [file2, sql] = operands2(args2);
+      const [file2, sql] = operands(args2);
       if (file2 === void 0 || !DESTRUCTIVE_SQL.test(sql?.value ?? view)) return [];
       return [
         {
@@ -15484,7 +15596,7 @@ function discardedPaths(sub, args2) {
       if (paths.length === 0) return void 0;
       return paths.some((p) => p.value === ".") ? "all" : paths;
     }
-    const rest = operands2(args2);
+    const rest = operands(args2);
     if (rest.length === 1 && rest[0]?.value === ".") return "all";
     return args2.some((a) => a.value === "-f" || a.value === "--force") ? "all" : void 0;
   }
@@ -15499,7 +15611,7 @@ function discardedPaths(sub, args2) {
     if (args2.some((a) => /^-[A-Za-z]*n[A-Za-z]*$/.test(a.value) || a.value === "--dry-run")) {
       return void 0;
     }
-    const paths = operands2(args2, /* @__PURE__ */ new Set(["-e", "--exclude"]));
+    const paths = operands(args2, /* @__PURE__ */ new Set(["-e", "--exclude"]));
     return paths.length === 0 || paths.some((p) => p.value === ".") ? "all" : paths;
   }
   if (sub === "restore") {
@@ -15508,7 +15620,7 @@ function discardedPaths(sub, args2) {
     const worktree = values.includes("--worktree") || values.includes("-W");
     if (staged && !worktree) return void 0;
     if (values.some((v) => v.startsWith("--pathspec-from-file"))) return "all";
-    const paths = operands2(args2, RESTORE_VALUE_OPTIONS);
+    const paths = operands(args2, RESTORE_VALUE_OPTIONS);
     if (paths.length === 0) return void 0;
     return paths.some((p) => p.value === ".") ? "all" : paths;
   }
@@ -15557,9 +15669,9 @@ var copies = (text2, cwd, home) => {
     if (git !== void 0) {
       const base = folderOf(git, folder, home);
       if (git.sub === "worktree" && git.args[0]?.value === "add") {
-        add(base, operands2(git.args.slice(1), WORKTREE_VALUE_OPTIONS)[0]);
+        add(base, operands(git.args.slice(1), WORKTREE_VALUE_OPTIONS)[0]);
       } else if (git.sub === "clone") {
-        const [url, into] = operands2(git.args, CLONE_VALUE_OPTIONS);
+        const [url, into] = operands(git.args, CLONE_VALUE_OPTIONS);
         if (into !== void 0) add(base, into);
         else if (url !== void 0 && !url.expands) {
           const name = url.value.replace(/[\\/]+$/, "").split(/[\\/:]/).pop() ?? "";
@@ -15573,12 +15685,12 @@ var copies = (text2, cwd, home) => {
     }
     const start = commandStart(command.words).index;
     const program = command.words[start];
-    if (program === void 0 || programName2(program) !== "cp") return;
+    if (program === void 0 || programName(program) !== "cp") return;
     const args2 = command.words.slice(start + 1);
     const recursive = args2.some(
       (a) => /^-[A-Za-z]*[rRa]/.test(a.value) || a.value === "--recursive"
     );
-    const rest = operands2(args2);
+    const rest = operands(args2);
     if (recursive && rest.length >= 2) add(folder, rest[rest.length - 1]);
   });
   return out;
@@ -16240,7 +16352,7 @@ var huskyCommands = (text2, cwd, home) => {
   walkCommands(text2, cwd, home, (command, folder) => {
     const start = commandStart(command.words);
     const program = command.words[start.index];
-    const exported = program !== void 0 && programName2(program) === "export" && command.words.slice(start.index + 1).some(huskyOff);
+    const exported = program !== void 0 && programName(program) === "export" && command.words.slice(start.index + 1).some(huskyOff);
     if (!start.assignments.some(huskyOff) && !exported) return;
     const git = gitCommand(command.words);
     out.push({
@@ -16290,7 +16402,7 @@ var hooksPathChanges = (text2, cwd, home) => {
     const git = gitCommand(command.words);
     if (git === void 0 || git.sub !== "config") return;
     if (git.args.some((a) => CONFIG_READS.has(a.value))) return;
-    const rest = operands2(git.args, CONFIG_VALUE_OPTIONS);
+    const rest = operands(git.args, CONFIG_VALUE_OPTIONS);
     const verb = rest[0]?.value;
     const named = verb === "set" || verb === "unset" ? rest.slice(1) : rest;
     if (named[0]?.value.toLowerCase() !== "core.hookspath") return;

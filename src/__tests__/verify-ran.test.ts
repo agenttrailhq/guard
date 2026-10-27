@@ -23,6 +23,7 @@ import {
   ranEvidenceOf,
   recordsToolResults,
   runVerdict,
+  simpleCommandsOf,
   tallyMatchedCalls,
 } from "../core/verify/ran.js";
 import { HIDING_FORMS } from "../core/verify/types.js";
@@ -762,5 +763,69 @@ describe("what a call could hide", () => {
     );
     for (const form of all) expect(HIDING_FORMS).toContain(form);
     expect(all.length).toBeGreaterThan(5);
+  });
+});
+
+describe("ANSI-C quoting, and a quote left open", () => {
+  // `$'…'` reads a backslash as an escape, so `\'` does not end it.
+  const QUOTED = "echo $'it\\'s'";
+
+  it("an escaped quote inside $'…' does not swallow the command after it", () => {
+    const text = `${QUOTED}; rm -rf build`;
+    expect(simpleCommandsOf(text).map((c) => c.words[0])).toEqual(["echo", "rm"]);
+    expect(simpleCommandsOf(text)[0]?.words[1]).toBe("it's");
+    // The printed words are blanked; the command after them is not.
+    expect(executedView(text).text).toMatch(/\brm -rf build$/);
+    expect(commandHidingForms(text)).toEqual([]);
+  });
+
+  it("splits $'a\\'b'; X into two simple commands", () => {
+    expect(simpleCommandsOf("echo $'a\\'b'; make all").map((c) => c.words)).toEqual([
+      ["echo", "a'b"],
+      ["make", "all"],
+    ]);
+  });
+
+  it.each([
+    ["a tab", "echo $'a\\tb'", "a\tb"],
+    ["a newline", "echo $'a\\nb'", "a\nb"],
+    ["a backslash", "echo $'a\\\\b'", "a\\b"],
+    ["a hex escape", "echo $'\\x72m'", "rm"],
+    ["an octal escape", "echo $'\\162m'", "rm"],
+    ["a Unicode escape", "echo $'\\u0072m'", "rm"],
+    ["a NUL, which ends it", "echo $'ab\\x00cd'", "ab"],
+    ["an escape the shell does not know", "echo $'a\\qb'", "a\\qb"],
+    ['$"…", read as "…"', 'echo $"a b"', "a b"],
+  ])("reads %s as the shell does", (_label, command, value) => {
+    expect(simpleCommandsOf(command)[0]?.words[1]).toBe(value);
+  });
+
+  it("a program named in escapes is the program the shell runs", () => {
+    expect(simpleCommandsOf("$'\\x72m' -rf build")[0]?.words[0]).toBe("rm");
+  });
+
+  it.each([
+    ["a single quote", "echo 'abc; make all"],
+    ["a double quote", 'echo "abc; make all'],
+    ["an ANSI-C string", "echo $'it\\'s; make all"],
+    ["a backtick", "echo `date; make all"],
+    ["a substitution", "echo $(date; make all"],
+    ["a double quote holding an open substitution", 'echo "$(date; make all"'],
+    ["a quote inside a substitution", "echo $(printf 'x); make all"],
+  ])("%s left open is a hiding form", (_label, command) => {
+    expect(commandHidingForms(command)).toContain("unterminated-quote");
+    expect(hidingFormsOf(bash(command))).toContain("unterminated-quote");
+  });
+
+  it.each([
+    "echo 'abc'; make all",
+    'echo "it\'s"; make all',
+    "echo $'it\\'s'; make all",
+    "echo $(printf ')'); make all",
+    "echo `date`; make all",
+    "ls # it's a comment",
+    "cat <<'EOF'\nit's\nEOF",
+  ])("%j closes every quote: no such form", (command) => {
+    expect(commandHidingForms(command)).not.toContain("unterminated-quote");
   });
 });

@@ -7,15 +7,16 @@
 
 import { describe, expect, it } from "vitest";
 import { couldHideCount, heldHidingForms } from "../core/verify/calls.js";
-import type { CardSentence } from "../core/verify/cards.js";
+import { type CardSentence, honestStatus } from "../core/verify/cards.js";
 import { checkCloud, cloudCard } from "../core/verify/cloud.js";
 import { checkDependencies, type DependencyFacts } from "../core/verify/deps.js";
 import { checkEgress, egressCard } from "../core/verify/egress.js";
 import { verifiedNote } from "../core/verify/notes.js";
 import { checkProdInfra, prodInfraCard } from "../core/verify/prod-infra.js";
 import { checkTests, testsCard } from "../core/verify/tests.js";
-import type { Verification } from "../core/verify/types.js";
+import type { Verification, VerifyCategory } from "../core/verify/types.js";
 import { checkUnreviewed, unreviewedCard } from "../core/verify/unreviewed.js";
+import { UNAVAILABLE_VERIFY_IO, verifyScan } from "../core/verify/verify.js";
 import {
   type CommandEvent,
   callsOf,
@@ -24,6 +25,7 @@ import {
   OK,
   SHIPPED,
 } from "./verify-command-fixtures.js";
+import { writeCorpus } from "./verify-fixtures.js";
 
 /** A result that says the call was refused before it ran: an error with no exit code. */
 const REFUSED: EventResult = {
@@ -377,5 +379,67 @@ describe("every command check, with a hiding form in a call that ran", () => {
     ]);
     expect(results.tests.status).toBe("act");
     expect(lines.tests?.map((s) => s.template)).toContain("tests.could-hide");
+  });
+});
+
+/**
+ * One command per category whose check reads it, each found on its own: the control a hidden
+ * form of it must match. Synthetic names and hosts.
+ */
+const CONTROLS: readonly (readonly [string, string, VerifyCategory])[] = [
+  ["an IAM change", "aws iam create-user --user-name synthetic-bot", "cloud"],
+  ["a Terraform apply", `terraform apply ${"-auto"}-approve`, "cloud"],
+  ["an upload", "curl -T notes.txt https://upload.example.invalid/", "egress"],
+  [
+    "a production delete",
+    `kubectl --context prod-cluster delete ${"deployment"} web`,
+    "prod-infra",
+  ],
+  ["a recursive delete", `rm -rf "$OUT/${"build"}"`, "destructive"],
+  ["a push to main", "git push origin HEAD:main", "unreviewed"],
+];
+
+/**
+ * The status each category shows, as the report and `--json` show it (`honestStatus`), after
+ * every check ran on one Claude Code call of `command` that ran.
+ */
+async function shownStatuses(command: string): Promise<Record<VerifyCategory, string>> {
+  const { corpus } = await writeCorpus("claude", [
+    [{ kind: "call", command, result: { text: "" } }],
+  ]);
+  const { verification } = await verifyScan({
+    corpus,
+    ...SHIPPED,
+    readLines: () => (async function* () {})(),
+    io: UNAVAILABLE_VERIFY_IO,
+    home: "/nonexistent/home",
+  });
+  const out = {} as Record<VerifyCategory, string>;
+  for (const [category, result] of Object.entries(verification.categories)) {
+    const facts = "facts" in result ? result.facts : undefined;
+    out[category as VerifyCategory] = honestStatus(
+      category as VerifyCategory,
+      result.status,
+      facts,
+      verification.resultsRecorded,
+    );
+  }
+  return out;
+}
+
+describe("a command after an ANSI-C quoted string is read", () => {
+  it.each(
+    CONTROLS,
+  )("%s after $'it\\'s' reads as it does alone", async (_label, command, category) => {
+    const alone = (await shownStatuses(command))[category];
+    expect(alone).not.toBe("clean");
+    const after = (await shownStatuses(`echo $'it\\'s'; ${command}`))[category];
+    expect(after).toBe(alone);
+  });
+
+  it.each(
+    CONTROLS,
+  )("%s after a quote left open is never clean", async (_label, command, category) => {
+    expect((await shownStatuses(`echo 'it; ${command}`))[category]).toBe("could-not-check");
   });
 });
