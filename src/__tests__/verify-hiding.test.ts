@@ -1,4 +1,4 @@
-// cspell:words xargs execdir okdir doas ionice setsid caffeinate runuser mywrap direnv pipenv bunx gtimeout taskset chrt
+// cspell:words xargs execdir okdir doas ionice setsid caffeinate runuser mywrap direnv pipenv bunx gtimeout taskset chrt ubectl
 /**
  * Hiding forms (`core/verify/calls.ts`): commands that can run other commands the checks do not
  * read. Where a call that ran holds one, no command check says that nothing ran, and none reads
@@ -502,6 +502,25 @@ const READ_WRAPS: readonly (readonly [string, (command: string) => string])[] = 
   ["runuser -u root --", (c) => `runuser -u root -- ${c}`],
   ["sudo -s", (c) => `sudo -s ${c}`],
   ["watch -x", (c) => `watch -x ${c}`],
+  // The program's name spelled with quotes or escapes.
+  [
+    "a hex escape for its first letter",
+    (c) => `$'\\x${c.charCodeAt(0).toString(16)}'${c.slice(1)}`,
+  ],
+  [
+    "an octal escape for its first letter",
+    (c) => `$'\\${c.charCodeAt(0).toString(8)}'${c.slice(1)}`,
+  ],
+  [
+    "a Unicode escape for its first letter",
+    (c) => `$'\\u00${c.charCodeAt(0).toString(16)}'${c.slice(1)}`,
+  ],
+  [
+    "its name in an ANSI-C string",
+    (c) => `$'${c.split(" ")[0]}' ${c.split(" ").slice(1).join(" ")}`,
+  ],
+  ["empty quotes inside its name", (c) => `${c.slice(0, 1)}''${c.slice(1)}`],
+  ["a double-quoted first letter", (c) => `"${c.slice(0, 1)}"${c.slice(1)}`],
 ];
 
 /** Words before a command that give it as one string: the command is not read, never clean. */
@@ -725,6 +744,35 @@ describe("one call: a command read, and one of the same kind behind a wrapper", 
   it("the wrapped push is could-not-confirm, beside the push that was read", async () => {
     const command = "git push origin feature/x && my-wrapper git push origin HEAD:main";
     expect(formsIn(await verificationOf(command), "unreviewed")).toEqual(["unread-match"]);
+  });
+});
+
+describe("a program's name spelled with escapes is that program to every check", () => {
+  const PROD = `kubectl --context prod-cluster delete ${"deployment"} web`;
+
+  it.each([
+    ["a hex escape", `$'\\x6b'ubectl --context prod-cluster delete ${"deployment"} web`],
+    ["an octal escape", `$'\\153'ubectl --context prod-cluster delete ${"deployment"} web`],
+    ["empty quotes", `k''ubectl --context prod-cluster delete ${"deployment"} web`],
+  ])("%s: a kubectl production delete is counted as one", async (_l, command) => {
+    const alone = await verificationOf(PROD);
+    const spelled = await verificationOf(command);
+    const facts = (v: Verification) => {
+      const result = v.categories["prod-infra"];
+      return "facts" in result ? result.facts : undefined;
+    };
+    expect(facts(alone)).toMatchObject({ infraMatches: 1, infraKinds: ["kubernetes"] });
+    expect(facts(spelled)).toMatchObject({ infraMatches: 1, infraKinds: ["kubernetes"] });
+    expect((await shownStatuses(command))["prod-infra"]).toBe("review");
+  });
+
+  it("a delete whose program is an escape reads as the delete it spells", async () => {
+    const rm = `rm -rf "$OUT/${"build"}"`;
+    const alone = (await shownStatuses(rm)).destructive;
+    expect(alone).toBe("act");
+    for (const spelled of [`$'\\x72'm -rf "$OUT/${"build"}"`, `$'\\162'm -rf "$OUT/${"build"}"`]) {
+      expect((await shownStatuses(spelled)).destructive, spelled).toBe(alone);
+    }
   });
 });
 

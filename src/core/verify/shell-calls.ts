@@ -39,6 +39,7 @@ import {
   isResultBackedRun,
   opaqueCommands,
   runVerdict,
+  spellsWordsWithQuotes,
 } from "./ran.js";
 import {
   ansiQuoteEnd,
@@ -501,6 +502,23 @@ function mentionedIn<F>(call: ShellCall, detect: Detector<F>, home: string): boo
   return false;
 }
 
+/** Each call's words, read once, for the hints. */
+const WORDS = new WeakMap<ShellCall, string>();
+
+/** A call's words, quotes and escapes removed, one simple command a line. */
+function wordsOf(call: ShellCall): string {
+  let words = WORDS.get(call);
+  if (words === undefined) {
+    words = shellItems(call.command)
+      .flatMap((item) =>
+        item.kind === "command" ? [item.words.map((w) => w.value).join(" ")] : [],
+      )
+      .join("\n");
+    WORDS.set(call, words);
+  }
+  return words;
+}
+
 /**
  * Judge one call for one check. `undefined` when the check finds nothing in the call;
  * otherwise the verdict, and what was found in the part that ran.
@@ -510,8 +528,9 @@ function mentionedIn<F>(call: ShellCall, detect: Detector<F>, home: string): boo
  * printed text, a search pattern or a heredoc — is a mention, and `runVerdict` says so with
  * the kind of region.
  *
- * `hint` is a cheap test on the raw command that every match passes, so most calls are never
- * parsed.
+ * `hint` is a cheap test that every match passes, so most calls are never parsed. It is run on
+ * the raw command, and on its words too when the command spells a word with quotes or escapes
+ * (`$'\x72'm`, `r''m`), where the words differ from the text (`wordsOf`).
  */
 export function judge<F>(
   log: CallLog,
@@ -519,7 +538,12 @@ export function judge<F>(
   hint: RegExp,
   detect: Detector<F>,
 ): Judged<F> | undefined {
-  if (!hint.test(call.command)) return undefined;
+  if (
+    !hint.test(call.command) &&
+    !(spellsWordsWithQuotes(call.command) && hint.test(wordsOf(call)))
+  ) {
+    return undefined;
+  }
   const found = detect(call.view, call.cwd, log.home);
   if (found.length === 0) {
     if (!mentionedIn(call, detect, log.home)) return undefined;

@@ -1,4 +1,4 @@
-// cspell:words nohup execdir okdir
+// cspell:words nohup execdir okdir ubectl
 /**
  * The tool calls of a corpus, read once for the checks that look at what commands and edits
  * did: the test, cloud, production, unreviewed-code, egress and dependency checks.
@@ -29,6 +29,7 @@ import type { AgentSource, MappedCall } from "../types.js";
 import { gitSubcommandIndex, programNameOf, programStart } from "./prefix-words.js";
 import {
   backstopTails,
+  decodedCommand,
   executedView,
   hidingFormsOf,
   isResultBackedRun,
@@ -36,6 +37,7 @@ import {
   runVerdict,
   type SimpleCommandView,
   simpleCommandsOf,
+  spellsWordsWithQuotes,
 } from "./ran.js";
 import { HIDING_FORMS, type HidingForm, type RunState } from "./types.js";
 
@@ -238,7 +240,12 @@ export function readCalls(
             cwd: session.cwd,
             mapped,
             result,
-            ruleIds: decision.matches.map((m) => m.ruleId),
+            ruleIds: [
+              ...new Set([
+                ...decision.matches.map((m) => m.ruleId),
+                ...decodedMatches(catalog, allowlist, mapped),
+              ]),
+            ],
             hidingForms: hidingFormsOf(mapped),
           };
           if (mapped.tool === SHELL_TOOL && mapped.args.full_command !== undefined) {
@@ -314,9 +321,28 @@ export function executedText(command: string): string {
 }
 
 /**
+ * The guardrails that match a shell call's command read as its words (`decodedCommand`), for a
+ * command that spells its words with quotes or escapes (`$'\x6b'ubectl`, `r''m`): a guardrail
+ * written against command text would miss them in the text itself. Empty for any other call.
+ */
+function decodedMatches(
+  catalog: readonly CompiledRule[],
+  allowlist: CompiledAllowlist,
+  mapped: MappedCall,
+): string[] {
+  const command = mapped.args.full_command;
+  if (mapped.tool !== SHELL_TOOL || command === undefined || !spellsWordsWithQuotes(command)) {
+    return [];
+  }
+  const decoded = { ...mapped, args: { ...mapped.args, full_command: decodedCommand(command) } };
+  return evaluateAction(catalog, allowlist, [decoded]).decision.matches.map((m) => m.ruleId);
+}
+
+/**
  * A test of a shell command against some of the guardrails: does any of the rules `keep`
  * selects match `command`, as the call it came from? Evaluated as `scan` evaluates, with the
- * user's allowlist.
+ * user's allowlist, on the text and, where it spells its words with quotes or escapes, on its
+ * words (`decodedCommand`).
  */
 export function rulesMatcher(
   catalog: readonly CompiledRule[],
@@ -324,11 +350,14 @@ export function rulesMatcher(
   keep: (rule: CompiledRule) => boolean,
 ): (call: SessionCall, command: string) => boolean {
   const subset = catalog.filter(keep);
+  const matches = (call: SessionCall, text: string): boolean =>
+    evaluateAction(subset, allowlist, [
+      { ...call.mapped, args: { ...call.mapped.args, full_command: text } },
+    ]).decision.matches.length > 0;
   return (call, command) =>
     subset.length > 0 &&
-    evaluateAction(subset, allowlist, [
-      { ...call.mapped, args: { ...call.mapped.args, full_command: command } },
-    ]).decision.matches.length > 0;
+    (matches(call, command) ||
+      (spellsWordsWithQuotes(command) && matches(call, decodedCommand(command))));
 }
 
 /**

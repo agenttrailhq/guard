@@ -1,4 +1,4 @@
-// cspell:words egrep fgrep zgrep apropos whatis tldr whereis stdbuf bunx herestring heredocs redirections whatchanged shortlog pytest nohup iglob mtext Stext ovalue osascript hookspath mksh execdir okdir fdfind encodedcommand runuser mysqladmin awslocal tflocal ncat netcat frpc zrok devtunnel tmole loclx pipenv pushd popd esac
+// cspell:words egrep fgrep zgrep apropos whatis tldr whereis stdbuf bunx herestring heredocs redirections whatchanged shortlog pytest nohup iglob mtext Stext ovalue osascript hookspath mksh execdir okdir fdfind encodedcommand runuser mysqladmin awslocal tflocal ncat netcat frpc zrok devtunnel tmole loclx pipenv pushd popd esac ubectl
 /**
  * Ran, or only mentioned: did a matched tool call actually run on this machine?
  *
@@ -1534,6 +1534,25 @@ export function backstopTails(words: readonly string[], programs: ReadonlySet<st
     if (programs.has(programNameOf(words[k] as string))) out.push(quoteWords(words.slice(k)));
   }
   return out;
+}
+
+/**
+ * Does a shell text spell a word with quotes or escapes inside it (`r''m`, `$'\x72'm`, `r\m`),
+ * so its words differ from its text and a test written against the text can miss them?
+ */
+export function spellsWordsWithQuotes(text: string): boolean {
+  return /\$'|\w['"\\]/.test(text);
+}
+
+/**
+ * A shell text's simple commands as their words, quotes and escapes removed, one command a
+ * line: `$'\x6b'ubectl delete pod x` reads as `kubectl delete pod x`. What a guardrail written
+ * against command text reads, for a text that spells its words with quotes or escapes.
+ */
+export function decodedCommand(text: string): string {
+  return simpleCommandsOf(text)
+    .map((simple) => simple.words.join(" "))
+    .join("\n");
 }
 
 /**

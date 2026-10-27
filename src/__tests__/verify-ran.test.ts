@@ -29,6 +29,7 @@ import {
   simpleCommandsOf,
   tallyMatchedCalls,
 } from "../core/verify/ran.js";
+import { shellCommands } from "../core/verify/shell-words.js";
 import { HIDING_FORMS } from "../core/verify/types.js";
 import { RULE_RM_RF } from "./scan-fixtures.js";
 import { codexExec, type SessionEvent, writeCorpus } from "./verify-fixtures.js";
@@ -855,6 +856,13 @@ describe("ANSI-C quoting, and a quote left open", () => {
     ['$"…", read as "…"', 'echo $"a b"', "a b"],
   ])("reads %s as the shell does", (_label, command, value) => {
     expect(simpleCommandsOf(command)[0]?.words[1]).toBe(value);
+  });
+
+  it("\\c takes the quote after it as its character: the string goes on to the next quote", () => {
+    const text = "echo $'\\c''; make all";
+    expect(simpleCommandsOf(text).map((c) => c.words[0])).toEqual(["echo", "make"]);
+    expect(commandHidingForms(text)).not.toContain("unterminated-quote");
+    expect(shellCommands(text).map((c) => c.words[0]?.value)).toEqual(["echo", "make"]);
   });
 
   it("a program named in escapes is the program the shell runs", () => {

@@ -10342,7 +10342,7 @@ function ansiQuoteEnd(text2, at2) {
   while (i < text2.length) {
     const ch = text2[i];
     if (ch === "\\") {
-      i += 2;
+      i += text2[i + 1] === "c" ? 3 : 2;
       continue;
     }
     if (ch === "'") return i + 1;
@@ -11956,6 +11956,12 @@ function backstopTails(words2, programs) {
   }
   return out;
 }
+function spellsWordsWithQuotes(text2) {
+  return /\$'|\w['"\\]/.test(text2);
+}
+function decodedCommand(text2) {
+  return simpleCommandsOf(text2).map((simple) => simple.words.join(" ")).join("\n");
+}
 function hidingFormsOf(mapped) {
   const command = mapped.args.full_command;
   if (command === void 0) return [];
@@ -12147,7 +12153,12 @@ function readCalls(corpus, catalog, allowlist) {
             cwd: session.cwd,
             mapped,
             result,
-            ruleIds: decision.matches.map((m) => m.ruleId),
+            ruleIds: [
+              .../* @__PURE__ */ new Set([
+                ...decision.matches.map((m) => m.ruleId),
+                ...decodedMatches(catalog, allowlist, mapped)
+              ])
+            ],
             hidingForms: hidingFormsOf(mapped)
           };
           if (mapped.tool === SHELL_TOOL && mapped.args.full_command !== void 0) {
@@ -12202,11 +12213,20 @@ function runStateOf(agent, call, holds) {
 function executedText(command) {
   return executedView(command).text;
 }
+function decodedMatches(catalog, allowlist, mapped) {
+  const command = mapped.args.full_command;
+  if (mapped.tool !== SHELL_TOOL || command === void 0 || !spellsWordsWithQuotes(command)) {
+    return [];
+  }
+  const decoded = { ...mapped, args: { ...mapped.args, full_command: decodedCommand(command) } };
+  return evaluateAction(catalog, allowlist, [decoded]).decision.matches.map((m) => m.ruleId);
+}
 function rulesMatcher(catalog, allowlist, keep) {
   const subset = catalog.filter(keep);
-  return (call, command) => subset.length > 0 && evaluateAction(subset, allowlist, [
-    { ...call.mapped, args: { ...call.mapped.args, full_command: command } }
+  const matches = (call, text2) => evaluateAction(subset, allowlist, [
+    { ...call.mapped, args: { ...call.mapped.args, full_command: text2 } }
   ]).decision.matches.length > 0;
+  return (call, command) => subset.length > 0 && (matches(call, command) || spellsWordsWithQuotes(command) && matches(call, decodedCommand(command)));
 }
 function quietStatus(unknown, couldHide = 0) {
   return unknown > 0 || couldHide > 0 ? "could-not-check" : "clean";
@@ -15456,8 +15476,21 @@ function mentionedIn(call, detect, home) {
   }
   return false;
 }
+var WORDS = /* @__PURE__ */ new WeakMap();
+function wordsOf(call) {
+  let words2 = WORDS.get(call);
+  if (words2 === void 0) {
+    words2 = shellItems(call.command).flatMap(
+      (item) => item.kind === "command" ? [item.words.map((w) => w.value).join(" ")] : []
+    ).join("\n");
+    WORDS.set(call, words2);
+  }
+  return words2;
+}
 function judge(log, call, hint, detect) {
-  if (!hint.test(call.command)) return void 0;
+  if (!hint.test(call.command) && !(spellsWordsWithQuotes(call.command) && hint.test(wordsOf(call)))) {
+    return void 0;
+  }
   const found = detect(call.view, call.cwd, log.home);
   if (found.length === 0) {
     if (!mentionedIn(call, detect, log.home)) return void 0;

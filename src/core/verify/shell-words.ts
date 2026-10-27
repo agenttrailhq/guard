@@ -51,14 +51,15 @@ const SHELLS: ReadonlySet<string> = new Set(["sh", "bash", "zsh", "dash", "ksh"]
 /**
  * Where an ANSI-C quoted string `$'…'` ends, from its `$`, or `-1` when it is never closed.
  * Inside it a backslash escapes the next character, so `$'it\'s'` is one string, where a plain
- * `'…'` would end at the escaped quote.
+ * `'…'` would end at the escaped quote. `\c` takes the character after it as a control
+ * character, a quote included: `$'\c''` is one string.
  */
 export function ansiQuoteEnd(text: string, at: number): number {
   let i = at + 2;
   while (i < text.length) {
     const ch = text[i];
     if (ch === "\\") {
-      i += 2;
+      i += text[i + 1] === "c" ? 3 : 2;
       continue;
     }
     if (ch === "'") return i + 1;
@@ -90,9 +91,10 @@ const ANSI_ESCAPE =
 
 /**
  * The text an ANSI-C quoted string stands for, from what is between `$'` and `'`: `\n`, `\t`,
- * `\\`, `\'`, `\xHH`, `\uHHHH`, `\nnn`, `\cX`, as the shell reads them, so `$'\x72m'` is the
- * word `rm`. A NUL ends the string, as it does in the shell. An escape the shell does not know
- * is kept as written.
+ * `\\`, `\'`, `\xHH`, `\uHHHH`, `\nnn`, `\cX`, as bash reads them, so `$'\x72m'` is the word
+ * `rm`. A NUL ends the string. An escape this does not know is kept as written. The value is
+ * the word's; a check that first tests a command's raw text for a program name tests these
+ * words too (`shell-calls.ts`, `judge`).
  */
 export function ansiQuoteValue(inner: string): string {
   const value = inner.replace(
