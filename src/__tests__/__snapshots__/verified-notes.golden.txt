@@ -77,44 +77,44 @@ ex.tunnel-expose  note.tunnels  No known tunnel or relay program was seen runnin
 flag-dependency-install  note.installs  2 package installs ran, not counting 3 lockfile restores. Package age is not checked: the scan runs offline. Codex counts here include every call Codex recorded an output for, which may include calls a hook blocked.
 rce.unverified-package  note.installs  2 package installs ran, not counting 3 lockfile restores. Package age is not checked: the scan runs offline. Codex counts here include every call Codex recorded an output for, which may include calls a hook blocked.
 # Cursor
-gb.git-no-verify  could-not-confirm  Could not confirm: these sessions record no command output, so a count of commands that ran is zero because nothing could be confirmed, not because nothing ran.
-gb.hooks-disable  could-not-confirm  Could not confirm: these sessions record no command output, so a count of commands that ran is zero because nothing could be confirmed, not because nothing ran.
-wt.branch-force-delete  could-not-confirm  Could not confirm: these sessions record no command output, so a count of commands that ran is zero because nothing could be confirmed, not because nothing ran.
-wt.stash-drop  could-not-confirm  Could not confirm: these sessions record no command output, so a count of commands that ran is zero because nothing could be confirmed, not because nothing ran.
-wt.checkout-discard  could-not-confirm  Could not confirm: these sessions record no command output, so a count of commands that ran is zero because nothing could be confirmed, not because nothing ran.
-wt.restore-path  could-not-confirm  Could not confirm: these sessions record no command output, so a count of commands that ran is zero because nothing could be confirmed, not because nothing ran.
-wt.reset-hard  could-not-confirm  Could not confirm: these sessions record no command output, so a count of commands that ran is zero because nothing could be confirmed, not because nothing ran.
-require-approval-rm-rf  could-not-confirm  Could not confirm: these sessions record no command output, so a count of commands that ran is zero because nothing could be confirmed, not because nothing ran.
-dd.rm-rf-absolute  could-not-confirm  Could not confirm: these sessions record no command output, so a count of commands that ran is zero because nothing could be confirmed, not because nothing ran.
-dd.database-drop  could-not-confirm  Could not confirm: these sessions record no command output, so a count of commands that ran is zero because nothing could be confirmed, not because nothing ran.
-block-destructive-sql  could-not-confirm  Could not confirm: these sessions record no command output, so a count of commands that ran is zero because nothing could be confirmed, not because nothing ran.
-se.env-print  note.secrets-printed  Likely-real credentials printed by a command: 1.
-se.token-print  note.secrets-printed  Likely-real credentials printed by a command: 1.
-se.secret-manager-read  note.secrets-printed  Likely-real credentials printed by a command: 1.
-se.credential-file  note.secrets-printed  Likely-real credentials printed by a command: 1.
-block-env-file-read  note.secrets-printed  Likely-real credentials printed by a command: 1.
-warn-op-read-secret  note.secrets-printed  Likely-real credentials printed by a command: 1.
+gb.git-no-verify  note.no-output  Could not confirm: these sessions record no command output to check this against.
+gb.hooks-disable  note.no-output  Could not confirm: these sessions record no command output to check this against.
+wt.branch-force-delete  note.no-output  Could not confirm: these sessions record no command output to check this against.
+wt.stash-drop  note.no-output  Could not confirm: these sessions record no command output to check this against.
+wt.checkout-discard  note.no-output  Could not confirm: these sessions record no command output to check this against.
+wt.restore-path  note.no-output  Could not confirm: these sessions record no command output to check this against.
+wt.reset-hard  note.no-output  Could not confirm: these sessions record no command output to check this against.
+require-approval-rm-rf  note.no-output  Could not confirm: these sessions record no command output to check this against.
+dd.rm-rf-absolute  note.no-output  Could not confirm: these sessions record no command output to check this against.
+dd.database-drop  note.no-output  Could not confirm: these sessions record no command output to check this against.
+block-destructive-sql  note.no-output  Could not confirm: these sessions record no command output to check this against.
+se.env-print  note.no-output  Could not confirm: these sessions record no command output to check this against.
+se.token-print  note.no-output  Could not confirm: these sessions record no command output to check this against.
+se.secret-manager-read  note.no-output  Could not confirm: these sessions record no command output to check this against.
+se.credential-file  note.no-output  Could not confirm: these sessions record no command output to check this against.
+block-env-file-read  note.no-output  Could not confirm: these sessions record no command output to check this against.
+warn-op-read-secret  note.no-output  Could not confirm: these sessions record no command output to check this against.
 block-hardcoded-secrets  note.secrets-typed  Likely-real credentials typed into a command: 1.
-ps.iam-grant  could-not-confirm  Could not confirm: these sessions record no command output, so a count of commands that ran is zero because nothing could be confirmed, not because nothing ran.
-pi.terraform-auto-approve  could-not-confirm  Could not confirm: these sessions record no command output, so a count of commands that ran is zero because nothing could be confirmed, not because nothing ran.
-pi.terraform-state-mutate  could-not-confirm  Could not confirm: these sessions record no command output, so a count of commands that ran is zero because nothing could be confirmed, not because nothing ran.
-pi.kubectl-delete  could-not-confirm  Could not confirm: these sessions record no command output, so a count of commands that ran is zero because nothing could be confirmed, not because nothing ran.
-pi.prod-namespace  could-not-confirm  Could not confirm: these sessions record no command output, so a count of commands that ran is zero because nothing could be confirmed, not because nothing ran.
-pi.helm-release  could-not-confirm  Could not confirm: these sessions record no command output, so a count of commands that ran is zero because nothing could be confirmed, not because nothing ran.
-pi.cloud-resource-delete  could-not-confirm  Could not confirm: these sessions record no command output, so a count of commands that ran is zero because nothing could be confirmed, not because nothing ran.
-pi.deploy-to-prod  could-not-confirm  Could not confirm: these sessions record no command output, so a count of commands that ran is zero because nothing could be confirmed, not because nothing ran.
-block-prod-config-edit  could-not-confirm  Could not confirm: these sessions record no command output, so a count of commands that ran is zero because nothing could be confirmed, not because nothing ran.
-ti.test-file-delete  could-not-confirm  Could not confirm: these sessions record no command output, so a count of commands that ran is zero because nothing could be confirmed, not because nothing ran.
-ti.test-config-edit  could-not-confirm  Could not confirm: these sessions record no command output, so a count of commands that ran is zero because nothing could be confirmed, not because nothing ran.
-ti.coverage-bypass  could-not-confirm  Could not confirm: these sessions record no command output, so a count of commands that ran is zero because nothing could be confirmed, not because nothing ran.
-block-force-push  could-not-confirm  Could not confirm: these sessions record no command output, so a count of commands that ran is zero because nothing could be confirmed, not because nothing ran.
-ex.file-upload  could-not-confirm  Could not confirm: these sessions record no command output, so a count of commands that ran is zero because nothing could be confirmed, not because nothing ran.
-se.secret-egress  could-not-confirm  Could not confirm: these sessions record no command output, so a count of commands that ran is zero because nothing could be confirmed, not because nothing ran.
-ex.paste-service  could-not-confirm  Could not confirm: these sessions record no command output, so a count of commands that ran is zero because nothing could be confirmed, not because nothing ran.
-ex.reverse-shell  could-not-confirm  Could not confirm: these sessions record no command output, so a count of commands that ran is zero because nothing could be confirmed, not because nothing ran.
-ex.tunnel-expose  could-not-confirm  Could not confirm: these sessions record no command output, so a count of commands that ran is zero because nothing could be confirmed, not because nothing ran.
-flag-dependency-install  could-not-confirm  Could not confirm: these sessions record no command output, so a count of commands that ran is zero because nothing could be confirmed, not because nothing ran.
-rce.unverified-package  could-not-confirm  Could not confirm: these sessions record no command output, so a count of commands that ran is zero because nothing could be confirmed, not because nothing ran.
+ps.iam-grant  note.no-output  Could not confirm: these sessions record no command output to check this against.
+pi.terraform-auto-approve  note.no-output  Could not confirm: these sessions record no command output to check this against.
+pi.terraform-state-mutate  note.no-output  Could not confirm: these sessions record no command output to check this against.
+pi.kubectl-delete  note.no-output  Could not confirm: these sessions record no command output to check this against.
+pi.prod-namespace  note.no-output  Could not confirm: these sessions record no command output to check this against.
+pi.helm-release  note.no-output  Could not confirm: these sessions record no command output to check this against.
+pi.cloud-resource-delete  note.no-output  Could not confirm: these sessions record no command output to check this against.
+pi.deploy-to-prod  note.no-output  Could not confirm: these sessions record no command output to check this against.
+block-prod-config-edit  note.no-output  Could not confirm: these sessions record no command output to check this against.
+ti.test-file-delete  note.no-output  Could not confirm: these sessions record no command output to check this against.
+ti.test-config-edit  note.no-output  Could not confirm: these sessions record no command output to check this against.
+ti.coverage-bypass  note.no-output  Could not confirm: these sessions record no command output to check this against.
+block-force-push  note.no-output  Could not confirm: these sessions record no command output to check this against.
+ex.file-upload  note.no-output  Could not confirm: these sessions record no command output to check this against.
+se.secret-egress  note.no-output  Could not confirm: these sessions record no command output to check this against.
+ex.paste-service  note.no-output  Could not confirm: these sessions record no command output to check this against.
+ex.reverse-shell  note.no-output  Could not confirm: these sessions record no command output to check this against.
+ex.tunnel-expose  note.no-output  Could not confirm: these sessions record no command output to check this against.
+flag-dependency-install  note.no-output  Could not confirm: these sessions record no command output to check this against.
+rce.unverified-package  note.no-output  Could not confirm: these sessions record no command output to check this against.
 # Hiding forms in every check
 gb.git-no-verify  could-not-confirm  Could not confirm: commands that ran here used a shell given a string to run, which can run commands this reading does not take apart, so this is not a clean result.
 gb.hooks-disable  could-not-confirm  Could not confirm: commands that ran here used a shell given a string to run, which can run commands this reading does not take apart, so this is not a clean result.

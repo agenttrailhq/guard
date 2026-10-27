@@ -102,7 +102,6 @@ import {
   LOCAL_FIX_SERIALIZED,
   pickHeadline,
   sentence,
-  UNCONFIRMED_SENTENCE,
   type VerifiedNote,
 } from "./verify/cards.js";
 import {
@@ -120,7 +119,7 @@ import {
   TONE_TALLY,
   toneLabel,
 } from "./verify/copy.js";
-import { NOTE_COULD_HIDE, NOTE_COULD_NOT_CHECK, verifiedNotes } from "./verify/notes.js";
+import { UNCONFIRMED_NOTES, verifiedNotes } from "./verify/notes.js";
 import { shareCounts } from "./verify/share-copy.js";
 import {
   FACT_KEYS,
@@ -1652,13 +1651,7 @@ function ranks(findings: readonly PayloadFinding[]): {
 
 /** The tone a note's mark takes: its card's, neutral for one that could not confirm. */
 function noteTone(note: VerifiedNote, cards: readonly CardView[]): VerificationStatus | undefined {
-  if (
-    note.sentence.template === UNCONFIRMED_SENTENCE.id ||
-    note.sentence.template === NOTE_COULD_NOT_CHECK.id ||
-    note.sentence.template === NOTE_COULD_HIDE.id
-  ) {
-    return "could-not-check";
-  }
+  if (UNCONFIRMED_NOTES.includes(note.sentence.template)) return "could-not-check";
   return cards.find((card) => card.category === note.category)?.tone;
 }
 

@@ -5,8 +5,8 @@
  * - One test per note kind, on synthetic facts with each check's own field names.
  * - What a note may claim: a check not checked gives no note; one that could not finish, or
  *   whose commands that ran hold a form that can hide others, gives "Could not confirm", never
- *   a reassuring note; sessions with no recorded output confirm nothing; Codex counts carry
- *   their caveat.
+ *   a reassuring note; sessions with no recorded output confirm nothing that rests on output;
+ *   Codex counts carry their caveat.
  * - Only counts: a value of any other type ends the note, and a note's only variable parts are
  *   numbers.
  * - Registered keys only: every key a note reads is one a check registers.
@@ -21,6 +21,7 @@ import {
   NOTE_COULD_NOT_CHECK,
   NOTE_FACT_KEYS,
   NOTE_KINDS,
+  NOTE_NO_OUTPUT,
   NOTE_RULES,
   type NoteKindName,
   verifiedNote,
@@ -595,19 +596,50 @@ describe("no note says a guardrail's commands did not run", () => {
   });
 });
 
-describe("sessions that record no command output confirm nothing that ran", () => {
-  const cursor = notesVerification({}, { resultsRecorded: false, ranEvidence: "none" });
-  const noOutput = UNCONFIRMED_SENTENCE.render({ reason: "no-output", forms: [] });
+describe("sessions that record no command output confirm nothing that rests on it", () => {
+  const cursor = { resultsRecorded: false, ranEvidence: "none" } as const;
+  const noOutput = { template: NOTE_NO_OUTPUT.id, text: NOTE_NO_OUTPUT.render(undefined) };
+  const restsOnOutput = (kind: NoteKindName): boolean =>
+    NOTE_KINDS[kind].ran || NOTE_KINDS[kind].output === true;
 
-  it.each(
-    Object.entries(NOTE_RULES).filter(([, rule]) => NOTE_KINDS[rule.kind].ran),
-  )("%s", (id) => {
-    expect(noteText(id, cursor)).toEqual({ template: UNCONFIRMED_SENTENCE.id, text: noOutput });
+  it.each(Object.entries(NOTE_RULES).filter(([, rule]) => restsOnOutput(rule.kind)))("%s", (id) => {
+    expect(noteText(id, notesVerification({}, cursor))).toEqual(noOutput);
   });
 
-  it("a note on what the transcripts hold still stands", () => {
-    expect(noteText("se.env-print", cursor)?.text).toBe(
-      "Likely-real credentials printed by a command: 1.",
+  it("the printed-by-command note never reassures from sessions with no output", () => {
+    // Cursor sessions never record what a command printed, so "none was printed" and "none
+    // was found" are not known there, whatever the credentials pasted or typed.
+    const nonePrinted = {
+      ...SECRETS_ACT,
+      items: SECRETS_ACT.items.filter((item) => !item.via.includes("printed-by-command")),
+      setAside: { unnamedOutputOnly: 0, namedNotCredentialShaped: 0 },
+    };
+    const noneAtAll = {
+      ...SECRETS_CLEAN,
+      setAside: { unnamedOutputOnly: 0, namedNotCredentialShaped: 0 },
+    };
+    for (const [status, facts] of [
+      ["act", nonePrinted],
+      ["clean", noneAtAll],
+    ] as const) {
+      // The same facts reassure from sessions that record output.
+      const recorded = noteText(
+        "se.env-print",
+        notesVerification({ secrets: checked(status, facts) }),
+      );
+      expect(recorded?.text).toMatch(REASSURING);
+      const note = noteText(
+        "se.env-print",
+        notesVerification({ secrets: checked(status, facts) }, cursor),
+      );
+      expect(note).toEqual(noOutput);
+      expect(note?.text).toMatch(/^Could not confirm/);
+    }
+  });
+
+  it("a note on what was typed into a command still stands: those sessions record the command", () => {
+    expect(noteText("block-hardcoded-secrets", notesVerification({}, cursor))?.text).toBe(
+      "Likely-real credentials typed into a command: 1.",
     );
   });
 });

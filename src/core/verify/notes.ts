@@ -20,8 +20,8 @@
  *  - a category not checked gets no note;
  *  - a check whose commands that ran hold a form that can hide others (`HIDING_FORMS`), or that
  *    could not finish, gets a "Could not confirm" note, never a reassuring one;
- *  - a note that rests on commands having run, from sessions that record no command output,
- *    gets a "Could not confirm" note: nothing could be confirmed as run;
+ *  - a note that rests on commands having run, or on what commands printed, from sessions that
+ *    record no command output, gets a "Could not confirm" note;
  *  - from Codex sessions, such a note also says that Codex counts may include calls a hook
  *    blocked.
  * No template says a guardrail's commands did not run.
@@ -160,6 +160,11 @@ interface NoteKind<K extends string> {
    * could confirm nothing, and from Codex sessions its counts may include blocked calls.
    */
   readonly ran: boolean;
+  /**
+   * The note rests on what commands printed. From sessions that record no command output it
+   * could confirm nothing, whether or not it counts commands that ran.
+   */
+  readonly output?: boolean;
 }
 
 /** A kind, as the table holds it. */
@@ -409,8 +414,11 @@ const DATABASES = kind({
   },
 });
 
-/** Likely-real credentials, by how many got into a transcript one way. Secrets. */
-function secretsBy(id: string, via: string, how: string): AnyKind {
+/**
+ * Likely-real credentials, by how many got into a transcript one way. Secrets. `output` when
+ * that way is a command's printed output, which some sessions do not record.
+ */
+function secretsBy(id: string, via: string, how: string, output: boolean): AnyKind {
   return kind({
     reads: {
       likelyReal: ["classes", "likely-real"],
@@ -423,6 +431,7 @@ function secretsBy(id: string, via: string, how: string): AnyKind {
       notShaped: ["setAside", "namedNotCredentialShaped"],
     },
     ran: false,
+    output,
     template: {
       id,
       render: (f) => {
@@ -446,10 +455,16 @@ const SECRETS_PRINTED = secretsBy(
   "note.secrets-printed",
   "printed-by-command",
   "printed by a command",
+  true,
 );
 
 /** Credentials typed into a command. Secrets. */
-const SECRETS_TYPED = secretsBy("note.secrets-typed", "typed-into-command", "typed into a command");
+const SECRETS_TYPED = secretsBy(
+  "note.secrets-typed",
+  "typed-into-command",
+  "typed into a command",
+  false,
+);
 
 /** IAM changes that ran. Cloud and permissions. */
 const IAM = kind({
@@ -760,6 +775,20 @@ export const NOTE_COULD_HIDE: SentenceTemplate<unknown> = {
     "Could not confirm: commands that ran could have run others this reading does not take apart.",
 };
 
+/** A note that rests on command output, from sessions that record none. */
+export const NOTE_NO_OUTPUT: SentenceTemplate<unknown> = {
+  id: "note.no-output",
+  render: () => "Could not confirm: these sessions record no command output to check this against.",
+};
+
+/** The templates of the notes that could not confirm. */
+export const UNCONFIRMED_NOTES: readonly string[] = [
+  UNCONFIRMED_SENTENCE.id,
+  NOTE_COULD_NOT_CHECK.id,
+  NOTE_COULD_HIDE.id,
+  NOTE_NO_OUTPUT.id,
+];
+
 /** The hiding forms a check's facts name, and whether it counted any call holding one. */
 function hidingIn(facts: unknown): { readonly forms: HidingForm[]; readonly any: boolean } {
   const named = at(facts, ["hidingForms"]);
@@ -775,15 +804,19 @@ function unconfirmedLine(
   card: CardView | undefined,
   verification: Pick<Verification, "resultsRecorded">,
 ): CardSentence | undefined {
-  if (card?.unconfirmed !== undefined) return sentence(UNCONFIRMED_SENTENCE, card.unconfirmed);
+  if (card?.unconfirmed?.reason === "hiding-forms") {
+    return sentence(UNCONFIRMED_SENTENCE, card.unconfirmed);
+  }
+  if (card?.unconfirmed?.reason === "no-output") return sentence(NOTE_NO_OUTPUT, undefined);
   const hiding = hidingIn(facts);
   if (hiding.forms.length > 0) {
     return sentence(UNCONFIRMED_SENTENCE, { reason: "hiding-forms", forms: hiding.forms });
   }
   if (hiding.any) return sentence(NOTE_COULD_HIDE, undefined);
   if (card?.tone === "could-not-check") return sentence(NOTE_COULD_NOT_CHECK, undefined);
-  if (NOTE_KINDS[rule.kind].ran && !verification.resultsRecorded) {
-    return sentence(UNCONFIRMED_SENTENCE, { reason: "no-output", forms: [] });
+  const spec = NOTE_KINDS[rule.kind];
+  if ((spec.ran || spec.output === true) && !verification.resultsRecorded) {
+    return sentence(NOTE_NO_OUTPUT, undefined);
   }
   return undefined;
 }

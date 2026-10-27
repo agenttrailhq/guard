@@ -17114,7 +17114,7 @@ var DATABASES = kind({
     }
   }
 });
-function secretsBy(id, via, how) {
+function secretsBy(id, via, how, output) {
   return kind({
     reads: {
       likelyReal: ["classes", "likely-real"],
@@ -17127,6 +17127,7 @@ function secretsBy(id, via, how) {
       notShaped: ["setAside", "namedNotCredentialShaped"]
     },
     ran: false,
+    output,
     template: {
       id,
       render: (f) => {
@@ -17144,9 +17145,15 @@ function secretsBy(id, via, how) {
 var SECRETS_PRINTED = secretsBy(
   "note.secrets-printed",
   "printed-by-command",
-  "printed by a command"
+  "printed by a command",
+  true
 );
-var SECRETS_TYPED = secretsBy("note.secrets-typed", "typed-into-command", "typed into a command");
+var SECRETS_TYPED = secretsBy(
+  "note.secrets-typed",
+  "typed-into-command",
+  "typed into a command",
+  false
+);
 var IAM = kind({
   reads: { iam: ["iamChanges"] },
   ran: true,
@@ -17357,6 +17364,16 @@ var NOTE_COULD_HIDE = {
   id: "note.could-hide",
   render: () => "Could not confirm: commands that ran could have run others this reading does not take apart."
 };
+var NOTE_NO_OUTPUT = {
+  id: "note.no-output",
+  render: () => "Could not confirm: these sessions record no command output to check this against."
+};
+var UNCONFIRMED_NOTES = [
+  UNCONFIRMED_SENTENCE.id,
+  NOTE_COULD_NOT_CHECK.id,
+  NOTE_COULD_HIDE.id,
+  NOTE_NO_OUTPUT.id
+];
 function hidingIn(facts) {
   const named = at(facts, ["hidingForms"]);
   const forms = Array.isArray(named) ? HIDING_FORMS.filter((form) => named.includes(form)) : [];
@@ -17364,15 +17381,19 @@ function hidingIn(facts) {
   return { forms, any: forms.length > 0 || counted6 };
 }
 function unconfirmedLine(rule, facts, card, verification) {
-  if (card?.unconfirmed !== void 0) return sentence(UNCONFIRMED_SENTENCE, card.unconfirmed);
+  if (card?.unconfirmed?.reason === "hiding-forms") {
+    return sentence(UNCONFIRMED_SENTENCE, card.unconfirmed);
+  }
+  if (card?.unconfirmed?.reason === "no-output") return sentence(NOTE_NO_OUTPUT, void 0);
   const hiding = hidingIn(facts);
   if (hiding.forms.length > 0) {
     return sentence(UNCONFIRMED_SENTENCE, { reason: "hiding-forms", forms: hiding.forms });
   }
   if (hiding.any) return sentence(NOTE_COULD_HIDE, void 0);
   if (card?.tone === "could-not-check") return sentence(NOTE_COULD_NOT_CHECK, void 0);
-  if (NOTE_KINDS[rule.kind].ran && !verification.resultsRecorded) {
-    return sentence(UNCONFIRMED_SENTENCE, { reason: "no-output", forms: [] });
+  const spec = NOTE_KINDS[rule.kind];
+  if ((spec.ran || spec.output === true) && !verification.resultsRecorded) {
+    return sentence(NOTE_NO_OUTPUT, void 0);
   }
   return void 0;
 }
@@ -18333,9 +18354,7 @@ function ranks(findings) {
   };
 }
 function noteTone(note, cards) {
-  if (note.sentence.template === UNCONFIRMED_SENTENCE.id || note.sentence.template === NOTE_COULD_NOT_CHECK.id || note.sentence.template === NOTE_COULD_HIDE.id) {
-    return "could-not-check";
-  }
+  if (UNCONFIRMED_NOTES.includes(note.sentence.template)) return "could-not-check";
   return cards.find((card) => card.category === note.category)?.tone;
 }
 function noteHtml(note, tone) {
