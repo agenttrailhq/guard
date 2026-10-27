@@ -110,13 +110,15 @@ export interface RefUpdate {
   readonly branch: string;
 }
 
-/** `git push` options that take the next word. */
+/**
+ * `git push` options that take the next word. `--signed` is not one: it takes a value only
+ * after `=` (`--signed=if-asked`), and alone is a flag.
+ */
 const PUSH_VALUE_OPTIONS: ReadonlySet<string> = new Set([
   "-o",
   "--push-option",
   "--receive-pack",
   "--exec",
-  "--signed",
 ]);
 
 /** A main branch, as a push prints its destination or a refspec names it. */

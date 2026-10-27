@@ -14048,8 +14048,7 @@ var PUSH_VALUE_OPTIONS = /* @__PURE__ */ new Set([
   "-o",
   "--push-option",
   "--receive-pack",
-  "--exec",
-  "--signed"
+  "--exec"
 ]);
 var MAIN_BRANCH = /^(?:refs\/heads\/)?(main|master)$/;
 function readPushes(command) {

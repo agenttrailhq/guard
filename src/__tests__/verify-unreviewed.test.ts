@@ -85,6 +85,17 @@ describe("reading pushes", () => {
     expect(readPushes("git status")).toEqual([]);
   });
 
+  it.each([
+    ["--signed alone is a flag", "git push --signed origin main"],
+    ["--signed=<value> is one word", "git push --signed=if-asked origin main"],
+    ["--signed after the remote", "git push origin --signed main"],
+    ["-o takes the next word", "git push -o ci.skip origin main"],
+  ])("%s: the remote and the destination are read", (_label, command) => {
+    expect(readPushes(command)).toEqual([
+      { remote: "origin", dir: undefined, dryRun: false, destinations: ["main"] },
+    ]);
+  });
+
   it("reads range lines, forced or not, and created branches, and nothing else", () => {
     const output = [
       "To example.invalid:org/repo.git",
