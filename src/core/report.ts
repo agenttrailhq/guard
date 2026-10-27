@@ -75,7 +75,7 @@ import {
   owaspAnchorUrl,
   owaspTitle,
 } from "./owasp.js";
-import { LOGO_LOCKUP_SVG, LOGO_MARK_SVG, REPORT_STYLES } from "./report-brand.js";
+import { LOGO_LOCKUP_SVG, LOGO_MARK_SVG, reportStyles } from "./report-brand.js";
 import { POST_LIMIT, REPORT_SCRIPT } from "./report-script.js";
 import type {
   ActionCounts,
@@ -1986,9 +1986,10 @@ function corpusSection(result: ScanResult): string {
     );
   }
   const coverage = coverageNote(result);
-  // Every Codex page says how far its reading can be trusted, verified or not.
+  // A Codex page whose checks ran says how far their reading of Codex can be trusted. Without
+  // the checks the page makes no claim about them, so it is the page of a scan without them.
   const codex =
-    result.agent === "codex"
+    result.agent === "codex" && result.verification !== undefined
       ? `\n<p class="note codex-reading">${escapeHtml(CODEX_UNVERIFIED_TEXT)}</p>`
       : "";
   return `<section id="scanned"><h2>What was scanned</h2>
@@ -2138,8 +2139,9 @@ export function renderReport(
     cards === undefined || payload.verification === undefined
       ? undefined
       : pickHeadline(cards, { ranEvidence: payload.verification.ranEvidence });
+  // The verified sections' styles only on a page that shows them.
   const head = `<title>${escapeHtml(pageTitle(result, meta))}</title>
-<style>${REPORT_STYLES}</style>`;
+<style>${reportStyles(cards !== undefined)}</style>`;
   // Each section on its own lines; one that has nothing to say is left out entirely.
   const sections = [
     topBar(payload),
@@ -2325,8 +2327,10 @@ export function renderJson(result: ScanResult, meta: ReportMeta): string {
       version: meta.version,
       generatedAt: meta.generatedAt.toISOString(),
       catalog: formatCatalogStamp(catalogStamp(), meta.generatedAt),
-      // A Codex scan says, in --json too, how far its reading can be trusted.
-      ...(result.agent === "codex" ? { notes: [CODEX_UNVERIFIED_TEXT] } : {}),
+      // A Codex scan whose checks ran says, in --json too, how far their reading can be trusted.
+      ...(result.agent === "codex" && result.verification !== undefined
+        ? { notes: [CODEX_UNVERIFIED_TEXT] }
+        : {}),
       result: safe,
     },
     null,

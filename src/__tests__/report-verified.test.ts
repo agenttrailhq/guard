@@ -17,7 +17,7 @@ import {
   reportPayload,
   reviewStrings,
 } from "../core/report.js";
-import { REPORT_STYLES } from "../core/report-brand.js";
+import { reportStyles } from "../core/report-brand.js";
 import { REPORT_SCRIPT } from "../core/report-script.js";
 import { CARD_BUILDERS } from "../core/verify/builders.js";
 import { hidingFormLabel, TONE_ORDER, UNCONFIRMED_SENTENCE } from "../core/verify/cards.js";
@@ -502,6 +502,7 @@ describe("scan --review lists every line the verified sections write", () => {
 });
 
 describe("the verified sections print", () => {
+  const REPORT_STYLES = reportStyles(true);
   const print = REPORT_STYLES.slice(REPORT_STYLES.indexOf("@media print"));
   const rules = [...print.matchAll(/([^{}]+)\{([^}]*)\}/g)].map((m) => ({
     selectors: (m[1] ?? "").split(",").map((s) => s.trim()),
@@ -539,7 +540,55 @@ describe("the verified sections print", () => {
   });
 });
 
-describe("every Codex page says its reading is limited and unverified", () => {
+describe("the verified sections' styles are on a page only when it shows them", () => {
+  /** What only the verified sections' styles hold. */
+  const VERIFIED_ONLY = [
+    "--tone-",
+    ".evidence-list",
+    ".check-chip",
+    ".verified-cards",
+    ".verified-facts",
+    ".verified-note",
+    ".lead.totals",
+    ".codex-caveat",
+    ".read-list",
+  ];
+  const styleOf = (html: string): string =>
+    html.slice(html.indexOf("<style>"), html.indexOf("</style>"));
+
+  it("a verified page carries them, in both variants", () => {
+    for (const page of [HTML, ARTIFACT]) {
+      for (const text of VERIFIED_ONLY) expect(styleOf(page), text).toContain(text);
+      expect(styleOf(page)).toBe(`<style>${reportStyles(true)}`);
+    }
+  });
+
+  it.each([
+    ["no verification", baseResult(undefined)],
+    ["a verification over a scan that read no tool calls", { ...VERIFIED_RESULT, toolCalls: 0 }],
+  ])("a page with %s carries none of them", (_name, result) => {
+    for (const variant of ["document", "artifact"] as const) {
+      const page = renderReport(result, VERIFIED_META, { ...OPTIONS, variant });
+      for (const text of VERIFIED_ONLY) expect(styleOf(page), text).not.toContain(text);
+      expect(styleOf(page)).toBe(`<style>${reportStyles(false)}`);
+    }
+  });
+
+  it("the stylesheet without them is the one with them, less only their rules", () => {
+    const without = reportStyles(false);
+    const lines = new Set(reportStyles(true).split("\n"));
+    // Every line of the plain stylesheet is in the verified one, but the one print line the
+    // verified one extends with its own selector.
+    const extended =
+      "  h1, h2, h3, .section-head, summary, h2 + .note, h2 + .lead { break-after: avoid; }";
+    for (const line of without.split("\n")) {
+      if (line !== extended) expect(lines.has(line), line).toBe(true);
+    }
+    expect(without).toContain(extended);
+  });
+});
+
+describe("every Codex page whose checks ran says their reading is limited and unverified", () => {
   // Every point, in one wording: synthetic sessions only, ran may include a blocked call, ids
   // not identified, and no Codex-only finding leads.
   const NOTE =
@@ -572,10 +621,12 @@ describe("every Codex page says its reading is limited and unverified", () => {
     expect(section(html, "also-checked")).not.toContain("recorded an output for it");
   });
 
-  it("a Codex scan with no verification says it under what was scanned", () => {
+  it("a Codex scan without the checks makes no claim about them, as a scan before the checks", () => {
     const html = codexPage(0, false);
     expect(html).not.toContain('id="also-checked"');
-    expect(notesIn(html, "scanned")).toBe(1);
+    expect(notesIn(html, "scanned")).toBe(0);
+    expect(html).not.toContain("Codex reading");
+    expect(html).not.toContain("codex-reading");
   });
 
   it("no other app's page says it", () => {
@@ -903,9 +954,12 @@ describe("a counted chip that could not confirm never shows a zero", () => {
 });
 
 describe("--json and an empty scan's data block", () => {
-  it("--json for a Codex scan carries the limited-and-unverified note; no other app's does", () => {
+  it("--json for a Codex scan whose checks ran carries the limited-and-unverified note; no other app's does", () => {
     const codex = JSON.parse(renderJson(CODEX_ONLY_RESULT, VERIFIED_META));
     expect(codex.notes).toEqual([CODEX_UNVERIFIED_TEXT]);
+    // Without the checks there is nothing checked to say it about.
+    const { verification: _checked, ...unchecked } = CODEX_ONLY_RESULT;
+    expect(JSON.parse(renderJson(unchecked, VERIFIED_META)).notes).toBe(undefined);
     for (const agent of ["claude", "cursor"] as const) {
       expect(JSON.parse(renderJson({ ...VERIFIED_RESULT, agent }, VERIFIED_META)).notes).toBe(
         undefined,

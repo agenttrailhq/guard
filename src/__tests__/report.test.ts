@@ -39,7 +39,7 @@ import {
   LIGHT_TOKENS,
   LOGO_LOCKUP_SVG,
   LOGO_MARK_SVG,
-  REPORT_STYLES,
+  reportStyles,
 } from "../core/report-brand.js";
 import { compileCatalog } from "../core/rules.js";
 import {
@@ -360,7 +360,12 @@ describe("the artifact variant is page content, for a host that supplies the ske
   });
 });
 
-describe("one stylesheet serves both hosts and both themes", () => {
+describe.each([
+  ["with the verified sections' rules", true],
+  ["without them", false],
+])("one stylesheet serves both hosts and both themes, %s", (_name, verified) => {
+  const REPORT_STYLES = reportStyles(verified);
+
   it("applies the dark palette by system preference unless a host pins light", () => {
     expect(REPORT_STYLES).toMatch(
       /@media \(prefers-color-scheme: dark\) \{\s*:root:not\(\[data-theme="light"\]\)/,

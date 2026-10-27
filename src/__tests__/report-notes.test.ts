@@ -7,7 +7,7 @@
 
 import { describe, expect, it } from "vitest";
 import { renderReport, reportPayload, reviewStrings, shareText } from "../core/report.js";
-import { REPORT_STYLES } from "../core/report-brand.js";
+import { reportStyles } from "../core/report-brand.js";
 import { UNCONFIRMED_SENTENCE } from "../core/verify/cards.js";
 import { NOTE_COULD_NOT_CHECK, NOTE_KINDS, type NoteKindName } from "../core/verify/notes.js";
 import { FACT_KEYS } from "../core/verify/types.js";
@@ -252,6 +252,8 @@ describe("where a note is shown", () => {
 });
 
 describe("how a note looks", () => {
+  // A note is on a page only with its card, so it is styled by the verified sections' rules.
+  const REPORT_STYLES = reportStyles(true);
   const rule = (selector: string): string => {
     const at = REPORT_STYLES.indexOf(`${selector} {`);
     expect(at, selector).toBeGreaterThan(-1);

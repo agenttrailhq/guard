@@ -6998,8 +6998,8 @@ var DARK_TOKENS = {
   "tone-none-bg": "#202536",
   "tone-none-bd": "#373a49"
 };
-function vars(tokens) {
-  return Object.entries(tokens).map(([key, value]) => `  --${key}: ${value};`).join("\n");
+function vars(tokens, verified) {
+  return Object.entries(tokens).filter(([key]) => verified || !key.startsWith("tone-")).map(([key, value]) => `  --${key}: ${value};`).join("\n");
 }
 var FONT_SANS = `"Inter", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif`;
 var FONT_MONO = `ui-monospace, SFMono-Regular, "SF Mono", Menlo, Monaco, Consolas, "Liberation Mono", monospace`;
@@ -7022,22 +7022,110 @@ var toneRules = TONES.map(
   ([tone, palette]) => `.tone-${tone} { color: var(--tone-${palette}-fg); background: var(--tone-${palette}-bg); border-color: var(--tone-${palette}-bd); }
 .v-${tone} { border-left-color: var(--tone-${palette}-fg); }`
 ).join("\n");
-var REPORT_STYLES = `
+var VERIFIED_RULES = `.lead.totals { color: var(--muted-fg); }
+.evidence, .also-checked { margin-top: 28px; }
+.evidence-list {
+  list-style: none;
+  margin: 10px 0 12px;
+  padding: 0;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--tone-act-fg);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+}
+.evidence-list li {
+  display: grid;
+  grid-template-columns: minmax(10rem, 14rem) 1fr auto;
+  align-items: baseline;
+  gap: 4px 16px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--divider);
+  font-size: 14px;
+}
+.evidence-list li:last-child { border-bottom: 0; }
+.evidence-kind { font-weight: 600; }
+.evidence-how { color: var(--muted-fg); }
+.check-chips {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+  gap: 10px;
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+}
+.check-chip {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  height: 100%;
+  padding: 10px 14px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--border);
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+  color: var(--fg);
+  text-decoration: none;
+}
+.check-chip:hover { border-color: var(--brand-text); }
+.chip-title { font-size: 12px; color: var(--muted-fg); }
+.chip-text { font-size: 14px; font-weight: 600; }
+.verified-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr)); gap: 12px; margin-top: 12px; }
+.verified { border-left: 4px solid var(--border); }
+.verified:target { border-color: var(--brand-text); }
+.verified h3 { font-size: 16px; margin: 8px 0 6px; }
+.verified-note { margin: 8px 0 0; padding: 2px 0 2px 10px; border-left: 3px solid var(--tone-none-fg); font-size: 14px; }
+.verified-note-label { font-weight: 600; color: var(--muted-fg); }
+.tone {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid;
+  border-radius: 999px;
+  padding: 0 9px;
+  font-size: 11.5px;
+  font-weight: 650;
+  line-height: 1.8;
+  white-space: nowrap;
+}
+${toneRules}
+.tone-not-checked { border-style: dashed; }
+.verified-facts { margin: 0; }
+.verified-facts dt { margin: 10px 0 2px; font-size: 12px; font-weight: 600; color: var(--muted-fg); }
+.verified-facts dd { margin: 0; font-size: 14px; }
+.verified-facts dd p { margin: 0 0 6px; }
+.verified-facts .command { margin: 6px 0; }
+.codex-caveat { margin: 10px 0 0; font-size: 13px; }
+.read-list { list-style: none; margin: 0 0 12px; padding: 0; display: flex; flex-direction: column; gap: 4px; font-size: 14px; color: var(--muted-fg); }
+.read-title { font-weight: 600; color: var(--fg); }
+`;
+var VERIFIED_NARROW_RULES = `  .evidence-list li { grid-template-columns: 1fr; gap: 2px; }
+  .verified-cards { grid-template-columns: 1fr; }
+`;
+var VERIFIED_PRINT_BREAKS = `  .evidence-list li, .check-chip, .verified-facts > div, .verified-note { break-inside: avoid; }
+  .verified { break-inside: auto; }
+  .verified .card-head { break-after: avoid; }
+`;
+var VERIFIED_PRINT_COLORS = `  .tone, .verified, .check-chip, .evidence-list, .verified-note { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+`;
+function reportStyles(verified) {
+  const only = (rules12) => verified ? rules12 : "";
+  return `
 :root {
   --font-sans: ${FONT_SANS};
   --font-mono: ${FONT_MONO};
   color-scheme: light;
-${vars(LIGHT_TOKENS)}
+${vars(LIGHT_TOKENS, verified)}
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
   color-scheme: dark;
-${vars(DARK_TOKENS)}
+${vars(DARK_TOKENS, verified)}
   }
 }
 :root[data-theme="dark"] {
   color-scheme: dark;
-${vars(DARK_TOKENS)}
+${vars(DARK_TOKENS, verified)}
 }
 *, *::before, *::after { box-sizing: border-box; }
 [hidden] { display: none !important; }
@@ -7315,83 +7403,7 @@ td.num { font-weight: 600; }
 .card-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .card-meta { font-size: 13px; color: var(--muted-fg); margin: 6px 0; }
 .example { margin: 6px 0; }
-.lead.totals { color: var(--muted-fg); }
-.evidence, .also-checked { margin-top: 28px; }
-.evidence-list {
-  list-style: none;
-  margin: 10px 0 12px;
-  padding: 0;
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-left: 3px solid var(--tone-act-fg);
-  border-radius: 12px;
-  box-shadow: var(--shadow);
-}
-.evidence-list li {
-  display: grid;
-  grid-template-columns: minmax(10rem, 14rem) 1fr auto;
-  align-items: baseline;
-  gap: 4px 16px;
-  padding: 10px 16px;
-  border-bottom: 1px solid var(--divider);
-  font-size: 14px;
-}
-.evidence-list li:last-child { border-bottom: 0; }
-.evidence-kind { font-weight: 600; }
-.evidence-how { color: var(--muted-fg); }
-.check-chips {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
-  gap: 10px;
-  list-style: none;
-  margin: 12px 0 0;
-  padding: 0;
-}
-.check-chip {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  height: 100%;
-  padding: 10px 14px;
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-left: 3px solid var(--border);
-  border-radius: 10px;
-  box-shadow: var(--shadow);
-  color: var(--fg);
-  text-decoration: none;
-}
-.check-chip:hover { border-color: var(--brand-text); }
-.chip-title { font-size: 12px; color: var(--muted-fg); }
-.chip-text { font-size: 14px; font-weight: 600; }
-.verified-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr)); gap: 12px; margin-top: 12px; }
-.verified { border-left: 4px solid var(--border); }
-.verified:target { border-color: var(--brand-text); }
-.verified h3 { font-size: 16px; margin: 8px 0 6px; }
-.verified-note { margin: 8px 0 0; padding: 2px 0 2px 10px; border-left: 3px solid var(--tone-none-fg); font-size: 14px; }
-.verified-note-label { font-weight: 600; color: var(--muted-fg); }
-.tone {
-  display: inline-flex;
-  align-items: center;
-  border: 1px solid;
-  border-radius: 999px;
-  padding: 0 9px;
-  font-size: 11.5px;
-  font-weight: 650;
-  line-height: 1.8;
-  white-space: nowrap;
-}
-${toneRules}
-.tone-not-checked { border-style: dashed; }
-.verified-facts { margin: 0; }
-.verified-facts dt { margin: 10px 0 2px; font-size: 12px; font-weight: 600; color: var(--muted-fg); }
-.verified-facts dd { margin: 0; font-size: 14px; }
-.verified-facts dd p { margin: 0 0 6px; }
-.verified-facts .command { margin: 6px 0; }
-.codex-caveat { margin: 10px 0 0; font-size: 13px; }
-.read-list { list-style: none; margin: 0 0 12px; padding: 0; display: flex; flex-direction: column; gap: 4px; font-size: 14px; color: var(--muted-fg); }
-.read-title { font-weight: 600; color: var(--fg); }
-.controls { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
+${only(VERIFIED_RULES)}.controls { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
 .filters { display: flex; flex-wrap: wrap; gap: 6px; }
 .sort { font-size: 13px; color: var(--muted-fg); }
 .sort select { font: inherit; font-size: 13px; color: var(--fg); background: var(--card); border: 1px solid var(--border); border-radius: 6px; padding: 3px 6px; }
@@ -7529,29 +7541,24 @@ footer p { margin: 0 0 6px; max-width: none; }
   .recurring td.num { text-align: left; }
   .legend { grid-template-columns: 1fr; gap: 2px; }
   .legend dd { margin-bottom: 8px; }
-  .evidence-list li { grid-template-columns: 1fr; gap: 2px; }
-  .verified-cards { grid-template-columns: 1fr; }
-}
+${only(VERIFIED_NARROW_RULES)}}
 @media print {
   html:root:not([data-theme="print"]) {
   color-scheme: light;
-${vars(LIGHT_TOKENS)}
+${vars(LIGHT_TOKENS, verified)}
   }
   body { background: #ffffff; }
   .sections, .toolbar, .js-only, .actions, .controls, .copy, .share { display: none; }
   .button, .button.secondary { display: inline; background: none; color: var(--brand-text); border: 0; padding: 0; }
   .stat, .tally, .product-note, tr, .card, .col, .risk, .finding-head, .shapes li { break-inside: avoid; }
-  .evidence-list li, .check-chip, .verified-facts > div, .verified-note { break-inside: avoid; }
-  .verified { break-inside: auto; }
-  .verified .card-head { break-after: avoid; }
-  h1, h2, h3, .section-head, summary, h2 + .note, h2 + .lead, .verified-facts dt { break-after: avoid; }
+${only(VERIFIED_PRINT_BREAKS)}  h1, h2, h3, .section-head, summary, h2 + .note, h2 + .lead${only(", .verified-facts dt")} { break-after: avoid; }
   .chip::before { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
-  .tone, .verified, .check-chip, .evidence-list, .verified-note { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
-  .owasp-ids a[href^="http"]::after, .risk-name a[href^="http"]::after { content: none; }
+${only(VERIFIED_PRINT_COLORS)}  .owasp-ids a[href^="http"]::after, .risk-name a[href^="http"]::after { content: none; }
   .how a[href^="http"]::after, .card a[href^="http"]::after { content: none; }
   a[href^="http"]::after { content: " (" attr(href) ")"; font-size: 11px; color: var(--muted-fg); overflow-wrap: anywhere; }
 }
 `;
+}
 var MARK_PATHS = `<path d="m49 68.207v-8.207c0-6.6289 5.3711-12 12-12s12 5.3711 12 12v9.2422l13 14.734v-31.977c0-19.883-16.117-36-36-36s-36 16.117-36 36v32.785z"/>
 <path d="m18.672 87h64.66l-13.234-15h-19.758z"/>`;
 var WORDMARK_PATH = `M5.28 0.22L5.28 0.22Q3.96 0.22 2.95-0.25Q1.94-0.72 1.37-1.56Q0.79-2.40 0.79-3.50L0.79-3.50Q0.79-5.23 2.11-6.23Q3.43-7.22 5.74-7.22L5.74-7.22Q7.54-7.22 9.07-6.53L9.07-6.53L9.07-7.82Q9.07-9.12 8.32-9.78Q7.56-10.44 6.10-10.44L6.10-10.44Q5.26-10.44 4.34-10.19Q3.43-9.94 2.30-9.38L2.30-9.38L1.42-11.21Q2.81-11.86 4.01-12.16Q5.21-12.46 6.43-12.46L6.43-12.46Q8.81-12.46 10.12-11.33Q11.42-10.20 11.42-8.11L11.42-8.11L11.42 0L9.07 0L9.07-1.06Q8.26-0.41 7.32-0.10Q6.38 0.22 5.28 0.22Z
@@ -18465,7 +18472,7 @@ function corpusSection(result) {
     );
   }
   const coverage = coverageNote(result);
-  const codex = result.agent === "codex" ? `
+  const codex = result.agent === "codex" && result.verification !== void 0 ? `
 <p class="note codex-reading">${escapeHtml(CODEX_UNVERIFIED_TEXT)}</p>` : "";
   return `<section id="scanned"><h2>What was scanned</h2>
 <p class="note">${lines2.join(" ")}</p>${coverage === "" ? "" : `
@@ -18559,7 +18566,7 @@ function renderReport(result, meta, options = {}) {
   const cards = scanned ? payload.cards : void 0;
   const lead = cards === void 0 || payload.verification === void 0 ? void 0 : pickHeadline(cards, { ranEvidence: payload.verification.ranEvidence });
   const head = `<title>${escapeHtml(pageTitle(result, meta))}</title>
-<style>${REPORT_STYLES}</style>`;
+<style>${reportStyles(cards !== void 0)}</style>`;
   const sections = [
     topBar(payload),
     heroSection(result, payload, meta, variant, lead),
@@ -18698,8 +18705,8 @@ function renderJson(result, meta) {
       version: meta.version,
       generatedAt: meta.generatedAt.toISOString(),
       catalog: formatCatalogStamp(catalogStamp(), meta.generatedAt),
-      // A Codex scan says, in --json too, how far its reading can be trusted.
-      ...result.agent === "codex" ? { notes: [CODEX_UNVERIFIED_TEXT] } : {},
+      // A Codex scan whose checks ran says, in --json too, how far their reading can be trusted.
+      ...result.agent === "codex" && result.verification !== void 0 ? { notes: [CODEX_UNVERIFIED_TEXT] } : {},
       result: safe
     },
     null,
