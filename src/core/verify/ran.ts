@@ -72,7 +72,7 @@ import type { CompiledRule } from "../rules.js";
 import { evaluateAction, type ScanCorpus, toolUseCalls } from "../scan-report.js";
 import type { ToolResult } from "../transcript/transcript-types.js";
 import type { AgentSource, MappedCall } from "../types.js";
-import { programNameOf, programStart } from "./prefix-words.js";
+import { gitSubcommandIndex, programNameOf, programStart } from "./prefix-words.js";
 import { ansiQuoteEnd, ansiQuoteValue } from "./shell-words.js";
 import {
   HIDING_FORMS,
@@ -738,10 +738,7 @@ function commandOf(segment: Segment): Command | undefined {
   const name = programName(program);
   const rest = segment.words.slice(at + 1);
   if (name !== "git") return { name, sub: "", globals: [], args: rest };
-  let k = 0;
-  while (k < rest.length && (rest[k] as Word).value.startsWith("-")) {
-    k += GIT_GLOBAL_VALUE_OPTIONS.has((rest[k] as Word).value) ? 2 : 1;
-  }
+  const k = gitSubcommandIndex(rest.map((word) => word.value));
   return {
     name,
     sub: rest[k]?.value ?? "",
@@ -892,16 +889,6 @@ const TEST_FILTER_OPTIONS: ReadonlySet<string> = new Set([
   "-g",
 ]);
 
-/** `git` options that come before the subcommand and take the next word. */
-const GIT_GLOBAL_VALUE_OPTIONS: ReadonlySet<string> = new Set([
-  "-C",
-  "-c",
-  "--config-env",
-  "--git-dir",
-  "--work-tree",
-  "--namespace",
-]);
-
 /** `git` subcommands that search history for a string. */
 const GIT_HISTORY: ReadonlySet<string> = new Set([
   "log",
@@ -1019,10 +1006,7 @@ function segmentRegions(segment: Segment, keep: boolean): Region[] {
     );
   else if (SEARCHERS.has(name)) blank(searchPatterns(rest), "search");
   else if (name === "git") {
-    let k = 0;
-    while (k < rest.length && (rest[k] as Word).value.startsWith("-")) {
-      k += GIT_GLOBAL_VALUE_OPTIONS.has((rest[k] as Word).value) ? 2 : 1;
-    }
+    const k = gitSubcommandIndex(rest.map((word) => word.value));
     const sub = rest[k]?.value ?? "";
     const args = rest.slice(k + 1);
     if (sub === "grep") blank(searchPatterns(args), "search");

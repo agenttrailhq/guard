@@ -16,7 +16,7 @@
  * Pure. No I/O.
  */
 
-import { programNameOf, programStart } from "./prefix-words.js";
+import { GIT_GLOBAL_VALUE_OPTIONS, programNameOf, programStart } from "./prefix-words.js";
 
 /** One word of a simple command. */
 export interface ShellWord {
@@ -432,17 +432,6 @@ export interface GitCommand {
   readonly elsewhere: boolean;
 }
 
-/** `git` options that come before the subcommand and take the next word. */
-const GIT_VALUE_OPTIONS: ReadonlySet<string> = new Set([
-  "-C",
-  "-c",
-  "--git-dir",
-  "--work-tree",
-  "--namespace",
-  "--config-env",
-  "--exec-path",
-]);
-
 /** `words` as a `git` command, or `undefined` when the program is not `git`. */
 export function gitCommand(words: readonly ShellWord[]): GitCommand | undefined {
   const at = commandStart(words).index;
@@ -455,7 +444,7 @@ export function gitCommand(words: readonly ShellWord[]): GitCommand | undefined 
     const option = (words[k] as ShellWord).value;
     if (option.startsWith("--git-dir") || option.startsWith("--work-tree")) elsewhere = true;
     if (option === "-C" && words[k + 1] !== undefined) folders.push(words[k + 1] as ShellWord);
-    k += GIT_VALUE_OPTIONS.has(option) ? 2 : 1;
+    k += GIT_GLOBAL_VALUE_OPTIONS.has(option) ? 2 : 1;
   }
   const sub = words[k]?.value ?? "";
   return { sub, args: words.slice(k + 1), folders, elsewhere };

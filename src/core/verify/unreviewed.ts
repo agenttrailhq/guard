@@ -49,6 +49,7 @@ import {
   type ToCard,
   type UnsafeFix,
 } from "./cards.js";
+import { GIT_GLOBAL_VALUE_OPTIONS } from "./prefix-words.js";
 import { placed, repoRoot, rootCache } from "./repos.js";
 import type { CheckedCategory, HidingForm, VerifyIO, VerifyStatus } from "./types.js";
 
@@ -106,9 +107,6 @@ export interface RefUpdate {
   readonly branch: string;
 }
 
-/** `git` options before the subcommand that take the next word. */
-const GIT_VALUE_OPTIONS: ReadonlySet<string> = new Set(["-C", "-c", "--git-dir", "--work-tree"]);
-
 /** `git push` options that take the next word. */
 const PUSH_VALUE_OPTIONS: ReadonlySet<string> = new Set([
   "-o",
@@ -137,7 +135,7 @@ export function readPushes(command: string): PushCommand[] {
     while (k < args.length && (args[k] as string).startsWith("-")) {
       const arg = args[k] as string;
       if (arg === "-C") here = args[k + 1];
-      k += GIT_VALUE_OPTIONS.has(arg) ? 2 : 1;
+      k += GIT_GLOBAL_VALUE_OPTIONS.has(arg) ? 2 : 1;
     }
     if (args[k] !== "push") continue;
     let remote: string | undefined;

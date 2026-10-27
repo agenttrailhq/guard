@@ -57,6 +57,7 @@ import {
   type ToCard,
   type UnsafeFix,
 } from "./cards.js";
+import { gitSubcommandIndex } from "./prefix-words.js";
 import { placed, readRepoFile, rootCache } from "./repos.js";
 import type { CheckedCategory, HidingForm, RunState, VerifyIO, VerifyStatus } from "./types.js";
 
@@ -330,16 +331,6 @@ export function shellWrittenPaths(command: string): string[] {
   return out;
 }
 
-/** `git` options before the subcommand that take the next word as their value. */
-const GIT_GLOBAL_VALUES: ReadonlySet<string> = new Set([
-  "-C",
-  "-c",
-  "--git-dir",
-  "--work-tree",
-  "--namespace",
-  "--config-env",
-]);
-
 /** `git apply` options that only report on a patch, unless `--apply` is given too. */
 const APPLY_REPORTS = /^--(?:check|stat|numstat|summary)$/;
 
@@ -357,10 +348,7 @@ export function changesFilesUnread(command: string): boolean {
       continue;
     }
     if (program !== "git") continue;
-    let k = 0;
-    while (k < args.length && (args[k] as string).startsWith("-")) {
-      k += GIT_GLOBAL_VALUES.has(args[k] as string) ? 2 : 1;
-    }
+    const k = gitSubcommandIndex(args);
     const sub = args[k];
     const rest = args.slice(k + 1);
     if (sub === "apply" && (rest.includes("--apply") || !rest.some((a) => APPLY_REPORTS.test(a)))) {

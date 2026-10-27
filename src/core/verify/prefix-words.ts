@@ -3,7 +3,8 @@
  * The words that come before a program and are not it (`sudo`, `env`, `timeout 5`), and the
  * options of each that take the next word as their value. One table for every reader that looks
  * for a command's program — `ran.ts`, `shell-words.ts` and `calls.ts` — so `sudo -D /x git push`
- * names the same program to every check.
+ * names the same program to every check. `git`'s own options before its subcommand are one table
+ * here too.
  *
  * Pure. No I/O, no imports.
  */
@@ -45,6 +46,36 @@ export const PREFIX_VALUE_OPTIONS: ReadonlyMap<string, ReadonlySet<string>> = ne
   ["time", new Set(["-f", "-o", "--format", "--output"])],
   ["exec", new Set(["-a"])],
 ]);
+
+/**
+ * `git`'s own options, before its subcommand, that take the next word as their value: `git -C
+ * repo`, `git --namespace x`. The long ones also take it after `=` in the same word
+ * (`--git-dir=/x`), which is one word to skip. `--exec-path` is not one: alone it prints git's
+ * exec path and exits, and it takes a path only as `--exec-path=<path>`. One table for every
+ * reader of a `git` command, so `git --namespace x push` names `push` to every check.
+ */
+export const GIT_GLOBAL_VALUE_OPTIONS: ReadonlySet<string> = new Set([
+  "-C",
+  "-c",
+  "--git-dir",
+  "--work-tree",
+  "--namespace",
+  "--config-env",
+  "--super-prefix",
+  "--attr-source",
+]);
+
+/**
+ * Where a `git` command's subcommand is among the words after `git`: past git's own options and
+ * their values (`GIT_GLOBAL_VALUE_OPTIONS`). `args.length` when there is none.
+ */
+export function gitSubcommandIndex(args: readonly string[]): number {
+  let k = 0;
+  while (k < args.length && (args[k] as string).startsWith("-")) {
+    k += GIT_GLOBAL_VALUE_OPTIONS.has(args[k] as string) ? 2 : 1;
+  }
+  return k;
+}
 
 /** A shell variable assignment before the program, such as `HUSKY=0`. */
 export const ASSIGNMENT = /^[A-Za-z_][A-Za-z0-9_]*=/;

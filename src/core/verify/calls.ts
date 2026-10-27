@@ -26,7 +26,7 @@ import type { CompiledRule } from "../rules.js";
 import { evaluateAction, type ScanCorpus, toolUseCalls } from "../scan-report.js";
 import type { ToolResult, ToolUse } from "../transcript/transcript-types.js";
 import type { AgentSource, MappedCall } from "../types.js";
-import { programNameOf, programStart } from "./prefix-words.js";
+import { gitSubcommandIndex, programNameOf, programStart } from "./prefix-words.js";
 import {
   executedView,
   hidingFormsOf,
@@ -356,20 +356,11 @@ const HOOKED_GIT: ReadonlySet<string> = new Set([
 /** A hooks folder: git's own, husky's, or a common custom one. */
 const HOOKS_PATH = /(?:^|[\\/])(?:\.git[\\/]hooks|\.husky|\.githooks)(?:[\\/]|$)/;
 
-/** Where a git command's subcommand is, past its own options. */
-function gitSubcommandAt(args: readonly string[]): number {
-  let k = 0;
-  while (k < args.length && (args[k] as string).startsWith("-")) {
-    k += ["-C", "-c", "--git-dir", "--work-tree"].includes(args[k] as string) ? 2 : 1;
-  }
-  return k;
-}
-
 /** Does a shell command run git in a way that runs hooks? */
 function runsGitHooks(command: string): boolean {
   return simpleCommands(executedText(command)).some((simple) => {
     const { program, args } = programAndArgs(simple);
-    return program === "git" && HOOKED_GIT.has(args[gitSubcommandAt(args)] ?? "");
+    return program === "git" && HOOKED_GIT.has(args[gitSubcommandIndex(args)] ?? "");
   });
 }
 

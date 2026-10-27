@@ -443,3 +443,14 @@ describe("a command after an ANSI-C quoted string is read", () => {
     expect((await shownStatuses(`echo 'it; ${command}`))[category]).toBe("could-not-check");
   });
 });
+
+describe("git's own options before push", () => {
+  it("the push is read, as it is without them", async () => {
+    const alone = (await shownStatuses("git push origin HEAD:main")).unreviewed;
+    expect(alone).not.toBe("clean");
+    for (const globals of ["--namespace x", "--namespace=x", "--attr-source HEAD", "-C ."]) {
+      const shown = await shownStatuses(`git ${globals} push origin HEAD:main`);
+      expect(shown.unreviewed, globals).toBe(alone);
+    }
+  });
+});

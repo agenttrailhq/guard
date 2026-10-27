@@ -16,6 +16,9 @@ import {
   shellCommands,
   shellItems,
 } from "../core/verify/shell-words.js";
+import { changesFilesUnread } from "../core/verify/tests.js";
+import { readPushes } from "../core/verify/unreviewed.js";
+import { callsOf, OK } from "./verify-command-fixtures.js";
 
 /** The words of each simple command, as values. */
 const values = (text: string): string[][] =>
@@ -79,6 +82,61 @@ describe("one prefix table for every reader of a command's program", () => {
     expect(start.assignments.map((w) => w.value)).toEqual(["HUSKY=0"]);
     const simple = simpleCommands(text)[0];
     expect(simple && programAndArgs(simple).assignments).toEqual(["HUSKY=0"]);
+  });
+});
+
+describe("one table of git's own options for every reader of a git command", () => {
+  // Each form puts git's own options, with any value, between `git` and its subcommand.
+  const GLOBALS = [
+    "-C repo",
+    "--git-dir /x/.git",
+    "--git-dir=/x/.git",
+    "--work-tree /x",
+    "--work-tree=/x",
+    "--namespace x",
+    "--namespace=x",
+    "--config-env core.editor=EDITOR",
+    "--super-prefix sub/",
+    "--attr-source HEAD",
+    "--no-pager",
+    "--bare",
+    "--exec-path=/x",
+  ];
+
+  it.each(GLOBALS)("git %s push origin main: every reader names push", (globals) => {
+    const text = `git ${globals} push origin main`;
+    // shell-words.ts, the git-backed checks' reader.
+    expect(gitCommand(shellCommands(text)[0]?.words ?? [])?.sub).toBe("push");
+    // unreviewed.ts, through calls.ts.
+    expect(readPushes(text)).toMatchObject([{ remote: "origin", destinations: ["main"] }]);
+  });
+
+  it.each(GLOBALS)("git %s commit -m …: ran.ts blanks the message", (globals) => {
+    const view = executedView(`git ${globals} commit -m "never rm -rf build"`);
+    expect(view.kinds).toContain("doc");
+    expect(view.text).not.toMatch(/\brm\b/);
+  });
+
+  it.each(GLOBALS)("git %s am: the test check reads a patch it cannot see", (globals) => {
+    expect(changesFilesUnread(`git ${globals} am fix.patch`)).toBe(true);
+  });
+
+  it.each(
+    GLOBALS,
+  )("git %s commit after a hook was written: calls.ts says git-hook", async (globals) => {
+    const { calls } = await callsOf("claude", [
+      [
+        { kind: "write", path: "/p/.husky/pre-commit", content: "make check", result: OK },
+        { kind: "shell", command: `git ${globals} commit -m wip`, result: OK },
+      ],
+    ]);
+    expect(calls[1]?.hidingForms).toContain("git-hook");
+  });
+
+  it("--exec-path alone prints a path and exits: no reader sees a push after it", () => {
+    const text = "git --exec-path /opt/git/core push origin main";
+    expect(gitCommand(shellCommands(text)[0]?.words ?? [])?.sub).toBe("/opt/git/core");
+    expect(readPushes(text)).toEqual([]);
   });
 });
 

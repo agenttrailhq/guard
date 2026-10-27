@@ -10059,6 +10059,23 @@ var PREFIX_VALUE_OPTIONS = /* @__PURE__ */ new Map([
   ["time", /* @__PURE__ */ new Set(["-f", "-o", "--format", "--output"])],
   ["exec", /* @__PURE__ */ new Set(["-a"])]
 ]);
+var GIT_GLOBAL_VALUE_OPTIONS = /* @__PURE__ */ new Set([
+  "-C",
+  "-c",
+  "--git-dir",
+  "--work-tree",
+  "--namespace",
+  "--config-env",
+  "--super-prefix",
+  "--attr-source"
+]);
+function gitSubcommandIndex(args2) {
+  let k = 0;
+  while (k < args2.length && args2[k].startsWith("-")) {
+    k += GIT_GLOBAL_VALUE_OPTIONS.has(args2[k]) ? 2 : 1;
+  }
+  return k;
+}
 var ASSIGNMENT3 = /^[A-Za-z_][A-Za-z0-9_]*=/;
 function programNameOf(value) {
   const base = value.split(/[\\/]/).pop() ?? "";
@@ -10364,15 +10381,6 @@ function commandStart(words2) {
   const { index, assignments } = programStart(words2.map((word) => word.value));
   return { index, assignments: assignments.map((i) => words2[i]) };
 }
-var GIT_VALUE_OPTIONS = /* @__PURE__ */ new Set([
-  "-C",
-  "-c",
-  "--git-dir",
-  "--work-tree",
-  "--namespace",
-  "--config-env",
-  "--exec-path"
-]);
 function gitCommand(words2) {
   const at2 = commandStart(words2).index;
   const program = words2[at2];
@@ -10384,7 +10392,7 @@ function gitCommand(words2) {
     const option = words2[k].value;
     if (option.startsWith("--git-dir") || option.startsWith("--work-tree")) elsewhere = true;
     if (option === "-C" && words2[k + 1] !== void 0) folders.push(words2[k + 1]);
-    k += GIT_VALUE_OPTIONS.has(option) ? 2 : 1;
+    k += GIT_GLOBAL_VALUE_OPTIONS.has(option) ? 2 : 1;
   }
   const sub = words2[k]?.value ?? "";
   return { sub, args: words2.slice(k + 1), folders, elsewhere };
@@ -11177,10 +11185,7 @@ function commandOf(segment) {
   const name = programName2(program);
   const rest = segment.words.slice(at2 + 1);
   if (name !== "git") return { name, sub: "", globals: [], args: rest };
-  let k = 0;
-  while (k < rest.length && rest[k].value.startsWith("-")) {
-    k += GIT_GLOBAL_VALUE_OPTIONS.has(rest[k].value) ? 2 : 1;
-  }
+  const k = gitSubcommandIndex(rest.map((word) => word.value));
   return {
     name,
     sub: rest[k]?.value ?? "",
@@ -11268,14 +11273,6 @@ var TEST_FILTER_OPTIONS = /* @__PURE__ */ new Set([
   "-k",
   "--grep",
   "-g"
-]);
-var GIT_GLOBAL_VALUE_OPTIONS = /* @__PURE__ */ new Set([
-  "-C",
-  "-c",
-  "--config-env",
-  "--git-dir",
-  "--work-tree",
-  "--namespace"
 ]);
 var GIT_HISTORY = /* @__PURE__ */ new Set([
   "log",
@@ -11371,10 +11368,7 @@ function segmentRegions(segment, keep) {
     );
   else if (SEARCHERS.has(name)) blank(searchPatterns(rest), "search");
   else if (name === "git") {
-    let k = 0;
-    while (k < rest.length && rest[k].value.startsWith("-")) {
-      k += GIT_GLOBAL_VALUE_OPTIONS.has(rest[k].value) ? 2 : 1;
-    }
+    const k = gitSubcommandIndex(rest.map((word) => word.value));
     const sub = rest[k]?.value ?? "";
     const args2 = rest.slice(k + 1);
     if (sub === "grep") blank(searchPatterns(args2), "search");
@@ -11843,17 +11837,10 @@ var HOOKED_GIT = /* @__PURE__ */ new Set([
   "revert"
 ]);
 var HOOKS_PATH = /(?:^|[\\/])(?:\.git[\\/]hooks|\.husky|\.githooks)(?:[\\/]|$)/;
-function gitSubcommandAt(args2) {
-  let k = 0;
-  while (k < args2.length && args2[k].startsWith("-")) {
-    k += ["-C", "-c", "--git-dir", "--work-tree"].includes(args2[k]) ? 2 : 1;
-  }
-  return k;
-}
 function runsGitHooks(command) {
   return simpleCommands(executedText(command)).some((simple) => {
     const { program, args: args2 } = programAndArgs(simple);
-    return program === "git" && HOOKED_GIT.has(args2[gitSubcommandAt(args2)] ?? "");
+    return program === "git" && HOOKED_GIT.has(args2[gitSubcommandIndex(args2)] ?? "");
   });
 }
 function writesHook(call) {
@@ -13491,14 +13478,6 @@ function shellWrittenPaths(command) {
   }
   return out;
 }
-var GIT_GLOBAL_VALUES = /* @__PURE__ */ new Set([
-  "-C",
-  "-c",
-  "--git-dir",
-  "--work-tree",
-  "--namespace",
-  "--config-env"
-]);
 var APPLY_REPORTS = /^--(?:check|stat|numstat|summary)$/;
 function changesFilesUnread(command) {
   for (const simple of simpleCommands(command)) {
@@ -13508,10 +13487,7 @@ function changesFilesUnread(command) {
       continue;
     }
     if (program !== "git") continue;
-    let k = 0;
-    while (k < args2.length && args2[k].startsWith("-")) {
-      k += GIT_GLOBAL_VALUES.has(args2[k]) ? 2 : 1;
-    }
+    const k = gitSubcommandIndex(args2);
     const sub = args2[k];
     const rest = args2.slice(k + 1);
     if (sub === "apply" && (rest.includes("--apply") || !rest.some((a) => APPLY_REPORTS.test(a)))) {
@@ -13900,7 +13876,6 @@ var testsCard = (result, context) => {
 };
 
 // src/core/verify/unreviewed.ts
-var GIT_VALUE_OPTIONS2 = /* @__PURE__ */ new Set(["-C", "-c", "--git-dir", "--work-tree"]);
 var PUSH_VALUE_OPTIONS = /* @__PURE__ */ new Set([
   "-o",
   "--push-option",
@@ -13924,7 +13899,7 @@ function readPushes(command) {
     while (k < args2.length && args2[k].startsWith("-")) {
       const arg = args2[k];
       if (arg === "-C") here = args2[k + 1];
-      k += GIT_VALUE_OPTIONS2.has(arg) ? 2 : 1;
+      k += GIT_GLOBAL_VALUE_OPTIONS.has(arg) ? 2 : 1;
     }
     if (args2[k] !== "push") continue;
     let remote;
