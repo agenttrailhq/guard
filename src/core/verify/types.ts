@@ -321,10 +321,42 @@ export type SecretsCheck = CheckedCategory<SecretsFacts>;
  *     }
  *
  * A category with no entry can only be `PendingCheck`.
+ *
+ * Every category's facts but secrets' extend `CommandCheckFacts`, so each carries the hiding
+ * forms of the calls it read; `HidingFormsRequired` below fails to compile when one does not.
  */
 export interface CategoryFactsMap {
   secrets: SecretsFacts;
 }
+
+/**
+ * The facts every category but secrets carries. Those checks read commands that ran, and a call
+ * that ran can hide what they look for (`HIDING_FORMS`), so each says which forms its calls held:
+ * an empty list when none did. The card and the report then say could not confirm, never clean.
+ * Secrets is the one check of text rather than commands, and is exempt.
+ */
+export interface CommandCheckFacts {
+  readonly hidingForms: readonly HidingForm[];
+}
+
+/**
+ * The categories in a facts map, other than secrets, whose facts lack `hidingForms`. `never` when
+ * every one has it.
+ */
+export type CategoriesMissingHidingForms<M> = {
+  [C in Exclude<keyof M, "secrets">]: M[C] extends CommandCheckFacts ? never : C;
+}[Exclude<keyof M, "secrets">];
+
+/** Holds only `true`. */
+type MustBeTrue<T extends true> = T;
+
+/**
+ * Compiles only while every category in `CategoryFactsMap` but secrets has `hidingForms`. A check
+ * that adds its category without it fails here, wherever its augmentation lives.
+ */
+export type HidingFormsRequired = MustBeTrue<
+  [CategoriesMissingHidingForms<CategoryFactsMap>] extends [never] ? true : false
+>;
 
 /** The categories whose check exists. */
 export type CheckedCategoryName = Extract<keyof CategoryFactsMap, VerifyCategory>;

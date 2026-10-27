@@ -35,9 +35,12 @@ import {
   TONE_ORDER,
 } from "../core/verify/cards.js";
 import {
+  type CategoriesMissingHidingForms,
   FACT_KEYS,
   FACT_VALUE_ENUMS,
   HIDING_FORMS,
+  type HidingForm,
+  type HidingFormsRequired,
   type SecretsFacts,
   VERIFY_CATEGORIES,
   VERIFY_STATUSES,
@@ -650,6 +653,25 @@ describe("a checked category's facts reach the file as plain data", () => {
     expect(JSON.stringify(facts)).toBe(
       '{"classes":{"classes":{"classes":{"classes":{"classes":{}}}}}}',
     );
+  });
+
+  it("every category's facts but secrets' must carry hidingForms, or the contract does not compile", () => {
+    type Good = CategoriesMissingHidingForms<{
+      secrets: SecretsFacts;
+      "lost-work": { readonly hidingForms: readonly HidingForm[]; readonly branches: number };
+    }>;
+    type Bad = CategoriesMissingHidingForms<{
+      secrets: SecretsFacts;
+      "lost-work": { readonly branches: number };
+      destructive: { readonly hidingForms: readonly HidingForm[] };
+    }>;
+    const good: [Good] extends [never] ? true : false = true;
+    const bad: Bad = "lost-work";
+    // @ts-expect-error: a category that has hidingForms is not listed as missing it.
+    const notListed: Bad = "destructive";
+    // The contract's own map passes today; `HidingFormsRequired` holds only `true`.
+    const required: HidingFormsRequired = true;
+    expect([good, bad, notListed, required]).toEqual([true, "lost-work", "destructive", true]);
   });
 
   it("the secrets block in the file checks its strings against the enums, as --json does", () => {
