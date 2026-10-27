@@ -5,8 +5,9 @@
 //   node scripts/readme-screenshots.mjs --out <folder> [--chrome <path>] [--scale <n>]
 //                                       [--keep-html] [--allow-test-only]
 //
-// 1. Bundles the synthetic corpus (src/__tests__/verified-corpus.ts) and the report renderer
-//    (src/core/report.ts) with tsup, and renders the standalone page. The corpus is made up: no
+// 1. Bundles the synthetic notes corpus (src/__tests__/notes-corpus.ts, whose facts are each
+//    check's real facts type) and the report renderer (src/core/report.ts) with tsup, and renders
+//    the standalone page with the report's own card builders. The corpus is made up: no
 //    transcript, repository or other file on this machine is read.
 // 2. Opens the page in headless Chrome with a new, empty profile, driven over
 //    --remote-debugging-pipe, so no port is opened. It captures, as PNG:
@@ -20,9 +21,9 @@
 // intercepted: one for anything but a file: or data: URL is failed, and fails the run.
 //
 // The images must show only wording the report ships, so the cards are built by the report's
-// own builders. --allow-test-only, for a preview, uses the corpus's test-only builders
-// instead (`TEST_ONLY_BUILDERS`); without it, a render that holds a line from one (a
-// `data-template` id starting `test-only.`) is refused.
+// own builders. --allow-test-only, for a preview, renders the verified corpus with its
+// test-only builders instead (`TEST_ONLY_BUILDERS`); without it, a render that holds a line
+// from one (a `data-template` id starting `test-only.`) is refused.
 //
 // Needs Node 20+, the dev dependencies (pnpm install) and Chrome or Chromium. Chrome is found
 // from --chrome, then CHROME_PATH, then the usual install paths.
@@ -35,6 +36,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 const ROOT = fileURLToPath(new URL("../", import.meta.url));
 const CORPUS = join(ROOT, "src", "__tests__", "verified-corpus.ts");
+const NOTES_CORPUS = join(ROOT, "src", "__tests__", "notes-corpus.ts");
 const REPORT = join(ROOT, "src", "core", "report.ts");
 
 const USAGE = `Usage: node scripts/readme-screenshots.mjs --out <folder> [--chrome <path>] [--scale <n>]
@@ -149,7 +151,7 @@ async function renderPage(work, allowTestOnly) {
   const { build } = await import("tsup");
   const outDir = join(work, "bundle");
   await build({
-    entry: { corpus: CORPUS, report: REPORT },
+    entry: { corpus: CORPUS, notes: NOTES_CORPUS, report: REPORT },
     outDir,
     format: ["esm"],
     outExtension: () => ({ js: ".mjs" }),
@@ -165,13 +167,21 @@ async function renderPage(work, allowTestOnly) {
     config: false,
   });
   const corpus = await import(pathToFileURL(join(outDir, "corpus.mjs")).href);
+  const notes = await import(pathToFileURL(join(outDir, "notes.mjs")).href);
   const { renderReport } = await import(pathToFileURL(join(outDir, "report.mjs")).href);
-  if (corpus.VERIFIED_RESULT === undefined || corpus.VERIFIED_META === undefined) {
-    fail("the corpus exports no VERIFIED_RESULT and VERIFIED_META");
+  if (corpus.VERIFIED_META === undefined) fail("the corpus exports no VERIFIED_META");
+  if (notes.notesResult === undefined || notes.notesVerification === undefined) {
+    fail("the notes corpus exports no notesResult and notesVerification");
   }
-  // The report's own card builders, unless a preview asks for the corpus's test-only ones.
+  // By default the notes corpus, whose facts are each check's real facts type, rendered by the
+  // report's own card builders. A preview may ask for the verified corpus and its test-only
+  // builders instead.
+  const result = allowTestOnly
+    ? corpus.VERIFIED_RESULT
+    : notes.notesResult(notes.notesVerification());
   const builders = allowTestOnly ? corpus.TEST_ONLY_BUILDERS : undefined;
-  const html = renderReport(corpus.VERIFIED_RESULT, corpus.VERIFIED_META, {
+  if (result === undefined) fail("the corpus exports no VERIFIED_RESULT");
+  const html = renderReport(result, corpus.VERIFIED_META, {
     variant: "document",
     localFixCategories: corpus.LOCAL_FIX_CATEGORIES ?? [],
     ...(builders === undefined ? {} : { cardBuilders: builders }),
