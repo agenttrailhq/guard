@@ -12343,7 +12343,7 @@ var MAX_LOCAL_FIXES = 50;
 function couldHideTemplate(id) {
   return {
     id,
-    render: (f) => f.couldHide > 0 ? `${counted(f.couldHide, "command that ran, or may have run,", "commands that ran, or may have run,")} could run other commands this check does not read (code given to a shell or an interpreter, a script piped into one, find -exec, xargs, eval, a substitution, git config, exec or hooks, a quote left open, a guardrail match in a form this check does not read, or a shell this reading does not parse), so it could not confirm it saw everything.` : void 0
+    render: (f) => f.couldHide > 0 ? `${counted(f.couldHide, "command that ran, or may have run,", "commands that ran, or may have run,")} could run other commands this check does not read (code given to a shell or an interpreter, a script piped into one, find -exec, xargs, eval, a substitution, git config, exec or hooks, a quote left open, a command of its kind behind a program this check does not read, or a shell this reading does not parse), so it could not confirm it saw everything.` : void 0
   };
 }
 
@@ -12394,7 +12394,7 @@ var HIDING_FORM_LABELS = {
   "inline-code": "code run inline by an interpreter",
   "piped-script": "a script piped into a shell or interpreter",
   "unterminated-quote": "a quote left open",
-  "unread-match": "a command its guardrails matched, in a form this check does not read"
+  "unread-match": "a command of its kind behind a program this check does not read"
 };
 function hidingFormLabel(form) {
   return HIDING_FORM_LABELS[form] ?? form.replace(/-/g, " ");
