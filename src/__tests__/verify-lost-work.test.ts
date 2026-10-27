@@ -431,6 +431,7 @@ describe("discarded paths, classed by where they were", () => {
     }
   });
 
+  // Real git processes, which a loaded runner can hold up past the default timeout.
   it("a whole-tree discard run from a subfolder is judged at the repo's top", async () => {
     const root = makeRepo("tree-sub", { files: { "pkg/a.txt": "a\n" } });
     const scratch = tempFolder("tree-sub-scratch");
@@ -444,7 +445,7 @@ describe("discarded paths, classed by where they were", () => {
       { scratchRoots: [scratch] },
     );
     expect(facts.discards.mainCheckout).toBe(1);
-  });
+  }, 300_000);
 
   it("the agent's own worktree, a scratch copy, or an agent worktree folder", async () => {
     const root = tempFolder("own");

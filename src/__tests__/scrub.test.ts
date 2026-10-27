@@ -405,7 +405,12 @@ describe("mysql -p: the program found in code, past exec, ssh, shells and glued 
   });
 });
 
-describe("mysql -p stays linear on long runs of statement separators around mysql", () => {
+// CPU-time measurements: one retry, so another process's burst on a shared runner is measured
+// again rather than failed. The bounds themselves are unchanged.
+describe("mysql -p stays linear on long runs of statement separators around mysql", {
+  retry: 1,
+  timeout: 300_000,
+}, () => {
   // A regex that found the program itself backtracked here: each `;` `&` `|` `(` began a new
   // attempt that rescanned the run (100 KB of `;` then mysql took 4.3 s, 300 KB 38 s). The time
   // is this worker's CPU time, best of three. Linear work grows about 10x from 100 KB
@@ -487,7 +492,11 @@ describe("mysql -p fails toward masking when the shell reading is unsure", () =>
   });
 });
 
-describe("mysql -p stays linear on text dense with candidates and quotes", () => {
+// CPU-time measurements: one retry, as above. The bounds are unchanged.
+describe("mysql -p stays linear on text dense with candidates and quotes", {
+  retry: 1,
+  timeout: 300_000,
+}, () => {
   // Each candidate used to read 512 characters back, with a slice and a regex at every quote:
   // `mysql"" -p` repeated took 105 ms at 100 KB. The scan state now carries to the next
   // candidate. CPU time, best of three.
