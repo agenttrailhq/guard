@@ -85,9 +85,12 @@ export interface CallLog {
   /** The sessions' working directories, each once, in the order first seen. */
   readonly folders: readonly string[];
   /**
-   * The calls that ran, by a recorded result, holding a form that runs something this reading
-   * does not take apart (`hidingFormsOf`), and those forms in `HIDING_FORMS` order. While any
-   * is present, no git-backed category may read clean or say a command did not run.
+   * The calls that ran, or may have run, holding a form that runs something this reading does
+   * not take apart (`hidingFormsOf`), and those forms in `HIDING_FORMS` order. A call counts
+   * when it ran by a recorded result, or when no result says either way: none was recorded,
+   * or the app records none (every Cursor call). A mention, or a call refused or blocked
+   * before it ran, does not count. While any is present, no git-backed category may read
+   * clean or say a command did not run.
    */
   readonly hiding: { readonly calls: number; readonly forms: readonly HidingForm[] };
 }
@@ -354,7 +357,7 @@ export function readCalls(corpus: ScanCorpus, home: string): CallLog {
             const forms = hidingFormsOf(mapped);
             if (
               forms.length > 0 &&
-              isResultBackedRun(runVerdict(agent, mapped, result, () => true))
+              ranOrMayHaveRun(runVerdict(agent, mapped, result, () => true))
             ) {
               hidingCalls += 1;
               for (const form of forms) hidingForms.add(form);
@@ -537,6 +540,18 @@ export function tallyOf(judged: readonly Judged<unknown>[]): RunTally {
     else tally[j.verdict.state] += 1;
   }
   return tally;
+}
+
+/**
+ * Did a call run, or may it have run? A result-backed run, or an unknown with no result to
+ * say either way (`no-result`, `not-recorded`). Never a mention, and never a call refused or
+ * blocked before running (`error-result`).
+ */
+export function ranOrMayHaveRun(verdict: RunVerdict): boolean {
+  if (isResultBackedRun(verdict)) return true;
+  return (
+    verdict.state === "unknown" && (verdict.why === "no-result" || verdict.why === "not-recorded")
+  );
 }
 
 /** The output a call recorded, as text. Empty when none was recorded. */

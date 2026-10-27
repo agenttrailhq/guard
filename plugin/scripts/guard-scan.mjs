@@ -8471,7 +8471,7 @@ var FORM_WORDS = {
 function couldNotConfirmLine(n2, forms, what) {
   if (n2 === 0) return void 0;
   const words2 = forms.map((form) => FORM_WORDS[form]).join(", ");
-  return `Could not confirm that no ${what} ran: ${counted(n2, "command")} that ran ${n2 === 1 ? "uses" : "use"} a form this check does not read inside (${words2}).`;
+  return `Could not confirm that no ${what} ran: ${counted(n2, "command")} that ran, or may have run, ${n2 === 1 ? "uses" : "use"} a form this check does not read inside (${words2}).`;
 }
 function unsafeFixLine(n2) {
   return n2 > 0 ? `Could not make a safe command for ${counted(n2, "fix", "fixes")}: a name or path in ${n2 === 1 ? "it" : "them"} holds characters a command cannot carry safely, so ${n2 === 1 ? "it is" : "they are"} left out of the local fixes file.` : void 0;
@@ -12113,7 +12113,7 @@ function readCalls(corpus, home) {
           for (const mapped of call.candidates) {
             id += 1;
             const forms = hidingFormsOf(mapped);
-            if (forms.length > 0 && isResultBackedRun(runVerdict(agent, mapped, result, () => true))) {
+            if (forms.length > 0 && ranOrMayHaveRun(runVerdict(agent, mapped, result, () => true))) {
               hidingCalls += 1;
               for (const form of forms) hidingForms.add(form);
             }
@@ -12242,6 +12242,10 @@ function tallyOf(judged) {
     else tally[j.verdict.state] += 1;
   }
   return tally;
+}
+function ranOrMayHaveRun(verdict2) {
+  if (isResultBackedRun(verdict2)) return true;
+  return verdict2.state === "unknown" && (verdict2.why === "no-result" || verdict2.why === "not-recorded");
 }
 function outputOf(call) {
   return call.result?.content ?? "";

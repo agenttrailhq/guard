@@ -23,7 +23,7 @@ import {
   RM_TARGET_CLASSES,
   recursiveRmTargets,
 } from "../core/verify/destructive.js";
-import { checkGitBacked } from "../core/verify/git-checks.js";
+import { checkGitBacked, GIT_CARD_BUILDERS } from "../core/verify/git-checks.js";
 import { type CardExtras, isUnder, TEMP_ROOTS } from "../core/verify/git-copy.js";
 import { shellCommands } from "../core/verify/shell-words.js";
 import type { VerifyIO } from "../core/verify/types.js";
@@ -414,23 +414,60 @@ describe("commands this reading cannot open: could not confirm, never clean", ()
     expect(sub.facts.rm.classes["unguarded-variable"]).toBe(1);
   });
 
-  it("a hiding form only in a call that did not run, or was only mentioned, does not count", async () => {
+  it("a hiding form in a call that may have run counts: no result recorded", async () => {
+    const root = makeRepo("hiding-no-result");
+    const { facts, result } = await destructive([
+      { cwd: root, events: [{ kind: "bash", command: `bash -c "rm -rf build"`, noResult: true }] },
+    ]);
+    expect(facts.hidingCalls).toBe(1);
+    expect(facts.hidingForms).toContain("shell-string");
+    expect(result.status).toBe("could-not-check");
+  });
+
+  it("a hiding form in a refused or blocked call, or only mentioned, does not count", async () => {
     const root = makeRepo("hiding-not-ran");
     const { facts, result } = await destructive([
       {
         cwd: root,
         events: [
-          { kind: "bash", command: `bash -c "rm -rf build"`, noResult: true },
           { kind: "bash", command: `bash -c "ls"`, output: "blocked", error: true },
+          { kind: "bash", command: `echo 'find . -exec ls {} +'`, output: "" },
         ],
       },
     ]);
     expect(facts.hidingCalls).toBe(0);
-    // The call with no result is still unknown, so the card is not clean either.
-    expect(result.status).toBe("could-not-check");
+    expect(result.status).toBe("clean");
     const quiet = await destructive(ran(root, "ls"));
     expect(quiet.facts.hidingCalls).toBe(0);
     expect(quiet.result.status).toBe("clean");
+  });
+
+  /** A find that deletes through -exec, built here in test code. */
+  const findExec = ["find", ".", "-name", "build", "-type", "d", "-exec", "rm", "-rf", "{}", "+"];
+
+  it.each([
+    "claude",
+    "cursor",
+  ] as const)("%s, no result: an unopened form keeps all three categories from clean", async (agent) => {
+    const root = makeRepo(`hiding-may-${agent}`);
+    const command = findExec.join(" ");
+    const outcome = await runChecks(
+      agent,
+      [{ cwd: root, events: [{ kind: "bash", command, noResult: true }] }],
+      tempFolder("home"),
+      { scratchRoots: [] },
+    );
+    for (const name of ["skipped-checks", "lost-work", "destructive"] as const) {
+      const category = checkedOf<{ readonly hidingCalls: number }>(outcome[name] as never);
+      expect(category.status, name).toBe("could-not-check");
+      expect(category.facts.hidingCalls, name).toBe(1);
+      const card = GIT_CARD_BUILDERS[name](category as never, TOOL_RESULT);
+      const found = card.found.map((s) => s.template);
+      expect(found, name).toContain(`${name}.could-not-confirm`);
+      expect(found, name).not.toContain(`${name}.none`);
+      const text = card.found.map((s) => s.text).join(" ");
+      expect(text, name).toContain("that ran, or may have run,");
+    }
   });
 });
 

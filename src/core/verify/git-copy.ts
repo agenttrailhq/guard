@@ -162,7 +162,7 @@ export function couldNotConfirmLine(
 ): string | undefined {
   if (n === 0) return undefined;
   const words = forms.map((form) => FORM_WORDS[form]).join(", ");
-  return `Could not confirm that no ${what} ran: ${counted(n, "command")} that ran ${n === 1 ? "uses" : "use"} a form this check does not read inside (${words}).`;
+  return `Could not confirm that no ${what} ran: ${counted(n, "command")} that ran, or may have run, ${n === 1 ? "uses" : "use"} a form this check does not read inside (${words}).`;
 }
 
 /** The note on a card that left fixes out: the commands could not be made safe. */

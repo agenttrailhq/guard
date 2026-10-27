@@ -146,7 +146,7 @@ export interface SkippedChecksFacts {
   /** Exact fix commands that could not be made safe, so were left out of the local fixes file. */
   readonly unsafeFixes: number;
   /**
-   * The calls that ran holding a form this reading does not take apart, and those forms. While
+   * The calls that ran, or may have run, holding a form this reading does not take apart, and those forms. While
    * any is present the check cannot say nothing ran, so it is never `clean`.
    */
   readonly hidingCalls: number;
