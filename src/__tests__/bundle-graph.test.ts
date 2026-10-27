@@ -519,9 +519,11 @@ describe("only the scrub path can write a transcript", () => {
    *
    * What it guarantees: no direct write, renamed writer, re-export, unlisted local module,
    * dynamic import, `require`, module route (`getBuiltinModule`, `createRequire`, bindings),
-   * `eval`, `Function`, `Reflect`, `.constructor`, `getOwnPropertyDescriptor`, string or
-   * computed key (beyond the three the file uses, each pinned to its own function and count),
-   * `execFile` outside `realExec`, or `openSync` flag other than the read-only ones written out
+   * `eval`, `Function`, `Reflect`, `.constructor`, `getOwnPropertyDescriptor`, `dlopen`, string
+   * or computed key (beyond the three the file uses, each pinned to its own function and count),
+   * `execFile` outside `realExec`, use of `realExec`, `exec`, `run` or `programPath` beyond the
+   * places and counts the real file has (`PINNED_STARTER_USES`), or `openSync` flag other than
+   * the read-only ones written out
    * below; no import from `child_process`, `worker_threads`, `vm` or `cluster` but exactly
    * `import { execFile } from "node:child_process"` (no rename, default or namespace import, and
    * no other name), and no `import … = require(…)`; and no listed local module, or any module
@@ -637,7 +639,77 @@ describe("only the scrub path can write a transcript", () => {
       // A property descriptor hands on a property, a writer included, by its name as a string.
       "getOwnPropertyDescriptor",
       "getOwnPropertyDescriptors",
+      // `process.dlopen` loads a native addon, which runs code of its own. `process["dlopen"]`
+      // and the other computed forms fail the key rules below.
+      "dlopen",
     ]);
+
+    /**
+     * The names that start a program: `realExec` (which wraps `execFile`), the `exec` seam it is
+     * the default of, `run` (which calls `exec` within the budget), and `programPath` (which
+     * finds the program `run` is given). Each may be used only where the real file uses it, the
+     * pinned number of times: `realExec` and `options.exec` only as `exec`'s value, `exec` only
+     * inside `run`, `run` only inside `git` and `processNames`, and `programPath` only to find
+     * `git` there and `ps` or `tasklist` in `processNames`. A use anywhere else, or one more,
+     * fails, so the seam cannot start any other program.
+     */
+    const PINNED_STARTER_USES: Readonly<Record<string, number>> = {
+      "realExec in createRealVerifyIO, as exec's default": 1,
+      "exec in createRealVerifyIO, as exec's default": 1,
+      "exec in run, called": 1,
+      "run in git, called": 1,
+      "run in processNames, called": 2,
+      'programPath in git, called("git")': 1,
+      'programPath in processNames, called(windows?"tasklist":"ps")': 1,
+    };
+
+    /** The names `PINNED_STARTER_USES` pins. */
+    const STARTER_NAMES = new Set(["realExec", "exec", "run", "programPath"]);
+
+    /**
+     * How a starter name is used, as `PINNED_STARTER_USES` keys it, or `undefined` where the
+     * name is not a use: a declaration's own name, a key in an object or type, or the `exec`
+     * method of a regular expression literal.
+     */
+    function starterUse(node: ts.Identifier, file: ts.SourceFile): string | undefined {
+      const parent = node.parent;
+      if (isBindingName(node)) return undefined;
+      if (
+        (ts.isPropertyAssignment(parent) ||
+          ts.isPropertySignature(parent) ||
+          ts.isPropertyDeclaration(parent) ||
+          ts.isMethodDeclaration(parent) ||
+          ts.isMethodSignature(parent)) &&
+        parent.name === node
+      ) {
+        return undefined;
+      }
+      const property = ts.isPropertyAccessExpression(parent) && parent.name === node;
+      if (property && ts.isRegularExpressionLiteral(parent.expression) && node.text === "exec") {
+        return undefined;
+      }
+      const where = `${node.text} in ${enclosingFunction(node, file)}`;
+      // The value of `const exec = options.exec ?? realExec`, both sides of it.
+      const operand = property ? parent : node;
+      const choice = operand.parent;
+      if (
+        ts.isBinaryExpression(choice) &&
+        choice.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken &&
+        ts.isVariableDeclaration(choice.parent) &&
+        choice.parent.initializer === choice &&
+        choice.parent.name.getText(file) === "exec" &&
+        choice.getText(file).replace(/\s+/g, "") === "options.exec??realExec"
+      ) {
+        return `${where}, as exec's default`;
+      }
+      if (property) return `${where}, as a property of ${parent.expression.getText(file)}`;
+      if (ts.isCallExpression(parent) && parent.expression === node) {
+        if (node.text !== "programPath") return `${where}, called`;
+        const args = parent.arguments.map((a) => a.getText(file).replace(/\s+/g, "")).join(",");
+        return `${where}, called(${args})`;
+      }
+      return `${where}, as a value`;
+    }
 
     /**
      * Modules that start a process or run code. No listed local module may load one, and
@@ -762,7 +834,18 @@ describe("only the scrub path can write a transcript", () => {
       const fsImported = new Set<string>();
       const used = new Set<string>();
       const pinnedSeen = new Map<string, number>();
+      const startersSeen = new Map<string, number>();
       const visit = (node: ts.Node): void => {
+        // A name that starts a program: only where, and as often as, the real file uses it.
+        if (ts.isIdentifier(node) && STARTER_NAMES.has(node.text)) {
+          const use = starterUse(node, file);
+          if (use !== undefined) {
+            const seen = (startersSeen.get(use) ?? 0) + 1;
+            startersSeen.set(use, seen);
+            const allowed = PINNED_STARTER_USES[use];
+            if (allowed === undefined || seen > allowed) problems.push(`uses ${use}`);
+          }
+        }
         // `execFile` starts a process: allowed only in its import and inside `realExec`.
         if (
           ts.isIdentifier(node) &&
@@ -1236,6 +1319,122 @@ describe("only the scrub path can write a transcript", () => {
       ],
     ])("negative control: fails on %s", (_name, base, code, problem) => {
       const mutated = beforeOpenIn(base, code);
+      expect(mutated).not.toBe(real);
+      expect(readOnlyProblems(mutated)).toContain(problem);
+    });
+
+    /** Every use of a starter name in `source`, keyed as `PINNED_STARTER_USES` keys them. */
+    function starterUsesIn(source: string): Record<string, number> {
+      const file = ts.createSourceFile("verify-io.ts", source, ts.ScriptTarget.Latest, true);
+      const uses: Record<string, number> = {};
+      const visit = (node: ts.Node): void => {
+        if (ts.isIdentifier(node) && STARTER_NAMES.has(node.text)) {
+          const use = starterUse(node, file);
+          if (use !== undefined) uses[use] = (uses[use] ?? 0) + 1;
+        }
+        ts.forEachChild(node, visit);
+      };
+      visit(file);
+      return uses;
+    }
+
+    it("the real file uses each name that starts a program exactly where, and as often as, pinned", () => {
+      expect(starterUsesIn(real)).toEqual(PINNED_STARTER_USES);
+    });
+
+    /** The real source with `code` put on the line before `anchor`, inside its function. */
+    function withCodeAt(anchor: string, code: string): string {
+      if (real.split(anchor).length !== 2) throw new Error(`no single ${anchor}`);
+      return real.replace(anchor, `${code}\n    ${anchor}`);
+    }
+
+    /** Inside `git`, before it runs git; inside `run`, before it calls `exec`. */
+    const IN_GIT = "const result = await run(git,";
+    const IN_RUN = "const result = await exec(file,";
+    const OPTIONS =
+      '{ env: {}, timeout: 1000, maxBuffer: 1024, shell: false, windowsHide: true, encoding: "utf8" }';
+
+    // The edits that passed the previous form of this check, as found: each starts a program
+    // through the seam's own names, or loads native code, past a check that read only
+    // `execFile`.
+    it.each([
+      [
+        "Q1: realExec called outside run, with a writer",
+        beforeOpen(`void realExec("/usr/bin/touch", ["/tmp/x"], ${OPTIONS});`),
+        "uses realExec in readFile, called",
+      ],
+      [
+        "Q2: the exec seam called outside run, with a writer",
+        beforeOpen(`void exec("/usr/bin/touch", ["/tmp/x"], ${OPTIONS});`),
+        "uses exec in readFile, called",
+      ],
+      [
+        "Q3: process.dlopen of a native addon",
+        beforeOpen('process.dlopen({ exports: {} }, "/tmp/x.node");'),
+        "reaches dlopen",
+      ],
+      [
+        "Q4: programPath of another program",
+        beforeOpen('void programPath("touch");'),
+        'uses programPath in readFile, called("touch")',
+      ],
+      [
+        "Q5: realExec passed as a value",
+        beforeOpen("void [realExec].map((f) => f);"),
+        "uses realExec in readFile, as a value",
+      ],
+    ])("negative control: fails on %s", (_name, mutated, problem) => {
+      expect(mutated).not.toBe(real);
+      expect(readOnlyProblems(mutated)).toContain(problem);
+    });
+
+    it.each([
+      [
+        "run called outside git and processNames",
+        beforeOpen('void run("/usr/bin/touch", ["/tmp/x"], undefined);'),
+        "uses run in readFile, called",
+      ],
+      [
+        "run called once more inside git",
+        withCodeAt(IN_GIT, 'void run("/usr/bin/touch", ["/tmp/x"], cwd);'),
+        "uses run in git, called",
+      ],
+      [
+        "programPath finding another program inside git",
+        withCodeAt(IN_GIT, 'const other = programPath("touch");'),
+        'uses programPath in git, called("touch")',
+      ],
+      [
+        "exec called once more inside run",
+        withCodeAt(IN_RUN, `void exec("/usr/bin/touch", ["/tmp/x"], ${OPTIONS});`),
+        "uses exec in run, called",
+      ],
+      [
+        "the exec option called directly",
+        beforeOpen(`void options.exec?.("/usr/bin/touch", ["/tmp/x"], ${OPTIONS});`),
+        "uses exec in readFile, as a property of options",
+      ],
+      [
+        "realExec given another name",
+        beforeOpen("const start = realExec;"),
+        "uses realExec in readFile, as a value",
+      ],
+      [
+        "run called through call",
+        beforeOpen('void run.call(undefined, "/usr/bin/touch", ["/tmp/x"], undefined);'),
+        "uses run in readFile, as a value",
+      ],
+      [
+        "exec taken out of the options",
+        beforeOpen("const { exec: start } = options;"),
+        "uses exec in readFile, as a value",
+      ],
+      [
+        "process.dlopen by a string key",
+        beforeOpen('process["dlopen"]({ exports: {} }, "/tmp/x.node");'),
+        "indexes by a string key",
+      ],
+    ])("negative control: fails on a program started through the seam: %s", (_name, mutated, problem) => {
       expect(mutated).not.toBe(real);
       expect(readOnlyProblems(mutated)).toContain(problem);
     });
