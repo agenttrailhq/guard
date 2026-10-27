@@ -63,10 +63,14 @@ export const VERIFY_BY_DEFAULT = true;
  */
 export interface VerifyOutcome {
   readonly verification: Verification;
+  /**
+   * Every fix for the local fixes file, from every check: an exact command, or a fix that could
+   * not be made safe, which the file lists with its note and no command text.
+   */
   readonly localFixes: readonly (LocalFix | UnsafeFix)[];
   /**
-   * Fixes a check could not make a safe command for, each with its note. No command text.
-   * For the local fixes file to list as notes; the categories' facts count them too.
+   * The git-backed checks' fixes that could not be made safe, also in `localFixes`. Kept apart
+   * for the checks' own tests; the categories' facts count them too.
    */
   readonly unsafeFixes?: readonly UnsafeFix[];
 }
@@ -156,6 +160,7 @@ export async function verifyScan(input: VerifyInput): Promise<VerifyOutcome> {
     verification,
     localFixes: [
       ...git.localFixes,
+      ...git.unsafeFixes,
       ...tests.localFixes,
       ...cloud.localFixes,
       ...unreviewed.localFixes,

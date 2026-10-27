@@ -347,3 +347,90 @@ describe("no value the git-backed checks read leaves scan --verify", () => {
     }
   });
 });
+
+describe("fixes the checks could not make safe reach the fixes file, and --review counts them", () => {
+  /** A repo named `label`, with a force-deleted branch still recoverable, and the session. */
+  function deletedBranchCorpus(label: string): { root: string; lines: string[] } {
+    const root = makeRepo(label);
+    git(root, "switch", "-q", "-c", "feature/kept-work");
+    writeFileSync(join(root, "b.txt"), "b\n");
+    git(root, "add", "b.txt");
+    git(root, "commit", "-q", "-m", "branch work");
+    git(root, "switch", "-q", "main");
+    const deleted = git(root, "branch", "-D", "feature/kept-work");
+    const base = { sessionId: "unsafe", cwd: root, timestamp: "2026-10-01T00:00:00.000Z" };
+    const lines = [
+      JSON.stringify({
+        ...base,
+        type: "user",
+        uuid: "u0",
+        message: { role: "user", content: "tidy up" },
+      }),
+      JSON.stringify({
+        ...base,
+        type: "assistant",
+        uuid: "a0",
+        message: {
+          role: "assistant",
+          content: [
+            {
+              type: "tool_use",
+              id: "t0",
+              name: "Bash",
+              input: { command: "git branch -D feature/kept-work" },
+            },
+          ],
+        },
+      }),
+      JSON.stringify({
+        ...base,
+        type: "user",
+        uuid: "r0",
+        message: {
+          role: "user",
+          content: [{ type: "tool_result", tool_use_id: "t0", content: deleted }],
+        },
+      }),
+    ];
+    return { root, lines };
+  }
+
+  /** The written report and fixes file of a run, and the lost-work card's markup. */
+  function outputs(written: ReadonlyMap<string, string>) {
+    const fixesPath = [...written.keys()].find((path) => path.endsWith(FIXES_FILENAME));
+    const report =
+      [...written.entries()].find(([path]) => !path.endsWith(FIXES_FILENAME))?.[1] ?? "";
+    const at = report.indexOf('id="check-lost-work"');
+    const card = report.slice(report.lastIndexOf("<article", at), report.indexOf("</article>", at));
+    return { fixes: fixesPath === undefined ? undefined : written.get(fixesPath), card };
+  }
+
+  it("a repo path with a space and shell characters: the file lists the note, --review counts it", async () => {
+    // Every recovery command names the repo, so none can be made safe.
+    const { root, lines } = deletedBranchCorpus(["unsafe repo;", "$", "(id)'x"].join(""));
+    const { dir } = writeTranscripts(lines);
+    const run = await scan(["--agent", "claude", "--dir", dir, "--review"], "y");
+    expect(run.code).toBe(0);
+    const { fixes, card } = outputs(run.written);
+    expect(fixes, "a fixes file is written for the unsafe fix alone").toBeDefined();
+    expect(fixes).toContain("could not make a safe command");
+    // No command text for it, and nothing of the repo path or the branch.
+    expect(fixes).not.toContain(root);
+    expect(fixes).not.toContain("kept-work");
+    // The review counts it before asking.
+    expect(run.stdout).toContain("1 fix it could not make a safe command for");
+    // The lost-work card says so, and does not point at the file: it holds no command for it.
+    expect(card).toContain("Could not make a safe command for 1 fix");
+    expect(card).not.toContain('data-template="card.fixes-file"');
+  });
+
+  it("negative control: a safe repo path gives an exact command, and the card names the file", async () => {
+    const { lines } = deletedBranchCorpus("safe-repo");
+    const { dir } = writeTranscripts(lines);
+    const run = await scan(["--agent", "claude", "--dir", dir]);
+    const { fixes, card } = outputs(run.written);
+    expect(fixes).toContain("'branch' 'recovered/feature/kept-work'");
+    expect(fixes).not.toContain("could not make a safe command");
+    expect(card).toContain('data-template="card.fixes-file"');
+  });
+});

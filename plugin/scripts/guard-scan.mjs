@@ -13887,7 +13887,7 @@ function couldNotConfirmLine(n2, forms, what) {
   return `Could not confirm that no ${what} ran: ${counted2(n2, "command")} that ran, or may have run, ${n2 === 1 ? "uses" : "use"} a form this check does not read inside (${words2}).`;
 }
 function unsafeFixLine(n2) {
-  return n2 > 0 ? `Could not make a safe command for ${counted2(n2, "fix", "fixes")}: a name or path in ${n2 === 1 ? "it" : "them"} holds characters a command cannot carry safely, so ${n2 === 1 ? "it is" : "they are"} left out of the local fixes file.` : void 0;
+  return n2 > 0 ? `Could not make a safe command for ${counted2(n2, "fix", "fixes")}: a name or path in ${n2 === 1 ? "it" : "them"} holds characters a command cannot carry safely, so the local fixes file lists ${n2 === 1 ? "it" : "them"} as could not make a safe command, with no command.` : void 0;
 }
 var MAX_PROBED_ITEMS = 500;
 var TEMP_ROOTS = [
@@ -15282,7 +15282,7 @@ var NOW = [
 var FIX_STEPS = [
   {
     id: "destructive.fix.restore",
-    render: (f) => f.rm.trackedGone > 0 ? "Restore each tracked target that is still wholly gone. The exact commands are in the local fixes file." : void 0
+    render: (f) => f.rm.trackedGone > 0 ? "Restore each tracked target that is still wholly gone." : void 0
   },
   {
     id: "destructive.fix.restore-partly",
@@ -15849,7 +15849,7 @@ var CHIP2 = {
 var FIX_STEPS2 = [
   {
     id: "lost-work.fix.recover",
-    render: (f) => recoverable(f) > 0 ? "Recover each one by its commit id before git cleans unreachable commits away. The exact commands are in the local fixes file." : void 0
+    render: (f) => recoverable(f) > 0 ? "Recover each one by its commit id before git cleans unreachable commits away." : void 0
   },
   {
     id: "lost-work.fix.discards",
@@ -16827,7 +16827,7 @@ var FIX_STEPS3 = [
   },
   {
     id: "skipped-checks.fix.instructions",
-    render: (f) => f.instructions.sayToSkip > 0 ? "Remove the instruction to skip checks from each file the local fixes file names." : void 0
+    render: (f) => f.instructions.sayToSkip > 0 ? "Remove the instruction to skip checks from each file that has one." : void 0
   }
 ];
 function fixShapes3(f) {
@@ -20507,6 +20507,7 @@ async function verifyScan(input) {
     verification,
     localFixes: [
       ...git.localFixes,
+      ...git.unsafeFixes,
       ...tests.localFixes,
       ...cloud.localFixes,
       ...unreviewed.localFixes,

@@ -168,7 +168,7 @@ export function couldNotConfirmLine(
 /** The note on a card that left fixes out: the commands could not be made safe. */
 export function unsafeFixLine(n: number): string | undefined {
   return n > 0
-    ? `Could not make a safe command for ${counted(n, "fix", "fixes")}: a name or path in ${n === 1 ? "it" : "them"} holds characters a command cannot carry safely, so ${n === 1 ? "it is" : "they are"} left out of the local fixes file.`
+    ? `Could not make a safe command for ${counted(n, "fix", "fixes")}: a name or path in ${n === 1 ? "it" : "them"} holds characters a command cannot carry safely, so the local fixes file lists ${n === 1 ? "it" : "them"} as could not make a safe command, with no command.`
     : undefined;
 }
 

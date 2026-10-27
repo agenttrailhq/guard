@@ -127,7 +127,10 @@ export interface DatabaseFacts {
 export interface DestructiveFacts {
   readonly rm: RmFacts;
   readonly databases: DatabaseFacts;
-  /** Exact fix commands that could not be made safe, so were left out of the local fixes file. */
+  /**
+   * Exact fix commands that could not be made safe. The local fixes file lists each one as could
+   * not make a safe command, with no command text.
+   */
   readonly unsafeFixes: number;
   /**
    * The calls that ran, or may have run, holding a form this reading does not take apart, and those forms. While
@@ -984,9 +987,7 @@ const FIX_STEPS: readonly T[] = [
   {
     id: "destructive.fix.restore",
     render: (f) =>
-      f.rm.trackedGone > 0
-        ? "Restore each tracked target that is still wholly gone. The exact commands are in the local fixes file."
-        : undefined,
+      f.rm.trackedGone > 0 ? "Restore each tracked target that is still wholly gone." : undefined,
   },
   {
     id: "destructive.fix.restore-partly",

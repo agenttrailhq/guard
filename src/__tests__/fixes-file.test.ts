@@ -173,12 +173,12 @@ async function scan(
     verify: async (input: VerifyInput) => {
       if (options.throws !== undefined) throw new Error(options.throws);
       const outcome = await verifyScan(input);
-      // Secrets is the one category with a check in this build, so its card names the file.
+      // Fixed fixes of every kind beside what the real checks hand over, so each card that has
+      // a command in the file names it.
       const base = options.fixes === false ? [] : [...FIXES, SECRETS_LOCAL];
-      // The outcome's type holds exact commands only, until the checks hand over unsafe fixes.
       return {
         ...outcome,
-        localFixes: [...outcome.localFixes, ...base, ...(options.extra ?? [])] as LocalFix[],
+        localFixes: [...outcome.localFixes, ...base, ...(options.extra ?? [])],
       };
     },
   });

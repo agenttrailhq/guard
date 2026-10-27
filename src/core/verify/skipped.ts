@@ -143,7 +143,10 @@ export interface SkippedChecksFacts {
   /** `core.hooksPath` changes, and hooks now where checks were skipped. */
   readonly hooksPath: HooksPathFacts;
   readonly instructions: InstructionFacts;
-  /** Exact fix commands that could not be made safe, so were left out of the local fixes file. */
+  /**
+   * Exact fix commands that could not be made safe. The local fixes file lists each one as could
+   * not make a safe command, with no command text.
+   */
   readonly unsafeFixes: number;
   /**
    * The calls that ran, or may have run, holding a form this reading does not take apart, and those forms. While
@@ -995,7 +998,7 @@ const FIX_STEPS: readonly T[] = [
     id: "skipped-checks.fix.instructions",
     render: (f) =>
       f.instructions.sayToSkip > 0
-        ? "Remove the instruction to skip checks from each file the local fixes file names."
+        ? "Remove the instruction to skip checks from each file that has one."
         : undefined,
   },
 ];
