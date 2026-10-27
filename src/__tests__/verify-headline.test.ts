@@ -19,12 +19,15 @@ import { CARD_BUILDERS } from "../core/verify/builders.js";
 import {
   type CardBuilders,
   type CardView,
+  GIT_STATE_CLAIMS,
   HEADLINE_BASIS,
   HEADLINE_ORDER,
+  type HeadlineClaim,
   notCheckedCard,
   pickHeadline,
   type Unconfirmed,
 } from "../core/verify/cards.js";
+import { shareCounts } from "../core/verify/share-copy.js";
 import {
   type HidingForm,
   type RanEvidence,
@@ -159,6 +162,8 @@ const leading = (category: VerifyCategory): VerifyStatus =>
 
 const TOTALS = headline(baseResult(undefined));
 
+const TOOL_RESULT = { ranEvidence: "tool-result" } as const;
+
 describe("the headline picks the strongest verified finding", () => {
   it.each(HEADLINE_ORDER)("%s leads on its own", (category) => {
     const html = page({ [category]: { status: leading(category), claim: 2 } });
@@ -233,6 +238,47 @@ describe("what never leads", () => {
     expect(
       pickHeadline([{ ...card, unconfirmed }], { ranEvidence: "tool-result" }),
     ).toBeUndefined();
+  });
+
+  it.each(
+    HEADLINE_ORDER.flatMap((category) =>
+      (
+        [
+          { reason: "hiding-forms", forms: ["eval"], found: true },
+          { reason: "no-output", forms: [] },
+        ] as const satisfies readonly Unconfirmed[]
+      ).map((unconfirmed) => [category, unconfirmed.reason, unconfirmed] as const),
+    ),
+  )("a %s claim confirmed by git state, whose card could not confirm (%s)", (category, _r, unconfirmed) => {
+    const marked: HeadlineClaim = {
+      basis: HEADLINE_BASIS[category],
+      count: 4,
+      restsOnCodexRan: false,
+      confirmedBy: "git-state",
+      sentence: { template: "x", text: "x" },
+    };
+    const card: CardView = {
+      ...notCheckedCard(category),
+      tone: leading(category),
+      count: 4,
+      headline: marked,
+      unconfirmed,
+    };
+    // Only the two categories whose count git confirms may carry the mark; a forged one elsewhere
+    // is ignored, and the card stays out of the headline and the share post.
+    const gitState = GIT_STATE_CLAIMS.has(category);
+    expect(pickHeadline([card], TOOL_RESULT)?.category).toBe(gitState ? category : undefined);
+    expect(shareCounts([card], TOOL_RESULT)).toHaveLength(gitState ? 1 : 0);
+    // Without the mark it never leads, so the exception is the mark and nothing else.
+    const { confirmedBy: _mark, ...unmarked } = marked;
+    expect(pickHeadline([{ ...card, headline: unmarked }], TOOL_RESULT)).toBeUndefined();
+    expect(shareCounts([{ ...card, headline: unmarked }], TOOL_RESULT)).toEqual([]);
+    // And the mark never lets a claim lead a Codex scan.
+    expect(pickHeadline([card], { ranEvidence: "output-record" })).toBeUndefined();
+  });
+
+  it("the git-state categories are skipped checks and lost work", () => {
+    expect([...GIT_STATE_CLAIMS].sort()).toEqual(["lost-work", "skipped-checks"]);
   });
 
   it.each(

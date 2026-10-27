@@ -11592,6 +11592,13 @@ function sentences(templates, facts) {
   }
   return out;
 }
+var GIT_STATE_CLAIMS = /* @__PURE__ */ new Set([
+  "skipped-checks",
+  "lost-work"
+]);
+function confirmedByGitState(card) {
+  return card.headline?.confirmedBy === "git-state" && GIT_STATE_CLAIMS.has(card.category);
+}
 var NOT_CHECKED_SENTENCE = {
   id: "not-checked",
   render: () => "Not checked."
@@ -11740,7 +11747,7 @@ function leadingCards(cards, context) {
   if (context.ranEvidence === "output-record") return [];
   return HEADLINE_ORDER.flatMap((category) => {
     const card = cards.find(
-      (c) => c.category === category && c.headline !== void 0 && c.tone === HEADLINE_TONES[category] && c.headline.basis === HEADLINE_BASIS[category] && isPositiveCount(c.headline.count) && !c.headline.restsOnCodexRan && c.unconfirmed === void 0
+      (c) => c.category === category && c.headline !== void 0 && c.tone === HEADLINE_TONES[category] && c.headline.basis === HEADLINE_BASIS[category] && isPositiveCount(c.headline.count) && !c.headline.restsOnCodexRan && (c.unconfirmed === void 0 || confirmedByGitState(c))
     );
     return card === void 0 ? [] : [card];
   });
@@ -15853,6 +15860,8 @@ var lostWorkCard = (result, context) => {
         basis: "recoverable-deleted-work",
         count: recoverable(f),
         restsOnCodexRan: context.ranEvidence === "output-record",
+        // Commits still in the object store, read from git, not from commands.
+        confirmedBy: "git-state",
         sentence: headline2
       }
     }
@@ -16824,6 +16833,8 @@ var skippedChecksCard = (result, context) => {
         basis: "commits-on-main-without-checks",
         count: f.noVerify.onMain,
         restsOnCodexRan: context.ranEvidence === "output-record",
+        // Commits on the remote main branch, read from git, not from commands.
+        confirmedBy: "git-state",
         sentence: headline2
       }
     }

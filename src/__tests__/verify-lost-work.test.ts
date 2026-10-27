@@ -150,6 +150,8 @@ describe("force-deleted branches, against a real repository", () => {
       basis: "recoverable-deleted-work",
       count: 1,
       restsOnCodexRan: false,
+      // The commit is still in the object store: git says so, not the command.
+      confirmedBy: "git-state",
       sentence: {
         template: "lost-work.headline",
         text: "1 deleted branch or stash can still be recovered.",
@@ -674,6 +676,48 @@ describe("the card", () => {
     expect(lines).toEqual([
       "Could not confirm: commands that ran, or may have run, here used eval, which can run commands this reading does not take apart, so this is not a clean result.",
     ]);
+  });
+
+  it("a recoverable count leads where a call could hide more, and the card still says so", () => {
+    const pending = { status: "not-checked" } as const;
+    const verification = (result: unknown, ranEvidence: "tool-result" | "output-record") =>
+      ({
+        matchedCalls: { ran: 3, mentioned: 0, unknown: 0 },
+        resultsRecorded: true,
+        ranEvidence,
+        categories: {
+          secrets: pending,
+          "skipped-checks": pending,
+          "lost-work": result,
+          cloud: pending,
+          "prod-infra": pending,
+          tests: pending,
+          destructive: pending,
+          unreviewed: pending,
+          egress: pending,
+        },
+      }) as never;
+    const builders = { ...GIT_CARD_BUILDERS, secrets: () => ({}) as never } as never;
+    const result = {
+      status: "act" as const,
+      matches: 4,
+      facts: { ...busy, hidingCalls: 1, hidingForms: ["eval"] },
+    };
+    const card = cardsFor(verification(result, "tool-result"), builders).find(
+      (c) => c.category === "lost-work",
+    );
+    // The recoverable commits are in the object store: git confirms them, not the commands.
+    expect(card?.headline?.confirmedBy).toBe("git-state");
+    expect(card?.unconfirmed).toEqual({ reason: "hiding-forms", forms: ["eval"], found: true });
+    expect(pickHeadline(card === undefined ? [] : [card], TOOL_RESULT)?.category).toBe("lost-work");
+    expect((card?.found ?? []).map((s) => s.text).filter((t) => t.startsWith("Could not"))).toEqual(
+      [
+        "Could not confirm all of it: commands that ran, or may have run, here used eval, which can run commands this reading does not take apart, so there may be more than this card shows.",
+      ],
+    );
+    // Never on a Codex scan, git state or not.
+    const codex = cardsFor(verification(result, "output-record"), builders);
+    expect(pickHeadline(codex, { ranEvidence: "output-record" })).toBeUndefined();
   });
 
   it("a clean result states zero on its chip and makes no claim that can lead", () => {

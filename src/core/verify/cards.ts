@@ -107,7 +107,27 @@ export interface HeadlineClaim {
    * calls a hook blocked. Such a claim is never the headline.
    */
   readonly restsOnCodexRan: boolean;
+  /**
+   * The count is read from the repository's own state, not from commands: `"git-state"` for the
+   * commits on main without their checks (ancestry of the remote main branch) and the deleted
+   * branches and stashes still recoverable (the object store). A command this reading could not
+   * take apart, or output a session did not record, could only mean there are more, so such a
+   * claim may lead even where its card could not confirm; the card still says so. Only those two
+   * categories may carry it, and nothing leads a Codex scan.
+   */
+  readonly confirmedBy?: "git-state";
   readonly sentence: CardSentence;
+}
+
+/** The categories whose claim may be confirmed by git state. See `HeadlineClaim.confirmedBy`. */
+export const GIT_STATE_CLAIMS: ReadonlySet<VerifyCategory> = new Set([
+  "skipped-checks",
+  "lost-work",
+]);
+
+/** Is this card's claim confirmed by git state, in a category whose claim may be? */
+function confirmedByGitState(card: CardView): boolean {
+  return card.headline?.confirmedBy === "git-state" && GIT_STATE_CLAIMS.has(card.category);
 }
 
 /**
@@ -474,7 +494,10 @@ export function pickHeadline(
  * its basis is the one that category may lead with, its count is a whole number above zero
  * (`isPositiveCount`), it does not rest
  * on Codex `ran` counts, and its card confirmed what it reports: a card that could not
- * confirm (`unconfirmed`) never leads, whatever its tone.
+ * confirm (`unconfirmed`) never leads, whatever its tone. The one exception is a count confirmed
+ * by git state (`HeadlineClaim.confirmedBy`), in the categories that may carry one: what the
+ * card could not confirm could only mean there are more, so it may lead, and the card still says
+ * it could not confirm everything.
  */
 export function leadingCards(cards: readonly CardView[], context: CardContext): CardView[] {
   if (context.ranEvidence === "output-record") return [];
@@ -487,7 +510,7 @@ export function leadingCards(cards: readonly CardView[], context: CardContext): 
         c.headline.basis === HEADLINE_BASIS[category] &&
         isPositiveCount(c.headline.count) &&
         !c.headline.restsOnCodexRan &&
-        c.unconfirmed === undefined,
+        (c.unconfirmed === undefined || confirmedByGitState(c)),
     );
     return card === undefined ? [] : [card];
   });

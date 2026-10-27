@@ -886,6 +886,8 @@ export const lostWorkCard: ToCard<"lost-work"> = (result, context: CardContext):
             basis: "recoverable-deleted-work",
             count: recoverable(f),
             restsOnCodexRan: context.ranEvidence === "output-record",
+            // Commits still in the object store, read from git, not from commands.
+            confirmedBy: "git-state",
             sentence: headline,
           },
         }),

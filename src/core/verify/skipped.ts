@@ -1034,6 +1034,8 @@ export const skippedChecksCard: ToCard<"skipped-checks"> = (
             basis: "commits-on-main-without-checks",
             count: f.noVerify.onMain,
             restsOnCodexRan: context.ranEvidence === "output-record",
+            // Commits on the remote main branch, read from git, not from commands.
+            confirmedBy: "git-state",
             sentence: headline,
           },
         }),

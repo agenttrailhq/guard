@@ -118,6 +118,8 @@ describe("--no-verify commits, against a real repository", () => {
       basis: "commits-on-main-without-checks",
       count: 1,
       restsOnCodexRan: false,
+      // The commit is on the remote main branch: git says so, not the command.
+      confirmedBy: "git-state",
       sentence: {
         template: "skipped-checks.headline",
         text: "1 commit reached main without its checks.",
