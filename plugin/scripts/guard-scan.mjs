@@ -13286,7 +13286,7 @@ var FOUND2 = [
     render: (f) => couldNotConfirmLine(
       f.hidingCalls,
       f.hidingForms,
-      "branch, stash or change was deleted or discarded"
+      "command deleting a branch or a stash, or discarding changes,"
     )
   }
 ];

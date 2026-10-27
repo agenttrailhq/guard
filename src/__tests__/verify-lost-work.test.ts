@@ -637,6 +637,18 @@ describe("the card", () => {
     ]);
   });
 
+  it("says, as one readable sentence, that it could not confirm when a call could hide a deletion", () => {
+    const card = lostWorkCard(
+      { status: "clean", matches: 0, facts: facts({ hidingCalls: 2, hidingForms: ["eval"] }) },
+      { ranEvidence: "tool-result" },
+    );
+    const line = card.found.find((s) => s.template === "lost-work.could-not-confirm")?.text;
+    expect(line).toMatch(
+      /^Could not confirm that no command deleting a branch or a stash, or discarding changes, ran: 2 commands that ran, or may have run, use a form this check does not read inside \(.+\)\.$/,
+    );
+    expect(line).not.toMatch(/discarded ran|deleted ran/);
+  });
+
   it("a clean result states zero on its chip and makes no claim that can lead", () => {
     const card = lostWorkCard(
       { status: "clean", matches: 0, facts: facts() },
