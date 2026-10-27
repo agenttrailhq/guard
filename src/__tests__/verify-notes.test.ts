@@ -662,6 +662,25 @@ describe("a check that could not finish says it could not confirm", () => {
     expect(note?.text).toBe(could);
     expect(note?.text).not.toMatch(REASSURING);
   });
+
+  it("a guarded variable: the check finished, so the note never says it could not", () => {
+    const facts = {
+      ...DESTRUCTIVE_FACTS,
+      rm: {
+        ...DESTRUCTIVE_FACTS.rm,
+        classes: { ...DESTRUCTIVE_FACTS.rm.classes, untracked: 0, "guarded-variable": 1 },
+      },
+    };
+    const note = noteText(
+      "dd.rm-rf-absolute",
+      notesVerification({ destructive: checked("could-not-check", facts) }),
+    );
+    expect(note).toEqual({ template: NOTE_COULD_NOT_CHECK.id, text: could });
+    expect(note?.text).toBe(
+      "Could not confirm: the check behind this could not settle everything it looked for on this machine.",
+    );
+    expect(note?.text).not.toMatch(/could not finish/);
+  });
 });
 
 describe("a check whose commands could hide others never reassures", () => {
@@ -743,6 +762,25 @@ describe("sessions that record no command output confirm nothing that rests on i
 
   it.each(Object.entries(NOTE_RULES).filter(([, rule]) => restsOnOutput(rule.kind)))("%s", (id) => {
     expect(noteText(id, notesVerification({}, cursor))).toEqual(noOutput);
+  });
+
+  it.each(
+    Object.entries(NOTE_RULES).filter(
+      ([, rule]) => restsOnOutput(rule.kind) && rule.category !== "dependencies",
+    ),
+  )("%s: a check that could not check there gives that reason, not that it could not finish", (id, rule) => {
+    const category = rule.category as keyof typeof FACTS;
+    const note = noteText(
+      id,
+      notesVerification({ [category]: checked("could-not-check", FACTS[category]) }, cursor),
+    );
+    expect(note).toEqual(noOutput);
+    // The same check, from sessions that record output, takes the could-not-check note.
+    const recorded = noteText(
+      id,
+      notesVerification({ [category]: checked("could-not-check", FACTS[category]) }),
+    );
+    expect(recorded?.template).toBe(NOTE_COULD_NOT_CHECK.id);
   });
 
   it("the printed-by-command note never reassures from sessions with no output", () => {
@@ -938,6 +976,28 @@ describe("a reassuring note needs every part of its check settled", () => {
       },
     ],
     ["tests-config", "a config changed by a command not read", { ...TESTS_FACTS, unreadEdits: 1 }],
+    [
+      "rm-targets",
+      "a target from a variable with no guard, beside mostly scratch and nothing missing",
+      {
+        ...DESTRUCTIVE_FACTS,
+        rm: {
+          ...DESTRUCTIVE_FACTS.rm,
+          classes: { ...DESTRUCTIVE_FACTS.rm.classes, untracked: 0, "unguarded-variable": 1 },
+        },
+      },
+    ],
+    [
+      "rm-targets",
+      "a target from a guarded variable, beside mostly scratch and nothing missing",
+      {
+        ...DESTRUCTIVE_FACTS,
+        rm: {
+          ...DESTRUCTIVE_FACTS.rm,
+          classes: { ...DESTRUCTIVE_FACTS.rm.classes, untracked: 0, "guarded-variable": 1 },
+        },
+      },
+    ],
     [
       "hooks-off",
       "a repo not checked",

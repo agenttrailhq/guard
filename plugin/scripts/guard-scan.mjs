@@ -17323,7 +17323,7 @@ var NOTE_FACT_KEYS = [
 ];
 var NOTE_COULD_NOT_CHECK = {
   id: "note.could-not-check",
-  render: () => "Could not confirm: the check behind this could not finish on this machine."
+  render: () => "Could not confirm: the check behind this could not settle everything it looked for on this machine."
 };
 var NOTE_COULD_HIDE = {
   id: "note.could-hide",
@@ -17357,12 +17357,12 @@ function unconfirmedLine(rule, facts, status, verification) {
     return sentence(UNCONFIRMED_SENTENCE, { reason: "hiding-forms", forms: hiding.forms });
   }
   if (hiding.any) return sentence(NOTE_COULD_HIDE, void 0);
+  const spec = NOTE_KINDS[rule.kind];
+  if ((spec.ran || spec.output === true) && !recorded) {
+    return sentence(NOTE_NO_OUTPUT, void 0);
+  }
   if (rule.category !== "dependencies" && status !== void 0 && honestStatus(rule.category, status, facts, recorded) === "could-not-check") {
     return sentence(NOTE_COULD_NOT_CHECK, void 0);
-  }
-  const spec = NOTE_KINDS[rule.kind];
-  if ((spec.ran || spec.output === true) && !verification.resultsRecorded) {
-    return sentence(NOTE_NO_OUTPUT, void 0);
   }
   return void 0;
 }

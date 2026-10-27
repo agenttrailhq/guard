@@ -776,10 +776,14 @@ export const NOTE_FACT_KEYS: readonly string[] = [
 
 // ── Before a template runs ────────────────────────────────────────────────────
 
-/** A note on a check that could not finish. */
+/**
+ * A note on a check that could not settle all of it: one that could not finish, or one that
+ * finished with something it could not know, such as the value of a guarded variable.
+ */
 export const NOTE_COULD_NOT_CHECK: SentenceTemplate<unknown> = {
   id: "note.could-not-check",
-  render: () => "Could not confirm: the check behind this could not finish on this machine.",
+  render: () =>
+    "Could not confirm: the check behind this could not settle everything it looked for on this machine.",
 };
 
 /** A note on a check whose commands held a form that can hide others, with none named. */
@@ -830,16 +834,18 @@ function unconfirmedLine(
     return sentence(UNCONFIRMED_SENTENCE, { reason: "hiding-forms", forms: hiding.forms });
   }
   if (hiding.any) return sentence(NOTE_COULD_HIDE, undefined);
+  // Before the could-not-check gate: sessions that record no output are the reason a check
+  // that rests on it could not confirm, even when the check itself finished.
+  const spec = NOTE_KINDS[rule.kind];
+  if ((spec.ran || spec.output === true) && !recorded) {
+    return sentence(NOTE_NO_OUTPUT, undefined);
+  }
   if (
     rule.category !== "dependencies" &&
     status !== undefined &&
     honestStatus(rule.category, status, facts, recorded) === "could-not-check"
   ) {
     return sentence(NOTE_COULD_NOT_CHECK, undefined);
-  }
-  const spec = NOTE_KINDS[rule.kind];
-  if ((spec.ran || spec.output === true) && !verification.resultsRecorded) {
-    return sentence(NOTE_NO_OUTPUT, undefined);
   }
   return undefined;
 }

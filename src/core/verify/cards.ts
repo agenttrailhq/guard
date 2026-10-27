@@ -670,10 +670,6 @@ export function isLocalFix(value: unknown): value is LocalFix {
 export type NoteSource = VerifyCategory | "dependencies";
 
 /**
- * The one-line note under a guardrail in the findings list, from the check that covers its
- * rule. A rule no check covers gets no note. See `notes.ts`.
- */
-/**
  * What a note says, for how the page marks it:
  * - `found`: counts of what the check found;
  * - `reassuring`: it says, in part or whole, that something is fine;
@@ -684,6 +680,10 @@ export const NOTE_OUTCOMES = ["found", "reassuring", "could-not-confirm"] as con
 /** One of `NOTE_OUTCOMES`. */
 export type NoteOutcome = (typeof NOTE_OUTCOMES)[number];
 
+/**
+ * The one-line note under a guardrail in the findings list, from the check that covers its
+ * rule. A rule no check covers gets no note. See `notes.ts`.
+ */
 export interface VerifiedNote {
   /** The guardrail's id, as the finding carries it. */
   readonly ruleId: string;
