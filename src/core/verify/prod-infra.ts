@@ -1,4 +1,4 @@
-// cspell:words kubectl orbstack tflocal awslocal kubeconfig apiserver
+// cspell:words kubectl orbstack tflocal awslocal kubeconfig apiserver esac
 /**
  * The production infrastructure check, for the "Production infrastructure" card: database and
  * infrastructure targets classed as "other" (not this machine, not a scratch copy), from
@@ -43,6 +43,7 @@ import {
 } from "./cards.js";
 import { DATABASE_CHECKS, INFRA_KINDS } from "./command-facts.js";
 import { endpointsLocal } from "./hosts.js";
+import { commandHidingForms } from "./ran.js";
 import type { CheckedCategory, HidingForm, VerifyStatus } from "./types.js";
 
 export { DATABASE_CHECKS, INFRA_KINDS };
@@ -133,6 +134,45 @@ const KUBE_TARGET_OPTIONS: ReadonlySet<string> = new Set([
 /** A variable that names the kubeconfig file. */
 const KUBECONFIG_VARIABLE = /^KUBECONFIG=/;
 
+/** The infrastructure tools whose target `targetsOnlyThisMachine` reads. */
+const LOCAL_TARGET_PROGRAMS: ReadonlySet<string> = new Set([
+  "kubectl",
+  "helm",
+  "tflocal",
+  "awslocal",
+  "aws",
+]);
+
+/**
+ * Programs a text aimed only at this machine may run beside the infrastructure tools read below:
+ * shell words and programs that print or look at something, and run no other command. `""` is a
+ * simple command with no program, only assignments.
+ */
+const LOCAL_SIDE_PROGRAMS: ReadonlySet<string> = new Set([
+  "",
+  "cd",
+  "export",
+  "unset",
+  "fi",
+  "done",
+  "esac",
+  "true",
+  "false",
+  "sleep",
+  "pwd",
+  "echo",
+  "printf",
+  "ls",
+  "cat",
+  "grep",
+  "head",
+  "tail",
+  "wc",
+  "jq",
+  "sort",
+  "uniq",
+]);
+
 /**
  * Does a shell text aim only at this machine? Every `kubectl` or `helm` in it names a local
  * context (`--context kind-dev`) and nothing that points it elsewhere, every Terraform runs as
@@ -143,13 +183,19 @@ const KUBECONFIG_VARIABLE = /^KUBECONFIG=/;
  * machine, as kind names it. A `--server`, `--kubeconfig`, `--cluster` or `--kube-apiserver`,
  * or a `KUBECONFIG` set on the command or exported earlier in the text, can point that name at
  * another cluster, so with any of them the command is not local.
+ *
+ * It fails closed: a text that runs any other program (`LOCAL_SIDE_PROGRAMS` aside), such as
+ * `terraform` or a wrapper this reading does not take apart, or that holds a hiding form
+ * (`commandHidingForms`), is not local, whatever its local commands name.
  */
 export function targetsOnlyThisMachine(command: string): boolean {
+  if (commandHidingForms(command).length > 0) return false;
   let any = false;
   let kubeconfigSet = false;
   for (const simple of simpleCommands(command)) {
     const { program, args, assignments } = programAndArgs(simple);
     if (program === "export" && args.some((a) => KUBECONFIG_VARIABLE.test(a))) kubeconfigSet = true;
+    if (!LOCAL_SIDE_PROGRAMS.has(program) && !LOCAL_TARGET_PROGRAMS.has(program)) return false;
     if (program === "kubectl" || program === "helm") {
       any = true;
       if (kubeconfigSet || assignments.some((a) => KUBECONFIG_VARIABLE.test(a))) return false;
@@ -164,8 +210,6 @@ export function targetsOnlyThisMachine(command: string): boolean {
       }
       if (context === undefined || !LOCAL_KUBE_CONTEXT.test(context)) return false;
     } else if (program === "tflocal" || program === "awslocal") any = true;
-    else if (program === "terraform" || program === "tofu" || program === "terragrunt")
-      return false;
     else if (program === "aws") {
       // Every `--endpoint-url` must be this machine, and there must be one.
       any = true;
@@ -217,7 +261,12 @@ export function checkProdInfra(input: ProdInfraInput): ProdInfraCheck {
       : runStateOf(agent, call, () => true);
     if (state === "mentioned") mentioned += 1;
     else if (state === "unknown") unconfirmed += 1;
-    else if (isShell(call) && targetsOnlyThisMachine(executedText(call.command))) localInfra += 1;
+    else if (
+      isShell(call) &&
+      call.hidingForms.length === 0 &&
+      targetsOnlyThisMachine(executedText(call.command))
+    )
+      localInfra += 1;
     else {
       infraMatches += 1;
       for (const id of matched) kinds.add(KIND_OF_RULE.get(id) ?? "other");

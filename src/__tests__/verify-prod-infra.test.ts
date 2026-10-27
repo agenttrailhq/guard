@@ -1,4 +1,4 @@
-// cspell:words kubectl kubeconfig apiserver
+// cspell:words kubectl kubeconfig apiserver doas ionice setsid caffeinate mywrap
 /**
  * The production infrastructure check (`core/verify/prod-infra.ts`): database targets classed
  * "other", taken as counts per class (synthetic here; the destructive-commands check supplies
@@ -197,6 +197,67 @@ describe("production guardrail matches that ran", () => {
     });
     expect(check.facts).toMatchObject({ infraMatches: 1, localInfra: 0 });
     expect(check.status).toBe("review");
+  });
+
+  // A local cluster first, then a production delete behind a word before it. The first command
+  // must not set the call aside as local.
+  const PROD = `kubectl --context prod-cluster delete ${"deployment"} web`;
+  const LOCAL_FIRST = "kubectl --context kind-dev get pods && ";
+
+  it.each([
+    ["sudo --user root", `sudo --user root ${PROD}`],
+    ["sudo --chdir /tmp", `sudo --chdir /tmp ${PROD}`],
+    ["nice --adjustment 5", `nice --adjustment 5 ${PROD}`],
+    ["doas", `doas ${PROD}`],
+    ["ionice -c3", `ionice -c3 ${PROD}`],
+    ["setsid", `setsid ${PROD}`],
+    ["caffeinate -i", `caffeinate -i ${PROD}`],
+    ["npx --yes", `npx --yes ${PROD}`],
+    ["env -S", `env -S '${PROD}'`],
+    ["env --split-string", `env --split-string='${PROD}'`],
+    ["su -c", `su root -c '${PROD}'`],
+    ["script -qc", `script -qc '${PROD}' /dev/null`],
+    ["flock -c", `flock /tmp/x.lock -c '${PROD}'`],
+    ["watch", `watch -n 1 '${PROD}'`],
+    ["an unknown wrapper", `mywrap ${PROD}`],
+    ["an unknown wrapper with a value", `mywrap --as root ${PROD}`],
+  ])("after a local command, %s: counted, never set aside as local", async (_label, rest) => {
+    const command = `${LOCAL_FIRST}${rest}`;
+    expect(targetsOnlyThisMachine(command)).toBe(false);
+    const check = await prod([{ kind: "shell", command, result: OK }], {
+      local: 0,
+      scratch: 0,
+      other: 0,
+    });
+    expect(check.facts.localInfra, command).toBe(0);
+    expect(check.status, command).not.toBe("clean");
+  });
+
+  it("the worst case: a local get, then sudo --user root against production, is review", async () => {
+    const command = `${LOCAL_FIRST}sudo --user root ${PROD}`;
+    const check = await prod([{ kind: "shell", command, result: OK }], {
+      local: 0,
+      scratch: 0,
+      other: 0,
+    });
+    expect(check.facts).toMatchObject({
+      infraMatches: 1,
+      localInfra: 0,
+      infraKinds: ["kubernetes"],
+    });
+    expect(check.status).toBe("review");
+  });
+
+  it("fails closed: any program it does not read, or a hiding form, is not local", () => {
+    const local = `kubectl --context kind-dev delete ${"pod"} x`;
+    expect(targetsOnlyThisMachine(local)).toBe(true);
+    expect(targetsOnlyThisMachine(`cd deploy && FOO=1 && ${local}`)).toBe(true);
+    expect(targetsOnlyThisMachine(`${local} | grep deleted`)).toBe(true);
+    expect(targetsOnlyThisMachine(`make deploy && ${local}`)).toBe(false);
+    expect(targetsOnlyThisMachine(`${local} && terraform apply`)).toBe(false);
+    expect(targetsOnlyThisMachine(`${local} $(cat more)`)).toBe(false);
+    expect(targetsOnlyThisMachine(`${local}; echo 'open`)).toBe(false);
+    expect(targetsOnlyThisMachine(`${local} && bash -c 'kubectl delete ${"pod"} y'`)).toBe(false);
   });
 
   it("an AWS call is local only when every endpoint it names is this machine", () => {

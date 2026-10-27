@@ -13269,12 +13269,45 @@ var KUBE_TARGET_OPTIONS = /* @__PURE__ */ new Set([
   "--kube-apiserver"
 ]);
 var KUBECONFIG_VARIABLE = /^KUBECONFIG=/;
+var LOCAL_TARGET_PROGRAMS = /* @__PURE__ */ new Set([
+  "kubectl",
+  "helm",
+  "tflocal",
+  "awslocal",
+  "aws"
+]);
+var LOCAL_SIDE_PROGRAMS = /* @__PURE__ */ new Set([
+  "",
+  "cd",
+  "export",
+  "unset",
+  "fi",
+  "done",
+  "esac",
+  "true",
+  "false",
+  "sleep",
+  "pwd",
+  "echo",
+  "printf",
+  "ls",
+  "cat",
+  "grep",
+  "head",
+  "tail",
+  "wc",
+  "jq",
+  "sort",
+  "uniq"
+]);
 function targetsOnlyThisMachine(command) {
+  if (commandHidingForms(command).length > 0) return false;
   let any = false;
   let kubeconfigSet = false;
   for (const simple of simpleCommands(command)) {
     const { program, args: args2, assignments } = programAndArgs(simple);
     if (program === "export" && args2.some((a) => KUBECONFIG_VARIABLE.test(a))) kubeconfigSet = true;
+    if (!LOCAL_SIDE_PROGRAMS.has(program) && !LOCAL_TARGET_PROGRAMS.has(program)) return false;
     if (program === "kubectl" || program === "helm") {
       any = true;
       if (kubeconfigSet || assignments.some((a) => KUBECONFIG_VARIABLE.test(a))) return false;
@@ -13289,8 +13322,6 @@ function targetsOnlyThisMachine(command) {
       }
       if (context === void 0 || !LOCAL_KUBE_CONTEXT.test(context)) return false;
     } else if (program === "tflocal" || program === "awslocal") any = true;
-    else if (program === "terraform" || program === "tofu" || program === "terragrunt")
-      return false;
     else if (program === "aws") {
       any = true;
       if (endpointsLocal(args2) !== true) return false;
@@ -13316,7 +13347,8 @@ function checkProdInfra(input) {
     const state = isShell(call) ? runStateOf(agent, call, (command) => prodRule(call, command)) : runStateOf(agent, call, () => true);
     if (state === "mentioned") mentioned += 1;
     else if (state === "unknown") unconfirmed += 1;
-    else if (isShell(call) && targetsOnlyThisMachine(executedText(call.command))) localInfra += 1;
+    else if (isShell(call) && call.hidingForms.length === 0 && targetsOnlyThisMachine(executedText(call.command)))
+      localInfra += 1;
     else {
       infraMatches += 1;
       for (const id of matched) kinds.add(KIND_OF_RULE.get(id) ?? "other");
