@@ -81,9 +81,14 @@ guardrails subcommands: list  show  enable  disable  set-action  add  remove  al
                         reset  validate  export  (run "agenttrail-guard guardrails --help")
 
 scan flags: --agent <claude|cursor|codex> (required) --dir <root> --out <file> --artifact
-            --no-open --review --json --quiet --verify
-scan reads transcripts already on your disk, writes one self-contained HTML file, and
-opens it in your browser (--no-open to skip).
+            --no-open --review --json --quiet --no-checks --verify --scrub --apply
+scan reads transcripts already on your disk, writes a self-contained HTML report, and
+opens it in your browser (--no-open to skip). By default it also checks this machine,
+changing nothing: it runs read-only git in the repos the sessions used and reads the
+names of the programs running now (--no-checks to skip). When the checks find fixes,
+it also writes them to agenttrail-guard-fixes.txt next to the report, readable only by
+you. --scrub [--apply] replaces likely-real credentials in the transcripts (a dry run
+without --apply). "agenttrail-guard scan --help" says exactly what each reads and writes.
 No account, and no network call of its own — crash reporting above is the one
 exception in this tool, and a scan never uses it. Commands, paths and identifying
 operands are redacted before display or write; --review shows every line first.

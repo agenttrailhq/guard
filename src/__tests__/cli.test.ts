@@ -110,15 +110,39 @@ describe("other commands", () => {
     expect(h.out()).toContain("Usage:");
   });
 
-  it("--help lists scan's --verify among the scan flags", async () => {
+  it("--help lists every scan flag, and says what scan reads and writes", async () => {
     const h = harness();
     await runCli(["--help"], h.io);
     const out = h.out();
-    const flags = out.slice(
+    const scan = out.slice(
       out.indexOf("scan flags:"),
       out.indexOf("\n\n", out.indexOf("scan flags:")),
     );
-    expect(flags).toContain("--verify");
+    const flags = scan.slice(0, scan.indexOf("\nscan reads"));
+    for (const flag of [
+      "--agent",
+      "--dir",
+      "--out",
+      "--artifact",
+      "--no-open",
+      "--review",
+      "--json",
+      "--quiet",
+      "--no-checks",
+      "--verify",
+      "--scrub",
+      "--apply",
+    ]) {
+      expect(flags).toContain(` ${flag}`);
+    }
+    // Not "one HTML file": the fixes file too, and the checks' git and process reads.
+    const prose = scan.replace(/\s+/g, " ");
+    expect(prose).not.toContain("writes one self-contained HTML file");
+    expect(prose).toContain("agenttrail-guard-fixes.txt");
+    expect(prose).toContain("read-only git");
+    expect(prose).toContain("the names of the programs running now");
+    expect(prose).toContain("(--no-checks to skip)");
+    for (const line of scan.split("\n")) expect(line.length, line).toBeLessThanOrEqual(90);
   });
 
   it("no arguments prints usage and exits 0", async () => {
