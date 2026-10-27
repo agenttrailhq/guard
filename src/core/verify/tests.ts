@@ -774,11 +774,18 @@ export const TESTS_FOUND: readonly SentenceTemplate<TestsFacts>[] = [
     (n) =>
       `For ${n} of them the test output was not recorded, so whether ${n === 1 ? "it" : "they"} failed first is not known.`,
   ),
+  // Said whatever the tone: a revert or a rewrite outranks it, and the card still could not
+  // confirm what these commands changed, so there may be more than the card shows.
   whenAny(
     "tests.unread-edits",
     (f) => f.unreadEdits,
-    (n) =>
-      `${counted(n, "command that ran", "commands that ran")} changed a test config or CI file through the shell or git, or applied a patch, which this check does not read, so it could not confirm what changed.`,
+    (n, f) => {
+      const found = testsStatus(f);
+      const edits = `${counted(n, "command that ran", "commands that ran")} changed a test config or CI file through the shell or git, or applied a patch, which this check does not read`;
+      return found === "act" || found === "review"
+        ? `Could not confirm all of it: ${edits}, so there may be more than this card shows.`
+        : `Could not confirm: ${edits}, so what changed is not known.`;
+    },
   ),
   {
     id: "tests.nothing",

@@ -13445,10 +13445,16 @@ var TESTS_FOUND = [
     (f) => f.deletedFailureUnknown,
     (n2) => `For ${n2} of them the test output was not recorded, so whether ${n2 === 1 ? "it" : "they"} failed first is not known.`
   ),
+  // Said whatever the tone: a revert or a rewrite outranks it, and the card still could not
+  // confirm what these commands changed, so there may be more than the card shows.
   whenAny2(
     "tests.unread-edits",
     (f) => f.unreadEdits,
-    (n2) => `${counted(n2, "command that ran", "commands that ran")} changed a test config or CI file through the shell or git, or applied a patch, which this check does not read, so it could not confirm what changed.`
+    (n2, f) => {
+      const found = testsStatus(f);
+      const edits = `${counted(n2, "command that ran", "commands that ran")} changed a test config or CI file through the shell or git, or applied a patch, which this check does not read`;
+      return found === "act" || found === "review" ? `Could not confirm all of it: ${edits}, so there may be more than this card shows.` : `Could not confirm: ${edits}, so what changed is not known.`;
+    }
   ),
   {
     id: "tests.nothing",

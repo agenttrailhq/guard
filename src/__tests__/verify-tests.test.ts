@@ -423,8 +423,35 @@ describe("excludes, passWithNoTests and CI steps", () => {
     const found = testsCard(result, { ranEvidence: "tool-result" }).found;
     expect(found.map((s) => s.template)).not.toContain("tests.nothing");
     expect(found.find((s) => s.template === "tests.unread-edits")?.text).toBe(
-      "1 command that ran changed a test config or CI file through the shell or git, or applied a patch, which this check does not read, so it could not confirm what changed.",
+      "Could not confirm: 1 command that ran changed a test config or CI file through the shell or git, or applied a patch, which this check does not read, so what changed is not known.",
     );
+  });
+
+  it("a revert beside an edit this check does not read: review, and still could not confirm", async () => {
+    const { check: result } = await check([
+      {
+        kind: "read",
+        path: CONFIG,
+        result: { text: "   4→  thresholds: { autoUpdate: true, lines: 90 }" },
+      },
+      { kind: "shell", command: "pnpm vitest run --coverage", result: OK },
+      {
+        kind: "edit",
+        path: CONFIG,
+        old: "thresholds: { autoUpdate: true, lines: 91.37 }",
+        new: "thresholds: { autoUpdate: true, lines: 90 }",
+        result: OK,
+      },
+      { kind: "shell", command: `sed -i 's/lines: 90/lines: 10/' vitest.config.ts`, result: OK },
+    ]);
+    expect(result.facts).toMatchObject({ autoUpdateReverts: 1, unreadEdits: 1 });
+    // The revert outranks the unread edit, so the tone is review, not could-not-check.
+    expect(result.status).toBe("review");
+    const found = testsCard(result, { ranEvidence: "tool-result" }).found;
+    expect(found.find((s) => s.template === "tests.unread-edits")?.text).toBe(
+      "Could not confirm all of it: 1 command that ran changed a test config or CI file through the shell or git, or applied a patch, which this check does not read, so there may be more than this card shows.",
+    );
+    expect(found.map((s) => s.template)).not.toContain("tests.nothing");
   });
 
   it.each([
