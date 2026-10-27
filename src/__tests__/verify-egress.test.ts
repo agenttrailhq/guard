@@ -316,6 +316,22 @@ describe("reading uploads and tunnels", () => {
     expect(read("curl -sS https://x.example.invalid/")).toEqual([]);
   });
 
+  it.each([
+    // The URL is a variable: no host can be read, so nothing shows it stays on this machine.
+    ["a URL in a variable", `curl -T dump.sql "$URL"`],
+    // No URL on the line at all: it comes from a config file this reading does not open.
+    ["no URL on the line", "curl -T dump.sql -K upload.cfg"],
+    ["no operand at all", "curl -T dump.sql"],
+  ])("an upload whose destination cannot be read (%s) is never local, and never reads as nothing left", async (_label, command) => {
+    expect(read(command)).toEqual([{ kind: "upload", upload: "http-upload", local: false }]);
+    const { check } = await egress([{ kind: "shell", command, result: OK }]);
+    expect(check.facts).toMatchObject({ uploads: 1, localOnly: 0 });
+    expect(check.status).toBe("review");
+    expect(
+      egressCard(check, { ranEvidence: "tool-result" }).found.map((s) => s.template),
+    ).not.toContain("egress.none");
+  });
+
   it("this machine and LocalStack are local", () => {
     expect(read(LOCAL_UPLOAD)).toEqual([{ kind: "upload", upload: "http-upload", local: true }]);
     expect(read("curl -T a.txt http://127.0.0.1:9000/b/a.txt")[0]?.local).toBe(true);

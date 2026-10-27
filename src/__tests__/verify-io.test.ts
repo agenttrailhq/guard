@@ -608,6 +608,26 @@ describe("process names: agent ids only, never arguments or titles", () => {
     expect(watchedProcessOf(entry)).toBeUndefined();
   });
 
+  it.each([
+    ["ngrok", "ngrok"],
+    ["cloudflared", "cloudflared"],
+    ["/usr/local/bin/cloudflared", "cloudflared"],
+    ["/opt/homebrew/bin/ngrok", "ngrok"],
+    ["NGROK.EXE", "ngrok"],
+    ["C:\\Tools\\cloudflared.exe", "cloudflared"],
+  ])("the tunnel program %j is %s", (entry, id) => {
+    expect(watchedProcessOf(entry)).toBe(id);
+  });
+
+  it.each([
+    "ngrok-agent",
+    "ngrok2",
+    "cloudflared-helper",
+    "my-ngrok",
+  ])("%j is no tunnel program: only an exact name is", (entry) => {
+    expect(watchedProcessOf(entry)).toBeUndefined();
+  });
+
   it("reads ps output down to ids, each once, and keeps nothing else", () => {
     const stdout = [
       "/usr/bin/node",

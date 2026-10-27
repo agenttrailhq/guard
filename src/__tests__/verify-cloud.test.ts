@@ -173,6 +173,20 @@ describe("regression: never 'no Terraform' while a Terraform match ran", () => {
     );
   });
 
+  it.each([
+    // Shapes this module's own reading does not take apart, which the IAM guardrail matches.
+    ["run through a shell", `bash -c "${KEY}"`],
+    ["run through sh", `sh -c '${KEY}'`],
+  ])("an IAM change %s is counted, never no IAM change", async (_, command) => {
+    const calls = await callsOf("claude", [[{ kind: "shell", command, result: OK }]]);
+    expect(calls.calls[0]?.ruleIds).toContain("ps.iam-grant");
+    const { check } = checkCloud({ calls, ...SHIPPED });
+    expect(check.facts.iamChanges).toBeGreaterThanOrEqual(1);
+    expect(check.status).toBe("review");
+    const text = allText(cloudCard(check, { ranEvidence: "tool-result" }));
+    expect(text).not.toMatch(/\bno\b[^.]*\bIAM\b/i);
+  });
+
   it("Cursor: a Terraform match not confirmed as run is never reported as no Terraform", async () => {
     const calls = await callsOf("cursor", [[{ kind: "shell", command: TF_APPLY }]]);
     const { check } = checkCloud({ calls, ...SHIPPED });

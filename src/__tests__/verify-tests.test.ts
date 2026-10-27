@@ -256,6 +256,32 @@ describe("thresholds", () => {
     expect(result.facts.thresholdsLowered).toBe(2);
   });
 
+  it("back to a value seen before a coverage run, with autoUpdate off everywhere: lowered, not a revert", async () => {
+    // Everything a revert needs but autoUpdate: the value was read before the run, the edit
+    // puts it back, and neither the edit nor the config on disk turns autoUpdate on.
+    const repo = realpathSync(mkdtempSync(join(tmpdir(), "agenttrail-verify-tests-off-")));
+    execFileSync("git", ["init", "-q"], { cwd: repo });
+    const config = join(repo, "vitest.config.ts");
+    writeFileSync(config, "coverage: { thresholds: { lines: 90 } }\n");
+    const calls = await callsOf("claude", [
+      [
+        { kind: "read", path: config, result: { text: "   4→  thresholds: { lines: 90 }" } },
+        { kind: "shell", command: "pnpm vitest run --coverage", result: OK },
+        {
+          kind: "edit",
+          path: config,
+          old: "thresholds: { lines: 91.37 }",
+          new: "thresholds: { lines: 90 }",
+          result: OK,
+        },
+      ],
+    ]);
+    const { check: result } = await checkTests({ calls, io: createRealVerifyIO() });
+    expect(result.facts.autoUpdateNow).toEqual({ on: 0, off: 1, unread: 0 });
+    expect(result.facts).toMatchObject({ thresholdsLowered: 1, autoUpdateReverts: 0 });
+    expect(result.status).toBe("act");
+  });
+
   it("a CI file or package.json written whole is not read as an addition", async () => {
     const { check: result } = await check([
       {

@@ -1007,6 +1007,38 @@ describe("a reassuring note needs every part of its check settled", () => {
     const text = noteText(ruleOf(kind), withFacts(kind, facts))?.text ?? "";
     expect(text).not.toMatch(REASSURING);
   });
+
+  it.each([
+    [
+      "databases",
+      "local targets only, beside a call with no result",
+      {
+        ...DESTRUCTIVE_FACTS,
+        databases: {
+          ...DESTRUCTIVE_FACTS.databases,
+          calls: { ...DESTRUCTIVE_FACTS.databases.calls, unknown: 1 },
+        },
+      },
+      "Only local or scratch databases",
+      DESTRUCTIVE_FACTS,
+    ],
+    [
+      "secrets-printed",
+      "a named value set aside as not credential-shaped",
+      {
+        ...SECRETS_CLEAN,
+        setAside: { unnamedOutputOnly: 0, namedNotCredentialShaped: 1 },
+      },
+      "No likely-real credential",
+      { ...SECRETS_CLEAN, setAside: { unnamedOutputOnly: 0, namedNotCredentialShaped: 0 } },
+    ],
+  ] as const)("%s: %s gives no reassuring clause", (kind, _case, facts, clause, settled) => {
+    const text = noteText(ruleOf(kind), withFacts(kind, facts))?.text ?? "";
+    expect(text).not.toContain(clause);
+    expect(text).not.toMatch(REASSURING);
+    // The same facts with that part settled do reassure, so the absence above is the rule's.
+    expect(noteText(ruleOf(kind), withFacts(kind, settled))?.text ?? "").toContain(clause);
+  });
 });
 
 // ── Only counts ───────────────────────────────────────────────────────────────

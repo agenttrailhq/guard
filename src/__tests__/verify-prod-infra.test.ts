@@ -199,6 +199,46 @@ describe("production guardrail matches that ran", () => {
     expect(check.status).toBe("review");
   });
 
+  it.each([
+    `kubectl --context minikube-prod delete ${"deployment"} web`,
+    `kubectl --context=rancher-desktop-prod delete ${"pod"} x`,
+    `helm uninstall web --kube-context docker-desktop-eu`,
+  ])("a context that only starts with a local cluster's name counts: %s", async (command) => {
+    const check = await prod([{ kind: "shell", command, result: OK }], {
+      local: 0,
+      scratch: 0,
+      other: 0,
+    });
+    expect(check.facts).toMatchObject({ infraMatches: 1, localInfra: 0 });
+    expect(check.status).toBe("review");
+  });
+
+  it("scan wiring: when the destructive-commands check could not run, production is never clean", async () => {
+    // A recursive delete makes that check look at its folder, which this seam cannot answer.
+    const { corpus } = await writeCorpus("claude", [
+      [{ kind: "call", command: "rm -rf build", result: { text: "" } }],
+    ]);
+    const outcome = await verifyScan({
+      corpus,
+      ...SHIPPED,
+      readLines: () => (async function* () {})(),
+      io: {
+        ...UNAVAILABLE_VERIFY_IO,
+        isDirectory: () => {
+          throw new Error("this seam cannot say");
+        },
+      },
+    });
+    expect(outcome.verification.categories.destructive).toEqual({
+      status: "could-not-check",
+      matches: 0,
+    });
+    const prodInfra = outcome.verification.categories["prod-infra"];
+    if (!("facts" in prodInfra)) throw new Error("no facts");
+    expect(prodInfra.facts.databaseCheck).toBe("not-available");
+    expect(prodInfra.status).not.toBe("clean");
+  });
+
   // A local cluster first, then a production delete behind a word before it. The first command
   // must not set the call aside as local.
   const PROD = `kubectl --context prod-cluster delete ${"deployment"} web`;
