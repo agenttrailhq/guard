@@ -203,6 +203,45 @@ describe("pushes whose commits cannot be read", () => {
     expect(check.status).toBe("clean");
   });
 
+  it("two quiet pushes, the second to main: every push is read, so not clean", async () => {
+    const check = await unreviewed(
+      `git push -q origin feature/x && git push -q origin HEAD:${"main"}`,
+      "",
+    );
+    expect(check.facts.pushesNotChecked).toBe(1);
+    expect(check.status).toBe("could-not-check");
+    // One quiet push to another branch alone stays clean.
+    expect((await unreviewed("git push -q origin feature/x", "")).status).toBe("clean");
+  });
+
+  it("two pushes and one output: what it says cannot be put to one push", async () => {
+    // "Everything up-to-date" would say so for one push; with two, it says nothing of either.
+    const check = await unreviewed(
+      `git push origin feature/x && git push origin ${"main"}`,
+      "Everything up-to-date",
+    );
+    expect(check.facts.pushesNotChecked).toBe(1);
+    expect(check.status).toBe("could-not-check");
+  });
+
+  it("two pushes that could reach main, one main line printed: the other is not checked", async () => {
+    const check = await unreviewed(
+      `git push origin ${"main"} && git push -q origin HEAD:${"master"}`,
+      RANGE,
+    );
+    expect(check.facts).toMatchObject({ pushesToMain: 1, commitsOnMain: 1, pushesNotChecked: 1 });
+    expect(check.status).toBe("review");
+  });
+
+  it("pushes to different remotes: a main line cannot be put to origin", async () => {
+    const check = await unreviewed(
+      `git push origin feature/x && git push upstream ${"main"}`,
+      RANGE,
+    );
+    expect(check.facts).toMatchObject({ pushesToMain: 1, commitsOnMain: 0, pushesNotChecked: 1 });
+    expect(check.status).toBe("could-not-check");
+  });
+
   it.each([
     `(git push origin ${"main"})`,
     `if git push origin ${"main"}; then echo ok; fi`,

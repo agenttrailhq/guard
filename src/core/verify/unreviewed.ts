@@ -319,20 +319,29 @@ export async function checkUnreviewed(input: UnreviewedInput): Promise<Unreviewe
 
     const output = call.result?.content ?? "";
     const updates = pushedRefs(output).filter((u) => MAIN_BRANCH.test(u.branch));
+    // Each push that names main as its destination, or names nothing at all, could have gone
+    // to main.
+    const mainPushes = pushes.filter(couldReachMain).length;
     if (updates.length === 0) {
-      // No main update read. A push that names main as its destination, or names nothing at
-      // all, could have gone to main: unless its recorded output says what happened to each
-      // ref, it is not checked.
-      if (couldReachMain(push) && !saysWhatHappened(output)) counts.pushesNotChecked += 1;
+      // No main update read. One push is not checked unless its recorded output says what
+      // happened to each ref. With several, what the output says cannot be put to one of them,
+      // so each that could have gone to main is not checked.
+      if (pushes.length > 1) counts.pushesNotChecked += mainPushes;
+      else if (mainPushes > 0 && !saysWhatHappened(output)) counts.pushesNotChecked += 1;
       continue;
     }
+    // With several pushes, each that could have gone to main beyond the main updates read
+    // printed nothing to read: not checked.
+    if (pushes.length > 1) counts.pushesNotChecked += Math.max(0, mainPushes - updates.length);
     counts.pushesToMain += updates.length;
     // A branch the push created carries no ids to ask about, so each is one not checked, below.
     counts.pushesCreatingMain += updates.filter((u) => u.from === undefined).length;
 
+    // The updates are asked about in one repo, of one remote: every push must name both.
+    const oneTarget = pushes.every((p) => p.remote === push.remote && p.dir === push.dir);
     const dir = placed(push.dir ?? call.cwd ?? "", call.cwd);
     const root = dir === undefined || dir === "" ? undefined : await repoRoot(input.io, dir, cache);
-    if (root === undefined || !root.ok || push.remote !== "origin") {
+    if (root === undefined || !root.ok || push.remote !== "origin" || !oneTarget) {
       counts.pushesNotChecked += updates.length;
       continue;
     }

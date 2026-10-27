@@ -14566,15 +14566,19 @@ async function checkUnreviewed(input) {
     if (push === void 0) continue;
     const output = call.result?.content ?? "";
     const updates = pushedRefs(output).filter((u) => MAIN_BRANCH.test(u.branch));
+    const mainPushes = pushes.filter(couldReachMain).length;
     if (updates.length === 0) {
-      if (couldReachMain(push) && !saysWhatHappened(output)) counts.pushesNotChecked += 1;
+      if (pushes.length > 1) counts.pushesNotChecked += mainPushes;
+      else if (mainPushes > 0 && !saysWhatHappened(output)) counts.pushesNotChecked += 1;
       continue;
     }
+    if (pushes.length > 1) counts.pushesNotChecked += Math.max(0, mainPushes - updates.length);
     counts.pushesToMain += updates.length;
     counts.pushesCreatingMain += updates.filter((u) => u.from === void 0).length;
+    const oneTarget = pushes.every((p) => p.remote === push.remote && p.dir === push.dir);
     const dir = placed(push.dir ?? call.cwd ?? "", call.cwd);
     const root = dir === void 0 || dir === "" ? void 0 : await repoRoot(input.io, dir, cache);
-    if (root === void 0 || !root.ok || push.remote !== "origin") {
+    if (root === void 0 || !root.ok || push.remote !== "origin" || !oneTarget) {
       counts.pushesNotChecked += updates.length;
       continue;
     }

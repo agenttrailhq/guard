@@ -700,6 +700,7 @@ describe("one call: a command read, and one of the same kind behind a wrapper", 
   // A command of the same kind read first, then the target behind each wrapper.
   const AFTER_READ: readonly (readonly [string, string, string, VerifyCategory])[] = [
     ["a delete", "rm -rf /tmp/scratch/build && ", `rm -rf "$OUT/${"build"}"`, "destructive"],
+    ["a push", "git push origin feature/x && ", "git push origin HEAD:main", "unreviewed"],
     [
       "an aws call",
       "aws sts get-caller-identity && ",
