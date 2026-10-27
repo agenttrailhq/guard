@@ -14106,6 +14106,10 @@ function skipQuoted2(text2, at2, quote) {
       i += 2;
       continue;
     }
+    if (quote === '"' && ch === "$" && text2[i + 1] === "(") {
+      i = skipSubstitution2(text2, i + 1);
+      continue;
+    }
     if (ch === quote) return i + 1;
     i += 1;
   }

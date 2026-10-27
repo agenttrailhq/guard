@@ -177,6 +177,19 @@ describe("force-deleted branches, against a real repository", () => {
     expect(result.status).toBe("clean");
   });
 
+  it("after a quote inside a $(…) inside double quotes, the deletion is still read", async () => {
+    const { root, output } = deletedBranch("lw-quoted-subst");
+    const { facts, result } = await lost([
+      {
+        cwd: root,
+        events: [{ kind: "bash", command: `X="$(printf '"')"; ${BRANCH_D}`, output }],
+      },
+    ]);
+    expect(facts.branches.deleted).toBe(1);
+    expect(facts.branches.recoverable).toBe(1);
+    expect(result.status).toBe("act");
+  });
+
   it("a merged branch's commit is on main: not lost", async () => {
     const root = makeRepo("lw-merged");
     git(root, "switch", "-q", "-c", "feature/x");

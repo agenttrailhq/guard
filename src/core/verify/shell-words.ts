@@ -48,13 +48,21 @@ export type ShellItem = ShellCommand | { readonly kind: "open" } | { readonly ki
 /** Programs that run the lines of a heredoc fed to them as commands. */
 const SHELLS: ReadonlySet<string> = new Set(["sh", "bash", "zsh", "dash", "ksh"]);
 
-/** Where a quoted string ends, from its opening quote. */
+/**
+ * Where a quoted string ends, from its opening quote. Inside double quotes a `$(…)` is skipped
+ * whole, as `ran.ts` reads it, so a quote inside the substitution does not end the string:
+ * `"$(printf '"')"; git stash drop` is two commands, not one open string.
+ */
 function skipQuoted(text: string, at: number, quote: string): number {
   let i = at + 1;
   while (i < text.length) {
     const ch = text[i];
     if (quote !== "'" && ch === "\\") {
       i += 2;
+      continue;
+    }
+    if (quote === '"' && ch === "$" && text[i + 1] === "(") {
+      i = skipSubstitution(text, i + 1);
       continue;
     }
     if (ch === quote) return i + 1;

@@ -58,6 +58,19 @@ describe("one prefix table for every reader of a command's program", () => {
     expect(view.kinds).toContain("doc");
   });
 
+  it("a quote inside a $(…) inside double quotes does not end the string", () => {
+    // An odd quote inside the substitution once left the rest of the text in one open string,
+    // so the command after it was never read.
+    expect(values(`X="$(printf '"')"; git stash drop`)).toEqual([
+      [`X=$(printf '"')`],
+      ["git", "stash", "drop"],
+    ]);
+    expect(values(`rm -rf "$(dirname "$f") /build" && git branch -D topic`)).toEqual([
+      ["rm", "-rf", `$(dirname "$f") /build`],
+      ["git", "branch", "-D", "topic"],
+    ]);
+  });
+
   it("an assignment given to env is the program's, in both readers", () => {
     const text = "env --chdir /x HUSKY=0 git commit -m x";
     const words = shellCommands(text)[0]?.words ?? [];
