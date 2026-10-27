@@ -66,10 +66,12 @@ export function enforcedProjectsPath(home: string): string {
   return join(home, ".agenttrail", "os", "enforced-projects.json");
 }
 
-/** Claude Code's config folder, honouring `CLAUDE_CONFIG_DIR`. */
+/** Claude Code's config folder, honouring an absolute `CLAUDE_CONFIG_DIR`. */
 function claudeDir(home: string, env: Readonly<Record<string, string | undefined>>): string {
   const configured = env[ENV_CONFIG_DIR]?.trim();
-  return configured !== undefined && configured.length > 0 ? configured : join(home, ".claude");
+  return configured !== undefined && configured.length > 0 && isAbsolute(configured)
+    ? configured
+    : join(home, ".claude");
 }
 
 /** Where Claude Code reads file-based managed settings on this platform. */
@@ -107,6 +109,11 @@ export interface StepAsideInput {
   /** A path through symbolic links. May throw for a path that does not exist. */
   readonly realpath: (path: string) => string;
   readonly platform?: NodeJS.Platform;
+  /**
+   * The hook process's working folder. Its project settings are scanned for committed values too,
+   * and it is the base a relative `CLAUDE_PROJECT_DIR` resolves against.
+   */
+  readonly processCwd?: string;
 }
 
 /** The answer: stand down (with a hashed project key for the event), or which check failed. */
@@ -324,11 +331,26 @@ function evaluate(input: StepAsideInput): StepAsideResult {
   // trusted behind it aside and gives no decision, so standing down on it would leave nothing
   // deciding. A repository that sets CLAUDE_PROJECT_DIR or CLAUDE_CONFIG_DIR doesn't get to choose
   // which local or user file counts.
+  //
+  // The files are chosen exactly as the AgentTrail OS hook chooses them, so the two can't disagree:
+  //   - committed values are looked for in CLAUDE_PROJECT_DIR (whoever set it, relative ones
+  //     included), the payload cwd and the hook's own folder, each with its ancestors;
+  //   - the local file is CLAUDE_PROJECT_DIR's when that is absolute and not set by a project
+  //     file, NO local file when it is present but can't be trusted, and the payload cwd's (else the
+  //     hook folder's) only when it is absent. `here`, the folder the record is looked up for, is
+  //     not used for this: a session can run in one project while cwd is in another.
   const homeReal = safeRealpath(input.home, input.realpath) ?? input.home;
-  const scanned = projectSettingsFolders(
-    [...(projectDir !== undefined ? [projectDir] : []), ...(cwd !== undefined ? [cwd] : [])],
-    homeReal,
-  ).map((folder) => input.readFile(join(folder, ".claude", "settings.json")));
+  const base = input.processCwd;
+  const resolveFrom = (path: string) =>
+    isAbsolute(path) ? path : base !== undefined ? join(base, path) : undefined;
+  const scanStarts = [projectDirRaw, input.cwd, base]
+    .filter((p): p is string => p !== undefined && p.length > 0)
+    .map(resolveFrom)
+    .filter((p): p is string => p !== undefined)
+    .map((p) => safeRealpath(p, input.realpath) ?? p);
+  const scanned = projectSettingsFolders(scanStarts, homeReal).map((folder) =>
+    input.readFile(join(folder, ".claude", "settings.json")),
+  );
   // A file that exists but doesn't parse counts as setting every key.
   const repoSets = (key: string) =>
     scanned.some((text) => {
@@ -339,9 +361,17 @@ function evaluate(input: StepAsideInput): StepAsideResult {
   const configDir = repoSets(ENV_CONFIG_DIR)
     ? join(input.home, ".claude")
     : claudeDir(input.home, env);
+  let localRoot: string | undefined;
+  if (projectDirRaw !== undefined && projectDirRaw.length > 0) {
+    localRoot = projectDir !== undefined && !repoSets(ENV_PROJECT_DIR) ? projectDir : undefined;
+  } else {
+    const fallback = [input.cwd, base].find((p) => p !== undefined && p.length > 0);
+    localRoot =
+      fallback === undefined ? undefined : (safeRealpath(fallback, input.realpath) ?? fallback);
+  }
   const trustedFiles = [
     ...managedSettingsFiles(input.platform ?? process.platform, input.listDir),
-    ...(repoSets(ENV_PROJECT_DIR) ? [] : [join(here, ".claude", "settings.local.json")]),
+    ...(localRoot === undefined ? [] : [join(localRoot, ".claude", "settings.local.json")]),
     join(configDir, "settings.json"),
   ];
   const trustedSentinel = trustedFiles
@@ -391,7 +421,14 @@ function envBlock(text: string | undefined): Record<string, string> {
   if (!isRecord(parsed) || !isRecord(parsed.env)) return {};
   const out: Record<string, string> = {};
   for (const [key, value] of Object.entries(parsed.env)) {
-    if (typeof value === "string") out[key] = value;
+    // Any present value counts as set: a number or boolean as Claude Code would pass it, anything
+    // else (null, an object) as its JSON text, which is never "1".
+    out[key] =
+      typeof value === "string"
+        ? value
+        : typeof value === "number" || typeof value === "boolean"
+          ? String(value)
+          : JSON.stringify(value);
   }
   return out;
 }
