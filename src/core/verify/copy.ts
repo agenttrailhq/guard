@@ -284,6 +284,20 @@ export const FIXES_FILE_NOTE: SentenceTemplate<{ readonly variant: "document" | 
       : `The exact commands for this machine, with real names and paths, are in ${FIXES_FILE} next to this report. That file stays on this machine and is not part of this page.`,
 };
 
+/**
+ * Where a card's fixes that could not be made safe are listed. Shown only when the local fixes
+ * file was written and holds this card's note for them.
+ */
+export const UNSAFE_FIXES_FILE_NOTE: SentenceTemplate<{
+  readonly variant: "document" | "artifact";
+}> = {
+  id: "card.fixes-file-unsafe",
+  render: ({ variant }) =>
+    variant === "artifact"
+      ? `The local fixes file, ${FIXES_FILE} on the machine the scan ran on, lists the fixes here that could not be made safe, with no command for them. That file was not published with this page.`
+      : `The local fixes file, ${FIXES_FILE} next to this report, lists the fixes here that could not be made safe, with no command for them. That file stays on this machine and is not part of this page.`,
+};
+
 /** The fixes file's name. `report.ts` exports it as `FIXES_FILENAME`. */
 export const FIXES_FILE = "agenttrail-guard-fixes.txt";
 

@@ -13950,6 +13950,10 @@ var FIXES_FILE_NOTE = {
   id: "card.fixes-file",
   render: ({ variant }) => variant === "artifact" ? `The exact commands, with real names and paths, are in ${FIXES_FILE} on the machine the scan ran on. That file was not published with this page.` : `The exact commands for this machine, with real names and paths, are in ${FIXES_FILE} next to this report. That file stays on this machine and is not part of this page.`
 };
+var UNSAFE_FIXES_FILE_NOTE = {
+  id: "card.fixes-file-unsafe",
+  render: ({ variant }) => variant === "artifact" ? `The local fixes file, ${FIXES_FILE} on the machine the scan ran on, lists the fixes here that could not be made safe, with no command for them. That file was not published with this page.` : `The local fixes file, ${FIXES_FILE} next to this report, lists the fixes here that could not be made safe, with no command for them. That file stays on this machine and is not part of this page.`
+};
 var FIXES_FILE = "agenttrail-guard-fixes.txt";
 function cardCount(card) {
   if (card.tone === "not-checked" || card.tone === "could-not-check" && card.count === 0) {
@@ -14018,7 +14022,7 @@ var FixList = class {
   }
 };
 function unsafeFixLine(n2) {
-  return n2 > 0 ? `Could not make a safe command for ${counted2(n2, "fix", "fixes")}: a name or path in ${n2 === 1 ? "it" : "them"} holds characters a command cannot carry safely, so the local fixes file lists ${n2 === 1 ? "it" : "them"} as could not make a safe command, with no command.` : void 0;
+  return n2 > 0 ? `Could not make a safe command for ${counted2(n2, "fix", "fixes")}: a name or path in ${n2 === 1 ? "it" : "them"} holds characters a command cannot carry safely, so no command is given for ${n2 === 1 ? "it" : "them"}.` : void 0;
 }
 var MAX_PROBED_ITEMS = 500;
 var TEMP_ROOTS = [
@@ -17979,7 +17983,7 @@ ${chips}
 </ul>
 </section>`;
 }
-function verifiedCard(card, variant, localFixes) {
+function verifiedCard(card, variant, localFixes, unsafeListed) {
   const title = CATEGORY_TITLES[card.category];
   const id = cardId(card.category);
   const count2 = cardCount(card);
@@ -17997,7 +18001,9 @@ ${block(card.now)}
   }
   const steps = card.fixSteps ?? [];
   const fileNote = localFixes && card.tone !== "not-checked" ? FIXES_FILE_NOTE.render({ variant }) : void 0;
-  if (steps.length > 0 || card.fixes.length > 0 || fileNote !== void 0) {
+  const unsafeNote = unsafeListed && card.tone !== "not-checked" ? UNSAFE_FIXES_FILE_NOTE.render({ variant }) : void 0;
+  const fileNoteHtml = (id2, text2) => `<p class="note fixes-file" data-template="${id2}">${escapeHtml(text2).replace(FIXES_FILENAME, `<code>${FIXES_FILENAME}</code>`)}</p>`;
+  if (steps.length > 0 || card.fixes.length > 0 || fileNote !== void 0 || unsafeNote !== void 0) {
     const shapes = card.fixes.map(
       (fix, i) => copyable(
         `fix-${card.category}-${i + 1}`,
@@ -18008,9 +18014,8 @@ ${block(card.now)}
     const parts = [
       ...steps.map((line2) => sentenceHtml(line2)),
       ...shapes,
-      ...fileNote === void 0 ? [] : [
-        `<p class="note fixes-file" data-template="${FIXES_FILE_NOTE.id}">${escapeHtml(fileNote).replace(FIXES_FILENAME, `<code>${FIXES_FILENAME}</code>`)}</p>`
-      ]
+      ...fileNote === void 0 ? [] : [fileNoteHtml(FIXES_FILE_NOTE.id, fileNote)],
+      ...unsafeNote === void 0 ? [] : [fileNoteHtml(UNSAFE_FIXES_FILE_NOTE.id, unsafeNote)]
     ];
     fields.push(`<div><dt>Fix</dt><dd>
 ${parts.join("\n")}
@@ -18026,7 +18031,7 @@ ${fields.join("\n")}
 ${sentenceHtml(caveat, "note codex-caveat")}`}
 </article>`;
 }
-function whatHappenedSection(cards, variant, localFixCategories) {
+function whatHappenedSection(cards, variant, localFixCategories, unsafeFixCategories2) {
   const tally = sentence(TONE_TALLY, cards);
   const reads = cards.filter((card) => card.read !== void 0).map(
     (card) => `<li><span class="read-title">${escapeHtml(CATEGORY_TITLES[card.category])}:</span> <span data-template="${escapeHtml(card.read?.template ?? "")}">${escapeHtml(card.read?.text ?? "")}</span></li>`
@@ -18036,7 +18041,14 @@ function whatHappenedSection(cards, variant, localFixCategories) {
 <ul class="read-list">
 ${reads.join("\n")}
 </ul>`;
-  const rows = cards.map((card) => verifiedCard(card, variant, localFixCategories.includes(card.category))).join("\n");
+  const rows = cards.map(
+    (card) => verifiedCard(
+      card,
+      variant,
+      localFixCategories.includes(card.category),
+      unsafeFixCategories2.includes(card.category)
+    )
+  ).join("\n");
   return `<section id="what-happened" class="what-happened" aria-labelledby="what-happened-heading">
 <div class="section-head"><h2 id="what-happened-heading">What actually happened</h2>${tally === void 0 ? "" : `<p class="section-meta" data-template="${escapeHtml(tally.template)}">${escapeHtml(tally.text)}</p>`}</div>
 <p class="note">A match means a guardrail fired on a command. Each card says what checking that on this machine found, how things stand now, and how to fix it. The checks only read: they changed nothing on this machine.</p>${readList}
@@ -18572,7 +18584,14 @@ function renderReport(result, meta, options = {}) {
     heroSection(result, payload, meta, variant, lead),
     ...cards === void 0 ? [] : [evidenceSection(payload), alsoCheckedSection(payload, cards, lead)],
     statsSection(result),
-    ...cards === void 0 ? [] : [whatHappenedSection(cards, variant, options.localFixCategories ?? [])],
+    ...cards === void 0 ? [] : [
+      whatHappenedSection(
+        cards,
+        variant,
+        options.localFixCategories ?? [],
+        options.unsafeFixCategories ?? []
+      )
+    ],
     ...scanned ? [
       wouldHaveDoneSection(result, payload),
       fixFirstSection(payload),
@@ -18737,6 +18756,10 @@ function unsafeFixCount(fixes) {
 function fixCategories(fixes) {
   const kept = writable(fixes);
   return VERIFY_CATEGORIES.filter((category) => kept.some((fix) => fix.category === category));
+}
+function unsafeFixCategories(fixes) {
+  const notes = unsafe(fixes);
+  return VERIFY_CATEGORIES.filter((category) => notes.some((fix) => fix.category === category));
 }
 function hasFileFixes(fixes) {
   return writable(fixes).length + unsafe(fixes).length > 0;
@@ -21123,7 +21146,9 @@ ${usage}`);
     reportPath,
     renderReport(result, meta, {
       variant: flags.artifact ? "artifact" : "document",
-      localFixCategories: fixesPath === void 0 ? [] : fixCategories(fixes)
+      // A card names the file only for what the written file holds.
+      localFixCategories: fixesPath === void 0 ? [] : fixCategories(fixes),
+      unsafeFixCategories: fixesPath === void 0 ? [] : unsafeFixCategories(fixes)
     })
   );
   io.writeStdout(

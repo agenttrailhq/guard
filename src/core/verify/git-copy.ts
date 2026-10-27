@@ -135,10 +135,14 @@ export class FixList {
   }
 }
 
-/** The note on a card that left fixes out: the commands could not be made safe. */
+/**
+ * The note on a card that left fixes out: the commands could not be made safe. It says nothing
+ * of the local fixes file, which may not be written: the page names the file only when it was,
+ * and holds this category's note (`UNSAFE_FIXES_FILE_NOTE`).
+ */
 export function unsafeFixLine(n: number): string | undefined {
   return n > 0
-    ? `Could not make a safe command for ${counted(n, "fix", "fixes")}: a name or path in ${n === 1 ? "it" : "them"} holds characters a command cannot carry safely, so the local fixes file lists ${n === 1 ? "it" : "them"} as could not make a safe command, with no command.`
+    ? `Could not make a safe command for ${counted(n, "fix", "fixes")}: a name or path in ${n === 1 ? "it" : "them"} holds characters a command cannot carry safely, so no command is given for ${n === 1 ? "it" : "them"}.`
     : undefined;
 }
 

@@ -118,6 +118,7 @@ import {
   MORE_EVIDENCE,
   TONE_TALLY,
   toneLabel,
+  UNSAFE_FIXES_FILE_NOTE,
 } from "./verify/copy.js";
 import { verifiedNotes } from "./verify/notes.js";
 import { shareCounts } from "./verify/share-copy.js";
@@ -165,6 +166,11 @@ export interface RenderOptions {
    * the file. Empty, or absent, when no file was written.
    */
   readonly localFixCategories?: readonly VerifyCategory[];
+  /**
+   * The categories whose could-not-make-a-safe-command note was written to `FIXES_FILENAME`.
+   * Their cards say the file lists those fixes. Empty, or absent, when no file was written.
+   */
+  readonly unsafeFixCategories?: readonly VerifyCategory[];
   /** The card builders. For tests; the report uses `CARD_BUILDERS`. */
   readonly cardBuilders?: CardBuilders;
 }
@@ -1286,8 +1292,16 @@ ${chips}
 </section>`;
 }
 
-/** One card of "What actually happened". */
-function verifiedCard(card: CardView, variant: ReportVariant, localFixes: boolean): string {
+/**
+ * One card of "What actually happened". `localFixes` and `unsafeListed` say whether the written
+ * fixes file holds this card's exact commands, and its note on fixes that could not be made safe.
+ */
+function verifiedCard(
+  card: CardView,
+  variant: ReportVariant,
+  localFixes: boolean,
+  unsafeListed: boolean,
+): string {
   const title = CATEGORY_TITLES[card.category];
   const id = cardId(card.category);
   const count = cardCount(card);
@@ -1304,7 +1318,19 @@ function verifiedCard(card: CardView, variant: ReportVariant, localFixes: boolea
   // A category with no check has no commands, whatever the file holds.
   const fileNote =
     localFixes && card.tone !== "not-checked" ? FIXES_FILE_NOTE.render({ variant }) : undefined;
-  if (steps.length > 0 || card.fixes.length > 0 || fileNote !== undefined) {
+  const unsafeNote =
+    unsafeListed && card.tone !== "not-checked"
+      ? UNSAFE_FIXES_FILE_NOTE.render({ variant })
+      : undefined;
+  /** A note naming the fixes file, with the file name as code. */
+  const fileNoteHtml = (id: string, text: string): string =>
+    `<p class="note fixes-file" data-template="${id}">${escapeHtml(text).replace(FIXES_FILENAME, `<code>${FIXES_FILENAME}</code>`)}</p>`;
+  if (
+    steps.length > 0 ||
+    card.fixes.length > 0 ||
+    fileNote !== undefined ||
+    unsafeNote !== undefined
+  ) {
     const shapes = card.fixes.map((fix, i) =>
       copyable(
         `fix-${card.category}-${i + 1}`,
@@ -1315,11 +1341,8 @@ function verifiedCard(card: CardView, variant: ReportVariant, localFixes: boolea
     const parts = [
       ...steps.map((line) => sentenceHtml(line)),
       ...shapes,
-      ...(fileNote === undefined
-        ? []
-        : [
-            `<p class="note fixes-file" data-template="${FIXES_FILE_NOTE.id}">${escapeHtml(fileNote).replace(FIXES_FILENAME, `<code>${FIXES_FILENAME}</code>`)}</p>`,
-          ]),
+      ...(fileNote === undefined ? [] : [fileNoteHtml(FIXES_FILE_NOTE.id, fileNote)]),
+      ...(unsafeNote === undefined ? [] : [fileNoteHtml(UNSAFE_FIXES_FILE_NOTE.id, unsafeNote)]),
     ];
     fields.push(`<div><dt>Fix</dt><dd>\n${parts.join("\n")}\n</dd></div>`);
   }
@@ -1338,6 +1361,7 @@ function whatHappenedSection(
   cards: readonly CardView[],
   variant: ReportVariant,
   localFixCategories: readonly VerifyCategory[],
+  unsafeFixCategories: readonly VerifyCategory[],
 ): string {
   const tally = sentence(TONE_TALLY, cards);
   // What each check read, in its own words, for every check that read something.
@@ -1352,7 +1376,14 @@ function whatHappenedSection(
       ? ""
       : `\n<p class="note">What the checks read on this machine:</p>\n<ul class="read-list">\n${reads.join("\n")}\n</ul>`;
   const rows = cards
-    .map((card) => verifiedCard(card, variant, localFixCategories.includes(card.category)))
+    .map((card) =>
+      verifiedCard(
+        card,
+        variant,
+        localFixCategories.includes(card.category),
+        unsafeFixCategories.includes(card.category),
+      ),
+    )
     .join("\n");
   return `<section id="what-happened" class="what-happened" aria-labelledby="what-happened-heading">
 <div class="section-head"><h2 id="what-happened-heading">What actually happened</h2>${tally === undefined ? "" : `<p class="section-meta" data-template="${escapeHtml(tally.template)}">${escapeHtml(tally.text)}</p>`}</div>
@@ -2152,7 +2183,14 @@ export function renderReport(
     statsSection(result),
     ...(cards === undefined
       ? []
-      : [whatHappenedSection(cards, variant, options.localFixCategories ?? [])]),
+      : [
+          whatHappenedSection(
+            cards,
+            variant,
+            options.localFixCategories ?? [],
+            options.unsafeFixCategories ?? [],
+          ),
+        ]),
     ...(scanned
       ? [
           wouldHaveDoneSection(result, payload),

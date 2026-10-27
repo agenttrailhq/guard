@@ -23,7 +23,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { CHECKS_FAILED_LINE, runScan, samePath } from "../commands/scan.js";
-import { fixCategories, fixesFileText } from "../core/fixes-file.js";
+import { fixCategories, fixesFileText, unsafeFixCategories } from "../core/fixes-file.js";
 import { FIXES_FILENAME, REPORT_FILENAME } from "../core/report.js";
 import {
   type CommandPart,
@@ -373,6 +373,20 @@ describe("a fix that could not be made safe", () => {
     expect(fixCategories([dashed])).toEqual([]);
   });
 
+  it("says the file lists a card's unsafe fixes only where it holds that card's note", () => {
+    expect(unsafeFixCategories([BRANCH, spaced, dashed])).toEqual(["lost-work", "unreviewed"]);
+    expect(unsafeFixCategories([dashed])).toEqual(["unreviewed"]);
+    expect(unsafeFixCategories([BRANCH, MEMORY_FIX])).toEqual([]);
+    // Each category it gives is one whose note the file's text holds.
+    const text = fixesFileText([BRANCH, dashed], {
+      version: "9.9.9",
+      generatedAt: AT,
+      reportName: REPORT_FILENAME,
+    });
+    expect(text).toContain("Unreviewed code\n(1 fix here: could not make a safe command");
+    expect(text).not.toMatch(/Lost work\n[^\n]*\n\(1 fix here/);
+  });
+
   it("is written, and said in --review, even when it is the only fix", async () => {
     const run = await scan(["--verify", "--review"], {
       answer: "y",
@@ -384,8 +398,16 @@ describe("a fix that could not be made safe", () => {
     expect(run.stdout).toContain(
       "0 exact fix commands for this machine, with real names and paths, and 1 fix it could not make a safe command for",
     );
-    // No card names a file that holds no command for it.
-    expect(readFileSync(join(run.work, REPORT_FILENAME), "utf8")).not.toContain(FIXES_FILENAME);
+    // No card says the file holds a command it does not. The card the note is under says the
+    // file lists its fix that could not be made safe, which the file does.
+    const report = readFileSync(join(run.work, REPORT_FILENAME), "utf8");
+    expect(report).not.toContain('data-template="card.fixes-file"');
+    expect(report).toContain('data-template="card.fixes-file-unsafe"');
+    const unreviewed = report.slice(
+      report.indexOf('id="check-unreviewed"'),
+      report.indexOf("</article>", report.indexOf('id="check-unreviewed"')),
+    );
+    expect(unreviewed).toContain('data-template="card.fixes-file-unsafe"');
   });
 });
 
@@ -398,6 +420,22 @@ describe("when the fixes file cannot be written", () => {
     expect(readFileSync(join(run.work, REPORT_FILENAME), "utf8")).not.toContain(FIXES_FILENAME);
     expect(run.stdout).toContain(`Could not write the fix commands to ${path}`);
     expect(run.stdout).not.toContain("Fix commands for this machine");
+  });
+
+  it("with only fixes that could not be made safe, no card says the file lists them", async () => {
+    const unsafeOnly = localFixCommand("unreviewed", ["git", "show", { ref: "-p" }]);
+    expect(isLocalFix(unsafeOnly)).toBe(false);
+    const failed = await scan(["--verify"], { failFixes: true, extra: [unsafeOnly], fixes: false });
+    expect(failed.code).toBe(0);
+    expect(() => statSync(join(failed.work, FIXES_FILENAME))).toThrow();
+    const report = readFileSync(join(failed.work, REPORT_FILENAME), "utf8");
+    expect(report).not.toContain("card.fixes-file");
+    expect(report).not.toContain(FIXES_FILENAME);
+    // Negative control: written, the same fix is named as listed there.
+    const written = await scan(["--verify"], { extra: [unsafeOnly], fixes: false });
+    expect(readFileSync(join(written.work, REPORT_FILENAME), "utf8")).toContain(
+      'data-template="card.fixes-file-unsafe"',
+    );
   });
 
   it("--out naming the fixes file writes the report there, and no fixes file over it", async () => {

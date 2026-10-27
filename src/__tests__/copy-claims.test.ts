@@ -39,6 +39,7 @@ import {
   LEAD_NOTES,
   MORE_EVIDENCE,
   TONE_TALLY,
+  UNSAFE_FIXES_FILE_NOTE,
 } from "../core/verify/copy.js";
 import {
   SECRETS_CHIP,
@@ -351,6 +352,7 @@ describe("every verified line comes from a template whose facts are present", ()
   const html = renderReport(VERIFIED_RESULT, VERIFIED_META, {
     cardBuilders: TEST_ONLY_BUILDERS,
     localFixCategories: LOCAL_FIX_CATEGORIES,
+    unsafeFixCategories: LOCAL_FIX_CATEGORIES,
   });
   const verification = reportPayload(VERIFIED_RESULT, VERIFIED_META, TEST_ONLY_BUILDERS)
     .verification as Verification;
@@ -367,6 +369,7 @@ describe("every verified line comes from a template whose facts are present", ()
     [MORE_EVIDENCE, [{ more: secrets.moreItems }]],
     [TONE_TALLY, [cards]],
     [FIXES_FILE_NOTE, [{ variant: "document" }]],
+    [UNSAFE_FIXES_FILE_NOTE, [{ variant: "document" }]],
     [SECRETS_COUNT, [{ matches: verification.categories.secrets.matches }]],
     [
       UNCONFIRMED_SENTENCE,
@@ -450,7 +453,7 @@ describe("every verified line comes from a template whose facts are present", ()
         (entry?.t as SentenceTemplate<unknown>).render(facts),
       );
       const text = decodeEntities(raw ?? "");
-      if (id === FIXES_FILE_NOTE.id) {
+      if (id === FIXES_FILE_NOTE.id || id === UNSAFE_FIXES_FILE_NOTE.id) {
         // It wraps the file name in code, so the text read here stops there.
         expect(
           made.some((m) => text.length > 20 && m?.startsWith(text)),
@@ -471,6 +474,7 @@ describe("every verified line comes from a template whose facts are present", ()
     const page = renderReport(result, VERIFIED_META, {
       cardBuilders: TEST_ONLY_BUILDERS,
       localFixCategories: LOCAL_FIX_CATEGORIES,
+      unsafeFixCategories: LOCAL_FIX_CATEGORIES,
     });
     expect(sectionsOf(page)).toContain("<dd>");
     expect(withoutTemplate(page)).toEqual([]);

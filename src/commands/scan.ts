@@ -56,6 +56,7 @@ import {
   fixCategories,
   fixesFileText,
   hasFileFixes,
+  unsafeFixCategories,
   unsafeFixCount,
 } from "../core/fixes-file.js";
 import { configPath, productLineStatePath, userRulesPath } from "../core/paths.js";
@@ -1233,7 +1234,9 @@ export async function runScan(
     reportPath,
     renderReport(result, meta, {
       variant: flags.artifact ? "artifact" : "document",
+      // A card names the file only for what the written file holds.
       localFixCategories: fixesPath === undefined ? [] : fixCategories(fixes),
+      unsafeFixCategories: fixesPath === undefined ? [] : unsafeFixCategories(fixes),
     }),
   );
 

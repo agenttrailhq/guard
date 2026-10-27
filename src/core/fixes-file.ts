@@ -70,6 +70,15 @@ export function fixCategories(fixes: readonly FileFix[]): VerifyCategory[] {
   return VERIFY_CATEGORIES.filter((category) => kept.some((fix) => fix.category === category));
 }
 
+/**
+ * The categories the file lists a could-not-make-a-safe-command note for, in card order. A card
+ * names the file for these only once it is written.
+ */
+export function unsafeFixCategories(fixes: readonly FileFix[]): VerifyCategory[] {
+  const notes = unsafe(fixes);
+  return VERIFY_CATEGORIES.filter((category) => notes.some((fix) => fix.category === category));
+}
+
 /** Whether the file has anything to say: an exact command, or a fix that could not be made safe. */
 export function hasFileFixes(fixes: readonly FileFix[]): boolean {
   return writable(fixes).length + unsafe(fixes).length > 0;

@@ -145,8 +145,11 @@ function writeTranscripts(lines: readonly string[]): { dir: string; file: string
   return { dir, file };
 }
 
-/** One in-process run of `scan`, with no guardrail in the catalog. */
-async function scan(argv: readonly string[], answer?: string) {
+/**
+ * One in-process run of `scan`, with no guardrail in the catalog. With `failFixes`, writing the
+ * local fixes file fails, as on a folder the user cannot write to.
+ */
+async function scan(argv: readonly string[], answer?: string, failFixes = false) {
   const real = createRealScanIO();
   const out: string[] = [];
   const written = new Map<string, string>();
@@ -159,6 +162,7 @@ async function scan(argv: readonly string[], answer?: string) {
     },
     readLine: () => Promise.resolve(answer),
     writeFile: (path, text) => {
+      if (failFixes && path.endsWith(FIXES_FILENAME)) return false;
       written.set(path, text);
       return true;
     },
@@ -419,9 +423,36 @@ describe("fixes the checks could not make safe reach the fixes file, and --revie
     expect(fixes).not.toContain("kept-work");
     // The review counts it before asking.
     expect(run.stdout).toContain("1 fix it could not make a safe command for");
-    // The lost-work card says so, and does not point at the file: it holds no command for it.
+    // The lost-work card says so. It names the file as listing the fix, which the written file
+    // does, and not as holding a command for it, which the file does not.
     expect(card).toContain("Could not make a safe command for 1 fix");
+    expect(card).toContain('data-template="card.fixes-file-unsafe"');
     expect(card).not.toContain('data-template="card.fixes-file"');
+  });
+
+  it("a fixes file that could not be written: no card says it lists anything", async () => {
+    const { lines } = deletedBranchCorpus(["unsafe repo;", "$", "(id)'x"].join(""));
+    const { dir } = writeTranscripts(lines);
+    const run = await scan(["--agent", "claude", "--dir", dir], undefined, true);
+    expect(run.code).toBe(0);
+    const { fixes, card } = outputs(run.written);
+    expect(fixes, "no fixes file was written").toBeUndefined();
+    expect(run.stdout).toContain("Could not write the fix commands to");
+    // The card still says the fix could not be made safe, and says nothing of the file.
+    expect(card).toContain("Could not make a safe command for 1 fix");
+    expect(card).not.toContain("card.fixes-file");
+    expect(card).not.toContain(FIXES_FILENAME);
+    expect(card).not.toMatch(/fixes file/i);
+  });
+
+  it("a fixes file that could not be written, for an exact command: the card does not name it", async () => {
+    const { lines } = deletedBranchCorpus("safe-repo-unwritten");
+    const { dir } = writeTranscripts(lines);
+    const run = await scan(["--agent", "claude", "--dir", dir], undefined, true);
+    const { fixes, card } = outputs(run.written);
+    expect(fixes).toBeUndefined();
+    expect(card).not.toContain("card.fixes-file");
+    expect(card).not.toContain(FIXES_FILENAME);
   });
 
   it("negative control: a safe repo path gives an exact command, and the card names the file", async () => {
