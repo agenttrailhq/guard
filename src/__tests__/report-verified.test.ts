@@ -40,6 +40,13 @@ import {
 } from "../core/verify/types.js";
 import { decodeEntities } from "./html-text.js";
 import {
+  checked,
+  DESTRUCTIVE_FACTS,
+  LOST_WORK_FACTS,
+  notesVerification,
+  SKIPPED_FACTS,
+} from "./notes-corpus.js";
+import {
   baseResult,
   CLOUD_LEAD_RESULT,
   CODEX_ONLY_RESULT,
@@ -950,6 +957,51 @@ describe("a counted chip that could not confirm never shows a zero", () => {
     const chip = chipsOf(html).find((c) => c.href === "#check-cloud")?.text;
     expect(chip).toBe("could not confirm");
     expect(chip).not.toMatch(/\b0\b/);
+  });
+});
+
+describe("the chips the shipped card builders write state their count once", () => {
+  /** The page's chips, rendered with the shipped builders, never test-only ones. */
+  const shippedChips = (v: Verification) =>
+    chipsOf(renderReport(baseResult(v), VERIFIED_META, { cardBuilders: CARD_BUILDERS }));
+
+  it("every chip on a page with every category checked has at most one number", () => {
+    const chips = shippedChips(notesVerification());
+    expect(chips.length).toBe(CHIP_COUNT);
+    for (const chip of chips) {
+      expect((chip.text.match(/\d+/g) ?? []).length, chip.text).toBeLessThanOrEqual(1);
+    }
+    const byHref = Object.fromEntries(chips.map((c) => [c.href, c.text]));
+    expect(byHref["#check-skipped-checks"]).toBe("3 commits reached main without their checks");
+    expect(byHref["#check-lost-work"]).toBe("3 deleted branches or stashes still recoverable");
+    expect(byHref["#check-destructive"]).toBe("0 rm -rf targets built from an unguarded variable");
+  });
+
+  it("one of each reads in the singular, with its count once", () => {
+    const chips = shippedChips(
+      notesVerification({
+        "skipped-checks": checked("act", {
+          ...SKIPPED_FACTS,
+          noVerify: { ...SKIPPED_FACTS.noVerify, onMain: 1 },
+        }),
+        "lost-work": checked("act", {
+          ...LOST_WORK_FACTS,
+          branches: { ...LOST_WORK_FACTS.branches, recoverable: 1 },
+          stashes: { ...LOST_WORK_FACTS.stashes, recoverable: 0 },
+        }),
+        destructive: checked("act", {
+          ...DESTRUCTIVE_FACTS,
+          rm: {
+            ...DESTRUCTIVE_FACTS.rm,
+            classes: { ...DESTRUCTIVE_FACTS.rm.classes, "unguarded-variable": 1 },
+          },
+        }),
+      }),
+    );
+    const byHref = Object.fromEntries(chips.map((c) => [c.href, c.text]));
+    expect(byHref["#check-skipped-checks"]).toBe("1 commit reached main without its checks");
+    expect(byHref["#check-lost-work"]).toBe("1 deleted branch or stash still recoverable");
+    expect(byHref["#check-destructive"]).toBe("1 rm -rf target built from an unguarded variable");
   });
 });
 

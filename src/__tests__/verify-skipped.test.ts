@@ -1027,7 +1027,9 @@ describe("the card", () => {
       { status: "clean", matches: 0, facts: facts() },
       { ranEvidence: "tool-result" },
     ) as ReturnType<typeof skippedChecksCard> & CardExtras;
-    expect(quiet.chip?.label.text).toBe("0 commits reached main without their checks");
+    // The page writes the count in front of the label.
+    expect(quiet.chip?.count).toBe(0);
+    expect(quiet.chip?.label.text).toBe("commits reached main without their checks");
     expect(quiet.found.map((s) => s.text)).toEqual([
       "No command this check could read skipped a hook.",
     ]);

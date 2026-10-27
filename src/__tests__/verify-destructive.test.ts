@@ -837,7 +837,8 @@ describe("the card", () => {
       count: 1,
       label: {
         template: "destructive.chip",
-        text: "1 rm -rf target built from an unguarded variable",
+        // The page writes the count in front of the label.
+        text: "rm -rf target built from an unguarded variable",
       },
     });
     expect(card.fixSteps?.map((s) => s.template)).toEqual([
@@ -853,7 +854,8 @@ describe("the card", () => {
       { status: "clean", matches: 0, facts: facts() },
       { ranEvidence: "tool-result" },
     ) as ReturnType<typeof destructiveCard> & CardExtras;
-    expect(card.chip?.label.text).toBe("0 rm -rf targets built from an unguarded variable");
+    expect(card.chip?.count).toBe(0);
+    expect(card.chip?.label.text).toBe("rm -rf targets built from an unguarded variable");
     expect(card.found.map((s) => s.text)).toEqual([
       "No rm -rf and no database wipe that this check could read ran.",
     ]);

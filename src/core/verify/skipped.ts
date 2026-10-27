@@ -996,10 +996,13 @@ const NOW: readonly T[] = [
 
 const CODEX: T = codexLimitedTemplate("skipped-checks");
 
+/** The chip label: the number is shown apart. */
 const CHIP: T = {
   id: "skipped-checks.chip",
   render: (f) =>
-    `${counted(f.noVerify.onMain, "commit")} reached main without ${f.noVerify.onMain === 1 ? "its" : "their"} checks`,
+    f.noVerify.onMain === 1
+      ? "commit reached main without its checks"
+      : "commits reached main without their checks",
 };
 
 const FIX_STEPS: readonly T[] = [

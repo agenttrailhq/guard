@@ -15574,7 +15574,7 @@ var HEADLINE = {
 var CODEX = codexLimitedTemplate("destructive");
 var CHIP = {
   id: "destructive.chip",
-  render: (f) => `${counted2(n(f, "unguarded-variable"), "rm -rf target")} built from an unguarded variable`
+  render: (f) => n(f, "unguarded-variable") === 1 ? "rm -rf target built from an unguarded variable" : "rm -rf targets built from an unguarded variable"
 };
 function classLine(c, what) {
   return {
@@ -16211,7 +16211,7 @@ var NOW2 = [
 var CODEX2 = codexLimitedTemplate("lost-work");
 var CHIP2 = {
   id: "lost-work.chip",
-  render: (f) => `${counted2(recoverable(f), "deleted branch or stash", "deleted branches or stashes")} still recoverable`
+  render: (f) => recoverable(f) === 1 ? "deleted branch or stash still recoverable" : "deleted branches or stashes still recoverable"
 };
 var FIX_STEPS2 = [
   {
@@ -17025,7 +17025,7 @@ var NOW3 = [
 var CODEX3 = codexLimitedTemplate("skipped-checks");
 var CHIP3 = {
   id: "skipped-checks.chip",
-  render: (f) => `${counted2(f.noVerify.onMain, "commit")} reached main without ${f.noVerify.onMain === 1 ? "its" : "their"} checks`
+  render: (f) => f.noVerify.onMain === 1 ? "commit reached main without its checks" : "commits reached main without their checks"
 };
 var FIX_STEPS3 = [
   {

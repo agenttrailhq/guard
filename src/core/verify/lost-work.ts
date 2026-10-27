@@ -831,10 +831,13 @@ const NOW: readonly T[] = [
 
 const CODEX: T = codexLimitedTemplate("lost-work");
 
+/** The chip label: the number is shown apart. */
 const CHIP: T = {
   id: "lost-work.chip",
   render: (f) =>
-    `${counted(recoverable(f), "deleted branch or stash", "deleted branches or stashes")} still recoverable`,
+    recoverable(f) === 1
+      ? "deleted branch or stash still recoverable"
+      : "deleted branches or stashes still recoverable",
 };
 
 const FIX_STEPS: readonly T[] = [

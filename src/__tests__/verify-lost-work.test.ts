@@ -640,7 +640,8 @@ describe("the card", () => {
       count: 2,
       label: {
         template: "lost-work.chip",
-        text: "2 deleted branches or stashes still recoverable",
+        // The page writes the count in front of the label.
+        text: "deleted branches or stashes still recoverable",
       },
     });
     expect(card.fixes).toEqual([
@@ -738,7 +739,8 @@ describe("the card", () => {
       { status: "clean", matches: 0, facts: facts() },
       { ranEvidence: "tool-result" },
     ) as ReturnType<typeof lostWorkCard> & CardExtras;
-    expect(card.chip?.label.text).toBe("0 deleted branches or stashes still recoverable");
+    expect(card.chip?.count).toBe(0);
+    expect(card.chip?.label.text).toBe("deleted branches or stashes still recoverable");
     expect(card.headline).toBeUndefined();
     expect(pickHeadline([card], TOOL_RESULT)).toBeUndefined();
     expect(card.found.map((s) => s.template)).toEqual(["lost-work.none"]);

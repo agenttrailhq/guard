@@ -901,10 +901,13 @@ const HEADLINE: T = {
 
 const CODEX: T = codexLimitedTemplate("destructive");
 
+/** The chip label: the number is shown apart. */
 const CHIP: T = {
   id: "destructive.chip",
   render: (f) =>
-    `${counted(n(f, "unguarded-variable"), "rm -rf target")} built from an unguarded variable`,
+    n(f, "unguarded-variable") === 1
+      ? "rm -rf target built from an unguarded variable"
+      : "rm -rf targets built from an unguarded variable",
 };
 
 /** A class sentence. */
