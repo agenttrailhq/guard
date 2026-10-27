@@ -24,11 +24,28 @@ interface ParsedImport {
   readonly typeOnly: boolean;
 }
 
-/** Parse a source's import DECLARATIONS. Prose in a comment can never become one. */
+/**
+ * Parse a source's import DECLARATIONS, and its `export … from` declarations, which load the
+ * module they name exactly as an import does. Prose in a comment can never become one.
+ */
 function parseImports(source: string): ParsedImport[] {
   const sourceFile = ts.createSourceFile("x.ts", source, ts.ScriptTarget.Latest, false);
   const found: ParsedImport[] = [];
   for (const statement of sourceFile.statements) {
+    if (ts.isExportDeclaration(statement)) {
+      if (statement.moduleSpecifier === undefined) continue;
+      if (!ts.isStringLiteral(statement.moduleSpecifier)) continue;
+      const clause = statement.exportClause;
+      // `export type {…} from`, or a list where every specifier is `type`, is erased.
+      const typeOnly =
+        statement.isTypeOnly ||
+        (clause !== undefined &&
+          ts.isNamedExports(clause) &&
+          clause.elements.length > 0 &&
+          clause.elements.every((e) => e.isTypeOnly));
+      found.push({ specifier: statement.moduleSpecifier.text, typeOnly });
+      continue;
+    }
     if (!ts.isImportDeclaration(statement)) continue;
     if (!ts.isStringLiteral(statement.moduleSpecifier)) continue;
     const clause = statement.importClause;
@@ -361,25 +378,31 @@ describe("only the scrub path can write a transcript", () => {
     "writeSync",
   ]);
 
-  /** The names a source value-imports from `node:fs` or `fs`, plus any `fs/promises` import. */
-  function fsWriters(file: string): string[] {
-    const sourceFile = ts.createSourceFile(
-      "x.ts",
-      readFileSync(file, "utf8"),
-      ts.ScriptTarget.Latest,
-      false,
-    );
+  /**
+   * The writing names a source value-imports, or re-exports, from `node:fs` or `fs`, plus any
+   * `fs/promises` import or re-export. An `export … from` loads the module exactly as an import
+   * does, so it is read the same way.
+   */
+  function fsWritersIn(source: string): string[] {
+    const sourceFile = ts.createSourceFile("x.ts", source, ts.ScriptTarget.Latest, false);
     const found: string[] = [];
     for (const statement of sourceFile.statements) {
-      if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier)) {
+      const declaration =
+        ts.isImportDeclaration(statement) || ts.isExportDeclaration(statement)
+          ? statement
+          : undefined;
+      const specifier = declaration?.moduleSpecifier;
+      if (declaration === undefined || specifier === undefined || !ts.isStringLiteral(specifier)) {
         continue;
       }
-      const from = statement.moduleSpecifier.text;
+      const from = specifier.text;
       if (/^(node:)?fs\/promises$/.test(from)) found.push(from);
       if (!/^(node:)?fs$/.test(from)) continue;
-      const bindings = statement.importClause?.namedBindings;
-      if (bindings === undefined || !ts.isNamedImports(bindings)) {
-        // A namespace or default import of `fs` can reach every writer.
+      const bindings = ts.isImportDeclaration(declaration)
+        ? declaration.importClause?.namedBindings
+        : declaration.exportClause;
+      if (bindings === undefined || !(ts.isNamedImports(bindings) || ts.isNamedExports(bindings))) {
+        // A namespace, default or `export *` of `fs` can reach every writer.
         found.push(`${from} (whole module)`);
         continue;
       }
@@ -391,6 +414,11 @@ describe("only the scrub path can write a transcript", () => {
     return found;
   }
 
+  /** `fsWritersIn` for a file on disk. */
+  function fsWriters(file: string): string[] {
+    return fsWritersIn(readFileSync(file, "utf8"));
+  }
+
   it("negative control: the detector finds a writer, a renamed writer and a namespace import", () => {
     const probe = join(mkdtempSync(join(tmpdir(), "agenttrail-fs-probe-")), "probe.ts");
     writeFileSync(
@@ -398,6 +426,25 @@ describe("only the scrub path can write a transcript", () => {
       'import { readFileSync, renameSync as mv } from "node:fs";\nimport * as fs from "fs";\n',
     );
     expect(fsWriters(probe)).toEqual(["renameSync", "fs (whole module)"]);
+  });
+
+  it.each([
+    ['export { writeFileSync as put } from "node:fs";', ["writeFileSync"]],
+    ['export { renameSync } from "fs";', ["renameSync"]],
+    ['export * from "node:fs";', ["node:fs (whole module)"]],
+    ['export * as fs from "fs";', ["fs (whole module)"]],
+    ['export { writeFile } from "node:fs/promises";', ["node:fs/promises"]],
+  ])("negative control: the detector reads a re-export as an import: %s", (line, found) => {
+    expect(fsWritersIn(line)).toEqual(found);
+  });
+
+  it("a re-export is followed into the bundle graph, as an import is", () => {
+    expect(parseImports('export { x } from "./a.js";\nexport type { T } from "./b.js";\n')).toEqual(
+      [
+        { specifier: "./a.js", typeOnly: false },
+        { specifier: "./b.js", typeOnly: true },
+      ],
+    );
   });
 
   it("the scan command does not import the scrub seam; only the two CLI entries do", () => {
@@ -417,6 +464,19 @@ describe("only the scrub path can write a transcript", () => {
     expect(writers.sort()).toEqual(["scan-io.ts", "scrub-io.ts", "verify-io.ts"]);
   });
 
+  /**
+   * A check of `verify-io.ts`'s source text, as a regression guard on top of the file itself,
+   * which writes nothing.
+   *
+   * What it guarantees: no direct write, renamed writer, re-export, unlisted local module,
+   * dynamic import, `require`, module route (`getBuiltinModule`, `createRequire`, bindings),
+   * `eval`, `Function`, `Reflect`, `.constructor`, string or computed key (beyond the three the
+   * file uses, by name), or `openSync` flag other than the read-only ones written out below.
+   *
+   * What it does not: a reading of source text cannot be complete against deliberate
+   * obfuscation in general. It closes every route found by review so far, each with its edit as
+   * a negative control.
+   */
   describe("verify-io.ts opens files read-only and writes nothing", () => {
     const VERIFY_IO = join(SRC, "verify-io.ts");
 
@@ -516,7 +576,27 @@ describe("only the scrub path can write a transcript", () => {
       "_linkedBinding",
       "eval",
       "Function",
+      // `Reflect.get`/`Reflect.apply` reach a property or call a function by a string argument.
+      "Reflect",
+      // `.constructor` of any function is the Function constructor, which runs a string as code.
+      "constructor",
     ]);
+
+    /**
+     * The local modules `verify-io.ts` may import. Each is checked below to import and re-export
+     * nothing from `node:fs`, so a writer cannot be handed to this file under another name.
+     */
+    const LOCAL_IMPORTS: Readonly<Record<string, string>> = {
+      "./core/verify/paths.js": join(SRC, "core", "verify", "paths.ts"),
+      "./core/verify/types.js": join(SRC, "core", "verify", "types.ts"),
+    };
+
+    /**
+     * The element accesses with a computed key the real file makes, exactly as written. Any
+     * other key that is not a numeric literal fails: a key built at run time can name any
+     * property, a writer included.
+     */
+    const ALLOWED_COMPUTED_ACCESS = new Set(["args[i]", "env[key]", "out[key]"]);
 
     /** Names that must only ever be the `node:fs` import of the same name. */
     const FS_ONLY_NAMES = new Set(["constants", "openSync"]);
@@ -551,6 +631,26 @@ describe("only the scrub path can write a transcript", () => {
       const fsImported = new Set<string>();
       const used = new Set<string>();
       const visit = (node: ts.Node): void => {
+        if (
+          ts.isExportDeclaration(node) &&
+          node.moduleSpecifier !== undefined &&
+          ts.isStringLiteral(node.moduleSpecifier)
+        ) {
+          // An `export … from` loads the module as an import does.
+          const from = node.moduleSpecifier.text;
+          if (/^(node:)?fs(\/promises)?$/.test(from)) problems.push(`re-exports from ${from}`);
+          if (from.startsWith(".") && LOCAL_IMPORTS[from] === undefined) {
+            problems.push(`imports local module ${from}`);
+          }
+        }
+        if (
+          ts.isImportDeclaration(node) &&
+          ts.isStringLiteral(node.moduleSpecifier) &&
+          node.moduleSpecifier.text.startsWith(".") &&
+          LOCAL_IMPORTS[node.moduleSpecifier.text] === undefined
+        ) {
+          problems.push(`imports local module ${node.moduleSpecifier.text}`);
+        }
         if (ts.isImportDeclaration(node) && ts.isStringLiteral(node.moduleSpecifier)) {
           const from = node.moduleSpecifier.text;
           if (/^(node:)?fs\/promises$/.test(from)) problems.push(`imports ${from}`);
@@ -586,6 +686,11 @@ describe("only the scrub path can write a transcript", () => {
           const key = node.argumentExpression;
           if (ts.isStringLiteralLike(key) || ts.isTemplateExpression(key)) {
             problems.push("indexes by a string key");
+          } else if (
+            !ts.isNumericLiteral(key) &&
+            !ALLOWED_COMPUTED_ACCESS.has(node.getText(file).replace(/\s+/g, ""))
+          ) {
+            problems.push(`indexes by a computed key: ${node.getText(file)}`);
           }
         }
         if (ts.isNewExpression(node)) {
@@ -824,12 +929,124 @@ describe("only the scrub path can write a transcript", () => {
       );
     });
 
-    it("numeric and computed element access stays allowed, as the real file uses it", () => {
+    it("numeric element access stays allowed, and so do the real file's three computed keys", () => {
+      expect(readOnlyProblems(beforeOpen("const first = [1][0]; void first;"))).toEqual([]);
+      // `args[i]`, `env[key]` and `out[key]` are the real file's own accesses, allowed by name.
+      expect(readOnlyProblems(real)).toEqual([]);
+    });
+
+    it.each([
+      ["a key held in a variable", "const k = 'a'; const o = {}; void o[k as never];"],
+      ["a key built by joining", "const o = {}; void o[['a', 'b'].join('') as never];"],
+      ["an allowed name on another object", "const k = 'a'; void globalThis[k as never];"],
+    ])("negative control: fails on a computed key: %s", (_name, code) => {
+      const problems = readOnlyProblems(beforeOpen(code));
+      expect(problems.some((p) => p.startsWith("indexes by a computed key"))).toBe(true);
+    });
+
+    // The edits of the fourth review that passed the previous form of this check, as found.
+    it.each([
+      [
+        "B1: computed keys built by joining, to reach getBuiltinModule and a writer",
+        [
+          'const route = ["getBuilt", "inModule"].join("") as "getBuiltinModule";',
+          'const writer = ["write", "FileSync"].join("") as "writeFileSync";',
+          // biome-ignore lint/suspicious/noTemplateCurlyInString: source text for the mutant
+          'process[route]("node:fs")[writer](`${real}.verified`, "x");',
+        ].join("\n"),
+        "indexes by a computed key",
+      ],
+      [
+        "B2b: Reflect.get and Reflect.apply with the module typed loosely",
+        [
+          'const getModule = Reflect.get(process, "getBuiltinModule") as (id: string) => object;',
+          'const fsModule = getModule("node:fs");',
+          // biome-ignore lint/suspicious/noTemplateCurlyInString: source text for the mutant
+          'Reflect.apply(Reflect.get(fsModule, "appendFileSync"), fsModule, [`${real}.verified`, "x"]);',
+        ].join("\n"),
+        "reaches Reflect",
+      ],
+      [
+        "B3: the Function constructor reached through .constructor",
+        [
+          "const makeFn = (() => 0).constructor as (...args: string[]) => (p: string) => void;",
+          // biome-ignore lint/suspicious/noTemplateCurlyInString: source text for the mutant
+          'makeFn("p", \'process.getBuiltinModule("node:fs").writeFileSync(p, "x")\')(`${real}.verified`);',
+        ].join("\n"),
+        "reaches constructor",
+      ],
+    ])("negative control: fails on %s", (_name, code, problem) => {
+      const mutated = beforeOpen(code);
+      expect(mutated).not.toBe(real);
+      expect(readOnlyProblems(mutated).some((p) => p.startsWith(problem))).toBe(true);
+    });
+
+    /**
+     * Every reason the local modules `verify-io.ts` imports could hand it a writer: a local import
+     * that is not on the list, or a listed module that imports or re-exports from `node:fs`.
+     * `read` returns a listed module's source, so a test can give a changed one in memory.
+     */
+    function localModuleProblems(
+      source: string,
+      read: (path: string) => string = (path) => readFileSync(path, "utf8"),
+    ): string[] {
+      const problems: string[] = [];
+      for (const { specifier } of parseImports(source)) {
+        if (!specifier.startsWith(".")) continue;
+        const path = LOCAL_IMPORTS[specifier];
+        if (path === undefined) {
+          problems.push(`imports local module ${specifier}`);
+          continue;
+        }
+        const module = read(path);
+        for (const name of fsWritersIn(module)) problems.push(`${specifier} hands on ${name}`);
+        for (const imported of parseImports(module)) {
+          if (/^(node:)?fs(\/promises)?$/.test(imported.specifier)) {
+            problems.push(`${specifier} loads ${imported.specifier}`);
+          }
+          if (imported.specifier.startsWith(".")) {
+            problems.push(`${specifier} imports ${imported.specifier}`);
+          }
+        }
+      }
+      return problems;
+    }
+
+    it("its local imports are the listed modules, and they load nothing from node:fs", () => {
+      expect(localModuleProblems(real)).toEqual([]);
       expect(
-        readOnlyProblems(
-          beforeOpen("const first = [1][0]; const env = {}; const k = 'a'; void env[k as never];"),
-        ),
-      ).toEqual([]);
+        parseImports(real)
+          .map((i) => i.specifier)
+          .filter((s) => s.startsWith("."))
+          .sort(),
+      ).toEqual(Object.keys(LOCAL_IMPORTS).sort());
+    });
+
+    it("negative control, B4: a writer re-exported from a listed module, imported and called", () => {
+      const PATHS = LOCAL_IMPORTS["./core/verify/paths.js"] as string;
+      const pathsWithWriter = `${readFileSync(PATHS, "utf8")}\nexport { writeFileSync as put } from "node:fs";\n`;
+      const read = (path: string): string =>
+        path === PATHS ? pathsWithWriter : readFileSync(path, "utf8");
+      const verifyWithPut = beforeOpen(
+        // biome-ignore lint/suspicious/noTemplateCurlyInString: source text for the mutant
+        'put(`${real}.verified`, "x");',
+      ).replace(
+        'from "./core/verify/paths.js";',
+        'from "./core/verify/paths.js";\nimport { put } from "./core/verify/paths.js";',
+      );
+      expect(verifyWithPut).not.toBe(real);
+      expect(localModuleProblems(verifyWithPut, read)).toContain(
+        "./core/verify/paths.js hands on writeFileSync",
+      );
+      // The whole-bundle writer check sees the re-export too.
+      expect(fsWritersIn(pathsWithWriter)).toContain("writeFileSync");
+      // And verify-io.ts may not re-export from node:fs itself, nor import an unlisted module.
+      expect(readOnlyProblems(`${real}\nexport { writeFileSync } from "node:fs";\n`)).toContain(
+        "re-exports from node:fs",
+      );
+      expect(readOnlyProblems(`import { x } from "./core/other.js";\n${real}`)).toContain(
+        "imports local module ./core/other.js",
+      );
     });
 
     it("negative control: fails on require, and on a file that never opens", () => {
