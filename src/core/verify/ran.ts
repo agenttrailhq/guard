@@ -1,4 +1,4 @@
-// cspell:words egrep fgrep zgrep apropos whatis tldr whereis stdbuf bunx herestring heredocs redirections whatchanged shortlog pytest nohup iglob mtext Stext ovalue osascript hookspath mksh execdir okdir fdfind encodedcommand runuser mysqladmin awslocal tflocal ncat netcat frpc zrok devtunnel tmole loclx pipenv pushd popd esac ubectl
+// cspell:words egrep fgrep zgrep apropos whatis tldr whereis stdbuf bunx herestring heredocs redirections whatchanged shortlog pytest nohup iglob mtext Stext ovalue osascript hookspath mksh execdir okdir fdfind encodedcommand runuser mysqladmin awslocal tflocal ncat netcat frpc zrok devtunnel tmole loclx pipenv pushd popd esac ubectl AWKS mawk nawk getline gsed
 /**
  * Ran, or only mentioned: did a matched tool call actually run on this machine?
  *
@@ -1052,6 +1052,62 @@ const SHELLS: ReadonlySet<string> = new Set([
  */
 const STRING_RUNNERS: ReadonlySet<string> = new Set(["su", "runuser", "script"]);
 
+/** `awk` and its kin. */
+const AWKS = /^(?:awk|gawk|mawk|nawk)$/;
+
+/** A pipe in an awk program, `print | "cmd"` or `"cmd" | getline`, but not `||`. */
+const AWK_PIPE = /(?:^|[^|])\|(?!\|)/;
+
+/**
+ * The scripts an `awk` or `sed` command is given on its command line: each `-e`/`--expression`
+ * value, else the first operand. `awk`'s `-F`, `-v` and `-f` and `sed`'s `-f` take a value that
+ * is not the script; a script read from a file (`-f`) is not read here.
+ */
+function inlineScripts(args: readonly Word[], valued: ReadonlySet<string>): string[] {
+  const scripts: string[] = [];
+  let operand: string | undefined;
+  for (let k = 0; k < args.length; k++) {
+    const value = (args[k] as Word).value;
+    if (value === "-e" || value === "--expression") {
+      scripts.push(args[k + 1]?.value ?? "");
+      k += 1;
+    } else if (value.startsWith("--expression=")) {
+      scripts.push(value.slice("--expression=".length));
+    } else if (valued.has(value)) k += 1;
+    else if (!value.startsWith("-") && operand === undefined) operand = value;
+  }
+  if (scripts.length === 0 && operand !== undefined) scripts.push(operand);
+  return scripts;
+}
+
+/** Does a `sed` script run a command: the `e` command, or the `e` flag of `s`? */
+function sedRunsCommands(script: string): boolean {
+  for (const part of script.split(/[;\n]/)) {
+    // The address, then the command: `1e date`, `/x/e`, `$ e`.
+    const command = part.trim().replace(/^(?:[0-9$,~+]+|\/(?:\\.|[^/])*\/)*!?\s*/, "");
+    if (/^e(?:\s|$)/.test(command)) return true;
+    const sub = /^s(.)(?:\\.|(?!\1).)*\1(?:\\.|(?!\1).)*\1([A-Za-z0-9]*)/.exec(command);
+    if (sub !== null && (sub[2] ?? "").includes("e")) return true;
+  }
+  return false;
+}
+
+/**
+ * Does a data program run commands from its script: `awk` calling `system(…)` or piping to or
+ * from a command, `sed` with its `e` command or flag? Those run what this reading does not see.
+ */
+function scriptRunsCommands(name: string, args: readonly Word[]): boolean {
+  if (AWKS.test(name)) {
+    return inlineScripts(args, new Set(["-F", "-v", "-f"])).some(
+      (s) => /\bsystem\s*\(/.test(s) || AWK_PIPE.test(s),
+    );
+  }
+  if (name === "sed" || name === "gsed") {
+    return inlineScripts(args, new Set(["-f", "--file", "-l"])).some(sedRunsCommands);
+  }
+  return false;
+}
+
 /**
  * Does a Nix shell get its command as one string: `nix-shell --run '…'` or `--command '…'`, and
  * `nix develop -c …` or `--command …`, whose command is not read here?
@@ -1156,7 +1212,7 @@ function segmentHidingForms(
     forms.push("shell-string");
   }
   if (runsInNixShell(name, args)) forms.push("shell-string");
-  if (runsInlineCode(name, args)) forms.push("inline-code");
+  if (runsInlineCode(name, args) || scriptRunsCommands(name, args)) forms.push("inline-code");
   // A pipe, a heredoc or a here-string fed to a shell or interpreter with no script file.
   const fed = fedByPipe || segment.inputs.length > 0;
   if (fed && !(SHELLS.has(name) && runsAString(args)) && runsPipedScript(name, args)) {

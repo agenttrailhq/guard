@@ -1,4 +1,4 @@
-// cspell:words xargs execdir okdir doas ionice setsid caffeinate runuser mywrap direnv pipenv bunx gtimeout taskset chrt ubectl
+// cspell:words xargs execdir okdir doas ionice setsid caffeinate runuser mywrap direnv pipenv bunx gtimeout taskset chrt ubectl awscli
 /**
  * Hiding forms (`core/verify/calls.ts`): commands that can run other commands the checks do not
  * read. Where a call that ran holds one, no command check says that nothing ran, and none reads
@@ -673,6 +673,47 @@ describe("the backstop: a command behind a program no check reads", () => {
   ])("%s stays as it is alone, with no form", async (_l, command) => {
     const baseline = await shownStatuses("ls");
     expect(await shownStatuses(command)).toEqual(baseline);
+    const verification = await verificationOf(command);
+    for (const category of VERIFY_CATEGORIES) {
+      expect(formsIn(verification, category), category).toEqual([]);
+    }
+  });
+});
+
+describe("more launchers, the AWS CLI as a Python module, and data programs that run commands", () => {
+  const IAM = "aws iam create-user --user-name synthetic-bot";
+
+  it.each([
+    ["uv tool run", `uv tool run --from awscli ${IAM}`],
+    ["uv tool run with no --from", `uv tool run ${IAM}`],
+    ["bun x", `bun x ${IAM}`],
+    ["python -m awscli", "python -m awscli iam create-user --user-name synthetic-bot"],
+    ["python3 -m awscli", "python3 -m awscli iam create-user --user-name synthetic-bot"],
+  ])("%s: the IAM change is read and counted", async (_l, command) => {
+    expect((await shownStatuses(command)).cloud, command).toBe("review");
+  });
+
+  it.each([
+    ["awk calling system()", `awk 'BEGIN { system("${IAM}") }'`],
+    ["awk piping to a command", `awk '{ print | "sh" }' cmds.txt`],
+    ["sed's e command", `sed -n '1e ${IAM}' notes.txt`],
+    ["sed's e flag", `echo x | sed 's/x/${IAM}/e'`],
+    ["sed's e flag, given with -e", `sed -e 's/x/${IAM}/ge' notes.txt`],
+  ])("%s: inline code, so could not confirm, never clean", async (_l, command) => {
+    const verification = await verificationOf(command);
+    expect(formsIn(verification, "cloud")).toContain("inline-code");
+    expect((await shownStatuses(command)).cloud, command).toBe("could-not-check");
+  });
+
+  it.each([
+    ["awk printing a field", "awk '{print $1}' notes.txt"],
+    ["awk with a | field separator", "awk -F '|' '{print $1}' notes.txt"],
+    ["awk with ||", `awk '$1 == "a" || $2 == "b"' notes.txt`],
+    ["sed printing a line", "sed -n 1p notes.txt"],
+    ["sed editing in place", "sed -i s/a/b/ notes.txt"],
+    ["sed with an e in its text", "sed -n '/release/p' notes.txt"],
+  ])("%s stays as it is alone, with no form", async (_l, command) => {
+    expect(await shownStatuses(command)).toEqual(await shownStatuses("ls"));
     const verification = await verificationOf(command);
     for (const category of VERIFY_CATEGORIES) {
       expect(formsIn(verification, category), category).toEqual([]);

@@ -1,4 +1,4 @@
-<!-- cspell:words guardrails jsonl mjs bpnpm agenttrailhq backtesting hostnames inspectable tasklist doas nohup setsid ionice caffeinate gtimeout taskset chrt runuser bunx direnv pipenv -->
+<!-- cspell:words guardrails jsonl mjs bpnpm agenttrailhq backtesting hostnames inspectable tasklist doas nohup setsid ionice caffeinate gtimeout taskset chrt runuser bunx direnv pipenv awscli -->
 
 <div align="center">
 
@@ -419,14 +419,18 @@ The checks read past these wrappers before a program, with their options: `sudo`
 `timeout`, `gtimeout`, `chronic`, `unbuffer`, `taskset`, `chrt`, `flock`, `watch -x`,
 `runuser -u`, `npx`, `bunx` and `dotenv`; and these launchers, to the command they run:
 `aws-vault exec`, `op run`, `doppler run`, `mise exec --`, `direnv exec`, `uv run`,
-`poetry run`, `pipenv run`, `pdm run`, `bundle exec`, `pnpm exec` and `dlx`, `yarn exec` and
-`dlx`, and `npm exec`. Behind any other program no check reads, each later word that names a
-program a check reads (`my-wrapper git push origin main`) is read again from there with that
-check's own reading, and a command it finds makes the card say could not confirm, never
-counted and never clean. Two things stay out of reach: a wrapper that hides the program in a
-string (`su -c`, `env -S`, `nix-shell --run`) is read as a form the check cannot read, so the
-card says could not confirm without knowing what ran; and a program reached only through a
-script file (`./deploy.sh`) is not read at all, so a card can read clean.
+`uv tool run`, `bun x`, `poetry run`, `pipenv run`, `pdm run`, `bundle exec`, `pnpm exec` and
+`dlx`, `yarn exec` and `dlx`, and `npm exec`. `python -m awscli` reads as `aws`. Behind any
+other program no check reads, each later word that names a program a check reads
+(`my-wrapper git push origin main`) is read again from there with that check's own reading,
+and a command it finds makes the card say could not confirm, never counted and never clean.
+An `awk` script that calls `system()` or pipes to a command, and a `sed` script with its `e`
+command or flag, also make it say could not confirm. Some things stay out of reach: a wrapper
+that hides the program in a string (`su -c`, `env -S`, `nix-shell --run`) is read as a form
+the check cannot read, so the card says could not confirm without knowing what ran; and a
+command handed as one quoted string to a program no check reads, a command run inside a
+container, or a program reached only through a script file (`./deploy.sh`) is not read at all,
+so a card can read clean.
 
 Cursor's session files record no command output, so on Cursor
 a check of commands that ran that would read clean says could not confirm instead. The

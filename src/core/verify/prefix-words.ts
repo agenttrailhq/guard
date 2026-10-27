@@ -1,4 +1,4 @@
-// cspell:words nohup stdbuf doas ionice setsid caffeinate flock equexit shotsdir classdata pgid argv0 chroot userconfig bunx gtimeout taskset chrt runuser sched direnv pipenv
+// cspell:words nohup stdbuf doas ionice setsid caffeinate flock equexit shotsdir classdata pgid argv0 chroot userconfig bunx gtimeout taskset chrt runuser sched direnv pipenv awscli
 /**
  * The words that come before a program and are not it (`sudo`, `env`, `timeout 5`), and the
  * options of each that take the next word as their value. One table for every reader that looks
@@ -144,6 +144,7 @@ export const PREFIX_VALUE_OPTIONS: ReadonlyMap<string, ReadonlySet<string>> = ne
   [
     "uv",
     new Set([
+      "--from",
       "--with",
       "--with-editable",
       "--with-requirements",
@@ -222,11 +223,14 @@ const PREFIX_OPERANDS: ReadonlySet<string> = new Set([
  *   A `--` before them ends the launcher's options, and the command follows it.
  * - `dashDash`: `require` when only a command after `--` runs (`mise exec <tools> -- cmd`), so
  *   without one no command is read.
+ * - `nested`: subcommands that run a command only with a second word after them:
+ *   `uv tool run cmd`.
  */
 interface Launcher {
   readonly subcommands: ReadonlySet<string>;
   readonly operands: number;
   readonly dashDash?: "require";
+  readonly nested?: ReadonlyMap<string, ReadonlySet<string>>;
 }
 
 /** The launchers the readers read past to the command they run. */
@@ -236,7 +240,11 @@ export const LAUNCHERS: ReadonlyMap<string, Launcher> = new Map<string, Launcher
   ["doppler", { subcommands: new Set(["run"]), operands: 0 }],
   ["mise", { subcommands: new Set(["exec", "x"]), operands: 0, dashDash: "require" }],
   ["direnv", { subcommands: new Set(["exec"]), operands: 1 }],
-  ["uv", { subcommands: new Set(["run"]), operands: 0 }],
+  [
+    "uv",
+    { subcommands: new Set(["run"]), operands: 0, nested: new Map([["tool", new Set(["run"])]]) },
+  ],
+  ["bun", { subcommands: new Set(["x"]), operands: 0 }],
   ["poetry", { subcommands: new Set(["run"]), operands: 0 }],
   ["pipenv", { subcommands: new Set(["run"]), operands: 0 }],
   ["pdm", { subcommands: new Set(["run"]), operands: 0 }],
@@ -280,10 +288,26 @@ export function gitSubcommandIndex(args: readonly string[]): number {
 /** A shell variable assignment before the program, such as `HUSKY=0`. */
 export const ASSIGNMENT = /^[A-Za-z_][A-Za-z0-9_]*=/;
 
-/** A program's name from its word: the file name, lower-cased, without `.exe`. */
+/**
+ * A program's name from its word: the file name, lower-cased, without `.exe`. The AWS CLI's
+ * module, `awscli` (`python -m awscli`), is named `aws`.
+ */
 export function programNameOf(value: string): string {
-  const base = value.split(/[\\/]/).pop() ?? "";
-  return base.toLowerCase().replace(/\.exe$/, "");
+  const base = (value.split(/[\\/]/).pop() ?? "").toLowerCase().replace(/\.exe$/, "");
+  return base === "awscli" ? "aws" : base;
+}
+
+/**
+ * Where `awscli` is in `python -m awscli …`, with `python` at `at`: past Python's own options
+ * (`-W` and `-X` take a value). `-1` when the module run is not `awscli`, or none is.
+ */
+function awsCliModule(values: readonly string[], at: number): number {
+  let j = at + 1;
+  while (j < values.length && (values[j] as string).startsWith("-")) {
+    if (values[j] === "-m") return values[j + 1] === "awscli" ? j + 1 : -1;
+    j += values[j] === "-W" || values[j] === "-X" ? 2 : 1;
+  }
+  return -1;
 }
 
 /**
@@ -340,7 +364,9 @@ export function programStart(values: readonly string[]): {
     const name = programNameOf(value);
     const launcher = LAUNCHERS.get(name);
     if (!PREFIX_WORDS.has(name) && launcher === undefined) {
-      return { index: k, assignments, shellString };
+      // `python -m awscli …` is the AWS CLI: its program is the module word, named `aws`.
+      const module = /^python[0-9.]*$/.test(name) ? awsCliModule(values, k) : -1;
+      return { index: module < 0 ? k : module, assignments, shellString };
     }
     const strings = PREFIX_SHELL_STRING_OPTIONS.get(name);
     const given = new Set<string>();
@@ -368,10 +394,12 @@ export function programStart(values: readonly string[]): {
     if (launcher !== undefined) {
       // A launcher runs a command only through one of its subcommands; otherwise it is the
       // program, as `npm install` is.
-      if (ended || !launcher.subcommands.has(values[k] ?? "")) {
+      const sub = values[k] ?? "";
+      const nested = launcher.nested?.get(sub)?.has(values[k + 1] ?? "") === true;
+      if (ended || (!launcher.subcommands.has(sub) && !nested)) {
         return { index: start, assignments, shellString };
       }
-      k += 1;
+      k += launcher.subcommands.has(sub) ? 1 : 2;
       if (launcher.dashDash === "require") {
         // Its own options first (`mise exec -c 'cmd'`), then the command after a `--`.
         readOptions();

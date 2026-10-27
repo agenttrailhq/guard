@@ -148,7 +148,9 @@ export interface RunTally {
  *   runs its words through `sh -c`.
  * - `inline-code`: an interpreter given code on the command line: `python -c`, `node -e`,
  *   `--eval` or `-p`, `perl -e`/`-E`, `ruby -e`, `php -r`, `deno eval`, `bun -e`,
- *   `osascript -e`, `pwsh -c`/`-Command`.
+ *   `osascript -e`, `pwsh -c`/`-Command`; and a data program whose script runs commands:
+ *   `awk` calling `system(…)` or piping to or from a command, `sed` with its `e` command or
+ *   flag.
  * - `piped-script`: a stream piped, or a heredoc or here-string fed, into a shell or an
  *   interpreter that reads its script from standard input: `cat x.sh | sh`, a download piped to
  *   `bash`, `… | python3`, `bash -s`, `bash <<< "…"`, `python3 <<'EOF' … EOF`.

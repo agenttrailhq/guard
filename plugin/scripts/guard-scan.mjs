@@ -10155,6 +10155,7 @@ var PREFIX_VALUE_OPTIONS = /* @__PURE__ */ new Map([
   [
     "uv",
     /* @__PURE__ */ new Set([
+      "--from",
       "--with",
       "--with-editable",
       "--with-requirements",
@@ -10215,7 +10216,11 @@ var LAUNCHERS = /* @__PURE__ */ new Map([
   ["doppler", { subcommands: /* @__PURE__ */ new Set(["run"]), operands: 0 }],
   ["mise", { subcommands: /* @__PURE__ */ new Set(["exec", "x"]), operands: 0, dashDash: "require" }],
   ["direnv", { subcommands: /* @__PURE__ */ new Set(["exec"]), operands: 1 }],
-  ["uv", { subcommands: /* @__PURE__ */ new Set(["run"]), operands: 0 }],
+  [
+    "uv",
+    { subcommands: /* @__PURE__ */ new Set(["run"]), operands: 0, nested: /* @__PURE__ */ new Map([["tool", /* @__PURE__ */ new Set(["run"])]]) }
+  ],
+  ["bun", { subcommands: /* @__PURE__ */ new Set(["x"]), operands: 0 }],
   ["poetry", { subcommands: /* @__PURE__ */ new Set(["run"]), operands: 0 }],
   ["pipenv", { subcommands: /* @__PURE__ */ new Set(["run"]), operands: 0 }],
   ["pdm", { subcommands: /* @__PURE__ */ new Set(["run"]), operands: 0 }],
@@ -10244,8 +10249,16 @@ function gitSubcommandIndex(args2) {
 }
 var ASSIGNMENT3 = /^[A-Za-z_][A-Za-z0-9_]*=/;
 function programNameOf(value) {
-  const base = value.split(/[\\/]/).pop() ?? "";
-  return base.toLowerCase().replace(/\.exe$/, "");
+  const base = (value.split(/[\\/]/).pop() ?? "").toLowerCase().replace(/\.exe$/, "");
+  return base === "awscli" ? "aws" : base;
+}
+function awsCliModule(values, at2) {
+  let j = at2 + 1;
+  while (j < values.length && values[j].startsWith("-")) {
+    if (values[j] === "-m") return values[j + 1] === "awscli" ? j + 1 : -1;
+    j += values[j] === "-W" || values[j] === "-X" ? 2 : 1;
+  }
+  return -1;
 }
 function readOption(name, word) {
   const valued = PREFIX_VALUE_OPTIONS.get(name);
@@ -10276,7 +10289,8 @@ function programStart(values) {
     const name = programNameOf(value);
     const launcher = LAUNCHERS.get(name);
     if (!PREFIX_WORDS.has(name) && launcher === void 0) {
-      return { index: k, assignments, shellString };
+      const module = /^python[0-9.]*$/.test(name) ? awsCliModule(values, k) : -1;
+      return { index: module < 0 ? k : module, assignments, shellString };
     }
     const strings = PREFIX_SHELL_STRING_OPTIONS.get(name);
     const given = /* @__PURE__ */ new Set();
@@ -10300,10 +10314,12 @@ function programStart(values) {
     k += 1;
     readOptions();
     if (launcher !== void 0) {
-      if (ended || !launcher.subcommands.has(values[k] ?? "")) {
+      const sub = values[k] ?? "";
+      const nested = launcher.nested?.get(sub)?.has(values[k + 1] ?? "") === true;
+      if (ended || !launcher.subcommands.has(sub) && !nested) {
         return { index: start, assignments, shellString };
       }
-      k += 1;
+      k += launcher.subcommands.has(sub) ? 1 : 2;
       if (launcher.dashDash === "require") {
         readOptions();
         if (ended) continue;
@@ -11635,6 +11651,44 @@ var SHELLS2 = /* @__PURE__ */ new Set([
   "fish"
 ]);
 var STRING_RUNNERS = /* @__PURE__ */ new Set(["su", "runuser", "script"]);
+var AWKS = /^(?:awk|gawk|mawk|nawk)$/;
+var AWK_PIPE = /(?:^|[^|])\|(?!\|)/;
+function inlineScripts(args2, valued) {
+  const scripts = [];
+  let operand;
+  for (let k = 0; k < args2.length; k++) {
+    const value = args2[k].value;
+    if (value === "-e" || value === "--expression") {
+      scripts.push(args2[k + 1]?.value ?? "");
+      k += 1;
+    } else if (value.startsWith("--expression=")) {
+      scripts.push(value.slice("--expression=".length));
+    } else if (valued.has(value)) k += 1;
+    else if (!value.startsWith("-") && operand === void 0) operand = value;
+  }
+  if (scripts.length === 0 && operand !== void 0) scripts.push(operand);
+  return scripts;
+}
+function sedRunsCommands(script) {
+  for (const part of script.split(/[;\n]/)) {
+    const command = part.trim().replace(/^(?:[0-9$,~+]+|\/(?:\\.|[^/])*\/)*!?\s*/, "");
+    if (/^e(?:\s|$)/.test(command)) return true;
+    const sub = /^s(.)(?:\\.|(?!\1).)*\1(?:\\.|(?!\1).)*\1([A-Za-z0-9]*)/.exec(command);
+    if (sub !== null && (sub[2] ?? "").includes("e")) return true;
+  }
+  return false;
+}
+function scriptRunsCommands(name, args2) {
+  if (AWKS.test(name)) {
+    return inlineScripts(args2, /* @__PURE__ */ new Set(["-F", "-v", "-f"])).some(
+      (s) => /\bsystem\s*\(/.test(s) || AWK_PIPE.test(s)
+    );
+  }
+  if (name === "sed" || name === "gsed") {
+    return inlineScripts(args2, /* @__PURE__ */ new Set(["-f", "--file", "-l"])).some(sedRunsCommands);
+  }
+  return false;
+}
 function runsInNixShell(name, args2) {
   if (name === "nix-shell") return args2.some((w) => /^--(?:run|command)(?:=|$)/.test(w.value));
   return name === "nix" && args2[0]?.value === "develop" && args2.some((w) => /^(?:-c|--command)(?:=|$)/.test(w.value));
@@ -11700,7 +11754,7 @@ function segmentHidingForms(segment, command, gitConfigured, gitRunnableWritten,
     forms.push("shell-string");
   }
   if (runsInNixShell(name, args2)) forms.push("shell-string");
-  if (runsInlineCode(name, args2)) forms.push("inline-code");
+  if (runsInlineCode(name, args2) || scriptRunsCommands(name, args2)) forms.push("inline-code");
   const fed = fedByPipe || segment.inputs.length > 0;
   if (fed && !(SHELLS2.has(name) && runsAString(args2)) && runsPipedScript(name, args2)) {
     forms.push("piped-script");
