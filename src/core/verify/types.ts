@@ -138,8 +138,9 @@ export interface RunTally {
  * - `inline-code`: an interpreter given code on the command line: `python -c`, `node -e`,
  *   `--eval` or `-p`, `perl -e`/`-E`, `ruby -e`, `php -r`, `deno eval`, `bun -e`,
  *   `osascript -e`, `pwsh -c`/`-Command`.
- * - `piped-script`: a stream piped into a shell or an interpreter that reads its script from
- *   standard input: `cat x.sh | sh`, a download piped to `bash`, `… | python3`, `bash -s`.
+ * - `piped-script`: a stream piped, or a heredoc or here-string fed, into a shell or an
+ *   interpreter that reads its script from standard input: `cat x.sh | sh`, a download piped to
+ *   `bash`, `… | python3`, `bash -s`, `bash <<< "…"`, `python3 <<'EOF' … EOF`.
  * - `find-exec`: `find -exec`, `-execdir`, `-ok`; `fd --exec`.
  * - `xargs`: `xargs`, which runs a command built from its input.
  * - `process-substitution`: `<(…)` or `>(…)`.

@@ -8101,7 +8101,7 @@ function sentences(templates, facts) {
 }
 var NOT_CHECKED_SENTENCE = {
   id: "not-checked",
-  render: () => "Not checked yet."
+  render: () => "Not checked."
 };
 var COULD_NOT_CHECK_SENTENCE = {
   id: "could-not-check",
@@ -8119,7 +8119,7 @@ var HIDING_FORM_LABELS = {
   "git-hook": "git after a hook was written",
   "unread-shell": "a shell this reading does not parse",
   "inline-code": "code run inline by an interpreter",
-  "piped-script": "a script piped into a shell"
+  "piped-script": "a script piped into a shell or interpreter"
 };
 function hidingFormLabel(form) {
   return HIDING_FORM_LABELS[form] ?? form.replace(/-/g, " ");
@@ -13511,7 +13511,8 @@ function segmentHidingForms(segment, command, gitConfigured, writtenBefore, hook
   const { name, args: args2 } = command;
   if (SHELLS.has(name) && runsAString(args2)) forms.push("shell-string");
   if (runsInlineCode(name, args2)) forms.push("inline-code");
-  if (fedByPipe && !(SHELLS.has(name) && runsAString(args2)) && runsPipedScript(name, args2)) {
+  const fed = fedByPipe || segment.inputs.length > 0;
+  if (fed && !(SHELLS.has(name) && runsAString(args2)) && runsPipedScript(name, args2)) {
     forms.push("piped-script");
   }
   if (name === "eval") forms.push("eval");

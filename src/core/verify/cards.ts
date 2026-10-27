@@ -182,7 +182,7 @@ export type CardBuilders = { readonly [C in CheckedCategoryName]: ToCard<C> };
 /** The one sentence on a card whose category has no check yet. */
 export const NOT_CHECKED_SENTENCE: SentenceTemplate<unknown> = {
   id: "not-checked",
-  render: () => "Not checked yet.",
+  render: () => "Not checked.",
 };
 
 /** The one sentence on a card whose check could not finish. */
@@ -207,7 +207,7 @@ export const HIDING_FORM_LABELS: Readonly<Partial<Record<string, string>>> = {
   "git-hook": "git after a hook was written",
   "unread-shell": "a shell this reading does not parse",
   "inline-code": "code run inline by an interpreter",
-  "piped-script": "a script piped into a shell",
+  "piped-script": "a script piped into a shell or interpreter",
 };
 
 /** A hiding form's name on the page: its label, or its id in words. */
@@ -502,7 +502,7 @@ function localFix(category: VerifyCategory, command: string): LocalFix {
  * One part of an exact command: a literal from code (`"git"`, `"branch"`), or a value taken
  * from what a check read, by kind:
  *
- * - `sha`: a commit id, 7 to 40 hex digits.
+ * - `sha`: a commit id: 7 to 40 hex digits, or a full 64-digit SHA-256 id.
  * - `branch`: a branch name that `git check-ref-format --branch` accepts, within the safe set.
  * - `repoPath`: a path inside a repository: relative, with no `..`, within the safe set.
  * - `ref`: any other value from data (a resource name, an absolute path), within the safe set.
@@ -521,7 +521,7 @@ export type CommandPart =
 const SAFE_REF = /^[A-Za-z0-9_@%+=:,./-]+$/;
 
 /** A commit id. */
-const SHA = /^[0-9a-fA-F]{7,40}$/;
+const SHA = /^(?:[0-9a-fA-F]{7,40}|[0-9a-fA-F]{64})$/;
 
 /**
  * A branch name `git check-ref-format --branch` accepts, within the safe set: no `:` (which the

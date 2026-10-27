@@ -702,6 +702,10 @@ describe("what a call could hide", () => {
     ["a file piped to node -", `cat x.js | node -`, ["piped-script"]],
     ["a file piped to sudo zsh", `cat x.sh | sudo zsh`, ["piped-script"]],
     ["a pipe into bash -c is a shell string", `cat list | bash -c 'wc -l'`, ["shell-string"]],
+    ["a here-string into bash", `bash <<< "make all"`, ["piped-script"]],
+    ["a here-string into python3", `python3 <<< 'print(1)'`, ["piped-script"]],
+    ["a heredoc into sh", `sh <<'EOF'\nmake all\nEOF`, ["piped-script"]],
+    ["a heredoc into node with -", `node - <<'EOF'\nconsole.log(1)\nEOF`, ["piped-script"]],
   ])("%s", (_label, command, forms) => {
     expect(commandHidingForms(command)).toEqual(forms);
   });
@@ -721,6 +725,10 @@ describe("what a call could hide", () => {
     ["a local script sourced", "source x.sh"],
     ["a local script dotted", ". ./x.sh"],
     ["a shell with no pipe", "bash"],
+    ["a here-string into a printer", `cat <<< "make all"`],
+    ["a here-string into a search", `grep make <<< "make all"`],
+    ["a here-string to a script given by name", `bash ci.sh <<< "yes"`],
+    ["a heredoc written to a file", `cat > notes.md <<'EOF'\nmake all\nEOF`],
   ])("none: %s", (_label, command) => {
     expect(commandHidingForms(command)).toEqual([]);
   });

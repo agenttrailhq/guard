@@ -125,7 +125,7 @@ describe("sentences come from templates", () => {
     ).toEqual({ template: "secrets.likely-real", text: "3 likely-real credentials." });
     expect(sentence(LIKELY, NO_FACTS)).toBeUndefined();
     expect(sentences([LIKELY, NOT_CHECKED_SENTENCE], NO_FACTS)).toEqual([
-      { template: "not-checked", text: "Not checked yet." },
+      { template: "not-checked", text: "Not checked." },
     ]);
   });
 });
@@ -136,7 +136,7 @@ describe("cards", () => {
       category: "egress",
       tone: "not-checked",
       count: 0,
-      found: [{ template: NOT_CHECKED_SENTENCE.id, text: "Not checked yet." }],
+      found: [{ template: NOT_CHECKED_SENTENCE.id, text: "Not checked." }],
       now: [],
       fixes: [],
       codexCaveat: false,
@@ -389,13 +389,17 @@ describe("exact fix commands are built from quoted parts, and an unsafe ref is r
     "0123abc",
     "0123456789abcdef0123456789abcdef01234567",
     "ABCDEF0",
+    // A full SHA-256 object id, as a repository using SHA-256 names commits.
+    "0123456789abcdef".repeat(4),
   ])("takes the sha %j", (sha) => {
     expect(built({ sha })).toBe(`'git' 'show' '${sha}'`);
   });
 
   it.each([
     ["too short", "0123ab"],
-    ["too long", "0123456789abcdef0123456789abcdef012345678"],
+    ["too long for SHA-1, too short for SHA-256", "0123456789abcdef0123456789abcdef012345678"],
+    ["between the two lengths", "0123456789abcdef".repeat(3)],
+    ["longer than SHA-256", `${"0123456789abcdef".repeat(4)}0`],
     ["not hex", "0123abg"],
     ["a branch", "main"],
     ["an option", "-0123abc"],

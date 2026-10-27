@@ -1132,7 +1132,9 @@ function segmentHidingForms(
   const { name, args } = command;
   if (SHELLS.has(name) && runsAString(args)) forms.push("shell-string");
   if (runsInlineCode(name, args)) forms.push("inline-code");
-  if (fedByPipe && !(SHELLS.has(name) && runsAString(args)) && runsPipedScript(name, args)) {
+  // A pipe, a heredoc or a here-string fed to a shell or interpreter with no script file.
+  const fed = fedByPipe || segment.inputs.length > 0;
+  if (fed && !(SHELLS.has(name) && runsAString(args)) && runsPipedScript(name, args)) {
     forms.push("piped-script");
   }
   if (name === "eval") forms.push("eval");

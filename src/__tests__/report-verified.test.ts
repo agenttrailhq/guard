@@ -293,7 +293,7 @@ describe("What actually happened", () => {
     expect(unreviewed).toContain(
       `<span class="tone tone-not-checked" id="check-unreviewed-tone">Not checked</span>`,
     );
-    expect(unreviewed).toContain("Not checked yet.");
+    expect(unreviewed).toContain("Not checked.");
     expect(unreviewed).not.toContain('class="times"');
     expect(unreviewed).not.toContain("<dt>Now</dt>");
     expect(unreviewed).not.toContain("<dt>Fix</dt>");
@@ -318,7 +318,7 @@ describe("What actually happened", () => {
     const cards = cardsOf(html);
     expect(cards[0]).toEqual({ category: "secrets", tone: "act" });
     expect(cards.slice(1).every((c) => c.tone === "not-checked")).toBe(true);
-    expect(section(html, "what-happened").split("Not checked yet.").length - 1).toBe(8);
+    expect(section(html, "what-happened").split("Not checked.").length - 1).toBe(8);
   });
 
   it("fix commands are redacted shapes with copy buttons that name their card", () => {
