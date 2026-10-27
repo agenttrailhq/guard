@@ -1,4 +1,4 @@
-// cspell:words xargs execdir okdir doas ionice setsid caffeinate runuser mywrap
+// cspell:words xargs execdir okdir doas ionice setsid caffeinate runuser mywrap direnv pipenv bunx gtimeout taskset chrt
 /**
  * Hiding forms (`core/verify/calls.ts`): commands that can run other commands the checks do not
  * read. Where a call that ran holds one, no command check says that nothing ran, and none reads
@@ -480,18 +480,45 @@ const READ_WRAPS: readonly (readonly [string, (command: string) => string])[] = 
   ["\\sudo", (c) => `\\sudo ${c}`],
   ['"sudo"', (c) => `"sudo" ${c}`],
   ["command -p", (c) => `command -p ${c}`],
+  ["aws-vault exec", (c) => `aws-vault exec prod -- ${c}`],
+  ["op run --", (c) => `op run -- ${c}`],
+  ["doppler run --", (c) => `doppler run -- ${c}`],
+  ["dotenv --", (c) => `dotenv -- ${c}`],
+  ["direnv exec .", (c) => `direnv exec . ${c}`],
+  ["mise exec --", (c) => `mise exec -- ${c}`],
+  ["uv run", (c) => `uv run ${c}`],
+  ["poetry run", (c) => `poetry run ${c}`],
+  ["pipenv run", (c) => `pipenv run ${c}`],
+  ["bundle exec", (c) => `bundle exec ${c}`],
+  ["pnpm exec", (c) => `pnpm exec ${c}`],
+  ["yarn exec", (c) => `yarn exec ${c}`],
+  ["npm exec --", (c) => `npm exec -- ${c}`],
+  ["bunx", (c) => `bunx ${c}`],
+  ["gtimeout 5", (c) => `gtimeout 5 ${c}`],
+  ["chronic", (c) => `chronic ${c}`],
+  ["unbuffer", (c) => `unbuffer ${c}`],
+  ["taskset -c 0", (c) => `taskset -c 0 ${c}`],
+  ["chrt -f 10", (c) => `chrt -f 10 ${c}`],
+  ["runuser -u root --", (c) => `runuser -u root -- ${c}`],
+  ["sudo -s", (c) => `sudo -s ${c}`],
+  ["watch -x", (c) => `watch -x ${c}`],
 ];
 
 /** Words before a command that give it as one string: the command is not read, never clean. */
 const STRING_WRAPS: readonly (readonly [string, (command: string) => string])[] = [
   ["env -S", (c) => `env -S '${c}'`],
   ["env --split-string", (c) => `env --split-string='${c}'`],
+  ["env -iS", (c) => `env -iS'${c}'`],
   ["su -c", (c) => `su root -c '${c}'`],
   ["runuser -c", (c) => `runuser -u root -c '${c}'`],
+  ["runuser user -c", (c) => `runuser root -c '${c}'`],
   ["script -qc", (c) => `script -qc '${c}' /dev/null`],
   ["flock -c", (c) => `flock /tmp/x.lock -c '${c}'`],
   ["watch -n 1", (c) => `watch -n 1 '${c}'`],
   ["npx -c", (c) => `npx -c '${c}'`],
+  ["nix-shell --run", (c) => `nix-shell --run '${c}'`],
+  ["nix develop -c", (c) => `nix develop -c ${c}`],
+  ["doppler run --command", (c) => `doppler run --command '${c}'`],
 ];
 
 describe("words before a command", () => {

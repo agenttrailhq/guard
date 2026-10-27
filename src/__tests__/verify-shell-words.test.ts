@@ -1,4 +1,4 @@
-// cspell:words gitk popd pushd subshells doas ionice setsid caffeinate runuser
+// cspell:words gitk popd pushd subshells doas ionice setsid caffeinate runuser gtimeout taskset chrt bunx direnv pipenv
 /**
  * The shell reader the git-backed checks use (`core/verify/shell-words.ts`) and the folder each
  * command runs in (`core/verify/shell-calls.ts`).
@@ -80,6 +80,52 @@ describe("one prefix table for every reader of a command's program", () => {
     "flock -w 5 /tmp/x.lock",
     "watch -x",
     "watch -n 1 -x",
+    // More wrappers, and launchers that run the command after a subcommand.
+    "gtimeout 5",
+    "gtimeout --signal KILL 5",
+    "chronic",
+    "chronic -e",
+    "unbuffer",
+    "unbuffer -p",
+    "taskset -c 0",
+    "taskset 0x1",
+    "chrt -f 10",
+    "runuser -u root",
+    "runuser -u root --",
+    "runuser --user=root -g wheel --",
+    "bunx",
+    "bunx --bun",
+    "aws-vault exec prod --",
+    "aws-vault exec prod",
+    "aws-vault exec prod --duration 1h --",
+    "op run --",
+    "op run --env-file .env --",
+    "doppler run --",
+    "doppler run -p web -c dev --",
+    "dotenv --",
+    "dotenv -e .env.local --",
+    "dotenv -c dev --",
+    "dotenv -f .env run",
+    "direnv exec .",
+    "direnv exec /srv/app",
+    "mise exec --",
+    "mise exec node@20 --",
+    "mise x python@3.12 --",
+    "uv run",
+    "uv run --with rich --",
+    "poetry run",
+    "pipenv run",
+    "pdm run",
+    "bundle exec",
+    "bundler exec",
+    "pnpm exec",
+    "pnpm --filter web exec",
+    "pnpm dlx",
+    "yarn exec",
+    "npm exec --",
+    "npm exec",
+    "npm -w web exec --",
+    "npm x --",
   ];
 
   it.each(FORMS)("%s git push: every reader names git", (prefix) => {
@@ -144,8 +190,43 @@ describe("one prefix table for every reader of a command's program", () => {
     "flock /tmp/x.lock git status",
     "npx --yes prettier --check .",
     "env -i git status",
+    "runuser -u root -- git status",
+    "nix-shell -p git",
+    "nix develop",
+    "uv run git status",
   ])("%j gives its command as words: no shell-string form", (text) => {
     expect(commandHidingForms(text)).not.toContain("shell-string");
+  });
+
+  it.each([
+    ["runuser with a user operand", "runuser root -c 'git push'"],
+    ["nix-shell --run", "nix-shell -p git --run 'git push'"],
+    ["nix-shell --command", "nix-shell --command 'git push'"],
+    ["nix develop -c", "nix develop -c git push"],
+    ["nix develop --command", "nix develop --command git push"],
+    ["doppler run --command", "doppler run --command 'git push'"],
+    ["npm exec -c", "npm exec -c 'git push'"],
+    ["pnpm exec -c", "pnpm exec -c git push"],
+    ["mise exec -c", "mise exec -c 'git push'"],
+  ])("%s: the command is one string, so the call holds a shell-string form", (_label, text) => {
+    expect(commandHidingForms(text)).toContain("shell-string");
+  });
+
+  it.each([
+    ["npm install", "npm install git", "npm"],
+    ["pnpm add", "pnpm add left-pad", "pnpm"],
+    ["yarn", "yarn build", "yarn"],
+    ["uv sync", "uv sync", "uv"],
+    ["bundle install", "bundle install", "bundle"],
+    ["aws-vault list", "aws-vault list", "aws-vault"],
+  ])("a launcher with no subcommand that runs a command is the program: %s", (_l, text, name) => {
+    const simple = simpleCommands(text)[0];
+    expect(simple && programAndArgs(simple).program).toBe(name);
+  });
+
+  it("mise exec with no -- runs no command it is given", () => {
+    const simple = simpleCommands("mise exec node@20 git push")[0];
+    expect(simple && programAndArgs(simple).program).toBe("");
   });
 
   it("an assignment given to env is the program's, in both readers", () => {

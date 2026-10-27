@@ -1052,6 +1052,19 @@ const SHELLS: ReadonlySet<string> = new Set([
  */
 const STRING_RUNNERS: ReadonlySet<string> = new Set(["su", "runuser", "script"]);
 
+/**
+ * Does a Nix shell get its command as one string: `nix-shell --run '…'` or `--command '…'`, and
+ * `nix develop -c …` or `--command …`, whose command is not read here?
+ */
+function runsInNixShell(name: string, args: readonly Word[]): boolean {
+  if (name === "nix-shell") return args.some((w) => /^--(?:run|command)(?:=|$)/.test(w.value));
+  return (
+    name === "nix" &&
+    args[0]?.value === "develop" &&
+    args.some((w) => /^(?:-c|--command)(?:=|$)/.test(w.value))
+  );
+}
+
 /** Their option that gives that string: `-c`, a cluster holding `c` (`-qc`), `--command`. */
 const STRING_RUNNER_OPTION = /^(?:--command|--session-command)(?:=.*)?$|^-[A-Za-z]*c[A-Za-z]*$/;
 
@@ -1142,6 +1155,7 @@ function segmentHidingForms(
   if (STRING_RUNNERS.has(name) && args.some((word) => STRING_RUNNER_OPTION.test(word.value))) {
     forms.push("shell-string");
   }
+  if (runsInNixShell(name, args)) forms.push("shell-string");
   if (runsInlineCode(name, args)) forms.push("inline-code");
   // A pipe, a heredoc or a here-string fed to a shell or interpreter with no script file.
   const fed = fedByPipe || segment.inputs.length > 0;

@@ -10046,6 +10046,14 @@ var PREFIX_WORDS = /* @__PURE__ */ new Set([
   "flock",
   "watch",
   "npx",
+  "bunx",
+  "gtimeout",
+  "chronic",
+  "unbuffer",
+  "taskset",
+  "chrt",
+  "runuser",
+  "dotenv",
   "!",
   "{",
   "}",
@@ -10094,6 +10102,27 @@ var PREFIX_VALUE_OPTIONS = /* @__PURE__ */ new Map([
   ],
   ["caffeinate", /* @__PURE__ */ new Set(["-t", "-w"])],
   ["timeout", /* @__PURE__ */ new Set(["-s", "--signal", "-k", "--kill-after"])],
+  ["gtimeout", /* @__PURE__ */ new Set(["-s", "--signal", "-k", "--kill-after"])],
+  ["chrt", /* @__PURE__ */ new Set(["-T", "--sched-runtime", "-P", "--sched-period", "-D", "--sched-deadline"])],
+  [
+    "runuser",
+    /* @__PURE__ */ new Set([
+      "-u",
+      "--user",
+      "-g",
+      "--group",
+      "-G",
+      "--supp-group",
+      "-s",
+      "--shell",
+      "-w",
+      "--whitelist-environment",
+      "-c",
+      "--command",
+      "--session-command"
+    ])
+  ],
+  ["dotenv", /* @__PURE__ */ new Set(["-e", "-v", "-c", "-p", "-f", "--file", "-q", "--quote", "--export"])],
   ["stdbuf", /* @__PURE__ */ new Set(["-i", "--input", "-o", "--output", "-e", "--error"])],
   ["time", /* @__PURE__ */ new Set(["-f", "--format", "-o", "--output"])],
   ["exec", /* @__PURE__ */ new Set(["-a"])],
@@ -10116,14 +10145,86 @@ var PREFIX_VALUE_OPTIONS = /* @__PURE__ */ new Map([
       "--prefix",
       "--userconfig"
     ])
+  ],
+  ["bunx", /* @__PURE__ */ new Set(["-p", "--package"])],
+  // The launchers' own options, before and after the subcommand that runs a command.
+  ["aws-vault", /* @__PURE__ */ new Set(["-d", "--duration", "--region", "-t", "--mfa-token", "--backend"])],
+  ["op", /* @__PURE__ */ new Set(["--env-file", "--account", "--config", "--session"])],
+  ["doppler", /* @__PURE__ */ new Set(["-p", "--project", "-c", "--config", "--token", "--scope", "--command"])],
+  ["mise", /* @__PURE__ */ new Set(["-C", "--cd", "-E", "--env", "-j", "--jobs", "-c", "--command"])],
+  [
+    "uv",
+    /* @__PURE__ */ new Set([
+      "--with",
+      "--with-editable",
+      "--with-requirements",
+      "-p",
+      "--python",
+      "--project",
+      "--directory",
+      "--env-file",
+      "--extra",
+      "--group",
+      "--only-group",
+      "--package",
+      "--index",
+      "--index-url",
+      "--extra-index-url",
+      "--default-index"
+    ])
+  ],
+  ["poetry", /* @__PURE__ */ new Set(["-C", "--directory", "-P", "--project"])],
+  ["bundle", /* @__PURE__ */ new Set(["--gemfile"])],
+  ["pnpm", /* @__PURE__ */ new Set(["-C", "--dir", "-F", "--filter", "--workspace-dir", "--reporter"])],
+  [
+    "npm",
+    /* @__PURE__ */ new Set([
+      "-w",
+      "--workspace",
+      "-p",
+      "--package",
+      "-c",
+      "--call",
+      "--prefix",
+      "--registry",
+      "--cache",
+      "--userconfig"
+    ])
   ]
 ]);
 var PREFIX_SHELL_STRING_OPTIONS = /* @__PURE__ */ new Map([
   ["env", /* @__PURE__ */ new Set(["-S", "--split-string"])],
   ["flock", /* @__PURE__ */ new Set(["-c", "--command"])],
-  ["npx", /* @__PURE__ */ new Set(["-c", "--call"])]
+  ["npx", /* @__PURE__ */ new Set(["-c", "--call"])],
+  ["npm", /* @__PURE__ */ new Set(["-c", "--call"])],
+  ["runuser", /* @__PURE__ */ new Set(["-c", "--command", "--session-command"])],
+  ["doppler", /* @__PURE__ */ new Set(["--command"])],
+  ["mise", /* @__PURE__ */ new Set(["-c", "--command"])],
+  ["pnpm", /* @__PURE__ */ new Set(["-c", "--shell-mode"])]
 ]);
-var PREFIX_OPERANDS = /* @__PURE__ */ new Set(["timeout", "flock"]);
+var PREFIX_OPERANDS = /* @__PURE__ */ new Set([
+  "timeout",
+  "gtimeout",
+  "flock",
+  "taskset",
+  "chrt"
+]);
+var LAUNCHERS = /* @__PURE__ */ new Map([
+  ["aws-vault", { subcommands: /* @__PURE__ */ new Set(["exec"]), operands: 1 }],
+  ["op", { subcommands: /* @__PURE__ */ new Set(["run"]), operands: 0 }],
+  ["doppler", { subcommands: /* @__PURE__ */ new Set(["run"]), operands: 0 }],
+  ["mise", { subcommands: /* @__PURE__ */ new Set(["exec", "x"]), operands: 0, dashDash: "require" }],
+  ["direnv", { subcommands: /* @__PURE__ */ new Set(["exec"]), operands: 1 }],
+  ["uv", { subcommands: /* @__PURE__ */ new Set(["run"]), operands: 0 }],
+  ["poetry", { subcommands: /* @__PURE__ */ new Set(["run"]), operands: 0 }],
+  ["pipenv", { subcommands: /* @__PURE__ */ new Set(["run"]), operands: 0 }],
+  ["pdm", { subcommands: /* @__PURE__ */ new Set(["run"]), operands: 0 }],
+  ["bundle", { subcommands: /* @__PURE__ */ new Set(["exec"]), operands: 0 }],
+  ["bundler", { subcommands: /* @__PURE__ */ new Set(["exec"]), operands: 0 }],
+  ["pnpm", { subcommands: /* @__PURE__ */ new Set(["exec", "dlx"]), operands: 0 }],
+  ["yarn", { subcommands: /* @__PURE__ */ new Set(["exec", "dlx"]), operands: 0 }],
+  ["npm", { subcommands: /* @__PURE__ */ new Set(["exec", "x"]), operands: 0 }]
+]);
 var GIT_GLOBAL_VALUE_OPTIONS = /* @__PURE__ */ new Set([
   "-C",
   "-c",
@@ -10173,28 +10274,63 @@ function programStart(values) {
       continue;
     }
     const name = programNameOf(value);
-    if (!PREFIX_WORDS.has(name)) return { index: k, assignments, shellString };
+    const launcher = LAUNCHERS.get(name);
+    if (!PREFIX_WORDS.has(name) && launcher === void 0) {
+      return { index: k, assignments, shellString };
+    }
     const strings = PREFIX_SHELL_STRING_OPTIONS.get(name);
-    let exec = false;
-    k += 1;
+    const given = /* @__PURE__ */ new Set();
+    let ended = false;
     const readOptions = () => {
       while (k < values.length && values[k].startsWith("-")) {
         if (values[k] === "--") {
           k += 1;
+          ended = true;
           return;
         }
         const read = readOption(name, values[k]);
-        if (read.given.some((option) => strings?.has(option) === true)) shellString = true;
-        if (read.given.some((option) => option === "-x" || option === "--exec")) exec = true;
+        for (const option of read.given) {
+          given.add(option);
+          if (strings?.has(option) === true) shellString = true;
+        }
         k += read.takesNext ? 2 : 1;
       }
     };
+    const start = k;
+    k += 1;
     readOptions();
-    if (PREFIX_OPERANDS.has(name) && k < values.length) {
+    if (launcher !== void 0) {
+      if (ended || !launcher.subcommands.has(values[k] ?? "")) {
+        return { index: start, assignments, shellString };
+      }
+      k += 1;
+      if (launcher.dashDash === "require") {
+        readOptions();
+        if (ended) continue;
+        const dash = values.indexOf("--", k);
+        if (dash < 0) return { index: values.length, assignments, shellString };
+        k = dash + 1;
+        continue;
+      }
+      readOptions();
+      if (ended) continue;
+      k += launcher.operands;
+      readOptions();
+      continue;
+    }
+    if (PREFIX_OPERANDS.has(name) && k < values.length && !ended) {
       k += 1;
       if (name === "flock") readOptions();
     }
-    if (name === "watch" && !exec) shellString = true;
+    if (name === "runuser" && !given.has("-u") && !given.has("--user") && !ended) {
+      if (k < values.length) k += 1;
+      readOptions();
+    }
+    if (name === "dotenv" && values[k] === "run" && !ended) {
+      k += 1;
+      readOptions();
+    }
+    if (name === "watch" && !given.has("-x") && !given.has("--exec")) shellString = true;
   }
   return { index: k, assignments, shellString };
 }
@@ -11363,7 +11499,7 @@ function isDataValue(word, value = word.value) {
   return !word.runs || isHeredocValue(value);
 }
 var TEST_RUNNERS = /* @__PURE__ */ new Set(["vitest", "jest", "mocha", "pytest", "test"]);
-var LAUNCHERS = /* @__PURE__ */ new Set(["npx", "pnpm", "npm", "yarn", "bun", "bunx"]);
+var LAUNCHERS2 = /* @__PURE__ */ new Set(["npx", "pnpm", "npm", "yarn", "bun", "bunx"]);
 var TEST_FILTER_OPTIONS = /* @__PURE__ */ new Set([
   "-t",
   "--testNamePattern",
@@ -11477,7 +11613,7 @@ function segmentRegions(segment, keep) {
   } else if (name === "gh" && GH_TEXT_GROUPS.has(rest[0]?.value ?? "")) {
     blank(optionValues(rest, GH_TEXT_OPTIONS), "doc");
   }
-  const startsTests = TEST_RUNNERS.has(name) || LAUNCHERS.has(name) && rest.some((w) => TEST_RUNNERS.has(w.value));
+  const startsTests = TEST_RUNNERS.has(name) || LAUNCHERS2.has(name) && rest.some((w) => TEST_RUNNERS.has(w.value));
   if (startsTests && name !== "test") {
     blank(optionValues(rest, TEST_FILTER_OPTIONS), "test-string");
   }
@@ -11499,6 +11635,10 @@ var SHELLS2 = /* @__PURE__ */ new Set([
   "fish"
 ]);
 var STRING_RUNNERS = /* @__PURE__ */ new Set(["su", "runuser", "script"]);
+function runsInNixShell(name, args2) {
+  if (name === "nix-shell") return args2.some((w) => /^--(?:run|command)(?:=|$)/.test(w.value));
+  return name === "nix" && args2[0]?.value === "develop" && args2.some((w) => /^(?:-c|--command)(?:=|$)/.test(w.value));
+}
 var STRING_RUNNER_OPTION = /^(?:--command|--session-command)(?:=.*)?$|^-[A-Za-z]*c[A-Za-z]*$/;
 function runsAString(args2) {
   for (let k = 0; k < args2.length; k++) {
@@ -11559,6 +11699,7 @@ function segmentHidingForms(segment, command, gitConfigured, gitRunnableWritten,
   if (STRING_RUNNERS.has(name) && args2.some((word) => STRING_RUNNER_OPTION.test(word.value))) {
     forms.push("shell-string");
   }
+  if (runsInNixShell(name, args2)) forms.push("shell-string");
   if (runsInlineCode(name, args2)) forms.push("inline-code");
   const fed = fedByPipe || segment.inputs.length > 0;
   if (fed && !(SHELLS2.has(name) && runsAString(args2)) && runsPipedScript(name, args2)) {
@@ -15443,14 +15584,14 @@ var KUBECTL_VALUE_OPTIONS = /* @__PURE__ */ new Set([
   "--user",
   "--token"
 ]);
-var LAUNCHERS2 = /* @__PURE__ */ new Set(["npx", "pnpm", "yarn", "bunx", "bun"]);
+var LAUNCHERS3 = /* @__PURE__ */ new Set(["npx", "pnpm", "yarn", "bunx", "bun"]);
 function databaseTargets(words2, scratchRoots, view, depth = 0) {
   const start = commandStart(words2);
   let at2 = start.index;
   let program = words2[at2];
   if (program === void 0 || depth > 3) return [];
   let name = programName(program);
-  if (LAUNCHERS2.has(name)) {
+  if (LAUNCHERS3.has(name)) {
     at2 += 1;
     while (words2[at2] !== void 0 && ["exec", "dlx", "run", "x"].includes(words2[at2].value))
       at2 += 1;

@@ -143,8 +143,9 @@ export interface RunTally {
  *
  * - `shell-string`: a shell given a string to run, `bash -c "…"`, `sh -c`, `zsh -c`; `su`,
  *   `runuser` or `script` given `-c`; a command given as one string to a word before it,
- *   `env -S`, `flock … -c`, `npx -c`; and `watch` without `-x`, which runs its words through
- *   `sh -c`.
+ *   `env -S`, `flock … -c`, `npx -c`, `npm exec -c`, `pnpm exec -c`, `doppler run --command`,
+ *   `mise exec -c`; `nix-shell --run` and `nix develop -c`; and `watch` without `-x`, which
+ *   runs its words through `sh -c`.
  * - `inline-code`: an interpreter given code on the command line: `python -c`, `node -e`,
  *   `--eval` or `-p`, `perl -e`/`-E`, `ruby -e`, `php -r`, `deno eval`, `bun -e`,
  *   `osascript -e`, `pwsh -c`/`-Command`.
