@@ -393,7 +393,9 @@ describe("init", () => {
     expect(await runInit(h.io, CLAUDE, initDeps)).toBe(0);
 
     expect(h.out()).toContain(AGENTTRAIL_PLUGIN_ID);
-    expect(h.out()).toContain("steps aside\nin the projects where AgentTrail OS enforces");
+    expect(h.out()).toContain(
+      "steps aside\nin projects where AgentTrail OS setup recorded enforcement",
+    );
     expect(h.out()).not.toContain("Nothing was written");
     expect(h.ran("plugin install")).toBe(true);
   });

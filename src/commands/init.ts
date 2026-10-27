@@ -467,7 +467,9 @@ export async function runInit(
     if (agenttrailPluginPresent(io.runClaude)) {
       io.writeStdout(
         `The AgentTrail OS plugin (${AGENTTRAIL_PLUGIN_ID}) is installed. The guard steps aside\n` +
-          "in the projects where AgentTrail OS enforces, and protects every other project.\n\n",
+          "in projects where AgentTrail OS setup recorded enforcement on this machine, and\n" +
+          "protects every other project. In a project set up earlier, run AgentTrail OS\n" +
+          "setup again there, or both hooks decide.\n\n",
       );
     }
   } catch (error) {

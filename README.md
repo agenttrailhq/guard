@@ -769,8 +769,11 @@ just the one you need:
 <details>
 <summary>What each integration installs and changes</summary>
 
-If you already have the `agenttrail` plugin installed, `init --agent claude` tells you
-and stops to avoid installing two hooks that decide on the same tool call.
+If you also have AgentTrail OS's `agenttrail` plugin installed, `init --agent claude`
+installs anyway and tells you so. Guard's hook stands down in the projects where
+AgentTrail OS setup recorded enforcement on this machine, so one hook decides there,
+and Guard protects every other project. In a project set up before that record
+existed, run AgentTrail OS setup again, or both hooks decide.
 
 **Claude Code.** `init --agent claude` does two things, and nothing else. It writes its
 own two files under `~/.agenttrail/guard/`, and it asks Claude Code to install the hook
