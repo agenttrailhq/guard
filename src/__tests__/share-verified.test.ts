@@ -333,6 +333,20 @@ describe("on the page", () => {
     expect(section).not.toMatch(/\son[a-z]+=/i);
   });
 
+  it("the X link's text is encoded, and decodes to exactly the post", () => {
+    const payload = reportPayload(VERIFIED_RESULT, VERIFIED_META, TEST_ONLY_BUILDERS);
+    const section = shareSection(renderReport(VERIFIED_RESULT, VERIFIED_META, OPTIONS));
+    const raw = section.match(/href="(https:\/\/x\.com\/intent\/post\?[^"]*)"/)?.[1];
+    expect(raw).toBeDefined();
+    const href = (raw ?? "").replace(/&amp;/g, "&");
+    // Read from the page, not from the function that made it: no raw space or separator.
+    expect(href).not.toMatch(/[\s·]/);
+    expect(new URL(href).searchParams.get("text")).toBe(payload.shareText);
+    // The post itself does hold spaces and the separator, so the check above is not vacuous.
+    expect(payload.shareText).toMatch(/ /);
+    expect(payload.shareText).toContain("·");
+  });
+
   it.each([
     ["a Codex scan", CODEX_ONLY_RESULT],
     ["a scan where nothing may lead", FALLBACK_RESULT],
