@@ -7,6 +7,7 @@
  *   whose commands that ran hold a form that can hide others, gives "Could not confirm", never
  *   a reassuring note; sessions with no recorded output confirm nothing that rests on output;
  *   a Codex scan gets no reassuring note, and its counts carry their caveat.
+ * - What a note says it is: found, reassuring or could not confirm, for how the page marks it.
  * - Only counts: a value of any other type ends the note, and a note's only variable parts are
  *   numbers.
  * - Registered keys only: every key a note reads is one a check registers.
@@ -24,6 +25,7 @@ import {
   NOTE_NO_OUTPUT,
   NOTE_RULES,
   type NoteKindName,
+  UNCONFIRMED_NOTES,
   verifiedNote,
   verifiedNotes,
 } from "../core/verify/notes.js";
@@ -517,6 +519,55 @@ function caseNotes(calls: Partial<Pick<Verification, "resultsRecorded" | "ranEvi
   });
 }
 
+describe("what a note says it is", () => {
+  it("every kind case is found or reassuring, by whether it has a reassuring clause", () => {
+    for (const { kind, label, note } of caseNotes()) {
+      const text = note?.sentence.text ?? "";
+      expect(note?.outcome, `${kind}: ${label}`).toBe(
+        REASSURING.test(text) ? "reassuring" : "found",
+      );
+    }
+  });
+
+  it("both outcomes occur, so the test above can fail either way", () => {
+    const outcomes = new Set(caseNotes().map(({ note }) => note?.outcome));
+    expect(outcomes).toEqual(new Set(["found", "reassuring"]));
+  });
+
+  it("a note that could not confirm says so, whatever its template", () => {
+    const notes = [
+      noteOf(
+        "wt.stash-drop",
+        notesVerification({ "lost-work": { status: "could-not-check", matches: 1 } }),
+      ),
+      noteOf(
+        "ex.file-upload",
+        notesVerification({ egress: checked("clean", { ...EGRESS_FACTS, couldHide: 1 }) }),
+      ),
+      noteOf(
+        "dd.rm-rf-absolute",
+        notesVerification({
+          destructive: checked("clean", { ...DESTRUCTIVE_FACTS, hidingForms: ["eval"] }),
+        }),
+      ),
+      noteOf(
+        "se.env-print",
+        notesVerification({}, { resultsRecorded: false, ranEvidence: "none" }),
+      ),
+    ];
+    expect(notes.map((n) => n?.sentence.template)).toEqual([
+      NOTE_COULD_NOT_CHECK.id,
+      NOTE_COULD_HIDE.id,
+      UNCONFIRMED_SENTENCE.id,
+      NOTE_NO_OUTPUT.id,
+    ]);
+    for (const note of notes) {
+      expect(note?.outcome).toBe("could-not-confirm");
+      expect(UNCONFIRMED_NOTES).toContain(note?.sentence.template);
+    }
+  });
+});
+
 describe("a check that is not checked gives no note", () => {
   it.each(CATEGORY_RULES)("%s", (category, id) => {
     expect(noteText(id, notesVerification({ [category]: { status: "not-checked" } }))).toBe(
@@ -683,6 +734,7 @@ describe("a Codex scan gets no reassuring note, and its counts carry their cavea
     const note = caseNotes(codex).find((c) => c.kind === kind && c.label === label)?.note;
     const text = note?.sentence.text ?? "";
     expect(text).not.toMatch(REASSURING);
+    expect(note?.outcome).not.toBe("reassuring");
     if (note !== undefined) expect(note.sentence.template).toBe(plain?.sentence.template);
     // A count of commands that ran carries the caveat; a note with no count has none to carry.
     const caveated = NOTE_KINDS[kind].ran && /\d/.test(text.replace(CODEX_TEXT ?? "", ""));

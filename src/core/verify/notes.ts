@@ -25,8 +25,9 @@
  * A template's reassuring clauses ("False positive", "Nothing lost", "No tracked file is
  * missing" and the like) run only when it is told it may reassure. Codex sessions are read in a
  * limited way that is not verified, so on a Codex scan no note reassures: what is left is its
- * counts, followed by the Codex caveat, or no note at all. No template says a guardrail's
- * commands did not run.
+ * counts, followed by the Codex caveat, or no note at all. Each note says whether it reassures,
+ * so the page never marks a reassuring note in an alarming card's colour. No template says a
+ * guardrail's commands did not run.
  *
  * Pure. No I/O.
  */
@@ -35,6 +36,7 @@ import { formatCount } from "../tokens.js";
 import {
   type CardSentence,
   type CardView,
+  type NoteOutcome,
   type NoteSource,
   type SentenceTemplate,
   sentence,
@@ -840,7 +842,8 @@ export interface NotedFinding {
  *
  * `cards` are the report's cards, built from the same verification; a category with no card,
  * or whose card is not checked, gets no note. Any check that could not confirm what it found
- * gets a "Could not confirm" note before its facts are read.
+ * gets a "Could not confirm" note before its facts are read. The note says whether it found
+ * something, reassures, or could not confirm, so the page can mark it by what it says.
  */
 export function verifiedNote(
   finding: NotedFinding,
@@ -855,15 +858,17 @@ export function verifiedNote(
     return undefined;
   }
   const facts = factsFor(rule, verification);
-  const note = (made: CardSentence | undefined): VerifiedNote | undefined =>
-    made === undefined
-      ? undefined
-      : { ruleId: finding.ruleId, category: rule.category, sentence: made };
+  const note = (made: CardSentence, outcome: NoteOutcome): VerifiedNote => ({
+    ruleId: finding.ruleId,
+    category: rule.category,
+    outcome,
+    sentence: made,
+  });
 
   // A dependency check that did not run has nothing to confirm or not.
   if (rule.category === "dependencies" && facts === undefined) return undefined;
   const unconfirmed = unconfirmedLine(rule, facts, card, verification);
-  if (unconfirmed !== undefined) return note(unconfirmed);
+  if (unconfirmed !== undefined) return note(unconfirmed, "could-not-confirm");
 
   const spec = NOTE_KINDS[rule.kind];
   const counts = readCounts(facts, spec.reads);
@@ -872,10 +877,13 @@ export function verifiedNote(
   const codex = verification.ranEvidence === "output-record";
   const made = sentence(spec.template, { ...counts, reassure: !codex });
   if (made === undefined) return undefined;
+  // A note reassures when its reassuring clauses changed what it says.
+  const plain = codex ? made : sentence(spec.template, { ...counts, reassure: false });
+  const outcome: NoteOutcome = plain?.text === made.text ? "found" : "reassuring";
   // From Codex sessions, a count of commands that ran may include calls a hook blocked.
   return codex && spec.ran && /\d/.test(made.text)
-    ? note({ template: made.template, text: `${made.text} ${CODEX_NOTE_TEXT}` })
-    : note(made);
+    ? note({ template: made.template, text: `${made.text} ${CODEX_NOTE_TEXT}` }, outcome)
+    : note(made, outcome);
 }
 
 /** The notes for `findings`, in their order, one per finding that gets one. */

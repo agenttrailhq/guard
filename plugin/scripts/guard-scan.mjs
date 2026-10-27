@@ -17396,17 +17396,24 @@ function verifiedNote(finding, verification, cards) {
     return void 0;
   }
   const facts = factsFor(rule, verification);
-  const note = (made2) => made2 === void 0 ? void 0 : { ruleId: finding.ruleId, category: rule.category, sentence: made2 };
+  const note = (made2, outcome2) => ({
+    ruleId: finding.ruleId,
+    category: rule.category,
+    outcome: outcome2,
+    sentence: made2
+  });
   if (rule.category === "dependencies" && facts === void 0) return void 0;
   const unconfirmed = unconfirmedLine(rule, facts, card, verification);
-  if (unconfirmed !== void 0) return note(unconfirmed);
+  if (unconfirmed !== void 0) return note(unconfirmed, "could-not-confirm");
   const spec = NOTE_KINDS[rule.kind];
   const counts = readCounts(facts, spec.reads);
   if (counts === void 0) return void 0;
   const codex = verification.ranEvidence === "output-record";
   const made = sentence(spec.template, { ...counts, reassure: !codex });
   if (made === void 0) return void 0;
-  return codex && spec.ran && /\d/.test(made.text) ? note({ template: made.template, text: `${made.text} ${CODEX_NOTE_TEXT}` }) : note(made);
+  const plain = codex ? made : sentence(spec.template, { ...counts, reassure: false });
+  const outcome = plain?.text === made.text ? "found" : "reassuring";
+  return codex && spec.ran && /\d/.test(made.text) ? note({ template: made.template, text: `${made.text} ${CODEX_NOTE_TEXT}` }, outcome) : note(made, outcome);
 }
 function verifiedNotes(findings, verification, cards) {
   return findings.flatMap((finding) => {
@@ -18340,8 +18347,15 @@ function ranks(findings) {
   };
 }
 function noteTone(note, cards) {
-  if (UNCONFIRMED_NOTES.includes(note.sentence.template)) return "could-not-check";
-  return cards.find((card) => card.category === note.category)?.tone;
+  const tone = cards.find((card) => card.category === note.category)?.tone;
+  switch (note.outcome) {
+    case "could-not-confirm":
+      return "could-not-check";
+    case "reassuring":
+      return tone === "clean" ? "clean" : void 0;
+    default:
+      return tone;
+  }
 }
 function noteHtml(note, tone) {
   const cls = tone === void 0 ? "verified-note" : `verified-note v-${tone}`;

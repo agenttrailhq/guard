@@ -849,6 +849,7 @@
   {
    "ruleId": "se.env-print",
    "category": "secrets",
+   "outcome": "found",
    "sentence": {
     "template": "note.secrets-printed",
     "text": "Likely-real credentials printed by a command: 1."
@@ -857,6 +858,7 @@
   {
    "ruleId": "ti.test-file-delete",
    "category": "tests",
+   "outcome": "could-not-confirm",
    "sentence": {
     "template": "could-not-confirm",
     "text": "Could not confirm: commands that ran here used xargs, which can run commands this reading does not take apart, so this is not a clean result."
@@ -865,6 +867,7 @@
   {
    "ruleId": "wt.stash-drop",
    "category": "lost-work",
+   "outcome": "could-not-confirm",
    "sentence": {
     "template": "note.could-not-check",
     "text": "Could not confirm: the check behind this could not finish on this machine."

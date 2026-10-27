@@ -119,6 +119,44 @@ describe("where a note is shown", () => {
     );
   });
 
+  /** The classes of a row's note, or "" when it has none. */
+  const noteClass = (r: string): string => r.match(/class="(verified-note[^"]*)"/)?.[1] ?? "";
+
+  it("a reassuring note never takes an alarming card's colour", () => {
+    // The secrets card is act: a credential was pasted. Its note on a printing guardrail says
+    // none was printed, which reassures, so it is neutral, not red.
+    const nonePrinted = notesResult(
+      notesVerification({
+        secrets: checked("act", {
+          ...SECRETS_ACT,
+          items: SECRETS_ACT.items.filter((item) => !item.via.includes("printed-by-command")),
+          setAside: { unnamedOutputOnly: 0, namedNotCredentialShaped: 0 },
+        }),
+      }),
+    );
+    const r = row(renderReport(nonePrinted, VERIFIED_META, OPTIONS), "se.env-print");
+    expect(r).toContain("None of the likely-real credentials found were printed by a command.");
+    expect(noteClass(r)).toBe("verified-note");
+  });
+
+  it("a reassuring note in a clean category is marked clean", () => {
+    const clean = notesResult(
+      notesVerification({
+        secrets: checked("clean", {
+          ...SECRETS_CLEAN,
+          setAside: { unnamedOutputOnly: 0, namedNotCredentialShaped: 0 },
+        }),
+      }),
+    );
+    const r = row(renderReport(clean, VERIFIED_META, OPTIONS), "se.env-print");
+    expect(r).toContain("No likely-real credential was found in the transcripts.");
+    expect(noteClass(r)).toBe("verified-note v-clean");
+  });
+
+  it("a note of what was found takes its card's tone", () => {
+    expect(noteClass(row(html, "se.env-print"))).toBe("verified-note v-act");
+  });
+
   it("a row with no note is as it was", () => {
     const r = row(html, "ps.persistence");
     expect(r).not.toContain("verified-note");

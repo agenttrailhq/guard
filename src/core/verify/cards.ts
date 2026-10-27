@@ -635,9 +635,21 @@ export type NoteSource = VerifyCategory | "dependencies";
  * The one-line note under a guardrail in the findings list, from the check that covers its
  * rule. A rule no check covers gets no note. See `notes.ts`.
  */
+/**
+ * What a note says, for how the page marks it:
+ * - `found`: counts of what the check found;
+ * - `reassuring`: it says, in part or whole, that something is fine;
+ * - `could-not-confirm`: the check could not confirm it.
+ */
+export const NOTE_OUTCOMES = ["found", "reassuring", "could-not-confirm"] as const;
+
+/** One of `NOTE_OUTCOMES`. */
+export type NoteOutcome = (typeof NOTE_OUTCOMES)[number];
+
 export interface VerifiedNote {
   /** The guardrail's id, as the finding carries it. */
   readonly ruleId: string;
   readonly category: NoteSource;
+  readonly outcome: NoteOutcome;
   readonly sentence: CardSentence;
 }

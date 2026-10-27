@@ -119,7 +119,7 @@ import {
   TONE_TALLY,
   toneLabel,
 } from "./verify/copy.js";
-import { UNCONFIRMED_NOTES, verifiedNotes } from "./verify/notes.js";
+import { verifiedNotes } from "./verify/notes.js";
 import { shareCounts } from "./verify/share-copy.js";
 import {
   FACT_KEYS,
@@ -1649,10 +1649,22 @@ function ranks(findings: readonly PayloadFinding[]): {
   };
 }
 
-/** The tone a note's mark takes: its card's, neutral for one that could not confirm. */
+/**
+ * The tone a note's mark takes, by what the note says. A note that could not confirm is
+ * neutral. A reassuring note is marked clean only in a clean category, and is neutral in any
+ * other, so it never takes an alarming card's colour. A note of what was found takes its card's
+ * tone; the dependency check has no card, so its notes are neutral.
+ */
 function noteTone(note: VerifiedNote, cards: readonly CardView[]): VerificationStatus | undefined {
-  if (UNCONFIRMED_NOTES.includes(note.sentence.template)) return "could-not-check";
-  return cards.find((card) => card.category === note.category)?.tone;
+  const tone = cards.find((card) => card.category === note.category)?.tone;
+  switch (note.outcome) {
+    case "could-not-confirm":
+      return "could-not-check";
+    case "reassuring":
+      return tone === "clean" ? "clean" : undefined;
+    default:
+      return tone;
+  }
 }
 
 /** A finding's verified note, as the first thing its expander shows. */
