@@ -49,7 +49,6 @@ import {
   SKIPPED_FACTS,
   TESTS_FACTS,
   TONE_BUILDERS,
-  UNREVIEWED_FACTS,
 } from "./notes-corpus.js";
 import { SECRETS_ACT, SECRETS_CLEAN } from "./verified-corpus.js";
 
@@ -156,7 +155,10 @@ describe("the rule table", () => {
     expect(of(["ti.test-file-delete", "ti.test-config-edit", "ti.coverage-bypass"])).toEqual(
       Array(3).fill("tests"),
     );
-    expect(NOTE_RULES["block-force-push"]?.category).toBe("unreviewed");
+    // The unreviewed-code check counts every push to main in the sessions, and no fact of it
+    // is about a force push, so a force-push row would show other pushes' counts: no note.
+    expect(NOTE_RULES["block-force-push"]).toBeUndefined();
+    expect(Object.values(NOTE_RULES).some((rule) => rule.category === "unreviewed")).toBe(false);
     expect(of(["flag-dependency-install", "rce.unverified-package"])).toEqual(
       Array(2).fill("dependencies"),
     );
@@ -176,6 +178,7 @@ describe("a rule the table leaves out gets no note", () => {
   it.each([
     "wt.clean-fdx",
     "gb.admin-merge",
+    "block-force-push",
     "ps.persistence",
     "t.rm-rf",
     "constructor",
@@ -418,12 +421,6 @@ const KIND_CASES: readonly [NoteKindName, string, object, string][] = [
     "1 test run or config allowed passing with no tests. 2 CI steps were made to pass whatever they return.",
   ],
   [
-    "pushes",
-    "on main",
-    UNREVIEWED_FACTS,
-    "1 push went straight to main or master, carrying 2 commits still on it.",
-  ],
-  [
     "uploads",
     "false positive",
     EGRESS_FACTS,
@@ -475,12 +472,13 @@ describe("each kind's template, on the facts its check reports", () => {
 
 // ── What a note may claim ─────────────────────────────────────────────────────
 
-/** The categories behind the kinds, with a rule of each. */
-const CATEGORY_RULES: readonly [VerifyCategory, string][] = VERIFY_CATEGORIES.map((category) => {
-  const id = Object.keys(NOTE_RULES).find((rule) => NOTE_RULES[rule]?.category === category);
-  if (id === undefined) throw new Error(`no rule for ${category}`);
-  return [category, id];
-});
+/** The categories with a rule in the table, with one rule of each. */
+const CATEGORY_RULES: readonly [VerifyCategory, string][] = VERIFY_CATEGORIES.flatMap(
+  (category): [VerifyCategory, string][] => {
+    const id = Object.keys(NOTE_RULES).find((rule) => NOTE_RULES[rule]?.category === category);
+    return id === undefined ? [] : [[category, id]];
+  },
+);
 
 /** Words a reassuring note uses. A note that could not confirm must use none of them. */
 const REASSURING =

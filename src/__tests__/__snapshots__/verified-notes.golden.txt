@@ -29,7 +29,6 @@ block-prod-config-edit  note.infra  1 production infrastructure command or edit 
 ti.test-file-delete  note.tests-deleted  1 test file deleted, 1 after a test run reported it failing.
 ti.test-config-edit  note.tests-config  No coverage floor went down: the 2 threshold drops undid an automatic raise.
 ti.coverage-bypass  note.tests-pass  1 test run or config allowed passing with no tests.
-block-force-push  note.pushes  1 push went straight to main or master, carrying 2 commits still on it.
 ex.file-upload  note.uploads  False positive: the 3 upload-shaped calls that ran went to this machine or LocalStack.
 se.secret-egress  note.uploads  False positive: the 3 upload-shaped calls that ran went to this machine or LocalStack.
 ex.paste-service  note.uploads  False positive: the 3 upload-shaped calls that ran went to this machine or LocalStack.
@@ -68,7 +67,6 @@ block-prod-config-edit  note.infra  1 production infrastructure command or edit 
 ti.test-file-delete  note.tests-deleted  1 test file deleted, 1 after a test run reported it failing. Codex counts here include every call Codex recorded an output for, which may include calls a hook blocked.
 ti.test-config-edit  note.tests-config  No coverage floor went down: the 2 threshold drops undid an automatic raise. Codex counts here include every call Codex recorded an output for, which may include calls a hook blocked.
 ti.coverage-bypass  note.tests-pass  1 test run or config allowed passing with no tests. Codex counts here include every call Codex recorded an output for, which may include calls a hook blocked.
-block-force-push  note.pushes  1 push went straight to main or master, carrying 2 commits still on it. Codex counts here include every call Codex recorded an output for, which may include calls a hook blocked.
 ex.file-upload  note.uploads  False positive: the 3 upload-shaped calls that ran went to this machine or LocalStack. Codex counts here include every call Codex recorded an output for, which may include calls a hook blocked.
 se.secret-egress  note.uploads  False positive: the 3 upload-shaped calls that ran went to this machine or LocalStack. Codex counts here include every call Codex recorded an output for, which may include calls a hook blocked.
 ex.paste-service  note.uploads  False positive: the 3 upload-shaped calls that ran went to this machine or LocalStack. Codex counts here include every call Codex recorded an output for, which may include calls a hook blocked.
@@ -107,7 +105,6 @@ block-prod-config-edit  note.no-output  Could not confirm: these sessions record
 ti.test-file-delete  note.no-output  Could not confirm: these sessions record no command output to check this against.
 ti.test-config-edit  note.no-output  Could not confirm: these sessions record no command output to check this against.
 ti.coverage-bypass  note.no-output  Could not confirm: these sessions record no command output to check this against.
-block-force-push  note.no-output  Could not confirm: these sessions record no command output to check this against.
 ex.file-upload  note.no-output  Could not confirm: these sessions record no command output to check this against.
 se.secret-egress  note.no-output  Could not confirm: these sessions record no command output to check this against.
 ex.paste-service  note.no-output  Could not confirm: these sessions record no command output to check this against.
@@ -146,7 +143,6 @@ block-prod-config-edit  could-not-confirm  Could not confirm: commands that ran 
 ti.test-file-delete  could-not-confirm  Could not confirm: commands that ran here used a shell given a string to run, which can run commands this reading does not take apart, so this is not a clean result.
 ti.test-config-edit  could-not-confirm  Could not confirm: commands that ran here used a shell given a string to run, which can run commands this reading does not take apart, so this is not a clean result.
 ti.coverage-bypass  could-not-confirm  Could not confirm: commands that ran here used a shell given a string to run, which can run commands this reading does not take apart, so this is not a clean result.
-block-force-push  could-not-confirm  Could not confirm: commands that ran here used a shell given a string to run, which can run commands this reading does not take apart, so this is not a clean result.
 ex.file-upload  could-not-confirm  Could not confirm: commands that ran here used a shell given a string to run, which can run commands this reading does not take apart, so this is not a clean result.
 se.secret-egress  could-not-confirm  Could not confirm: commands that ran here used a shell given a string to run, which can run commands this reading does not take apart, so this is not a clean result.
 ex.paste-service  could-not-confirm  Could not confirm: commands that ran here used a shell given a string to run, which can run commands this reading does not take apart, so this is not a clean result.

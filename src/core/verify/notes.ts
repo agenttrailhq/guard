@@ -572,28 +572,6 @@ const TESTS_PASS = kind({
   },
 });
 
-/** Pushes straight to main. Unreviewed code. */
-const PUSHES = kind({
-  reads: {
-    pushes: ["pushesToMain"],
-    onMain: ["commitsOnMain"],
-    notChecked: ["pushesNotChecked"],
-  },
-  ran: true,
-  template: {
-    id: "note.pushes",
-    render: (f) =>
-      line([
-        f.pushes > 0
-          ? `${countOf(f.pushes, "push", "pushes")} went straight to main or master, carrying ${countOf(f.onMain, "commit")} still on it.`
-          : undefined,
-        f.notChecked > 0
-          ? `${countOf(f.notChecked, "push", "pushes")} could not be checked.`
-          : undefined,
-      ]),
-  },
-});
-
 /** Uploads off this machine, and calls that only reached it. Data leaving the machine. */
 const UPLOADS = kind({
   reads: { uploads: ["uploads"], localOnly: ["localOnly"], unconfirmed: ["unconfirmed"] },
@@ -669,7 +647,6 @@ export const NOTE_KINDS = {
   "tests-deleted": TESTS_DELETED,
   "tests-config": TESTS_CONFIG,
   "tests-pass": TESTS_PASS,
-  pushes: PUSHES,
   uploads: UPLOADS,
   tunnels: TUNNELS,
   installs: INSTALLS,
@@ -726,8 +703,6 @@ export const NOTE_RULES: Readonly<Record<string, NoteRule>> = {
   "ti.test-file-delete": { category: "tests", kind: "tests-deleted" },
   "ti.test-config-edit": { category: "tests", kind: "tests-config" },
   "ti.coverage-bypass": { category: "tests", kind: "tests-pass" },
-  // Unreviewed code.
-  "block-force-push": { category: "unreviewed", kind: "pushes" },
   // Data leaving the machine.
   "ex.file-upload": { category: "egress", kind: "uploads" },
   "se.secret-egress": { category: "egress", kind: "uploads" },
