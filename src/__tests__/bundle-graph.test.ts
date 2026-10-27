@@ -522,8 +522,10 @@ describe("only the scrub path can write a transcript", () => {
    * `eval`, `Function`, `Reflect`, `.constructor`, `getOwnPropertyDescriptor`, string or
    * computed key (beyond the three the file uses, each pinned to its own function and count),
    * `execFile` outside `realExec`, or `openSync` flag other than the read-only ones written out
-   * below; and no listed local module, or any module it loads, that loads `node:fs`,
-   * `child_process`, `worker_threads` or `vm`.
+   * below; no import from `child_process`, `worker_threads`, `vm` or `cluster` but exactly
+   * `import { execFile } from "node:child_process"` (no rename, default or namespace import, and
+   * no other name), and no `import … = require(…)`; and no listed local module, or any module
+   * it loads, that loads `node:fs`, `child_process`, `worker_threads`, `vm` or `cluster`.
    *
    * What it does not: a reading of source text cannot be complete against deliberate
    * obfuscation in general. It closes every route found by review so far, each with its edit as
@@ -637,8 +639,56 @@ describe("only the scrub path can write a transcript", () => {
       "getOwnPropertyDescriptors",
     ]);
 
-    /** Modules that start a process or run code, which no listed local module may load. */
-    const PROCESS_MODULES = /^(node:)?(child_process|worker_threads|vm)$/;
+    /**
+     * Modules that start a process or run code. No listed local module may load one, and
+     * `verify-io.ts` loads exactly one thing from them: `import { execFile } from
+     * "node:child_process"` (`isTheExecFileImport`).
+     */
+    const PROCESS_MODULES = /^(node:)?(child_process|worker_threads|vm|cluster)$/;
+
+    /**
+     * Is `node` exactly `import { execFile } from "node:child_process"`: one named import,
+     * not renamed, not type-only, with no default or namespace binding?
+     */
+    function isTheExecFileImport(node: ts.ImportDeclaration): boolean {
+      const clause = node.importClause;
+      const bindings = clause?.namedBindings;
+      const only = bindings !== undefined && ts.isNamedImports(bindings) ? bindings.elements : [];
+      return (
+        ts.isStringLiteral(node.moduleSpecifier) &&
+        node.moduleSpecifier.text === "node:child_process" &&
+        clause !== undefined &&
+        !clause.isTypeOnly &&
+        clause.name === undefined &&
+        only.length === 1 &&
+        only[0]?.propertyName === undefined &&
+        only[0]?.isTypeOnly === false &&
+        only[0]?.name.text === "execFile"
+      );
+    }
+
+    /** Every reason an import from a process module is not the one `isTheExecFileImport` allows. */
+    function processImportProblems(node: ts.ImportDeclaration, from: string): string[] {
+      if (isTheExecFileImport(node)) return [];
+      if (from !== "node:child_process") return [`loads ${from}`];
+      const problems: string[] = [];
+      const clause = node.importClause;
+      const bindings = clause?.namedBindings;
+      if (clause?.name !== undefined) problems.push(`imports ${from} whole`);
+      if (bindings !== undefined && ts.isNamespaceImport(bindings)) {
+        problems.push(`imports ${from} as a namespace`);
+      }
+      if (bindings !== undefined && ts.isNamedImports(bindings)) {
+        for (const element of bindings.elements) {
+          const name = (element.propertyName ?? element.name).text;
+          if (element.propertyName !== undefined) problems.push(`renames ${name} from ${from}`);
+          if (name !== "execFile") problems.push(`imports ${name} from ${from}`);
+        }
+      }
+      // Anything else, such as a bare import, a type-only one or empty braces.
+      if (problems.length === 0) problems.push(`imports ${from} other than { execFile }`);
+      return problems;
+    }
 
     /**
      * The real file's own element accesses with a computed key, each pinned to the function it
@@ -730,6 +780,7 @@ describe("only the scrub path can write a transcript", () => {
           // An `export … from` loads the module as an import does.
           const from = node.moduleSpecifier.text;
           if (/^(node:)?fs(\/promises)?$/.test(from)) problems.push(`re-exports from ${from}`);
+          if (PROCESS_MODULES.test(from)) problems.push(`re-exports from ${from}`);
           if (from.startsWith(".") && LOCAL_IMPORTS[from] === undefined) {
             problems.push(`imports local module ${from}`);
           }
@@ -742,8 +793,12 @@ describe("only the scrub path can write a transcript", () => {
         ) {
           problems.push(`imports local module ${node.moduleSpecifier.text}`);
         }
+        // `import x = require(…)` loads a module without a call the checks below can read.
+        if (ts.isImportEqualsDeclaration(node)) problems.push("imports with import = require");
         if (ts.isImportDeclaration(node) && ts.isStringLiteral(node.moduleSpecifier)) {
           const from = node.moduleSpecifier.text;
+          // From a process module, only `import { execFile } from "node:child_process"`.
+          if (PROCESS_MODULES.test(from)) problems.push(...processImportProblems(node, from));
           if (/^(node:)?fs\/promises$/.test(from)) problems.push(`imports ${from}`);
           else if (/^(node:)?fs$/.test(from)) {
             const bindings = node.importClause?.namedBindings;
@@ -1118,6 +1173,147 @@ describe("only the scrub path can write a transcript", () => {
       expect(readOnlyProblems(mutated).some((p) => p.startsWith(problem))).toBe(true);
     });
 
+    /** The real file's one import from a process module, exactly as the check allows it. */
+    const EXEC_IMPORT = 'import { execFile } from "node:child_process";';
+
+    /** The real source with its `execFile` import replaced by `line`. */
+    function withExecImport(line: string): string {
+      const replaced = real.replace(EXEC_IMPORT, line);
+      if (replaced === real) throw new Error("no execFile import");
+      return replaced;
+    }
+
+    /** `base` with `code` put on the line before its `openSync` call. */
+    function beforeOpenIn(base: string, code: string): string {
+      const at = base.indexOf("fd = openSync(");
+      if (at < 0) throw new Error("no openSync call");
+      return `${base.slice(0, at)}${code}\n        ${base.slice(at)}`;
+    }
+
+    it("the real file imports from a process module once, exactly as allowed", () => {
+      expect(real.split(EXEC_IMPORT)).toHaveLength(2);
+      expect(readOnlyProblems(real)).toEqual([]);
+    });
+
+    // The process-module edits that passed the previous form of this check, as found: each
+    // starts a program that writes, past an `execFile` check that read only that one name.
+    it.each([
+      [
+        "P1: execFile imported a second time under another name",
+        withExecImport('import { execFile, execFile as ef } from "node:child_process";'),
+        'ef("/usr/bin/touch", ["/tmp/x"], () => {});',
+        "renames execFile from node:child_process",
+      ],
+      [
+        "P2: execFileSync",
+        withExecImport('import { execFile, execFileSync } from "node:child_process";'),
+        'execFileSync("/usr/bin/touch", ["/tmp/x"]);',
+        "imports execFileSync from node:child_process",
+      ],
+      [
+        "P3: spawnSync",
+        withExecImport('import { execFile, spawnSync } from "node:child_process";'),
+        'spawnSync("/usr/bin/touch", ["/tmp/x"]);',
+        "imports spawnSync from node:child_process",
+      ],
+      [
+        "P4: a default import",
+        `import cp from "node:child_process";\n${real}`,
+        'cp.spawnSync("/usr/bin/touch", ["/tmp/x"]);',
+        "imports node:child_process whole",
+      ],
+      [
+        "P5: a namespace import",
+        `import * as cpn from "node:child_process";\n${real}`,
+        'cpn.spawn("/usr/bin/touch", ["/tmp/x"]);',
+        "imports node:child_process as a namespace",
+      ],
+      [
+        "P6: new Worker, from worker_threads",
+        `import { Worker } from "node:worker_threads";\n${real}`,
+        'new Worker("/tmp/x.js");',
+        "loads node:worker_threads",
+      ],
+    ])("negative control: fails on %s", (_name, base, code, problem) => {
+      const mutated = beforeOpenIn(base, code);
+      expect(mutated).not.toBe(real);
+      expect(readOnlyProblems(mutated)).toContain(problem);
+    });
+
+    it.each([
+      [
+        "execFile only, renamed",
+        withExecImport('import { execFile as run } from "node:child_process";'),
+        "renames execFile from node:child_process",
+      ],
+      [
+        "execFile from child_process without node:",
+        withExecImport('import { execFile } from "child_process";'),
+        "loads child_process",
+      ],
+      [
+        "another starter bound to the name execFile",
+        withExecImport('import { spawn as execFile } from "node:child_process";'),
+        "renames spawn from node:child_process",
+      ],
+      [
+        "a default import beside execFile",
+        withExecImport('import cp, { execFile } from "node:child_process";'),
+        "imports node:child_process whole",
+      ],
+      [
+        "execFile imported as a type",
+        withExecImport('import type { execFile } from "node:child_process";'),
+        "imports node:child_process other than { execFile }",
+      ],
+      [
+        "execFile marked as a type",
+        withExecImport('import { type execFile } from "node:child_process";'),
+        "imports node:child_process other than { execFile }",
+      ],
+      [
+        "a type beside execFile",
+        withExecImport('import { type ChildProcess, execFile } from "node:child_process";'),
+        "imports ChildProcess from node:child_process",
+      ],
+      [
+        "a type-only import",
+        `import type { ExecFileOptions } from "node:child_process";\n${real}`,
+        "imports ExecFileOptions from node:child_process",
+      ],
+      [
+        "a bare import",
+        `import "node:child_process";\n${real}`,
+        "imports node:child_process other than { execFile }",
+      ],
+      [
+        "an import with empty braces",
+        `import {} from "node:child_process";\n${real}`,
+        "imports node:child_process other than { execFile }",
+      ],
+      ["vm", `import { runInNewContext } from "node:vm";\n${real}`, "loads node:vm"],
+      ["cluster", `import cluster from "node:cluster";\n${real}`, "loads node:cluster"],
+      [
+        "worker_threads without node:",
+        `import { Worker } from "worker_threads";\n${real}`,
+        "loads worker_threads",
+      ],
+      [
+        "a re-export from child_process",
+        `${real}\nexport { spawn } from "node:child_process";\n`,
+        "re-exports from node:child_process",
+      ],
+      ["a re-export from vm", `${real}\nexport * from "node:vm";\n`, "re-exports from node:vm"],
+      [
+        "import = require",
+        `import cp = require("node:child_process");\n${real}`,
+        "imports with import = require",
+      ],
+    ])("negative control: fails on a process-module import: %s", (_name, mutated, problem) => {
+      expect(mutated).not.toBe(real);
+      expect(readOnlyProblems(mutated)).toContain(problem);
+    });
+
     it("the real file's own computed keys pass only in their own functions, once each", () => {
       expect(readOnlyProblems(real)).toEqual([]);
       // One more `env[key]` inside gitEnvironment is one too many.
@@ -1192,6 +1388,7 @@ describe("only the scrub path can write a transcript", () => {
         "child_process",
         "node:worker_threads",
         "node:vm",
+        "node:cluster",
       ]) {
         const changed = `${readFileSync(PATHS, "utf8")}\nexport { execFileSync as put } from "${from}";\n`;
         const read = (path: string): string =>
