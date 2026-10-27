@@ -747,6 +747,38 @@ describe("one call: a command read, and one of the same kind behind a wrapper", 
   });
 });
 
+describe("a call that holds a hiding form and a match this check could not read counts once", () => {
+  // One call: a shell given a string, and a force push behind a wrapper the push guardrail
+  // matches and the backstop reads.
+  const COMMAND = `bash -c 'make' && my-wrapper git push --force origin ${"main"}`;
+
+  it("unreviewed code: couldHide is 1, and the form the call holds names it", async () => {
+    const calls = await callsOf("claude", [[{ kind: "shell", command: COMMAND, result: OK }]]);
+    const { check } = await checkUnreviewed({ calls, io: fakeIO(), rules: SHIPPED });
+    expect(check.facts.couldHide).toBe(1);
+    expect(check.facts.hidingForms).toEqual(["shell-string"]);
+    expect(check.status).toBe("could-not-check");
+  });
+
+  it("the same call without the shell string: 1, by unread-match", async () => {
+    const command = `make && my-wrapper git push --force origin ${"main"}`;
+    const calls = await callsOf("claude", [[{ kind: "shell", command, result: OK }]]);
+    const { check } = await checkUnreviewed({ calls, io: fakeIO(), rules: SHIPPED });
+    expect(check.facts.couldHide).toBe(1);
+    expect(check.facts.hidingForms).toEqual(["unread-match"]);
+  });
+
+  it("destructive: hidingCalls is 1 for a shell string beside a wrapped delete", async () => {
+    const verification = await verificationOf(
+      `bash -c 'make' && my-wrapper rm -rf /Users/sample/${"important"}`,
+    );
+    const result = verification.categories.destructive;
+    if (!("facts" in result)) throw new Error("no facts");
+    expect(result.facts.hidingCalls).toBe(1);
+    expect(result.facts.hidingForms).toEqual(["shell-string"]);
+  });
+});
+
 describe("a program's name spelled with escapes is that program to every check", () => {
   const PROD = `kubectl --context prod-cluster delete ${"deployment"} web`;
 
