@@ -13,6 +13,7 @@ import {
   totalsShareText,
 } from "../core/report.js";
 import { POST_LIMIT } from "../core/report-script.js";
+import type { ScanResult } from "../core/scan-report.js";
 import {
   type CardContext,
   type CardView,
@@ -23,6 +24,7 @@ import {
 import { sharePhrase } from "../core/verify/share-copy.js";
 import type { VerifyCategory, VerifyStatus } from "../core/verify/types.js";
 import {
+  baseResult,
   CODEX_ONLY_RESULT,
   FALLBACK_RESULT,
   HIDING_RESULT,
@@ -30,6 +32,8 @@ import {
   TEST_ONLY_BUILDERS,
   VERIFIED_META,
   VERIFIED_RESULT,
+  verification,
+  verifiedCategories,
 } from "./verified-corpus.js";
 
 const RECORDED: CardContext = { ranEvidence: "tool-result" };
@@ -290,5 +294,32 @@ describe("on the page", () => {
     const text = reportPayload(HIDING_RESULT, VERIFIED_META, TEST_ONLY_BUILDERS).shareText;
     expect(text).toContain("3 likely-real credentials left in its transcripts");
     expect(text).not.toContain("deleted work");
+  });
+});
+
+describe("a Codex scan whose credentials card is to act on shares the totals post", () => {
+  // The secrets claim does not rest on Codex ran records, so only the scan's own Codex
+  // evidence, passed from the payload, keeps it out of the post.
+  const codex: ScanResult = {
+    ...baseResult(verification(verifiedCategories(), { ranEvidence: "output-record" })),
+    agent: "codex",
+  };
+
+  it("health: its secrets card is to act on, with a claim that does not rest on Codex ran records", () => {
+    const cards = reportPayload(codex, VERIFIED_META, TEST_ONLY_BUILDERS).cards ?? [];
+    const secrets = cards.find((c) => c.category === "secrets");
+    expect(secrets?.tone).toBe("act");
+    expect(secrets?.headline?.restsOnCodexRan).toBe(false);
+  });
+
+  it("the post is the totals post, under the totals note", () => {
+    const payload = reportPayload(codex, VERIFIED_META, TEST_ONLY_BUILDERS);
+    expect(payload.shareText).toBe(totalsShareText(codex));
+    const html = renderReport(codex, VERIFIED_META, {
+      cardBuilders: TEST_ONLY_BUILDERS,
+      localFixCategories: LOCAL_FIX_CATEGORIES,
+    });
+    expect(html).toContain("Totals and at most one library guardrail&#39;s name");
+    expect(html).not.toContain("credentials left in its transcripts");
   });
 });
