@@ -17072,6 +17072,7 @@ var RM_TARGETS = kind({
     untracked: ["rm", "classes", "untracked"],
     home: ["rm", "classes", "home"],
     unguarded: ["rm", "classes", "unguarded-variable"],
+    guarded: ["rm", "classes", "guarded-variable"],
     trackedGone: ["rm", "trackedGone"],
     trackedPartlyBack: ["rm", "trackedPartlyBack"],
     couldNotCheck: ["rm", "couldNotCheck"],
@@ -17083,12 +17084,14 @@ var RM_TARGETS = kind({
     render: (f) => {
       if (f.targets === 0) return void 0;
       const missing = f.trackedGone + f.trackedPartlyBack;
+      const settled = f.couldNotCheck + f.unknown + f.unguarded + f.guarded === 0;
       return line([
-        f.scratch === f.targets ? "All scratch, temp or build folders." : f.scratch * 2 > f.targets ? "Mostly scratch, temp or build folders." : f.scratch > 0 ? `${formatCount(f.scratch)} of ${countOf(f.targets, "target")} ${was2(f.scratch)} scratch, temp or build folders.` : void 0,
-        missing > 0 ? `${countOf(missing, "tracked target")} still ${missing === 1 ? "has" : "have"} files missing.` : f.couldNotCheck + f.unknown === 0 ? "No tracked file is missing." : void 0,
+        settled && f.scratch === f.targets ? "All scratch, temp or build folders." : settled && f.scratch * 2 > f.targets ? "Mostly scratch, temp or build folders." : f.scratch > 0 ? `${formatCount(f.scratch)} of ${countOf(f.targets, "target")} ${was2(f.scratch)} scratch, temp or build folders.` : void 0,
+        missing > 0 ? `${countOf(missing, "tracked target")} still ${missing === 1 ? "has" : "have"} files missing.` : settled ? "No tracked file is missing." : void 0,
         f.untracked > 0 ? `${countOf(f.untracked, "target")} held untracked files in a repo.` : void 0,
         f.home > 0 ? `${countOf(f.home, "target")} ${was2(f.home)} under the home folder, outside a repo.` : void 0,
         f.unguarded > 0 ? `${countOf(f.unguarded, "target")} came from a variable with no guard.` : void 0,
+        f.guarded > 0 ? `${countOf(f.guarded, "target")} came from a guarded variable, so what ${f.guarded === 1 ? "it" : "they"} held is not known.` : void 0,
         f.couldNotCheck > 0 ? `${countOf(f.couldNotCheck, "target")} could not be checked.` : void 0
       ]);
     }

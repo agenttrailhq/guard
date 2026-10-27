@@ -347,6 +347,7 @@ const RM_TARGETS = kind({
     untracked: ["rm", "classes", "untracked"],
     home: ["rm", "classes", "home"],
     unguarded: ["rm", "classes", "unguarded-variable"],
+    guarded: ["rm", "classes", "guarded-variable"],
     trackedGone: ["rm", "trackedGone"],
     trackedPartlyBack: ["rm", "trackedPartlyBack"],
     couldNotCheck: ["rm", "couldNotCheck"],
@@ -358,17 +359,19 @@ const RM_TARGETS = kind({
     render: (f) => {
       if (f.targets === 0) return undefined;
       const missing = f.trackedGone + f.trackedPartlyBack;
+      // A target held in a variable is never resolved, so what it held is not known.
+      const settled = f.couldNotCheck + f.unknown + f.unguarded + f.guarded === 0;
       return line([
-        f.scratch === f.targets
+        settled && f.scratch === f.targets
           ? "All scratch, temp or build folders."
-          : f.scratch * 2 > f.targets
+          : settled && f.scratch * 2 > f.targets
             ? "Mostly scratch, temp or build folders."
             : f.scratch > 0
               ? `${formatCount(f.scratch)} of ${countOf(f.targets, "target")} ${was(f.scratch)} scratch, temp or build folders.`
               : undefined,
         missing > 0
           ? `${countOf(missing, "tracked target")} still ${missing === 1 ? "has" : "have"} files missing.`
-          : f.couldNotCheck + f.unknown === 0
+          : settled
             ? "No tracked file is missing."
             : undefined,
         f.untracked > 0
@@ -379,6 +382,9 @@ const RM_TARGETS = kind({
           : undefined,
         f.unguarded > 0
           ? `${countOf(f.unguarded, "target")} came from a variable with no guard.`
+          : undefined,
+        f.guarded > 0
+          ? `${countOf(f.guarded, "target")} came from a guarded variable, so what ${f.guarded === 1 ? "it" : "they"} held is not known.`
           : undefined,
         f.couldNotCheck > 0
           ? `${countOf(f.couldNotCheck, "target")} could not be checked.`

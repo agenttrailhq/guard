@@ -331,6 +331,19 @@ const KIND_CASES: readonly [NoteKindName, string, object, string][] = [
     "2 of 7 targets were scratch, temp or build folders. 2 tracked targets still have files missing. 1 target was under the home folder, outside a repo. 2 targets came from a variable with no guard.",
   ],
   [
+    "rm-targets",
+    "a guarded variable",
+    {
+      ...DESTRUCTIVE_FACTS,
+      rm: {
+        ...DESTRUCTIVE_FACTS.rm,
+        classes: { ...DESTRUCTIVE_FACTS.rm.classes, tracked: 0, "guarded-variable": 1 },
+        trackedBack: 0,
+      },
+    },
+    "5 of 7 targets were scratch, temp or build folders. 1 target held untracked files in a repo. 1 target came from a guarded variable, so what it held is not known.",
+  ],
+  [
     "databases",
     "local only",
     DESTRUCTIVE_FACTS,
@@ -480,9 +493,12 @@ const CATEGORY_RULES: readonly [VerifyCategory, string][] = VERIFY_CATEGORIES.fl
   },
 );
 
-/** Words a reassuring note uses. A note that could not confirm must use none of them. */
+/**
+ * Words a reassuring note uses: every reassuring clause the templates have. A note that could
+ * not confirm must use none of them.
+ */
 const REASSURING =
-  /false positive|nothing lost|no tracked file|only local|no coverage floor|no known tunnel|every repo|no likely-real|none of the/i;
+  /false positive|nothing lost|no tracked file|only local|no coverage floor|no known tunnel|hooks are on now|no likely-real|none of the|all scratch|mostly scratch|own worktree or a scratch copy/i;
 
 describe("a check that is not checked gives no note", () => {
   it.each(CATEGORY_RULES)("%s", (category, id) => {
@@ -683,6 +699,48 @@ describe("a reassuring note needs every part of its check settled", () => {
       {
         ...DESTRUCTIVE_FACTS,
         rm: { ...DESTRUCTIVE_FACTS.rm, calls: { ran: 7, mentioned: 0, unknown: 1 } },
+      },
+    ],
+    [
+      "rm-targets",
+      "every target scratch, one call not confirmed",
+      {
+        ...DESTRUCTIVE_FACTS,
+        rm: {
+          ...DESTRUCTIVE_FACTS.rm,
+          calls: { ran: 7, mentioned: 0, unknown: 1 },
+          classes: { ...DESTRUCTIVE_FACTS.rm.classes, scratch: 7, tracked: 0, untracked: 0 },
+          trackedBack: 0,
+        },
+      },
+    ],
+    [
+      "rm-targets",
+      "a target from a variable with no guard",
+      {
+        ...DESTRUCTIVE_FACTS,
+        rm: {
+          ...DESTRUCTIVE_FACTS.rm,
+          classes: { ...DESTRUCTIVE_FACTS.rm.classes, tracked: 0, "unguarded-variable": 1 },
+          trackedBack: 0,
+        },
+      },
+    ],
+    [
+      "rm-targets",
+      "a target from a guarded variable",
+      {
+        ...DESTRUCTIVE_FACTS,
+        rm: {
+          ...DESTRUCTIVE_FACTS.rm,
+          classes: {
+            ...DESTRUCTIVE_FACTS.rm.classes,
+            scratch: 6,
+            tracked: 0,
+            "guarded-variable": 1,
+          },
+          trackedBack: 0,
+        },
       },
     ],
     ["uploads", "a match not confirmed", { ...EGRESS_FACTS, unconfirmed: 1 }],
