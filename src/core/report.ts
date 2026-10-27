@@ -119,6 +119,9 @@ import {
 import {
   FACT_KEYS,
   FACT_VALUE_ENUMS,
+  FIXTURE_CHECKS,
+  SECRET_KINDS,
+  SECRET_PROVENANCES,
   type SecretsCheck,
   VERIFY_CATEGORIES,
   VERIFY_STATUSES,
@@ -442,7 +445,16 @@ export interface ReportPayload {
   readonly cards?: readonly CardView[];
 }
 
-/** The secrets check, copied field by field, its list capped at `MAX_ROWS`. */
+const SECRET_KIND_SET: ReadonlySet<string> = new Set(SECRET_KINDS);
+const PROVENANCE_SET: ReadonlySet<string> = new Set(SECRET_PROVENANCES);
+const FIXTURE_CHECK_SET: ReadonlySet<string> = new Set(FIXTURE_CHECKS);
+
+/**
+ * The secrets check, copied field by field, its list capped at `MAX_ROWS`. Its strings get the
+ * same enum check `--json` applies through `copyFacts`: a kind that is not a known one becomes
+ * `other`, a way in that is not a known one is dropped, and a fixture check that is not a known
+ * one becomes `unavailable`, so the data block can never carry another string.
+ */
 function payloadSecrets(check: SecretsCheck): SecretsCheck {
   const facts = check.facts;
   return {
@@ -455,9 +467,11 @@ function payloadSecrets(check: SecretsCheck): SecretsCheck {
         placeholder: facts.classes.placeholder,
         "local-dev": facts.classes["local-dev"],
       },
-      items: facts.items
-        .slice(0, MAX_ROWS)
-        .map((item) => ({ kind: item.kind, via: [...item.via], files: item.files })),
+      items: facts.items.slice(0, MAX_ROWS).map((item) => ({
+        kind: SECRET_KIND_SET.has(item.kind) ? item.kind : "other",
+        via: item.via.filter((way) => PROVENANCE_SET.has(way)),
+        files: item.files,
+      })),
       moreItems: facts.moreItems + Math.max(0, facts.items.length - MAX_ROWS),
       filesRead: facts.filesRead,
       filesNotRead: facts.filesNotRead,
@@ -466,7 +480,7 @@ function payloadSecrets(check: SecretsCheck): SecretsCheck {
         unnamedOutputOnly: facts.setAside.unnamedOutputOnly,
         namedNotCredentialShaped: facts.setAside.namedNotCredentialShaped,
       },
-      fixtureCheck: facts.fixtureCheck,
+      fixtureCheck: FIXTURE_CHECK_SET.has(facts.fixtureCheck) ? facts.fixtureCheck : "unavailable",
       reposChecked: facts.reposChecked,
       reposNotChecked: facts.reposNotChecked,
     },

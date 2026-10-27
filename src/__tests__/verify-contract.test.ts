@@ -1,4 +1,4 @@
-// cspell:words LOCALFIXCANARY FACTSCANARY
+// cspell:words LOCALFIXCANARY FACTSCANARY KINDCANARY VIACANARY FIXCANARY
 /**
  * The shapes later checks and the page build on (`core/verify/cards.ts`, `types.ts`): cards,
  * sentences, the headline order, the local-only fix channel, the payload copy of a category's
@@ -650,6 +650,46 @@ describe("a checked category's facts reach the file as plain data", () => {
     expect(JSON.stringify(facts)).toBe(
       '{"classes":{"classes":{"classes":{"classes":{"classes":{}}}}}}',
     );
+  });
+
+  it("the secrets block in the file checks its strings against the enums, as --json does", () => {
+    const v = verification("act", 1);
+    const stray = {
+      ...v,
+      categories: {
+        ...v.categories,
+        secrets: {
+          ...v.categories.secrets,
+          facts: {
+            ...v.categories.secrets.facts,
+            items: [
+              { kind: "KINDCANARY-kind", via: ["pasted-into-prompt", "VIACANARY-way"], files: 1 },
+            ],
+            fixtureCheck: "FIXCANARY-check",
+          },
+        },
+      },
+    } as unknown as Verification;
+    const result = aggregateScan(
+      { sessions: [], quarantined: 0, notRead: 0, projects: 0 },
+      compileCatalog([RULE_RM_RF]),
+      compileAllowlist([]),
+      new Set(),
+      stray,
+    );
+    const secrets = reportPayload(result, meta).verification?.categories.secrets;
+    expect(secrets?.facts.items).toEqual([
+      { kind: "other", via: ["pasted-into-prompt"], files: 1 },
+    ]);
+    expect(secrets?.facts.fixtureCheck).toBe("unavailable");
+    const json = JSON.parse(renderJson(result, meta)).result.verification.categories.secrets;
+    expect(json.facts.items).toEqual([{ via: ["pasted-into-prompt"], files: 1 }]);
+    expect(json.facts.fixtureCheck).toBeUndefined();
+    for (const surface of [renderReport(result, meta), renderJson(result, meta)]) {
+      expect(surface).not.toMatch(/KINDCANARY|VIACANARY|FIXCANARY/);
+    }
+    // Negative control: the strings were in what the check handed over.
+    expect(JSON.stringify(stray)).toMatch(/KINDCANARY.*VIACANARY.*FIXCANARY/);
   });
 
   it("the secrets facts in --json pass the same boundary, uncapped", () => {

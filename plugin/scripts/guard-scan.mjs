@@ -8727,6 +8727,9 @@ function wrapLines(text, width) {
   if (line !== "") lines.push(line);
   return lines;
 }
+var SECRET_KIND_SET = new Set(SECRET_KINDS);
+var PROVENANCE_SET = new Set(SECRET_PROVENANCES);
+var FIXTURE_CHECK_SET = new Set(FIXTURE_CHECKS);
 function payloadSecrets(check) {
   const facts = check.facts;
   return {
@@ -8739,7 +8742,11 @@ function payloadSecrets(check) {
         placeholder: facts.classes.placeholder,
         "local-dev": facts.classes["local-dev"]
       },
-      items: facts.items.slice(0, MAX_ROWS).map((item) => ({ kind: item.kind, via: [...item.via], files: item.files })),
+      items: facts.items.slice(0, MAX_ROWS).map((item) => ({
+        kind: SECRET_KIND_SET.has(item.kind) ? item.kind : "other",
+        via: item.via.filter((way) => PROVENANCE_SET.has(way)),
+        files: item.files
+      })),
       moreItems: facts.moreItems + Math.max(0, facts.items.length - MAX_ROWS),
       filesRead: facts.filesRead,
       filesNotRead: facts.filesNotRead,
@@ -8748,7 +8755,7 @@ function payloadSecrets(check) {
         unnamedOutputOnly: facts.setAside.unnamedOutputOnly,
         namedNotCredentialShaped: facts.setAside.namedNotCredentialShaped
       },
-      fixtureCheck: facts.fixtureCheck,
+      fixtureCheck: FIXTURE_CHECK_SET.has(facts.fixtureCheck) ? facts.fixtureCheck : "unavailable",
       reposChecked: facts.reposChecked,
       reposNotChecked: facts.reposNotChecked
     }
