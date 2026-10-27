@@ -388,15 +388,14 @@ describe("init", () => {
     expect(h2.out()).toContain("Already installed");
   });
 
-  it("declines when the agenttrail plugin is present — exit 0, nothing written or run", async () => {
+  it("installs beside AgentTrail OS's plugin, and says it steps aside where that enforces", async () => {
     const h = harness({ plugins: [{ id: AGENTTRAIL_PLUGIN_ID }] });
     expect(await runInit(h.io, CLAUDE, initDeps)).toBe(0);
 
     expect(h.out()).toContain(AGENTTRAIL_PLUGIN_ID);
-    expect(h.out()).toContain("Nothing was written");
-    expect(h.writes).toHaveLength(0);
-    expect(h.ran("plugin install")).toBe(false);
-    expect(h.ran("marketplace add")).toBe(false);
+    expect(h.out()).toContain("steps aside\nin the projects where AgentTrail OS enforces");
+    expect(h.out()).not.toContain("Nothing was written");
+    expect(h.ran("plugin install")).toBe(true);
   });
 
   it("warns when the plugin is installed but disabled", async () => {
@@ -419,10 +418,12 @@ describe("init", () => {
     expect(h.out()).toContain("would NOT touch");
   });
 
-  it("--print still detects the agenttrail plugin and declines", async () => {
+  it("--print still detects AgentTrail OS's plugin, says so, and changes nothing", async () => {
     const h = harness({ plugins: [{ id: AGENTTRAIL_PLUGIN_ID }] });
-    await runInit(h.io, { ...CLAUDE, print: true }, initDeps);
-    expect(h.out()).toContain("already installed");
+    expect(await runInit(h.io, { ...CLAUDE, print: true }, initDeps)).toBe(0);
+    expect(h.out()).toContain("The AgentTrail OS plugin (agenttrail@agenttrail) is installed");
+    expect(h.writes).toHaveLength(0);
+    expect(h.ran("plugin install")).toBe(false);
   });
 
   it("an unwritable config dir is a named error, not a stack trace", async () => {
