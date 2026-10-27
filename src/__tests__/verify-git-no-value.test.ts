@@ -21,6 +21,7 @@ import { FIXES_FILENAME } from "../core/report.js";
 import { compileCatalog } from "../core/rules.js";
 import type { ScanCorpus } from "../core/scan-report.js";
 import { parseSession } from "../core/transcript/parse.js";
+import { isLocalFix } from "../core/verify/cards.js";
 import { GIT_FACT_ENUMS, GIT_FACT_KEYS } from "../core/verify/git-facts.js";
 import { HIDING_FORMS, VERIFY_STATUSES } from "../core/verify/types.js";
 import { verifyScan } from "../core/verify/verify.js";
@@ -230,7 +231,7 @@ describe("no value the git-backed checks read leaves scan --verify", () => {
     expect(verification).not.toContain(root);
     noIds(verification, ids, "verification");
     noIds(JSON.stringify(outcome.unsafeFixes ?? []), ids, "unsafe fixes");
-    const commands = outcome.localFixes.map((f) => f.command).join("\n");
+    const commands = outcome.localFixes.map((f) => (isLocalFix(f) ? f.command : "")).join("\n");
     expect(commands).toContain("recovered/feature/CANARYbranch");
     expect(commands).toContain("CANARYmemory.md");
     expect(commands).toContain("--literal-pathspecs");

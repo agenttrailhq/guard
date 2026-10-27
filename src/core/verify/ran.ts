@@ -129,11 +129,20 @@ interface Segment {
   writesFile: boolean;
   /** The files its output redirects name, as written. */
   readonly written: string[];
+  /** Its standard input is redirected from a file (`< file`). */
+  readsFile: boolean;
 }
 
 /** A segment with nothing in it yet. */
 function emptySegment(): Segment {
-  return { words: [], inputs: [], pipedOut: false, writesFile: false, written: [] };
+  return {
+    words: [],
+    inputs: [],
+    pipedOut: false,
+    writesFile: false,
+    written: [],
+    readsFile: false,
+  };
 }
 
 /** A heredoc whose delimiter has been read and whose body starts after the next line break. */
@@ -462,6 +471,7 @@ function parseShell(text: string): Parsed {
         const operator = text.slice(start, i);
         const toDescriptor = operator.endsWith("&") && /^\s*(?:\d|-)/.test(text.slice(i));
         if (operator.startsWith(">") && !toDescriptor) segment.writesFile = true;
+        if (operator.startsWith("<") && !toDescriptor) segment.readsFile = true;
         targetWrites = operator.startsWith(">") && !toDescriptor;
         next = "target";
       }
@@ -801,15 +811,11 @@ function runsAProgramOption(command: Command): boolean {
 }
 
 /**
- * Can this segment not run a file written before it? `writtenBefore` is every file the call
- * wrote before this command, and `hooksPaths` the hook folders it names. A segment with no
- * program can't.
+ * Can this segment not run a file written before it? `gitRunnableWritten` says the call wrote,
+ * before this command, a file git runs or reads its configuration from (`gitMayRun`). A
+ * segment with no program can't.
  */
-function isInert(
-  segment: Segment,
-  writtenBefore: readonly string[],
-  hooksPaths: readonly string[],
-): boolean {
+function isInert(segment: Segment, gitRunnableWritten: boolean): boolean {
   const command = commandOf(segment);
   if (command === undefined) return true;
   // A program named by a path (`./run.sh`, `bin/task`) may be a file just written.
@@ -818,7 +824,7 @@ function isInert(
     // Git runs what a `-c`, an exec path or an external diff names, and a commit runs hooks:
     // with any of those, or after the call wrote a hook or git's own config, it is not inert.
     if (setsGitConfig(command) || runsGitProgram(command)) return false;
-    if (writtenBefore.some((path) => gitMayRun(path, hooksPaths))) return false;
+    if (gitRunnableWritten) return false;
     return INERT_GIT.has(command.sub);
   }
   if (runsAProgramOption(command)) return false;
@@ -1115,13 +1121,15 @@ function runsASubstitution(word: Word): boolean {
   return eq < 0 || !isDataValue(word, word.value.slice(eq + 1));
 }
 
-/** The hiding forms one segment holds, given what the call did before it. */
+/**
+ * The hiding forms one segment holds, given what the call did before it: whether it ran
+ * `git config`, and whether it wrote a file git runs or reads its configuration from.
+ */
 function segmentHidingForms(
   segment: Segment,
   command: Command | undefined,
   gitConfigured: boolean,
-  writtenBefore: readonly string[],
-  hooksPaths: readonly string[],
+  gitRunnableWritten: boolean,
   fedByPipe: boolean,
 ): HidingForm[] {
   const forms: HidingForm[] = [];
@@ -1151,7 +1159,7 @@ function segmentHidingForms(
   if (name === "git") {
     if (setsGitConfig(command) || gitConfigured) forms.push("git-config");
     if (runsGitProgram(command)) forms.push("git-exec");
-    if (writtenBefore.some((path) => gitMayRun(path, hooksPaths))) forms.push("git-hook");
+    if (gitRunnableWritten) forms.push("git-hook");
   }
   return forms;
 }
@@ -1171,29 +1179,49 @@ function readCommand(command: string, trustWrites: boolean): Reading {
   const parsed = parseShell(command);
   const regions: Region[] = parsed.comments.map((c) => ({ ...c, kind: "doc" as const }));
   const segments = parsed.segments;
-  const hooksPaths = hooksPathsNamed(segments);
-  /** Every file written by the commands before `index`. */
-  const writtenBefore = (index: number): string[] => segments.slice(0, index).flatMap(writtenBy);
-  /** Could a command after `index` run a file written before it? */
-  const laterMayRun = (index: number): boolean =>
-    !trustWrites && segments.some((s, j) => j > index && !isInert(s, writtenBefore(j), hooksPaths));
-  /**
-   * Does what `index` pipes go only to programs that print a part of it? Followed along the
-   * pipeline; a consumer that writes a file a later command may run is not one.
-   */
-  const pipesOnlyToConsumers = (index: number): boolean => {
-    for (let j = index + 1; j < segments.length; j++) {
-      const seg = segments[j] as Segment;
-      const command = commandOf(seg);
-      if (command !== undefined) {
-        if (!PURE_CONSUMERS.has(command.name)) return false;
-        if (runsAProgramOption(command)) return false;
-        if (writesAFile(seg) && laterMayRun(j)) return false;
-      }
-      if (!seg.pipedOut) return true;
+  const count = segments.length;
+  const hooksPaths = [...new Set(hooksPathsNamed(segments))];
+  const commands = segments.map(commandOf);
+  // Each table below is filled in one pass, so the whole reading stays linear in the length of
+  // the command, however many simple commands it holds.
+  //
+  // `gitRunnableBefore[j]`: a command before `j` wrote a file git runs or reads its
+  // configuration from. Once one has, every later command sees it, so no later path is tested.
+  const gitRunnableBefore: boolean[] = new Array(count).fill(false);
+  let gitRunnable = false;
+  for (let j = 0; j < count; j++) {
+    gitRunnableBefore[j] = gitRunnable;
+    if (!gitRunnable) {
+      gitRunnable = writtenBy(segments[j] as Segment).some((path) => gitMayRun(path, hooksPaths));
     }
-    return true;
-  };
+  }
+  // `mayRunAfter[j]`: a command after `j` could run a file written before it.
+  const mayRunAfter: boolean[] = new Array(count).fill(false);
+  if (!trustWrites) {
+    for (let j = count - 2; j >= 0; j--) {
+      mayRunAfter[j] =
+        (mayRunAfter[j + 1] as boolean) ||
+        !isInert(segments[j + 1] as Segment, gitRunnableBefore[j + 1] as boolean);
+    }
+  }
+  /** Could a command after `index` run a file written before it? */
+  const laterMayRun = (index: number): boolean => mayRunAfter[index] as boolean;
+  // `consumersFrom[j]`: following the pipeline from `j` on, every program only prints a part of
+  // what it is fed, up to the end of the pipeline. A consumer that writes a file a later
+  // command may run is not one.
+  const consumersFrom: boolean[] = new Array(count + 1).fill(true);
+  for (let j = count - 1; j >= 0; j--) {
+    const seg = segments[j] as Segment;
+    const command = commands[j];
+    const consumer =
+      command === undefined ||
+      (PURE_CONSUMERS.has(command.name) &&
+        !runsAProgramOption(command) &&
+        !(writesAFile(seg) && laterMayRun(j)));
+    consumersFrom[j] = consumer && (!seg.pipedOut || (consumersFrom[j + 1] as boolean));
+  }
+  /** Does what `index` pipes go only to programs that print a part of it? */
+  const pipesOnlyToConsumers = (index: number): boolean => consumersFrom[index + 1] as boolean;
 
   const forms = new Set<HidingForm>();
   if (parsed.processSubstitution) forms.add("process-substitution");
@@ -1206,13 +1234,12 @@ function readCommand(command: string, trustWrites: boolean): Reading {
       (segment.pipedOut && !pipesOnlyToConsumers(index)) ||
       (writesAFile(segment) && laterMayRun(index));
     regions.push(...segmentRegions(segment, keep));
-    const command = commandOf(segment);
+    const command = commands[index];
     for (const form of segmentHidingForms(
       segment,
       command,
       gitConfigured,
-      writtenBefore(index),
-      hooksPaths,
+      gitRunnableBefore[index] as boolean,
       segments[index - 1]?.pipedOut === true,
     )) {
       forms.add(form);
@@ -1253,6 +1280,53 @@ export function executedView(command: string): ExecutedView {
  */
 export function commandHidingForms(command: string): readonly HidingForm[] {
   return readCommand(command, false).hidingForms;
+}
+
+/** One simple command, as this module's shell reading splits it, for the checks that read it. */
+export interface SimpleCommandView {
+  /** Its words, with quotes and escapes removed. Redirection targets are not among them. */
+  readonly words: readonly string[];
+  /** The files its output redirects write, as written. */
+  readonly writes: readonly string[];
+  /** Its standard input is redirected from a file (`< file`). */
+  readonly readsFile: boolean;
+  /** Its standard input is the output of the command before it (`a | b`). */
+  readonly pipedIn: boolean;
+}
+
+/**
+ * The simple commands of a shell text, split by the same quote-aware reading that decides what
+ * ran: a `;`, `&`, `|` or line break inside quotes, a substitution or a comment does not split.
+ *
+ * The commands in a heredoc's body follow the command it is fed to. A body is text a shell may
+ * run (`bash <<EOF`, or a script written and run later), so a check must find its commands to
+ * ask whether they ran; one that is only data is blanked in `executedView`, and `runVerdict`
+ * says so. Bodies are read one level deep, so the reading stays linear in the length of the
+ * text: a heredoc inside a heredoc's body is not read.
+ *
+ * Pure and total.
+ */
+export function simpleCommandsOf(command: string): SimpleCommandView[] {
+  return simpleViews(command, true);
+}
+
+/** `simpleCommandsOf`, reading heredoc bodies only when `bodies` is set. */
+function simpleViews(text: string, bodies: boolean): SimpleCommandView[] {
+  const { segments } = parseShell(text);
+  const out: SimpleCommandView[] = [];
+  segments.forEach((segment, k) => {
+    out.push({
+      words: segment.words.map((word) => word.value),
+      writes: segment.written,
+      readsFile: segment.readsFile,
+      pipedIn: segments[k - 1]?.pipedOut === true,
+    });
+    if (!bodies) return;
+    for (const input of segment.inputs) {
+      out.push(...simpleViews(text.slice(input.start, input.end), false));
+    }
+  });
+  return out;
 }
 
 /**

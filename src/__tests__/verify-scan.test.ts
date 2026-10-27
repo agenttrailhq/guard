@@ -131,14 +131,21 @@ describe("the --verify flag", () => {
       "unreviewed",
       "egress",
     ]);
-    // The git-backed checks ran over a session with no commands: clean, with counts. With no
-    // way to reach the machine, the instruction files could not be read, so skipped checks can
-    // never be clean.
-    const git = ["skipped-checks", "lost-work", "destructive"];
+    // The git-backed checks ran over a session with no commands. With no way to reach the
+    // machine, the instruction files could not be read, so skipped checks can never be clean.
+    const checked = [
+      "secrets",
+      "skipped-checks",
+      "lost-work",
+      "cloud",
+      "prod-infra",
+      "tests",
+      "destructive",
+      "unreviewed",
+      "egress",
+    ];
     for (const [name, value] of Object.entries(categories)) {
-      if (name !== "secrets" && !git.includes(name)) {
-        expect(value).toEqual({ status: "not-checked" });
-      }
+      if (!checked.includes(name)) expect(value).toEqual({ status: "not-checked" });
     }
     expect(categories["skipped-checks"].status).toBe("could-not-check");
     expect(categories["skipped-checks"].facts.instructions.couldNotRead).toBeGreaterThan(0);
@@ -146,6 +153,16 @@ describe("the --verify flag", () => {
       expect(categories[name].status).toBe("clean");
     }
     expect(categories.secrets.status).toBe("clean");
+    // Nothing ran, so the command checks found nothing.
+    for (const name of ["cloud", "tests", "unreviewed"]) {
+      expect(categories[name].status, name).toBe("clean");
+    }
+    // With no way to reach the machine, the running programs cannot be listed, so egress never
+    // reads as clean. The database targets come from the destructive-commands check, which
+    // found none, so the production check is clean.
+    expect(categories.egress.status).toBe("could-not-check");
+    expect(categories["prod-infra"].status).toBe("clean");
+    expect(categories["prod-infra"].facts.databaseCheck).toBe("checked");
   });
 });
 

@@ -22,6 +22,11 @@
  * no result to judge by is `unknown`, and is never counted as `ran`. See `ran.ts`.
  */
 
+import {
+  COMMAND_FACT_KEYS,
+  COMMAND_FACT_VALUE_ENUMS,
+  TUNNEL_PROCESS_NAMES,
+} from "./command-facts.js";
 import { GIT_FACT_ENUMS, GIT_FACT_KEYS } from "./git-facts.js";
 
 /** The nine categories the report shows a card for, in the order the report lists them. */
@@ -452,7 +457,7 @@ export type FileOutcome =
  * program put in its own title, is ever held. A check that needs another kind of process adds
  * its id here, with its matching rule in the seam.
  */
-export const WATCHED_PROCESSES = ["claude", "cursor", "codex"] as const;
+export const WATCHED_PROCESSES = ["claude", "cursor", "codex", ...TUNNEL_PROCESS_NAMES] as const;
 
 /** One of `WATCHED_PROCESSES`. */
 export type WatchedProcess = (typeof WATCHED_PROCESSES)[number];
@@ -519,6 +524,7 @@ export const FACT_VALUE_ENUMS: readonly (readonly string[])[] = [
   FIXTURE_CHECKS,
   WATCHED_PROCESSES,
   ...GIT_FACT_ENUMS,
+  ...COMMAND_FACT_VALUE_ENUMS,
 ];
 
 /**
@@ -548,4 +554,5 @@ export const FACT_KEYS: readonly string[] = [
   "files",
   "hidingForms",
   ...GIT_FACT_KEYS,
+  ...COMMAND_FACT_KEYS,
 ];

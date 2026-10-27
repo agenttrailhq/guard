@@ -592,6 +592,14 @@ function copyVerification(verification: Verification, capLists: boolean): Verifi
       unreviewed: copyCategory(categories.unreviewed, capLists),
       egress: copyCategory(categories.egress, capLists),
     },
+    ...(verification.dependencies === undefined
+      ? {}
+      : {
+          dependencies: copyFacts(
+            verification.dependencies,
+            capLists,
+          ) as Verification["dependencies"],
+        }),
   };
 }
 

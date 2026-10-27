@@ -34,6 +34,7 @@ import {
   sentences,
   TONE_ORDER,
 } from "../core/verify/cards.js";
+import { COMMAND_CHECK_CARDS } from "../core/verify/command-cards.js";
 import { GIT_CARD_BUILDERS } from "../core/verify/git-checks.js";
 import {
   type CategoriesMissingHidingForms,
@@ -103,6 +104,7 @@ const LIKELY: SentenceTemplate<SecretsFacts> = {
 /** The builders the tests use: a test secrets card, and the shipped card of every other check. */
 const BUILDERS: CardBuilders = {
   ...GIT_CARD_BUILDERS,
+  ...COMMAND_CHECK_CARDS,
   secrets: (result, context) => ({
     category: "secrets",
     tone: result.status,

@@ -8,6 +8,7 @@
  */
 
 import type { CardBuilders } from "./cards.js";
+import { COMMAND_CHECK_CARDS } from "./command-cards.js";
 import { destructiveCard } from "./destructive.js";
 import { lostWorkCard } from "./lost-work.js";
 import { secretsCard } from "./secrets-card.js";
@@ -19,4 +20,7 @@ export const CARD_BUILDERS: CardBuilders = {
   "skipped-checks": skippedChecksCard,
   "lost-work": lostWorkCard,
   destructive: destructiveCard,
+  // The command checks' builders: tests, cloud, production infrastructure, unreviewed code and
+  // egress, as many as exist.
+  ...COMMAND_CHECK_CARDS,
 };

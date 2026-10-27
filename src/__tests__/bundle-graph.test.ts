@@ -587,6 +587,8 @@ describe("only the scrub path can write a transcript", () => {
      * nothing from `node:fs`, so a writer cannot be handed to this file under another name.
      */
     const LOCAL_IMPORTS: Readonly<Record<string, string>> = {
+      // The command checks' process names: the tunnel programs the process list is cut to.
+      "./core/verify/command-facts.js": join(SRC, "core", "verify", "command-facts.ts"),
       "./core/verify/paths.js": join(SRC, "core", "verify", "paths.ts"),
       "./core/verify/types.js": join(SRC, "core", "verify", "types.ts"),
     };

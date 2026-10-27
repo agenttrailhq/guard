@@ -1775,7 +1775,7 @@ var require_picomatch2 = __commonJS({
 });
 
 // src/commands/scan.ts
-import { basename as basename3, dirname as dirname3, join as join9, resolve as resolve4 } from "path";
+import { basename as basename3, dirname as dirname5, join as join10, resolve as resolve4 } from "path";
 import { pathToFileURL } from "url";
 
 // src/core/types.ts
@@ -1851,23 +1851,23 @@ function file(filePath, tool = "Edit") {
 function mcp(input, tool = "mcp__server__run") {
   return { tool, command: JSON.stringify(input) };
 }
-function quoted(text) {
-  return /["$`]/.test(text) ? `'${text}'` : `"${text}"`;
+function quoted(text2) {
+  return /["$`]/.test(text2) ? `'${text2}'` : `"${text2}"`;
 }
-function mentionInCommit(text) {
-  return bash(`git commit -m ${quoted(`docs: explain ${text}`)}`);
+function mentionInCommit(text2) {
+  return bash(`git commit -m ${quoted(`docs: explain ${text2}`)}`);
 }
-function mentionInSearch(text) {
-  return bash(`grep -rn ${quoted(text)} docs/`);
+function mentionInSearch(text2) {
+  return bash(`grep -rn ${quoted(text2)} docs/`);
 }
-function mentionInEcho(text) {
-  return bash(`echo ${quoted(`never run ${text}`)}`);
+function mentionInEcho(text2) {
+  return bash(`echo ${quoted(`never run ${text2}`)}`);
 }
-function mentionInPost(text) {
-  return bash(`curl --data ${quoted(`we ran ${text}`)} https://api.example.com/comments`);
+function mentionInPost(text2) {
+  return bash(`curl --data ${quoted(`we ran ${text2}`)} https://api.example.com/comments`);
 }
-function mentions(text) {
-  return [mentionInCommit(text), mentionInSearch(text), mentionInEcho(text), mentionInPost(text)];
+function mentions(text2) {
+  return [mentionInCommit(text2), mentionInSearch(text2), mentionInEcho(text2), mentionInPost(text2)];
 }
 var AT_COMMAND = "(?:^|[\\s;&|(/])";
 var ARGS = `\\s(?:[^|;&"']*\\s)?`;
@@ -6307,8 +6307,8 @@ function shouldUseColor({ env, isTTY }) {
   if (env.TERM === "dumb") return false;
   return isTTY;
 }
-function style(enabled, name, text) {
-  return enabled ? `${CODES[name]}${text}${CODES.reset}` : text;
+function style(enabled, name, text2) {
+  return enabled ? `${CODES[name]}${text2}${CODES.reset}` : text2;
 }
 function createColors(enabled) {
   return {
@@ -6323,8 +6323,8 @@ function createColors(enabled) {
   };
 }
 var NO_COLORS = createColors(false);
-function hyperlink(enabled, url, text) {
-  return enabled ? `\x1B]8;;${url}\x1B\\${text}\x1B]8;;\x1B\\` : text;
+function hyperlink(enabled, url, text2) {
+  return enabled ? `\x1B]8;;${url}\x1B\\${text2}\x1B]8;;\x1B\\` : text2;
 }
 
 // src/core/config.ts
@@ -6367,11 +6367,11 @@ function parseOverrides(raw) {
   }
   return out;
 }
-function parseConfig(text) {
-  if (text === void 0) return DEFAULT_CONFIG;
+function parseConfig(text2) {
+  if (text2 === void 0) return DEFAULT_CONFIG;
   let raw;
   try {
-    raw = JSON.parse(text);
+    raw = JSON.parse(text2);
   } catch {
     return DEFAULT_CONFIG;
   }
@@ -8000,721 +8000,6 @@ function formatCount(n2) {
   return Math.floor(n2).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
 }
 
-// src/core/verify/destructive.ts
-import { dirname, relative as relative2, sep as sep2 } from "path";
-
-// src/core/verify/git-facts.ts
-var RM_TARGET_CLASSES = [
-  "home-or-above",
-  "unguarded-variable",
-  "guarded-variable",
-  "scratch",
-  "tracked",
-  "untracked",
-  "home",
-  "other"
-];
-var DATABASE_CLASSES = ["local", "scratch", "other", "unresolved"];
-var GIT_FACT_ENUMS = [RM_TARGET_CLASSES, DATABASE_CLASSES];
-var GIT_FACT_KEYS = [
-  // Shared by every tally of calls.
-  "calls",
-  "ran",
-  "mentioned",
-  "unknown",
-  "couldNotCheck",
-  // Skipped checks.
-  "noVerify",
-  "commits",
-  "notIdentified",
-  "failed",
-  "withoutHooks",
-  "onMain",
-  "offMain",
-  "noMainToCheck",
-  "gone",
-  "otherNoVerify",
-  "husky",
-  "oneCommand",
-  "hooksPath",
-  "off",
-  "on",
-  "none",
-  "instructions",
-  "read",
-  "sayToSkip",
-  "agentWrote",
-  "agentWroteStill",
-  "agentWroteRemoved",
-  "couldNotRead",
-  // Lost work.
-  "branches",
-  "deleted",
-  "recoverable",
-  "onAnotherRef",
-  "stashes",
-  "dropped",
-  "cleared",
-  "listed",
-  "discards",
-  "paths",
-  "ownCopy",
-  "agentEdited",
-  "mainCheckout",
-  // Destructive commands.
-  "rm",
-  "targets",
-  "trackedBack",
-  "trackedGone",
-  "trackedPartlyBack",
-  "databases",
-  // Every category: exact fix commands that could not be made safe.
-  "unsafeFixes",
-  // Every category: calls that ran holding a form this reading does not take apart.
-  "hidingCalls"
-];
-
-// src/core/verify/types.ts
-var VERIFY_CATEGORIES = [
-  "secrets",
-  "skipped-checks",
-  "lost-work",
-  "cloud",
-  "prod-infra",
-  "tests",
-  "destructive",
-  "unreviewed",
-  "egress"
-];
-var VERIFY_STATUSES = [
-  "act",
-  "review",
-  "clean",
-  "not-checked",
-  "could-not-check"
-];
-var RUN_STATES = ["ran", "mentioned", "unknown"];
-var RAN_EVIDENCE = ["tool-result", "output-record", "none"];
-var HIDING_FORMS = [
-  "shell-string",
-  "inline-code",
-  "piped-script",
-  "find-exec",
-  "xargs",
-  "process-substitution",
-  "command-substitution",
-  "eval",
-  "git-config",
-  "git-exec",
-  "git-hook",
-  "unread-shell"
-];
-var SECRET_PROVENANCES = [
-  "pasted-into-prompt",
-  "typed-into-command",
-  "printed-by-command",
-  "in-agent-reply"
-];
-var SECRET_KINDS = [
-  "aws-access-key",
-  "aws-secret-key",
-  "private-key",
-  "github-token",
-  "slack-token",
-  "api-key",
-  "jwt",
-  "bearer-token",
-  "auth-header",
-  "database-url",
-  "url-credentials",
-  "password",
-  "named-secret",
-  "random-string",
-  "other"
-];
-var SECRET_CLASSES = [
-  "likely-real",
-  "committed-fixture",
-  "placeholder",
-  "local-dev"
-];
-var FIXTURE_CHECKS = ["complete", "partial", "unavailable", "not-needed"];
-var MAX_SECRET_ITEMS = 200;
-var WATCHED_PROCESSES = ["claude", "cursor", "codex"];
-var FACT_VALUE_ENUMS = [
-  VERIFY_CATEGORIES,
-  VERIFY_STATUSES,
-  RUN_STATES,
-  RAN_EVIDENCE,
-  HIDING_FORMS,
-  SECRET_PROVENANCES,
-  SECRET_KINDS,
-  SECRET_CLASSES,
-  FIXTURE_CHECKS,
-  WATCHED_PROCESSES,
-  ...GIT_FACT_ENUMS
-];
-var FACT_KEYS = [
-  "classes",
-  "items",
-  "moreItems",
-  "filesRead",
-  "filesNotRead",
-  "unplaced",
-  "setAside",
-  "unnamedOutputOnly",
-  "namedNotCredentialShaped",
-  "fixtureCheck",
-  "reposChecked",
-  "reposNotChecked",
-  "kind",
-  "via",
-  "files",
-  "hidingForms",
-  ...GIT_FACT_KEYS
-];
-
-// src/core/verify/cards.ts
-function sentence(template, facts) {
-  const text = template.render(facts);
-  return text === void 0 ? void 0 : { template: template.id, text };
-}
-function sentences(templates, facts) {
-  const out = [];
-  for (const template of templates) {
-    const made = sentence(template, facts);
-    if (made !== void 0) out.push(made);
-  }
-  return out;
-}
-var NOT_CHECKED_SENTENCE = {
-  id: "not-checked",
-  render: () => "Not checked."
-};
-var COULD_NOT_CHECK_SENTENCE = {
-  id: "could-not-check",
-  render: () => "Could not be checked on this machine, so this is not a clean result."
-};
-var HIDING_FORM_LABELS = {
-  "shell-string": "a shell given a string to run",
-  "find-exec": "find -exec",
-  xargs: "xargs",
-  "process-substitution": "process substitution",
-  "command-substitution": "a command substitution",
-  eval: "eval",
-  "git-config": "git with config set on its command line or by an earlier command",
-  "git-exec": "git with --exec or an external diff",
-  "git-hook": "git after a hook was written",
-  "unread-shell": "a shell this reading does not parse",
-  "inline-code": "code run inline by an interpreter",
-  "piped-script": "a script piped into a shell or interpreter"
-};
-function hidingFormLabel(form) {
-  return HIDING_FORM_LABELS[form] ?? form.replace(/-/g, " ");
-}
-var UNCONFIRMED_SENTENCE = {
-  id: "could-not-confirm",
-  render: (u) => u.reason === "no-output" ? "Could not confirm: these sessions record no command output, so a count of commands that ran is zero because nothing could be confirmed, not because nothing ran." : `Could not confirm: commands that ran here used ${u.forms.map(hidingFormLabel).join(", ")}, which can run commands this reading does not take apart, so this is not a clean result.`
-};
-function notCheckedCard(category) {
-  return {
-    category,
-    tone: "not-checked",
-    count: 0,
-    found: sentences([NOT_CHECKED_SENTENCE], void 0),
-    now: [],
-    fixes: [],
-    codexCaveat: false
-  };
-}
-function couldNotCheckCard(category, count2) {
-  return {
-    category,
-    tone: "could-not-check",
-    count: count2,
-    found: sentences([COULD_NOT_CHECK_SENTENCE], void 0),
-    now: [],
-    fixes: [],
-    codexCaveat: false
-  };
-}
-var TONE_ORDER = [
-  "act",
-  "review",
-  "clean",
-  "could-not-check",
-  "not-checked"
-];
-function orderCards(cards) {
-  return [...cards].sort(
-    (a, b) => TONE_ORDER.indexOf(a.tone) - TONE_ORDER.indexOf(b.tone) || VERIFY_CATEGORIES.indexOf(a.category) - VERIFY_CATEGORIES.indexOf(b.category)
-  );
-}
-var KNOWN_TONES = new Set(VERIFY_STATUSES);
-function hidingFormsIn(facts) {
-  if (facts === null || typeof facts !== "object") return [];
-  const named = facts.hidingForms;
-  if (!Array.isArray(named)) return [];
-  return HIDING_FORMS.filter((form) => named.includes(form));
-}
-var READS_TEXT = /* @__PURE__ */ new Set(["secrets"]);
-function unconfirmedOf(category, status, facts, resultsRecorded) {
-  const forms = hidingFormsIn(facts);
-  if (forms.length > 0) return { reason: "hiding-forms", forms };
-  if (!resultsRecorded && !READS_TEXT.has(category) && status === "clean") {
-    return { reason: "no-output", forms: [] };
-  }
-  return void 0;
-}
-function honestStatus(category, status, facts, resultsRecorded) {
-  const known = KNOWN_TONES.has(status) ? status : "could-not-check";
-  return known === "clean" && unconfirmedOf(category, known, facts, resultsRecorded) !== void 0 ? "could-not-check" : known;
-}
-function confirmedCard(built, facts, verification) {
-  const recorded = verification.resultsRecorded;
-  const tone = KNOWN_TONES.has(built.tone) ? built.tone : "could-not-check";
-  const unconfirmed = unconfirmedOf(built.category, tone, facts, recorded);
-  const finalTone = honestStatus(built.category, tone, facts, recorded);
-  const lead = unconfirmed !== void 0 ? sentences([UNCONFIRMED_SENTENCE], unconfirmed) : finalTone === "could-not-check" ? sentences([COULD_NOT_CHECK_SENTENCE], void 0) : [];
-  return {
-    ...built,
-    tone: finalTone,
-    found: [
-      ...lead,
-      ...built.found.filter((line) => line.template !== COULD_NOT_CHECK_SENTENCE.id)
-    ],
-    ...unconfirmed === void 0 ? {} : { unconfirmed }
-  };
-}
-function cardsFor(verification, builders) {
-  const context = { ranEvidence: verification.ranEvidence };
-  const cards = VERIFY_CATEGORIES.map((category) => {
-    const result = verification.categories[category];
-    if (result.status === "not-checked") return notCheckedCard(category);
-    const build = builders[category];
-    if (build === void 0 || result.facts === void 0) {
-      return couldNotCheckCard(category, result.matches ?? 0);
-    }
-    const built = build(result, context);
-    return confirmedCard(built, result.facts, verification);
-  });
-  return orderCards(cards);
-}
-var HEADLINE_ORDER = [
-  "secrets",
-  "skipped-checks",
-  "lost-work",
-  "cloud",
-  "tests",
-  "destructive"
-];
-var HEADLINE_TONES = {
-  secrets: "act",
-  "skipped-checks": "act",
-  "lost-work": "act",
-  cloud: "review",
-  tests: "act",
-  destructive: "act"
-};
-var HEADLINE_BASIS = {
-  secrets: "likely-real-credentials",
-  "skipped-checks": "commits-on-main-without-checks",
-  "lost-work": "recoverable-deleted-work",
-  cloud: "iam-changes",
-  tests: "lowered-test-floors",
-  destructive: "unguarded-recursive-deletes"
-};
-function pickHeadline(cards, context) {
-  if (context.ranEvidence === "output-record") return void 0;
-  for (const category of HEADLINE_ORDER) {
-    const card = cards.find(
-      (c) => c.category === category && c.headline !== void 0 && c.tone === HEADLINE_TONES[category] && c.headline.basis === HEADLINE_BASIS[category] && c.headline.count > 0 && !c.headline.restsOnCodexRan && c.unconfirmed === void 0
-    );
-    if (card !== void 0) return card;
-  }
-  return void 0;
-}
-var LOCAL_ONLY = /* @__PURE__ */ Symbol("local-only");
-var LOCAL_FIX_SERIALIZED = "a local fix command belongs in the local fixes file only, and is never serialized";
-function localFix(category, command) {
-  return Object.freeze({
-    [LOCAL_ONLY]: true,
-    category,
-    command,
-    toJSON() {
-      throw new Error(LOCAL_FIX_SERIALIZED);
-    }
-  });
-}
-var SAFE_REF = /^[A-Za-z0-9_@%+=:,./-]+$/;
-var SHA = /^(?:[0-9a-fA-F]{7,40}|[0-9a-fA-F]{64})$/;
-function isSafeBranch(name) {
-  if (!SAFE_REF.test(name) || name.includes(":")) return false;
-  if (name === "@" || name === "HEAD" || name.includes("..") || name.includes("@{")) return false;
-  if (name.includes("//") || name.startsWith("/") || name.endsWith("/")) return false;
-  if (name.endsWith(".")) return false;
-  return name.split("/").every((part) => !part.startsWith(".") && !part.endsWith(".lock"));
-}
-function isSafeRepoPath(path) {
-  return SAFE_REF.test(path) && !path.includes(":") && !path.startsWith("/") && !path.includes("..");
-}
-function safeValue(part) {
-  let value;
-  let safe;
-  if ("sha" in part) {
-    value = part.sha;
-    safe = SHA.test(value);
-  } else if ("branch" in part) {
-    value = part.branch;
-    safe = isSafeBranch(value);
-  } else if ("repoPath" in part) {
-    value = part.repoPath;
-    safe = isSafeRepoPath(value);
-  } else {
-    value = part.ref;
-    safe = SAFE_REF.test(value);
-  }
-  return safe && !value.startsWith("-") ? value : void 0;
-}
-function quoteArgument(argument) {
-  return `'${argument.replace(/'/g, "'\\''")}'`;
-}
-function localFixCommand(category, parts) {
-  const argv = [];
-  for (const part of parts) {
-    if (typeof part === "string") {
-      argv.push(quoteArgument(part));
-      continue;
-    }
-    const value = safeValue(part);
-    if (value === void 0) {
-      return { category, unsafe: true, note: "could not make a safe command" };
-    }
-    argv.push(quoteArgument(value));
-  }
-  return localFix(category, argv.join(" "));
-}
-function isLocalFix(value) {
-  return typeof value === "object" && value !== null && LOCAL_ONLY in value;
-}
-
-// src/core/verify/git-copy.ts
-function counted(n2, singular, plural2 = `${singular}s`) {
-  return `${formatCount(n2)} ${n2 === 1 ? singular : plural2}`;
-}
-function was(n2) {
-  return n2 === 1 ? "was" : "were";
-}
-function is(n2) {
-  return n2 === 1 ? "is" : "are";
-}
-function addTallies(...tallies) {
-  const sum = { ran: 0, mentioned: 0, unknown: 0 };
-  for (const tally of tallies) {
-    sum.ran += tally.ran;
-    sum.mentioned += tally.mentioned;
-    sum.unknown += tally.unknown;
-  }
-  return sum;
-}
-function statusOf(found) {
-  if (found.sessions === 0) return "not-checked";
-  if (found.act) return "act";
-  if (found.review) return "review";
-  if (found.incomplete) return "could-not-check";
-  return "clean";
-}
-function codexCaveat(context, ran) {
-  return context.ranEvidence === "output-record" && ran > 0;
-}
-var CODEX_LIMITED = "The Codex reading is limited and unverified: it is tested only on synthetic sessions built from Codex's documented rollout format, a Codex call counted as ran may be one a hook blocked, and ids a Codex command printed are not identified.";
-function codexLimitedTemplate(category) {
-  return { id: `${category}.codex-limited`, render: () => CODEX_LIMITED };
-}
-function codexLines(template, context, facts) {
-  return context.ranEvidence === "output-record" ? sentences([template], facts) : [];
-}
-function cardExtras(chip, fixSteps) {
-  return {
-    ...chip.label === void 0 ? {} : { chip: { count: chip.count, label: chip.label } },
-    ...fixSteps.length === 0 ? {} : { fixSteps }
-  };
-}
-var FixList = class {
-  made = [];
-  unsafe = [];
-  #category;
-  constructor(category) {
-    this.#category = category;
-  }
-  /** Make one command from `parts`, or keep it as unsafe. */
-  add(parts) {
-    const fix = localFixCommand(this.#category, parts);
-    if (isLocalFix(fix)) this.made.push(fix);
-    else this.unsafe.push(fix);
-  }
-};
-var FORM_WORDS = {
-  "shell-string": "a shell given a string to run",
-  "inline-code": "inline code given to an interpreter",
-  "piped-script": "a script piped into a shell or an interpreter",
-  "find-exec": "find -exec",
-  xargs: "xargs",
-  "process-substitution": "process substitution",
-  "command-substitution": "a command substitution",
-  eval: "eval",
-  "git-config": "git with its own -c settings",
-  "git-exec": "git running a command it was given",
-  "git-hook": "git after a hook or its config was written",
-  "unread-shell": "a shell this scan does not read"
-};
-function couldNotConfirmLine(n2, forms, what) {
-  if (n2 === 0) return void 0;
-  const words2 = forms.map((form) => FORM_WORDS[form]).join(", ");
-  return `Could not confirm that no ${what} ran: ${counted(n2, "command")} that ran, or may have run, ${n2 === 1 ? "uses" : "use"} a form this check does not read inside (${words2}).`;
-}
-function unsafeFixLine(n2) {
-  return n2 > 0 ? `Could not make a safe command for ${counted(n2, "fix", "fixes")}: a name or path in ${n2 === 1 ? "it" : "them"} holds characters a command cannot carry safely, so ${n2 === 1 ? "it is" : "they are"} left out of the local fixes file.` : void 0;
-}
-var MAX_PROBED_ITEMS = 500;
-var TEMP_ROOTS = [
-  "/tmp",
-  "/private/tmp",
-  "/var/tmp",
-  "/private/var/tmp",
-  "/var/folders",
-  "/private/var/folders",
-  "/dev/shm"
-];
-function isUnder(path, roots) {
-  return roots.some((root) => {
-    const base = root.replace(/[\\/]+$/, "");
-    return path === base || path.startsWith(`${base}/`) || path.startsWith(`${base}\\`);
-  });
-}
-
-// src/core/verify/repo-probe.ts
-import { isAbsolute, join as join3, relative, resolve, sep } from "path";
-function isFailure(value) {
-  return typeof value === "object" && value !== null && "failed" in value;
-}
-function isCommitId(value) {
-  return /^[0-9a-f]{7,64}$/.test(value);
-}
-function literalPathspec(folder, path) {
-  const rel = relative(folder, path);
-  if (rel.startsWith("..") || isAbsolute(rel)) return void 0;
-  const posix2 = rel === "" ? "." : rel.split(sep).join("/");
-  if (posix2.startsWith("-") || /[\0\r\n\\]/.test(posix2)) return void 0;
-  return `:(literal)${posix2}`;
-}
-var COMMIT_HOOKS = ["pre-commit", "commit-msg"];
-var CHECK_HOOKS = [
-  "pre-commit",
-  "commit-msg",
-  "pre-push",
-  "pre-merge-commit",
-  "prepare-commit-msg"
-];
-var RepoProbe = class {
-  #io;
-  #toplevels = /* @__PURE__ */ new Map();
-  #hooks = /* @__PURE__ */ new Map();
-  #defaults = /* @__PURE__ */ new Map();
-  #stashes = /* @__PURE__ */ new Map();
-  constructor(io) {
-    this.#io = io;
-  }
-  /**
-   * Is anything at `path`? `false` only when the seam says nothing is there; `undefined` when
-   * it cannot be told, which no caller reads as missing.
-   */
-  exists(path) {
-    if (this.#io.pathExists !== void 0) return this.#io.pathExists(path);
-    return this.#io.isDirectory(path) === void 0 ? void 0 : true;
-  }
-  /** Is `path` a folder: `undefined` when it cannot be read. */
-  isFolder(path) {
-    return this.#io.isDirectory(path);
-  }
-  /**
-   * The top folder of the repository `folder` is in. `missing` only when the folder is not
-   * there; a folder that cannot be told about is `failed`.
-   */
-  toplevel(folder) {
-    let answer = this.#toplevels.get(folder);
-    if (answer === void 0) {
-      answer = (async () => {
-        const isFolder3 = this.#io.isDirectory(folder);
-        if (isFolder3 === false) return { failed: "missing" };
-        if (isFolder3 === void 0) {
-          return { failed: this.exists(folder) === false ? "missing" : "failed" };
-        }
-        const top = await this.#io.git(folder, ["rev-parse", "--show-toplevel"]);
-        if (!top.ok) return { failed: top.reason };
-        const root = top.stdout.trim();
-        return root === "" ? { failed: "failed" } : root;
-      })();
-      this.#toplevels.set(folder, answer);
-    }
-    return answer;
-  }
-  /** The folder git runs a repository's hooks from now, after `core.hooksPath`. */
-  hooksFolder(root) {
-    let answer = this.#hooks.get(root);
-    if (answer === void 0) {
-      answer = (async () => {
-        const out = await this.#io.git(root, ["rev-parse", "--git-path", "hooks"]);
-        if (!out.ok) return { failed: out.reason };
-        const path = out.stdout.trim();
-        if (path === "") return { failed: "failed" };
-        return isAbsolute(path) ? path : resolve(root, path);
-      })();
-      this.#hooks.set(root, answer);
-    }
-    return answer;
-  }
-  /**
-   * Does the repository have any of `names` as a hook file now? A folder by a hook's name is no
-   * hook. A name that cannot be told about, with no hook found, is a failure, never "none".
-   */
-  async hasHooks(root, names) {
-    const folder = await this.hooksFolder(root);
-    if (isFailure(folder)) return folder;
-    return this.#anyHook(folder, names);
-  }
-  /** Is any of `names` a hook file in `folder`: yes, no, or a failure when it cannot be told. */
-  #anyHook(folder, names) {
-    let unsure = false;
-    for (const name of names) {
-      const path = join3(folder, name);
-      const there = this.exists(path);
-      if (there === false) continue;
-      const isFolder3 = there === void 0 ? void 0 : this.#io.isDirectory(path);
-      if (isFolder3 === false) return true;
-      if (isFolder3 === void 0) unsure = true;
-    }
-    return unsure ? { failed: "failed" } : false;
-  }
-  /**
-   * The repository's hooks now: `on` when the folder in effect holds one of `names`; `off` when
-   * `core.hooksPath` points away from the default folder at one that holds none (switched
-   * off); `none` when the default folder holds none (never set up).
-   */
-  async hooksState(root, names) {
-    const folder = await this.hooksFolder(root);
-    if (isFailure(folder)) return folder;
-    const hook = this.#anyHook(folder, names);
-    if (isFailure(hook)) return hook;
-    if (hook) return "on";
-    const common = await this.#io.git(root, ["rev-parse", "--git-common-dir"]);
-    if (!common.ok) return { failed: common.reason };
-    const dir = common.stdout.trim();
-    if (dir === "") return { failed: "failed" };
-    const standard = resolve(isAbsolute(dir) ? dir : resolve(root, dir), "hooks");
-    return resolve(folder) === standard ? "none" : "off";
-  }
-  /** The full id of a commit that is still in the object store, or `null` when it is not. */
-  async commit(root, id) {
-    if (!isCommitId(id)) return { failed: "refused" };
-    const out = await this.#io.git(root, [
-      "log",
-      "--no-walk",
-      "--ignore-missing",
-      "--format=%H",
-      id
-    ]);
-    if (!out.ok) return { failed: out.reason };
-    const full = out.stdout.trim().split("\n")[0] ?? "";
-    if (full === "") return null;
-    return isCommitId(full) && full.startsWith(id) ? full : { failed: "failed" };
-  }
-  /** Which of origin/main and origin/master the repository has. */
-  defaultRefs(root) {
-    let answer = this.#defaults.get(root);
-    if (answer === void 0) {
-      answer = (async () => {
-        const out = await this.#io.git(root, [
-          "for-each-ref",
-          "--format=%(refname)",
-          "refs/remotes/origin/main",
-          "refs/remotes/origin/master"
-        ]);
-        return out.ok ? lines(out.stdout) : { failed: out.reason };
-      })();
-      this.#defaults.set(root, answer);
-    }
-    return answer;
-  }
-  /** Is the commit on origin/main or origin/master? Pass a full id `commit` returned. */
-  async onDefaultBranch(root, full) {
-    if (!isCommitId(full)) return { failed: "refused" };
-    const out = await this.#io.git(root, [
-      "for-each-ref",
-      "--contains",
-      full,
-      "--format=%(refname)",
-      "refs/remotes/origin/main",
-      "refs/remotes/origin/master"
-    ]);
-    return out.ok ? lines(out.stdout).length > 0 : { failed: out.reason };
-  }
-  /** Is the commit on any branch, remote-tracking branch or tag? */
-  async onAnyRef(root, full) {
-    if (!isCommitId(full)) return { failed: "refused" };
-    const out = await this.#io.git(root, [
-      "for-each-ref",
-      "--contains",
-      full,
-      "--format=%(refname)",
-      "refs/heads",
-      "refs/remotes",
-      "refs/tags"
-    ]);
-    return out.ok ? lines(out.stdout).length > 0 : { failed: out.reason };
-  }
-  /** The commits in the repository's stash list now. */
-  stashes(root) {
-    let answer = this.#stashes.get(root);
-    if (answer === void 0) {
-      answer = (async () => {
-        const out = await this.#io.git(root, ["stash", "list", "--format=%H"]);
-        return out.ok ? new Set(lines(out.stdout)) : { failed: out.reason };
-      })();
-      this.#stashes.set(root, answer);
-    }
-    return answer;
-  }
-  /**
-   * The tracked files under `path`, asked from `folder` (an existing folder `path` is in), and
-   * how many of them are missing from the working tree now.
-   */
-  async tracked(folder, path) {
-    const spec = literalPathspec(folder, path);
-    if (spec === void 0) return { failed: "refused" };
-    const all = await this.#io.git(folder, ["ls-files", "-z", "--", spec]);
-    if (!all.ok) return { failed: all.reason };
-    const tracked = entries(all.stdout).length;
-    if (tracked === 0) return { tracked: 0, missing: 0 };
-    const gone = await this.#io.git(folder, ["ls-files", "--deleted", "-z", "--", spec]);
-    if (!gone.ok) return { failed: gone.reason };
-    return { tracked, missing: entries(gone.stdout).length };
-  }
-  /** Read one file through the seam. */
-  read(path) {
-    return this.#io.readFile(path);
-  }
-};
-function lines(text) {
-  return text.split(/\r?\n/).map((line) => line.trim()).filter((line) => line !== "");
-}
-function entries(text) {
-  return text.split("\0").filter((entry) => entry !== "");
-}
-
-// src/core/verify/shell-calls.ts
-import { isAbsolute as isAbsolute2, join as join4, resolve as resolve2 } from "path";
-
 // src/core/cursor-emit.ts
 function strictness(decision) {
   if (decision.decision === "deny") return 3;
@@ -9053,13 +8338,13 @@ var CLOUD_ID_FLAG = /(--(?:account-id|account|owner-id|account-number))(=|\s+)([
 var AWS_ARN_ACCOUNT = /(?<=\barn:aws[a-z-]*:[a-z0-9-]*:[a-z0-9-]*:)\d{12}(?![A-Za-z0-9])/g;
 var HEX_ACCOUNT = /^[0-9a-f]{32}$/i;
 var CLOUD_PROJECT_FLAGS = /* @__PURE__ */ new Set(["--project", "--project_id", "--project-id"]);
-function redactCloudIds(text) {
-  return text.replace(
+function redactCloudIds(text2) {
+  return text2.replace(
     CLOUD_ID_ENV,
     (_m, name, sep4, quote) => `${name}${sep4}${quote}${NAME_PLACEHOLDER}${quote}`
   ).replace(
     CLOUD_ID_FLAG,
-    (_m, flag, join13, quote) => `${flag}${join13}${quote}${NAME_PLACEHOLDER}${quote}`
+    (_m, flag, join14, quote) => `${flag}${join14}${quote}${NAME_PLACEHOLDER}${quote}`
   ).replace(AWS_ARN_ACCOUNT, NAME_PLACEHOLDER);
 }
 function sshUserOption(word) {
@@ -9080,17 +8365,17 @@ function isPlaceholderOnly(word) {
   return /^(?:<[a-z]+>|\[REDACTED:[^\]]*\])$/.test(inner);
 }
 var OP_ENV_ASSIGNMENT = /^(OP_[A-Z0-9_]+)=(.+)$/;
-function tokenize(text) {
+function tokenize(text2) {
   const pieces = [];
   let start = -1;
   let i = 0;
   const flush = (end) => {
     if (start >= 0)
-      pieces.push({ kind: "word", word: { text: text.slice(start, end), start, end } });
+      pieces.push({ kind: "word", word: { text: text2.slice(start, end), start, end } });
     start = -1;
   };
-  while (i < text.length) {
-    const ch = text[i];
+  while (i < text2.length) {
+    const ch = text2[i];
     if (SPACE.test(ch)) {
       flush(i);
       if (ch === "\n") pieces.push({ kind: "break" });
@@ -9104,14 +8389,14 @@ function tokenize(text) {
       continue;
     }
     if (ch === "#" && start < 0) {
-      const newline = text.indexOf("\n", i);
-      const commentEnd = newline === -1 ? text.length : newline;
+      const newline = text2.indexOf("\n", i);
+      const commentEnd = newline === -1 ? text2.length : newline;
       pieces.push({ kind: "comment", start: i, end: commentEnd });
       i = commentEnd;
       continue;
     }
     if (ch === "'" || ch === '"') {
-      const close = text.indexOf(ch, i + 1);
+      const close = text2.indexOf(ch, i + 1);
       if (close !== -1) {
         if (start < 0) start = i;
         i = close + 1;
@@ -9121,7 +8406,7 @@ function tokenize(text) {
     if (start < 0) start = i;
     i++;
   }
-  flush(text.length);
+  flush(text2.length);
   return pieces;
 }
 function replaceValue(word, placeholder) {
@@ -9140,14 +8425,14 @@ function gitIdentityPair(word) {
 function withoutIds(word) {
   return word.replace(UUID, NAME_PLACEHOLDER);
 }
-function redactHeredocBodies(text) {
-  if (!text.includes("<<")) return text;
+function redactHeredocBodies(text2) {
+  if (!text2.includes("<<")) return text2;
   const edits = [];
   let lineStart = 0;
-  while (lineStart < text.length) {
-    const lineEnd = text.indexOf("\n", lineStart);
+  while (lineStart < text2.length) {
+    const lineEnd = text2.indexOf("\n", lineStart);
     if (lineEnd === -1) break;
-    const operators = [...text.slice(lineStart, lineEnd).matchAll(HEREDOC_OPERATOR)];
+    const operators = [...text2.slice(lineStart, lineEnd).matchAll(HEREDOC_OPERATOR)];
     let next = lineEnd + 1;
     for (const operator of operators) {
       const stripTabs = operator[1] === "-";
@@ -9155,10 +8440,10 @@ function redactHeredocBodies(text) {
       let at = next;
       let terminator = -1;
       let terminatorEnd = -1;
-      while (at <= text.length) {
-        const newline = text.indexOf("\n", at);
-        const end = newline === -1 ? text.length : newline;
-        const line = text.slice(at, end);
+      while (at <= text2.length) {
+        const newline = text2.indexOf("\n", at);
+        const end = newline === -1 ? text2.length : newline;
+        const line = text2.slice(at, end);
         if ((stripTabs ? line.replace(/^\t+/, "") : line).trim() === delimiter) {
           terminator = at;
           terminatorEnd = end;
@@ -9168,8 +8453,8 @@ function redactHeredocBodies(text) {
         at = newline + 1;
       }
       if (terminator === -1) {
-        if (next < text.length) edits.push({ start: next, end: text.length });
-        next = text.length;
+        if (next < text2.length) edits.push({ start: next, end: text2.length });
+        next = text2.length;
         break;
       }
       if (terminator > next) edits.push({ start: next, end: terminator - 1 });
@@ -9177,14 +8462,14 @@ function redactHeredocBodies(text) {
     }
     lineStart = next;
   }
-  if (edits.length === 0) return text;
+  if (edits.length === 0) return text2;
   let out = "";
   let cursor = 0;
   for (const edit of edits) {
-    out += `${text.slice(cursor, edit.start)}${MESSAGE_PLACEHOLDER}`;
+    out += `${text2.slice(cursor, edit.start)}${MESSAGE_PLACEHOLDER}`;
     cursor = edit.end;
   }
-  return out + text.slice(cursor);
+  return out + text2.slice(cursor);
 }
 function freshState(family, command) {
   return {
@@ -9337,8 +8622,8 @@ function classify(word, state, options) {
 }
 function redactIdentifiers(input, options = {}) {
   if (input.length === 0) return input;
-  const text = redactCloudIds(redactHeredocBodies(input));
-  const pieces = tokenize(text);
+  const text2 = redactCloudIds(redactHeredocBodies(input));
+  const pieces = tokenize(text2);
   const edits = [];
   let state = freshState(void 0);
   for (const piece of pieces) {
@@ -9347,7 +8632,7 @@ function redactIdentifiers(input, options = {}) {
       continue;
     }
     if (piece.kind === "comment") {
-      const body = text.slice(piece.start + 1, piece.end);
+      const body = text2.slice(piece.start + 1, piece.end);
       if (body.trim().length > 0) {
         edits.push({ start: piece.start, end: piece.end, text: `#${COMMENT_PLACEHOLDER}` });
       }
@@ -9395,14 +8680,14 @@ function redactIdentifiers(input, options = {}) {
     const replacement = withoutIds(classify(word, state, options) ?? word);
     if (replacement !== word) edits.push({ start, end, text: replacement });
   }
-  if (edits.length === 0) return text;
+  if (edits.length === 0) return text2;
   let out = "";
   let cursor = 0;
   for (const edit of edits) {
-    out += text.slice(cursor, edit.start) + edit.text;
+    out += text2.slice(cursor, edit.start) + edit.text;
     cursor = edit.end;
   }
-  return out + text.slice(cursor);
+  return out + text2.slice(cursor);
 }
 
 // src/core/redact-mcp.ts
@@ -9422,12 +8707,12 @@ function redactNode(node) {
   }
   return MCP_VALUE_PLACEHOLDER;
 }
-function redactJsonTextValues(text) {
+function redactJsonTextValues(text2) {
   let out = "";
   let i = 0;
-  const n2 = text.length;
+  const n2 = text2.length;
   while (i < n2) {
-    const ch = text[i];
+    const ch = text2[i];
     if (ch !== '"') {
       out += ch;
       i++;
@@ -9436,7 +8721,7 @@ function redactJsonTextValues(text) {
     let j = i + 1;
     let terminated = false;
     while (j < n2) {
-      const c = text[j];
+      const c = text2[j];
       if (c === "\\") {
         j += 2;
         continue;
@@ -9452,12 +8737,12 @@ function redactJsonTextValues(text) {
     }
     let k = j + 1;
     while (k < n2) {
-      const c = text[k];
+      const c = text2[k];
       if (c === " " || c === "	" || c === "\n" || c === "\r") k++;
       else break;
     }
-    if (text[k] === ":") {
-      out += text.slice(i, j + 1);
+    if (text2[k] === ":") {
+      out += text2.slice(i, j + 1);
     } else {
       out += `"${MCP_VALUE_PLACEHOLDER}"`;
     }
@@ -9490,12 +8775,12 @@ function isPathShaped(token) {
   return BARE_DRIVE.test(token);
 }
 var QUOTED_REGION = /'[^']*'|"[^"]*"/g;
-function containsPath(text) {
-  return (text.match(TOKEN_RUN) ?? []).some(isPathShaped);
+function containsPath(text2) {
+  return (text2.match(TOKEN_RUN) ?? []).some(isPathShaped);
 }
-function redactPaths(text) {
-  if (text.length === 0) return text;
-  const collapsed = text.replace(QUOTED_REGION, (region) => {
+function redactPaths(text2) {
+  if (text2.length === 0) return text2;
+  const collapsed = text2.replace(QUOTED_REGION, (region) => {
     if (region.includes(REDACTION_PREFIX)) return region;
     const quote = region[0] ?? '"';
     const inner = region.slice(1, -1);
@@ -9976,17 +9261,17 @@ function runsMysql(tokens) {
   const program = programWord(tokens);
   return program !== null && PROGRAM.test(basename(program));
 }
-function closingQuote(text, quote, from, end) {
+function closingQuote(text2, quote, from, end) {
   for (let j = from; j + quote.length <= end; j++) {
-    if (isNewline(text, j)) return j;
-    if (text.startsWith(quote, j) && (quote === '\\"' || text[j - 1] !== "\\")) return j;
+    if (isNewline(text2, j)) return j;
+    if (text2.startsWith(quote, j) && (quote === '\\"' || text2[j - 1] !== "\\")) return j;
   }
   return -1;
 }
-function isNewline(text, j) {
-  const c = text[j];
+function isNewline(text2, j) {
+  const c = text2[j];
   if (c === "\n" || c === "\r") return true;
-  return c === "\\" && (text[j + 1] === "n" || text[j + 1] === "r");
+  return c === "\\" && (text2[j + 1] === "n" || text2[j + 1] === "r");
 }
 function isNameChar(code2) {
   return code2 >= 48 && code2 <= 57 || // 0-9
@@ -9996,42 +9281,42 @@ function isNameChar(code2) {
   code2 === 46 || // .
   code2 === 45;
 }
-function jsonKeyLength(text, i, end) {
-  const escaped = text[i] === "\\";
+function jsonKeyLength(text2, i, end) {
+  const escaped = text2[i] === "\\";
   const nameStart = i + (escaped ? 2 : 1);
   let j = nameStart;
-  while (j < nameStart + 65 && j < end && isNameChar(text.charCodeAt(j))) j++;
+  while (j < nameStart + 65 && j < end && isNameChar(text2.charCodeAt(j))) j++;
   if (j === nameStart || j - nameStart > 64) return 0;
   if (escaped) {
-    if (text[j] !== "\\" || text[j + 1] !== '"') return 0;
+    if (text2[j] !== "\\" || text2[j + 1] !== '"') return 0;
     j += 2;
   } else {
-    if (text[j] !== '"') return 0;
+    if (text2[j] !== '"') return 0;
     j++;
   }
-  while (j < end && (text[j] === " " || text[j] === "	")) j++;
-  return j < end && text[j] === ":" ? j + 1 - i : 0;
+  while (j < end && (text2[j] === " " || text2[j] === "	")) j++;
+  return j < end && text2[j] === ":" ? j + 1 - i : 0;
 }
-function holdsCommand(text, at, i) {
+function holdsCommand(text2, at, i) {
   const from = Math.max(at, i - 8);
   let p = i - 1;
-  while (p >= from && (text[p] === " " || text[p] === "	")) p--;
+  while (p >= from && (text2[p] === " " || text2[p] === "	")) p--;
   if (p < from) return false;
-  const c = text[p];
+  const c = text2[p];
   if (c === ":" || c === "," || c === "[" || c === "{") return true;
   if (c !== "c") return false;
   let q = p - 1;
-  while (q >= from && /[A-Za-z]/.test(text[q])) q--;
-  return q >= from && text[q] === "-" && (q === from || text[q - 1] === " " || text[q - 1] === "	");
+  while (q >= from && /[A-Za-z]/.test(text2[q])) q--;
+  return q >= from && text2[q] === "-" && (q === from || text2[q - 1] === " " || text2[q - 1] === "	");
 }
-function gluedWordStart(text, i, at) {
+function gluedWordStart(text2, i, at) {
   const from = Math.max(at, i - 64);
   let j = i;
-  while (j > from && text[j - 1] !== " " && text[j - 1] !== "	") j--;
+  while (j > from && text2[j - 1] !== " " && text2[j - 1] !== "	") j--;
   return j;
 }
 var carried = null;
-function statementStart(text, end) {
+function statementStart(text2, end) {
   const windowStart = Math.max(0, end - WINDOW);
   let i;
   let at;
@@ -10039,7 +9324,7 @@ function statementStart(text, end) {
   let blank;
   let inside;
   let word;
-  if (carried && carried.text === text && carried.i <= end && carried.i >= windowStart) {
+  if (carried && carried.text === text2 && carried.i <= end && carried.i >= windowStart) {
     ({ i, at, found, blank, inside, word } = carried);
   } else {
     i = windowStart;
@@ -10051,8 +9336,8 @@ function statementStart(text, end) {
   }
   carried = null;
   while (i < end) {
-    const c = text[i];
-    const next = text[i + 1];
+    const c = text2[i];
+    const next = text2[i + 1];
     if (c === "\\") {
       if (next === "n" || next === "r") {
         at = i + 2;
@@ -10063,7 +9348,7 @@ function statementStart(text, end) {
         continue;
       }
       if (next === "\\") {
-        i += text[i + 2] === "\\" && text[i + 3] === "n" ? 4 : 2;
+        i += text2[i + 2] === "\\" && text2[i + 3] === "n" ? 4 : 2;
         blank = false;
         continue;
       }
@@ -10071,7 +9356,7 @@ function statementStart(text, end) {
         i += 2;
         continue;
       }
-      if (next === "u" && text.startsWith("0026", i + 2)) {
+      if (next === "u" && text2.startsWith("0026", i + 2)) {
         at = i + 6;
         found = true;
         blank = true;
@@ -10081,7 +9366,7 @@ function statementStart(text, end) {
     }
     const quote = c === "\\" && next === '"' ? '\\"' : c === '"' || c === "'" ? c : null;
     if (quote) {
-      const key = jsonKeyLength(text, i, end);
+      const key = jsonKeyLength(text2, i, end);
       if (key > 0) {
         i += key;
         at = i;
@@ -10090,7 +9375,7 @@ function statementStart(text, end) {
         inside = null;
         continue;
       }
-      const after = text[i + quote.length];
+      const after = text2[i + quote.length];
       if (quote === inside && word && (after === " " || after === "	")) {
         i += quote.length;
         blank = false;
@@ -10105,7 +9390,7 @@ function statementStart(text, end) {
         inside = null;
         continue;
       }
-      if (blank || holdsCommand(text, at, i)) {
+      if (blank || holdsCommand(text2, at, i)) {
         i += quote.length;
         at = i;
         found = true;
@@ -10114,12 +9399,12 @@ function statementStart(text, end) {
         word = true;
         continue;
       }
-      const close = closingQuote(text, quote, i + quote.length, end);
+      const close = closingQuote(text2, quote, i + quote.length, end);
       if (close === -1) {
-        carried = { text, i, at, found, blank, inside, word };
-        return { start: gluedWordStart(text, i, at), unsure: true, inside };
+        carried = { text: text2, i, at, found, blank, inside, word };
+        return { start: gluedWordStart(text2, i, at), unsure: true, inside };
       }
-      if (isNewline(text, close)) {
+      if (isNewline(text2, close)) {
         i += quote.length;
         blank = false;
         continue;
@@ -10141,7 +9426,7 @@ function statementStart(text, end) {
     }
     i++;
   }
-  carried = { text, i, at, found, blank, inside, word };
+  carried = { text: text2, i, at, found, blank, inside, word };
   if (found && at >= windowStart) return { start: at, unsure: false, inside };
   return {
     start: Math.max(windowStart, end - UNSURE_TAIL),
@@ -10151,26 +9436,26 @@ function statementStart(text, end) {
   };
 }
 var words = null;
-function wordWithin(text, from, end) {
-  if (!words || words.text !== text || words.end > end) {
-    words = { text, last: -1, next: -1, end };
+function wordWithin(text2, from, end) {
+  if (!words || words.text !== text2 || words.end > end) {
+    words = { text: text2, last: -1, next: -1, end };
   }
   words.end = end;
   while (words.next < end) {
     if (words.next !== -1) words.last = words.next;
     PROGRAM_WORDS.lastIndex = words.next === -1 ? 0 : words.next + 1;
-    const m = PROGRAM_WORDS.exec(text);
+    const m = PROGRAM_WORDS.exec(text2);
     words.next = m ? m.index : Number.POSITIVE_INFINITY;
   }
   return words.last >= from;
 }
-function substitutedProgram(text, start) {
+function substitutedProgram(text2, start) {
   const close = start - 1;
-  const c = text[close];
+  const c = text2[close];
   if (c !== ")" && c !== "`") return false;
   let open = -1;
   for (let j = close - 1; j >= Math.max(0, close - 64); j--) {
-    if (c === ")" ? text[j] === "(" && text[j - 1] === "$" : text[j] === "`") {
+    if (c === ")" ? text2[j] === "(" && text2[j - 1] === "$" : text2[j] === "`") {
       open = j;
       break;
     }
@@ -10178,19 +9463,19 @@ function substitutedProgram(text, start) {
   if (open === -1) return false;
   let p = c === ")" ? open - 2 : open - 1;
   const from = p - 8;
-  while (p >= 0 && p > from && (text[p] === " " || text[p] === "	")) p--;
-  const before = text[p];
+  while (p >= 0 && p > from && (text2[p] === " " || text2[p] === "	")) p--;
+  const before = text2[p];
   if (p >= 0 && !SEPARATORS.has(before) && before !== '"' && before !== "'") {
     return false;
   }
-  return PROGRAM_WORD.test(text.slice(open + 1, close));
+  return PROGRAM_WORD.test(text2.slice(open + 1, close));
 }
-function argvProgram(text, offset, match) {
+function argvProgram(text2, offset, match) {
   let open = -1;
   if (match[0] === "[") open = offset;
   else {
     for (let j = offset - 1; j >= Math.max(0, offset - WINDOW); j--) {
-      const c = text[j];
+      const c = text2[j];
       if (c === "[") {
         open = j;
         break;
@@ -10199,20 +9484,20 @@ function argvProgram(text, offset, match) {
     }
   }
   if (open === -1) return false;
-  const tokens = text.slice(open + 1, offset).split(",").map((element) => element.trim().replace(/["\\]/g, ""));
+  const tokens = text2.slice(open + 1, offset).split(",").map((element) => element.trim().replace(/["\\]/g, ""));
   return runsMysql(tokens);
 }
-function isMysqlPasswordFlag(match, offset, text) {
-  if (match[0] === "[" || match[0] === ",") return argvProgram(text, offset, match);
+function isMysqlPasswordFlag(match, offset, text2) {
+  if (match[0] === "[" || match[0] === ",") return argvProgram(text2, offset, match);
   if (isEmptyQuoted(match)) return false;
-  const reading = statementStart(text, offset);
+  const reading = statementStart(text2, offset);
   if (reading.inside !== null && match.startsWith(reading.inside, 3)) return false;
   if (reading.unsure && quoteThenClose(match)) return false;
-  if (reading.outside) return wordWithin(text, reading.start, offset);
-  const statement = text.slice(reading.start, offset);
+  if (reading.outside) return wordWithin(text2, reading.start, offset);
+  const statement = text2.slice(reading.start, offset);
   if (reading.unsure) return PROGRAM_WORD.test(statement);
   const tokens = statement.trim().split(/\s+/);
-  return runsMysql(tokens) || substitutedProgram(text, reading.start);
+  return runsMysql(tokens) || substitutedProgram(text2, reading.start);
 }
 
 // src/core/scrub.ts
@@ -10443,10 +9728,10 @@ var SENTINEL_RE = new RegExp(`${SENTINEL_CHAR}(\\d+)${SENTINEL_CHAR}`, "g");
 function sentinel(index) {
   return `${SENTINEL_CHAR}${index}${SENTINEL_CHAR}`;
 }
-function applyPattern(text, pattern, tally, slots) {
-  if (pattern.prefilter && !pattern.prefilter.test(text)) return text;
+function applyPattern(text2, pattern, tally, slots) {
+  if (pattern.prefilter && !pattern.prefilter.test(text2)) return text2;
   const needsLuhn = LUHN_VALIDATED_IDS.has(pattern.id);
-  return text.replace(pattern.regex, (...args2) => {
+  return text2.replace(pattern.regex, (...args2) => {
     const match = args2[0];
     if (needsLuhn && !passesLuhn(match)) return match;
     if (pattern.accept && !pattern.accept(match, args2[args2.length - 2], args2[args2.length - 1])) {
@@ -10459,18 +9744,18 @@ function applyPattern(text, pattern, tally, slots) {
     return sentinel(slot);
   });
 }
-function scrubText(text) {
-  if (text.length === 0) {
-    return { text, redactions: {}, total: 0 };
+function scrubText(text2) {
+  if (text2.length === 0) {
+    return { text: text2, redactions: {}, total: 0 };
   }
   const tally = {};
   const slots = [];
-  let out = text.includes(SENTINEL_CHAR) ? text.split(SENTINEL_CHAR).join("") : text;
+  let out = text2.includes(SENTINEL_CHAR) ? text2.split(SENTINEL_CHAR).join("") : text2;
   for (const pattern of PATTERNS) {
     out = applyPattern(out, pattern, tally, slots);
   }
   if (slots.length === 0) {
-    return { text, redactions: {}, total: 0 };
+    return { text: text2, redactions: {}, total: 0 };
   }
   out = out.replace(SENTINEL_RE, (_m, idx) => slots[Number(idx)]);
   let total = 0;
@@ -10496,11 +9781,11 @@ function toolCallsOf(session) {
 }
 
 // src/core/scan-report.ts
-function redactForReport(text) {
-  return redactIdentifiers(redactSecrets(redactPaths(scrubText(text).text)));
+function redactForReport(text2) {
+  return redactIdentifiers(redactSecrets(redactPaths(scrubText(text2).text)));
 }
-function redactTitle(text) {
-  return redactIdentifiers(redactSecrets(scrubText(text).text), { kubeResourceOperands: false });
+function redactTitle(text2) {
+  return redactIdentifiers(redactSecrets(scrubText(text2).text), { kubeResourceOperands: false });
 }
 var MAX_DISPLAY_LEN = 160;
 function flatten(s) {
@@ -10627,8 +9912,8 @@ function aggregateScan(corpus, catalog, allowlist, shipped = /* @__PURE__ */ new
       const group = decided.get(key);
       if (group === void 0) decided.set(key, { action: strictest, ruleIds: deciders, calls: 1 });
       else group.calls++;
-      const text = displayTextOf(mapped);
-      shapeCalls.set(text, (shapeCalls.get(text) ?? 0) + 1);
+      const text2 = displayTextOf(mapped);
+      shapeCalls.set(text2, (shapeCalls.get(text2) ?? 0) + 1);
       callOwasp.push(decision.matches.flatMap((m) => ruleOf.get(m.ruleId)?.rule.owasp ?? []));
       for (const match of decision.matches) {
         let acc = byRule.get(match.ruleId);
@@ -10637,7 +9922,7 @@ function aggregateScan(corpus, catalog, allowlist, shipped = /* @__PURE__ */ new
           byRule.set(match.ruleId, acc);
         }
         acc.count++;
-        acc.shapes.set(text, (acc.shapes.get(text) ?? 0) + 1);
+        acc.shapes.set(text2, (acc.shapes.get(text2) ?? 0) + 1);
       }
     }
   }
@@ -10648,7 +9933,7 @@ function aggregateScan(corpus, catalog, allowlist, shipped = /* @__PURE__ */ new
     const title = redactTitle(entry?.rule.title ?? ruleId);
     const severity = entry?.rule.severity ?? "unknown";
     const action = entry?.action ?? "warn";
-    const examples = [...acc.shapes].map(([text, count2]) => ({ text, count: count2 })).sort(byCountThenText);
+    const examples = [...acc.shapes].map(([text2, count2]) => ({ text: text2, count: count2 })).sort(byCountThenText);
     const owasp = [...entry?.rule.owasp ?? []];
     const rule = entry?.rule;
     const fromLibrary = rule !== void 0 && shipped.has(rule);
@@ -10733,65 +10018,375 @@ function mcpReviewDisclosures(corpus, catalog, allowlist) {
   return out;
 }
 
+// src/core/verify/command-facts.ts
+var IAM_SUBJECTS = [
+  "access-keys",
+  "policies",
+  "roles",
+  "users",
+  "groups",
+  "credentials",
+  "other"
+];
+var DATABASE_CHECKS = ["checked", "not-available"];
+var INFRA_KINDS = [
+  "terraform",
+  "kubernetes",
+  "helm",
+  "cloud-delete",
+  "deploy",
+  "prod-config",
+  "other"
+];
+var UPLOAD_KINDS = [
+  "http-upload",
+  "file-copy",
+  "cloud-storage",
+  "paste",
+  "raw-socket",
+  "other"
+];
+var TUNNEL_PROCESS_NAMES = [
+  "ngrok",
+  "cloudflared",
+  "bore",
+  "frpc",
+  "frps",
+  "chisel",
+  "zrok",
+  "devtunnel",
+  "tmole",
+  "loclx",
+  "inlets",
+  "rathole",
+  "gost",
+  "socat"
+];
+var PROCESS_CHECKS = ["checked", "could-not-check"];
+var PACKAGE_MANAGERS = [
+  "npm",
+  "pnpm",
+  "yarn",
+  "bun",
+  "pip",
+  "uv",
+  "poetry",
+  "pipenv",
+  "cargo",
+  "go",
+  "gem",
+  "bundler",
+  "composer"
+];
+var PACKAGE_AGE_NOT_CHECKED = "not-checked-offline";
+var COMMAND_FACT_VALUE_ENUMS = [
+  IAM_SUBJECTS,
+  DATABASE_CHECKS,
+  INFRA_KINDS,
+  UPLOAD_KINDS,
+  TUNNEL_PROCESS_NAMES,
+  PROCESS_CHECKS,
+  PACKAGE_MANAGERS,
+  [PACKAGE_AGE_NOT_CHECKED]
+];
+var COMMAND_FACT_KEYS = [
+  // Tests.
+  "thresholdsLowered",
+  "autoUpdateReverts",
+  "autoUpdateNow",
+  "on",
+  "off",
+  "unread",
+  "configsRewritten",
+  "excludesAdded",
+  "passWithNoTests",
+  "ciStepsForcedTrue",
+  "testFilesDeleted",
+  "deletedAfterFailing",
+  "deletedFailureUnknown",
+  "unreadEdits",
+  // Every check.
+  "mentioned",
+  "unconfirmed",
+  "couldHide",
+  // Cloud.
+  "iamChanges",
+  "iamSubjects",
+  "autoScalingChanges",
+  "s3Changes",
+  "terraformChanges",
+  "terraformAutoApprove",
+  "localStack",
+  // Production infrastructure.
+  "databaseTargets",
+  "local",
+  "scratch",
+  "other",
+  "databaseCheck",
+  "infraMatches",
+  "infraKinds",
+  "localInfra",
+  // Unreviewed code.
+  "pushesToMain",
+  "commitsOnMain",
+  "commitsNotOnMain",
+  "pushesNotChecked",
+  "pushesCreatingMain",
+  // Egress.
+  "uploads",
+  "uploadKinds",
+  "tunnelsStarted",
+  "localOnly",
+  "tunnelsRunning",
+  "tunnelPrograms",
+  "processCheck",
+  // Dependencies.
+  "dependencies",
+  "installs",
+  "lockfileRestores",
+  "managers",
+  "packageAge"
+];
+
+// src/core/verify/git-facts.ts
+var RM_TARGET_CLASSES = [
+  "home-or-above",
+  "unguarded-variable",
+  "guarded-variable",
+  "scratch",
+  "tracked",
+  "untracked",
+  "home",
+  "other"
+];
+var DATABASE_CLASSES = ["local", "scratch", "other", "unresolved"];
+var GIT_FACT_ENUMS = [RM_TARGET_CLASSES, DATABASE_CLASSES];
+var GIT_FACT_KEYS = [
+  // Shared by every tally of calls.
+  "calls",
+  "ran",
+  "mentioned",
+  "unknown",
+  "couldNotCheck",
+  // Skipped checks.
+  "noVerify",
+  "commits",
+  "notIdentified",
+  "failed",
+  "withoutHooks",
+  "onMain",
+  "offMain",
+  "noMainToCheck",
+  "gone",
+  "otherNoVerify",
+  "husky",
+  "oneCommand",
+  "hooksPath",
+  "off",
+  "on",
+  "none",
+  "instructions",
+  "read",
+  "sayToSkip",
+  "agentWrote",
+  "agentWroteStill",
+  "agentWroteRemoved",
+  "couldNotRead",
+  // Lost work.
+  "branches",
+  "deleted",
+  "recoverable",
+  "onAnotherRef",
+  "stashes",
+  "dropped",
+  "cleared",
+  "listed",
+  "discards",
+  "paths",
+  "ownCopy",
+  "agentEdited",
+  "mainCheckout",
+  // Destructive commands.
+  "rm",
+  "targets",
+  "trackedBack",
+  "trackedGone",
+  "trackedPartlyBack",
+  "databases",
+  // Every category: exact fix commands that could not be made safe.
+  "unsafeFixes",
+  // Every category: calls that ran holding a form this reading does not take apart.
+  "hidingCalls"
+];
+
+// src/core/verify/types.ts
+var VERIFY_CATEGORIES = [
+  "secrets",
+  "skipped-checks",
+  "lost-work",
+  "cloud",
+  "prod-infra",
+  "tests",
+  "destructive",
+  "unreviewed",
+  "egress"
+];
+var VERIFY_STATUSES = [
+  "act",
+  "review",
+  "clean",
+  "not-checked",
+  "could-not-check"
+];
+var RUN_STATES = ["ran", "mentioned", "unknown"];
+var RAN_EVIDENCE = ["tool-result", "output-record", "none"];
+var HIDING_FORMS = [
+  "shell-string",
+  "inline-code",
+  "piped-script",
+  "find-exec",
+  "xargs",
+  "process-substitution",
+  "command-substitution",
+  "eval",
+  "git-config",
+  "git-exec",
+  "git-hook",
+  "unread-shell"
+];
+var SECRET_PROVENANCES = [
+  "pasted-into-prompt",
+  "typed-into-command",
+  "printed-by-command",
+  "in-agent-reply"
+];
+var SECRET_KINDS = [
+  "aws-access-key",
+  "aws-secret-key",
+  "private-key",
+  "github-token",
+  "slack-token",
+  "api-key",
+  "jwt",
+  "bearer-token",
+  "auth-header",
+  "database-url",
+  "url-credentials",
+  "password",
+  "named-secret",
+  "random-string",
+  "other"
+];
+var SECRET_CLASSES = [
+  "likely-real",
+  "committed-fixture",
+  "placeholder",
+  "local-dev"
+];
+var FIXTURE_CHECKS = ["complete", "partial", "unavailable", "not-needed"];
+var MAX_SECRET_ITEMS = 200;
+var WATCHED_PROCESSES = ["claude", "cursor", "codex", ...TUNNEL_PROCESS_NAMES];
+var FACT_VALUE_ENUMS = [
+  VERIFY_CATEGORIES,
+  VERIFY_STATUSES,
+  RUN_STATES,
+  RAN_EVIDENCE,
+  HIDING_FORMS,
+  SECRET_PROVENANCES,
+  SECRET_KINDS,
+  SECRET_CLASSES,
+  FIXTURE_CHECKS,
+  WATCHED_PROCESSES,
+  ...GIT_FACT_ENUMS,
+  ...COMMAND_FACT_VALUE_ENUMS
+];
+var FACT_KEYS = [
+  "classes",
+  "items",
+  "moreItems",
+  "filesRead",
+  "filesNotRead",
+  "unplaced",
+  "setAside",
+  "unnamedOutputOnly",
+  "namedNotCredentialShaped",
+  "fixtureCheck",
+  "reposChecked",
+  "reposNotChecked",
+  "kind",
+  "via",
+  "files",
+  "hidingForms",
+  ...GIT_FACT_KEYS,
+  ...COMMAND_FACT_KEYS
+];
+
 // src/core/verify/ran.ts
 function emptySegment() {
-  return { words: [], inputs: [], pipedOut: false, writesFile: false, written: [] };
+  return {
+    words: [],
+    inputs: [],
+    pipedOut: false,
+    writesFile: false,
+    written: [],
+    readsFile: false
+  };
 }
-function holdsSubstitution(text) {
-  return text.includes("$(") || text.includes("`");
+function holdsSubstitution(text2) {
+  return text2.includes("$(") || text2.includes("`");
 }
-function skipQuoted(text, at, quote) {
+function skipQuoted(text2, at, quote) {
   let i = at + 1;
-  while (i < text.length) {
-    const ch = text[i];
+  while (i < text2.length) {
+    const ch = text2[i];
     if (quote !== "'" && ch === "\\") {
       i += 2;
       continue;
     }
-    if (quote === '"' && ch === "$" && text[i + 1] === "(") {
-      i = skipSubstitution(text, i + 1);
+    if (quote === '"' && ch === "$" && text2[i + 1] === "(") {
+      i = skipSubstitution(text2, i + 1);
       continue;
     }
     if (ch === quote) return i + 1;
     i += 1;
   }
-  return text.length;
+  return text2.length;
 }
-function readDelimiter(text, at) {
+function readDelimiter(text2, at) {
   let i = at;
-  while (text[i] === " " || text[i] === "	") i += 1;
-  const quote = text[i];
+  while (text2[i] === " " || text2[i] === "	") i += 1;
+  const quote = text2[i];
   if (quote === "'" || quote === '"') {
-    const close = text.indexOf(quote, i + 1);
+    const close = text2.indexOf(quote, i + 1);
     if (close < 0) return void 0;
-    return { delimiter: text.slice(i + 1, close), end: close + 1 };
+    return { delimiter: text2.slice(i + 1, close), end: close + 1 };
   }
-  const match = /^[^\s;&|<>()]+/.exec(text.slice(i));
+  const match = /^[^\s;&|<>()]+/.exec(text2.slice(i));
   if (match === null) return void 0;
   return { delimiter: match[0].replace(/\\/g, ""), end: i + match[0].length };
 }
-function skipSubstitution(text, at) {
+function skipSubstitution(text2, at) {
   let depth = 0;
   let i = at;
   const pending = [];
-  while (i < text.length) {
-    const ch = text[i];
+  while (i < text2.length) {
+    const ch = text2[i];
     if (ch === "\n" && pending.length > 0) {
       i += 1;
       for (const doc of pending.splice(0)) {
-        while (i < text.length) {
-          const lineEnd = text.indexOf("\n", i);
-          const stop = lineEnd < 0 ? text.length : lineEnd;
-          const line = text.slice(i, stop);
-          i = lineEnd < 0 ? text.length : lineEnd + 1;
+        while (i < text2.length) {
+          const lineEnd = text2.indexOf("\n", i);
+          const stop = lineEnd < 0 ? text2.length : lineEnd;
+          const line = text2.slice(i, stop);
+          i = lineEnd < 0 ? text2.length : lineEnd + 1;
           if ((doc.stripTabs ? line.replace(/^\t+/, "") : line) === doc.delimiter) break;
         }
       }
       continue;
     }
-    if (ch === "<" && text[i + 1] === "<" && text[i + 2] !== "<") {
-      const stripTabs = text[i + 2] === "-";
-      const read = readDelimiter(text, i + (stripTabs ? 3 : 2));
+    if (ch === "<" && text2[i + 1] === "<" && text2[i + 2] !== "<") {
+      const stripTabs = text2[i + 2] === "-";
+      const read = readDelimiter(text2, i + (stripTabs ? 3 : 2));
       if (read !== void 0) {
         pending.push({ delimiter: read.delimiter, stripTabs });
         i = read.end;
@@ -10799,7 +10394,7 @@ function skipSubstitution(text, at) {
       }
     }
     if (ch === "'" || ch === '"' || ch === "`") {
-      i = skipQuoted(text, i, ch);
+      i = skipQuoted(text2, i, ch);
       continue;
     }
     if (ch === "\\") {
@@ -10813,9 +10408,9 @@ function skipSubstitution(text, at) {
     }
     i += 1;
   }
-  return text.length;
+  return text2.length;
 }
-function parseShell(text) {
+function parseShell(text2) {
   const segments = [];
   const comments = [];
   const pending = [];
@@ -10879,31 +10474,31 @@ function parseShell(text) {
     if (wordStart < 0) wordStart = at;
   };
   let i = 0;
-  while (i < text.length) {
-    const ch = text[i];
+  while (i < text2.length) {
+    const ch = text2[i];
     if (ch === "\n") {
       endSegment(i);
       i += 1;
-      while (pending.length > 0 && i <= text.length) {
+      while (pending.length > 0 && i <= text2.length) {
         const doc = pending.shift();
         const start = i;
-        let end = text.length;
-        let after = text.length;
-        while (i < text.length) {
-          const lineEnd = text.indexOf("\n", i);
-          const stop = lineEnd < 0 ? text.length : lineEnd;
-          const line = text.slice(i, stop);
+        let end = text2.length;
+        let after = text2.length;
+        while (i < text2.length) {
+          const lineEnd = text2.indexOf("\n", i);
+          const stop = lineEnd < 0 ? text2.length : lineEnd;
+          const line = text2.slice(i, stop);
           if ((doc.stripTabs ? line.replace(/^\t+/, "") : line) === doc.delimiter) {
             end = i;
-            after = lineEnd < 0 ? text.length : lineEnd + 1;
+            after = lineEnd < 0 ? text2.length : lineEnd + 1;
             break;
           }
-          i = lineEnd < 0 ? text.length : lineEnd + 1;
+          i = lineEnd < 0 ? text2.length : lineEnd + 1;
         }
         doc.segment.inputs.push({
           start,
           end,
-          expands: !doc.quoted && holdsSubstitution(text.slice(start, end))
+          expands: !doc.quoted && holdsSubstitution(text2.slice(start, end))
         });
         i = after;
       }
@@ -10915,8 +10510,8 @@ function parseShell(text) {
       continue;
     }
     if (ch === "#" && wordStart < 0) {
-      const lineEnd = text.indexOf("\n", i);
-      const stop = lineEnd < 0 ? text.length : lineEnd;
+      const lineEnd = text2.indexOf("\n", i);
+      const stop = lineEnd < 0 ? text2.length : lineEnd;
       comments.push({ start: i, end: stop });
       i = stop;
       continue;
@@ -10924,8 +10519,8 @@ function parseShell(text) {
     if (ch === "'" || ch === '"') {
       startWord(i);
       quotedWord = true;
-      const end = skipQuoted(text, i, ch);
-      const inner = text.slice(i + 1, Math.max(i + 1, end - 1));
+      const end = skipQuoted(text2, i, ch);
+      const inner = text2.slice(i + 1, Math.max(i + 1, end - 1));
       if (ch === '"' && (inner.includes("$(") || inner.includes("`"))) runs = true;
       value += ch === '"' ? inner.replace(/\\(["\\$`])/g, "$1") : inner;
       i = end;
@@ -10934,27 +10529,27 @@ function parseShell(text) {
     if (ch === "\\") {
       startWord(i);
       quotedWord = true;
-      if (text[i + 1] !== "\n") value += text[i + 1] ?? "";
+      if (text2[i + 1] !== "\n") value += text2[i + 1] ?? "";
       i += 2;
       continue;
     }
-    if (ch === "$" && text[i + 1] === "(") {
+    if (ch === "$" && text2[i + 1] === "(") {
       startWord(i);
-      const end = skipSubstitution(text, i + 1);
-      value += text.slice(i, end);
+      const end = skipSubstitution(text2, i + 1);
+      value += text2.slice(i, end);
       runs = true;
       i = end;
       continue;
     }
     if (ch === "`") {
       startWord(i);
-      const end = skipQuoted(text, i, "`");
-      value += text.slice(i, end);
+      const end = skipQuoted(text2, i, "`");
+      value += text2.slice(i, end);
       runs = true;
       i = end;
       continue;
     }
-    if ((ch === "<" || ch === ">") && text[i + 1] === "(") {
+    if ((ch === "<" || ch === ">") && text2[i + 1] === "(") {
       endWord(i);
       next = "word";
       if (ch === ">") segment.pipedOut = true;
@@ -10968,31 +10563,32 @@ function parseShell(text) {
         wordStart = -1;
         value = "";
       } else endWord(i);
-      if (text.startsWith("<<<", i)) {
+      if (text2.startsWith("<<<", i)) {
         next = "herestring";
         i += 3;
-      } else if (text.startsWith("<<-", i)) {
+      } else if (text2.startsWith("<<-", i)) {
         next = "heredoc-tabs";
         i += 3;
-      } else if (text.startsWith("<<", i)) {
+      } else if (text2.startsWith("<<", i)) {
         next = "heredoc";
         i += 2;
       } else {
         const start = i;
         i += 1;
-        while (i < text.length && /[>|&<]/.test(text[i])) i += 1;
-        const operator = text.slice(start, i);
-        const toDescriptor = operator.endsWith("&") && /^\s*(?:\d|-)/.test(text.slice(i));
+        while (i < text2.length && /[>|&<]/.test(text2[i])) i += 1;
+        const operator = text2.slice(start, i);
+        const toDescriptor = operator.endsWith("&") && /^\s*(?:\d|-)/.test(text2.slice(i));
         if (operator.startsWith(">") && !toDescriptor) segment.writesFile = true;
+        if (operator.startsWith("<") && !toDescriptor) segment.readsFile = true;
         targetWrites = operator.startsWith(">") && !toDescriptor;
         next = "target";
       }
       continue;
     }
-    if (ch === "&" && text[i + 1] === ">") {
+    if (ch === "&" && text2[i + 1] === ">") {
       endWord(i);
       i += 2;
-      if (text[i] === ">") i += 1;
+      if (text2[i] === ">") i += 1;
       segment.writesFile = true;
       next = "target";
       targetWrites = true;
@@ -11011,15 +10607,15 @@ function parseShell(text) {
       const from = group?.from ?? 0;
       i += 1;
       if (group?.read === true) pipeFrom(from);
-      const after = /^[ \t]*\|(?!\|)/.exec(text.slice(i));
+      const after = /^[ \t]*\|(?!\|)/.exec(text2.slice(i));
       if (after !== null) pipeFrom(from);
       continue;
     }
     if (ch === ";" || ch === "&" || ch === "|") {
       endSegment(i);
       i += 1;
-      const pipe = ch === "|" && text[i] !== "|";
-      if (/[&|;]/.test(text[i] ?? "")) i += 1;
+      const pipe = ch === "|" && text2[i] !== "|";
+      if (/[&|;]/.test(text2[i] ?? "")) i += 1;
       if (pipe) pipeLast();
       continue;
     }
@@ -11027,7 +10623,7 @@ function parseShell(text) {
     value += ch;
     i += 1;
   }
-  endSegment(text.length);
+  endSegment(text2.length);
   return { segments, comments, processSubstitution, targetRuns };
 }
 var PREFIX_WORDS = /* @__PURE__ */ new Set([
@@ -11235,13 +10831,13 @@ function runsAProgramOption(command) {
   }
   return false;
 }
-function isInert(segment, writtenBefore, hooksPaths) {
+function isInert(segment, gitRunnableWritten) {
   const command = commandOf(segment);
   if (command === void 0) return true;
   if (segment.words[programIndex(segment.words)]?.value.includes("/")) return false;
   if (command.name === "git") {
     if (setsGitConfig(command) || runsGitProgram(command)) return false;
-    if (writtenBefore.some((path) => gitMayRun(path, hooksPaths))) return false;
+    if (gitRunnableWritten) return false;
     return INERT_GIT.has(command.sub);
   }
   if (runsAProgramOption(command)) return false;
@@ -11462,7 +11058,7 @@ function runsASubstitution(word) {
   const eq = word.value.indexOf("=");
   return eq < 0 || !isDataValue(word, word.value.slice(eq + 1));
 }
-function segmentHidingForms(segment, command, gitConfigured, writtenBefore, hooksPaths, fedByPipe) {
+function segmentHidingForms(segment, command, gitConfigured, gitRunnableWritten, fedByPipe) {
   const forms = [];
   if (segment.words.some(runsASubstitution) || segment.inputs.some((input) => input.expands)) {
     forms.push("command-substitution");
@@ -11486,7 +11082,7 @@ function segmentHidingForms(segment, command, gitConfigured, writtenBefore, hook
   if (name === "git") {
     if (setsGitConfig(command) || gitConfigured) forms.push("git-config");
     if (runsGitProgram(command)) forms.push("git-exec");
-    if (writtenBefore.some((path) => gitMayRun(path, hooksPaths))) forms.push("git-hook");
+    if (gitRunnableWritten) forms.push("git-hook");
   }
   return forms;
 }
@@ -11494,22 +11090,32 @@ function readCommand(command, trustWrites) {
   const parsed2 = parseShell(command);
   const regions = parsed2.comments.map((c) => ({ ...c, kind: "doc" }));
   const segments = parsed2.segments;
-  const hooksPaths = hooksPathsNamed(segments);
-  const writtenBefore = (index) => segments.slice(0, index).flatMap(writtenBy);
-  const laterMayRun = (index) => !trustWrites && segments.some((s, j) => j > index && !isInert(s, writtenBefore(j), hooksPaths));
-  const pipesOnlyToConsumers = (index) => {
-    for (let j = index + 1; j < segments.length; j++) {
-      const seg = segments[j];
-      const command2 = commandOf(seg);
-      if (command2 !== void 0) {
-        if (!PURE_CONSUMERS.has(command2.name)) return false;
-        if (runsAProgramOption(command2)) return false;
-        if (writesAFile(seg) && laterMayRun(j)) return false;
-      }
-      if (!seg.pipedOut) return true;
+  const count2 = segments.length;
+  const hooksPaths = [...new Set(hooksPathsNamed(segments))];
+  const commands = segments.map(commandOf);
+  const gitRunnableBefore = new Array(count2).fill(false);
+  let gitRunnable = false;
+  for (let j = 0; j < count2; j++) {
+    gitRunnableBefore[j] = gitRunnable;
+    if (!gitRunnable) {
+      gitRunnable = writtenBy(segments[j]).some((path) => gitMayRun(path, hooksPaths));
     }
-    return true;
-  };
+  }
+  const mayRunAfter = new Array(count2).fill(false);
+  if (!trustWrites) {
+    for (let j = count2 - 2; j >= 0; j--) {
+      mayRunAfter[j] = mayRunAfter[j + 1] || !isInert(segments[j + 1], gitRunnableBefore[j + 1]);
+    }
+  }
+  const laterMayRun = (index) => mayRunAfter[index];
+  const consumersFrom = new Array(count2 + 1).fill(true);
+  for (let j = count2 - 1; j >= 0; j--) {
+    const seg = segments[j];
+    const command2 = commands[j];
+    const consumer = command2 === void 0 || PURE_CONSUMERS.has(command2.name) && !runsAProgramOption(command2) && !(writesAFile(seg) && laterMayRun(j));
+    consumersFrom[j] = consumer && (!seg.pipedOut || consumersFrom[j + 1]);
+  }
+  const pipesOnlyToConsumers = (index) => consumersFrom[index + 1];
   const forms = /* @__PURE__ */ new Set();
   if (parsed2.processSubstitution) forms.add("process-substitution");
   if (parsed2.targetRuns) forms.add("command-substitution");
@@ -11517,13 +11123,12 @@ function readCommand(command, trustWrites) {
   segments.forEach((segment, index) => {
     const keep = segment.pipedOut && !pipesOnlyToConsumers(index) || writesAFile(segment) && laterMayRun(index);
     regions.push(...segmentRegions(segment, keep));
-    const command2 = commandOf(segment);
+    const command2 = commands[index];
     for (const form of segmentHidingForms(
       segment,
       command2,
       gitConfigured,
-      writtenBefore(index),
-      hooksPaths,
+      gitRunnableBefore[index],
       segments[index - 1]?.pipedOut === true
     )) {
       forms.add(form);
@@ -11552,6 +11157,26 @@ function executedView(command) {
 }
 function commandHidingForms(command) {
   return readCommand(command, false).hidingForms;
+}
+function simpleCommandsOf(command) {
+  return simpleViews(command, true);
+}
+function simpleViews(text2, bodies) {
+  const { segments } = parseShell(text2);
+  const out = [];
+  segments.forEach((segment, k) => {
+    out.push({
+      words: segment.words.map((word) => word.value),
+      writes: segment.written,
+      readsFile: segment.readsFile,
+      pipedIn: segments[k - 1]?.pipedOut === true
+    });
+    if (!bodies) return;
+    for (const input of segment.inputs) {
+      out.push(...simpleViews(text2.slice(input.start, input.end), false));
+    }
+  });
+  return out;
 }
 function hidingFormsOf(mapped) {
   const command = mapped.args.full_command;
@@ -11584,7 +11209,7 @@ function verdict(state, why) {
 function runVerdict(agent, mapped, result, stillMatches) {
   if (mapped.tool === "WebSearch") return verdict("mentioned", "search");
   const command = mapped.args.full_command;
-  const matchesIn = (text) => stillMatches({ ...mapped, args: { ...mapped.args, full_command: text } });
+  const matchesIn = (text2) => stillMatches({ ...mapped, args: { ...mapped.args, full_command: text2 } });
   let onlyWrittenFile = () => false;
   if (SHELL_TOOLS2.has(mapped.tool) && command !== void 0) {
     const view = executedView(command);
@@ -11635,12 +11260,2873 @@ function tallyMatchedCalls(corpus, catalog, allowlist) {
   };
 }
 
+// src/core/verify/calls.ts
+var SHELL_TOOL = "Bash";
+function isRecord4(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+function text(value) {
+  return typeof value === "string" ? value : "";
+}
+function claudeEdits(use) {
+  const input = use.input;
+  const path = text(input.file_path);
+  if (path === "") return [];
+  switch (use.name) {
+    case "Edit":
+      return [
+        {
+          path,
+          removed: text(input.old_string),
+          added: text(input.new_string),
+          whole: false,
+          deleted: false
+        }
+      ];
+    case "MultiEdit": {
+      const edits = Array.isArray(input.edits) ? input.edits : [];
+      const removed = [];
+      const added = [];
+      for (const edit of edits) {
+        if (!isRecord4(edit)) continue;
+        removed.push(text(edit.old_string));
+        added.push(text(edit.new_string));
+      }
+      return [
+        {
+          path,
+          removed: removed.join("\n"),
+          added: added.join("\n"),
+          whole: false,
+          deleted: false
+        }
+      ];
+    }
+    case "Write":
+      return [{ path, removed: "", added: text(input.content), whole: true, deleted: false }];
+    default:
+      return [];
+  }
+}
+function patchEdits(patch) {
+  const files = [];
+  let current;
+  for (const raw of patch.split("\n")) {
+    const line = raw.replace(/\r$/, "");
+    const marker = /^\*\*\* (Update|Add|Delete) File: (.*)$/.exec(line);
+    if (marker !== null) {
+      const path = (marker[2] ?? "").trim();
+      const mode = marker[1] === "Update" ? "update" : marker[1] === "Add" ? "add" : "delete";
+      current = path === "" ? void 0 : { path, mode, removed: [], added: [] };
+      if (current !== void 0) files.push(current);
+      continue;
+    }
+    if (line.startsWith("***")) {
+      if (line.startsWith("*** End Patch")) current = void 0;
+      continue;
+    }
+    if (current === void 0) continue;
+    if (line.startsWith("+")) current.added.push(line.slice(1));
+    else if (line.startsWith("-")) current.removed.push(line.slice(1));
+  }
+  return files.map((file2) => ({
+    path: file2.path,
+    removed: file2.removed.join("\n"),
+    added: file2.added.join("\n"),
+    whole: file2.mode === "add",
+    deleted: file2.mode === "delete"
+  }));
+}
+function mappedPath(mapped) {
+  return mapped.args.file_path ?? "";
+}
+var CURSOR_EDIT_TOOLS = /* @__PURE__ */ new Set(["Write", "Edit", "Delete"]);
+function readCalls(corpus, catalog, allowlist) {
+  const agent = corpus.agent ?? "claude";
+  const calls = [];
+  for (const [index, session] of corpus.sessions.entries()) {
+    const seen = /* @__PURE__ */ new Set();
+    let order = 0;
+    let hookWritten = false;
+    const add = (call) => {
+      calls.push(call);
+      if (!hookWritten && writesHook(call) && ranOrMayHaveRun(agent, call)) hookWritten = true;
+    };
+    for (const turn of session.turns) {
+      for (const use of turn.toolUses) {
+        if (agent === "claude" && use.toolUseId !== "") {
+          if (seen.has(use.toolUseId)) continue;
+          seen.add(use.toolUseId);
+        }
+        const result = session.toolResults.get(use.toolUseId);
+        const mappedCalls = toolUseCalls(agent, use);
+        const shim = agent === "codex" && typeof use.input.input === "string" ? readShimCalls(use.input.input) : void 0;
+        for (const [k, call] of mappedCalls.entries()) {
+          if (call.kind !== "action") continue;
+          const { mapped, decision } = evaluateAction(catalog, allowlist, call.candidates);
+          const base = {
+            session: index,
+            order: order++,
+            cwd: session.cwd,
+            mapped,
+            result,
+            ruleIds: decision.matches.map((m) => m.ruleId),
+            hidingForms: hidingFormsOf(mapped)
+          };
+          if (mapped.tool === SHELL_TOOL && mapped.args.full_command !== void 0) {
+            const command = mapped.args.full_command;
+            const forms = base.hidingForms;
+            const hooked = hookWritten && runsGitHooks(command);
+            add({
+              ...base,
+              command,
+              hidingForms: hooked ? HIDING_FORMS.filter((f) => f === "git-hook" || forms.includes(f)) : forms
+            });
+            continue;
+          }
+          let edits = [];
+          if (agent === "claude") edits = claudeEdits(use);
+          else if (agent === "codex") {
+            const shimCall = shim?.[k];
+            if (shimCall?.fn === "apply_patch" && shimCall.text !== void 0) {
+              edits = patchEdits(shimCall.text);
+            }
+          } else if (CURSOR_EDIT_TOOLS.has(mapped.tool) && mappedPath(mapped) !== "") {
+            edits = [
+              {
+                path: mappedPath(mapped),
+                removed: "",
+                added: "",
+                whole: mapped.tool !== "Delete",
+                deleted: mapped.tool === "Delete"
+              }
+            ];
+          }
+          if (edits.length === 0) {
+            add(base);
+            continue;
+          }
+          for (const edit of edits) add({ ...base, edit });
+        }
+      }
+    }
+  }
+  return { agent, calls };
+}
+function runStateOf(agent, call, holds) {
+  const verdict2 = runVerdict(
+    agent,
+    call.mapped,
+    call.result,
+    (changed) => holds(changed.args.full_command ?? "")
+  );
+  return verdict2.state === "ran" && !isResultBackedRun(verdict2) ? "unknown" : verdict2.state;
+}
+function executedText(command) {
+  return executedView(command).text;
+}
+function rulesMatcher(catalog, allowlist, keep) {
+  const subset = catalog.filter(keep);
+  return (call, command) => subset.length > 0 && evaluateAction(subset, allowlist, [
+    { ...call.mapped, args: { ...call.mapped.args, full_command: command } }
+  ]).decision.matches.length > 0;
+}
+function quietStatus(unknown, couldHide = 0) {
+  return unknown > 0 || couldHide > 0 ? "could-not-check" : "clean";
+}
+var HOOKED_GIT = /* @__PURE__ */ new Set([
+  "commit",
+  "merge",
+  "push",
+  "rebase",
+  "checkout",
+  "switch",
+  "am",
+  "cherry-pick",
+  "pull",
+  "revert"
+]);
+var HOOKS_PATH = /(?:^|[\\/])(?:\.git[\\/]hooks|\.husky|\.githooks)(?:[\\/]|$)/;
+function gitSubcommandAt(args2) {
+  let k = 0;
+  while (k < args2.length && args2[k].startsWith("-")) {
+    k += ["-C", "-c", "--git-dir", "--work-tree"].includes(args2[k]) ? 2 : 1;
+  }
+  return k;
+}
+function runsGitHooks(command) {
+  return simpleCommands(executedText(command)).some((simple) => {
+    const { program, args: args2 } = programAndArgs(simple);
+    return program === "git" && HOOKED_GIT.has(args2[gitSubcommandAt(args2)] ?? "");
+  });
+}
+function writesHook(call) {
+  if (call.edit !== void 0) return HOOKS_PATH.test(call.edit.path) && !call.edit.deleted;
+  if (call.command === void 0) return false;
+  const text2 = executedText(call.command);
+  return HOOKS_PATH.test(text2) && /(?:>|\btee\b|\bcp\b|\bmv\b|\bln\b|\bchmod\b)/.test(text2) || /\bgit\b[^;&|\n]*\bconfig\b[^;&|\n]*\bcore\.hooksPath\b/.test(text2);
+}
+function ranOrMayHaveRun(agent, call) {
+  const verdict2 = runVerdict(agent, call.mapped, call.result, () => true);
+  return verdict2.state !== "mentioned" && verdict2.why !== "error-result";
+}
+var HIDDEN = /* @__PURE__ */ new WeakMap();
+function hidden(corpus) {
+  const known = HIDDEN.get(corpus);
+  if (known !== void 0) return known;
+  let count2 = 0;
+  const forms = /* @__PURE__ */ new Set();
+  for (const call of corpus.calls) {
+    if (call.hidingForms.length === 0) continue;
+    if (!ranOrMayHaveRun(corpus.agent, call)) continue;
+    count2 += 1;
+    for (const form of call.hidingForms) forms.add(form);
+  }
+  const out = { count: count2, forms: HIDING_FORMS.filter((f) => forms.has(f)) };
+  HIDDEN.set(corpus, out);
+  return out;
+}
+function couldHideCount(corpus) {
+  return hidden(corpus).count;
+}
+function heldHidingForms(corpus) {
+  return hidden(corpus).forms;
+}
+function baseName(path) {
+  return path.split(/[\\/]/).pop() ?? path;
+}
+function simpleCommands(command) {
+  return simpleCommandsOf(command);
+}
+var PREFIX_WORDS2 = /* @__PURE__ */ new Set([
+  "sudo",
+  "env",
+  "command",
+  "exec",
+  "time",
+  "nohup",
+  "nice",
+  "then",
+  "do",
+  "else",
+  "if",
+  "elif",
+  "while",
+  "until",
+  "builtin",
+  "timeout",
+  "stdbuf",
+  "!",
+  "{",
+  "}"
+]);
+var PREFIX_VALUE_OPTIONS2 = /* @__PURE__ */ new Map([
+  ["sudo", /* @__PURE__ */ new Set(["-u", "-g", "-C", "-D", "-h", "-p", "-R", "-r", "-T", "-t", "-U"])],
+  ["env", /* @__PURE__ */ new Set(["-u", "-C", "--unset", "--chdir"])],
+  ["nice", /* @__PURE__ */ new Set(["-n"])],
+  ["timeout", /* @__PURE__ */ new Set(["-s", "-k", "--signal", "--kill-after"])],
+  ["stdbuf", /* @__PURE__ */ new Set(["-i", "-o", "-e"])],
+  ["time", /* @__PURE__ */ new Set(["-f", "-o", "--format", "--output"])],
+  ["exec", /* @__PURE__ */ new Set(["-a"])]
+]);
+function programAndArgs(simple) {
+  const list = simple.words;
+  const assignments = [];
+  let k = 0;
+  while (k < list.length) {
+    const word = list[k];
+    if (/^[A-Za-z_][A-Za-z0-9_]*=/.test(word)) {
+      assignments.push(word);
+      k += 1;
+      continue;
+    }
+    const prefix = word.toLowerCase();
+    if (!PREFIX_WORDS2.has(prefix)) break;
+    const valued = PREFIX_VALUE_OPTIONS2.get(prefix);
+    k += 1;
+    while (k < list.length && list[k].startsWith("-")) {
+      k += valued?.has(list[k]) === true ? 2 : 1;
+    }
+    if (prefix === "timeout" && k < list.length) k += 1;
+  }
+  const program = baseName(list[k] ?? "").toLowerCase().replace(/\.exe$/, "");
+  return { program, args: list.slice(k + 1), assignments };
+}
+function isEdit(call) {
+  return call.edit !== void 0;
+}
+function isShell(call) {
+  return call.command !== void 0;
+}
+
+// src/core/verify/card-parts.ts
+function counted(count2, one, many) {
+  return `${count2} ${count2 === 1 ? one : many}`;
+}
+function noun(count2, one, many) {
+  return count2 === 1 ? one : many;
+}
+function restsOnCodex(context) {
+  return context.ranEvidence === "output-record";
+}
+var MAX_LOCAL_FIXES = 50;
+function couldHideTemplate(id) {
+  return {
+    id,
+    render: (f) => f.couldHide > 0 ? `${counted(f.couldHide, "command that ran, or may have run,", "commands that ran, or may have run,")} could run other commands this check does not read (code given to a shell or an interpreter, a script piped into one, find -exec, xargs, eval, a substitution, git config, exec or hooks, or a shell this reading does not parse), so it could not confirm it saw everything.` : void 0
+  };
+}
+
+// src/core/verify/cards.ts
+function sentence(template, facts) {
+  const text2 = template.render(facts);
+  return text2 === void 0 ? void 0 : { template: template.id, text: text2 };
+}
+function sentences(templates, facts) {
+  const out = [];
+  for (const template of templates) {
+    const made = sentence(template, facts);
+    if (made !== void 0) out.push(made);
+  }
+  return out;
+}
+var NOT_CHECKED_SENTENCE = {
+  id: "not-checked",
+  render: () => "Not checked."
+};
+var COULD_NOT_CHECK_SENTENCE = {
+  id: "could-not-check",
+  render: () => "Could not be checked on this machine, so this is not a clean result."
+};
+var HIDING_FORM_LABELS = {
+  "shell-string": "a shell given a string to run",
+  "find-exec": "find -exec",
+  xargs: "xargs",
+  "process-substitution": "process substitution",
+  "command-substitution": "a command substitution",
+  eval: "eval",
+  "git-config": "git with config set on its command line or by an earlier command",
+  "git-exec": "git with --exec or an external diff",
+  "git-hook": "git after a hook was written",
+  "unread-shell": "a shell this reading does not parse",
+  "inline-code": "code run inline by an interpreter",
+  "piped-script": "a script piped into a shell or interpreter"
+};
+function hidingFormLabel(form) {
+  return HIDING_FORM_LABELS[form] ?? form.replace(/-/g, " ");
+}
+var UNCONFIRMED_SENTENCE = {
+  id: "could-not-confirm",
+  render: (u) => u.reason === "no-output" ? "Could not confirm: these sessions record no command output, so a count of commands that ran is zero because nothing could be confirmed, not because nothing ran." : `Could not confirm: commands that ran here used ${u.forms.map(hidingFormLabel).join(", ")}, which can run commands this reading does not take apart, so this is not a clean result.`
+};
+function notCheckedCard(category) {
+  return {
+    category,
+    tone: "not-checked",
+    count: 0,
+    found: sentences([NOT_CHECKED_SENTENCE], void 0),
+    now: [],
+    fixes: [],
+    codexCaveat: false
+  };
+}
+function couldNotCheckCard(category, count2) {
+  return {
+    category,
+    tone: "could-not-check",
+    count: count2,
+    found: sentences([COULD_NOT_CHECK_SENTENCE], void 0),
+    now: [],
+    fixes: [],
+    codexCaveat: false
+  };
+}
+var TONE_ORDER = [
+  "act",
+  "review",
+  "clean",
+  "could-not-check",
+  "not-checked"
+];
+function orderCards(cards) {
+  return [...cards].sort(
+    (a, b) => TONE_ORDER.indexOf(a.tone) - TONE_ORDER.indexOf(b.tone) || VERIFY_CATEGORIES.indexOf(a.category) - VERIFY_CATEGORIES.indexOf(b.category)
+  );
+}
+var KNOWN_TONES = new Set(VERIFY_STATUSES);
+function hidingFormsIn(facts) {
+  if (facts === null || typeof facts !== "object") return [];
+  const named = facts.hidingForms;
+  if (!Array.isArray(named)) return [];
+  return HIDING_FORMS.filter((form) => named.includes(form));
+}
+var READS_TEXT = /* @__PURE__ */ new Set(["secrets"]);
+function unconfirmedOf(category, status, facts, resultsRecorded) {
+  const forms = hidingFormsIn(facts);
+  if (forms.length > 0) return { reason: "hiding-forms", forms };
+  if (!resultsRecorded && !READS_TEXT.has(category) && status === "clean") {
+    return { reason: "no-output", forms: [] };
+  }
+  return void 0;
+}
+function honestStatus(category, status, facts, resultsRecorded) {
+  const known = KNOWN_TONES.has(status) ? status : "could-not-check";
+  return known === "clean" && unconfirmedOf(category, known, facts, resultsRecorded) !== void 0 ? "could-not-check" : known;
+}
+function confirmedCard(built, facts, verification) {
+  const recorded = verification.resultsRecorded;
+  const tone = KNOWN_TONES.has(built.tone) ? built.tone : "could-not-check";
+  const unconfirmed = unconfirmedOf(built.category, tone, facts, recorded);
+  const finalTone = honestStatus(built.category, tone, facts, recorded);
+  const lead = unconfirmed !== void 0 ? sentences([UNCONFIRMED_SENTENCE], unconfirmed) : finalTone === "could-not-check" ? sentences([COULD_NOT_CHECK_SENTENCE], void 0) : [];
+  return {
+    ...built,
+    tone: finalTone,
+    found: [
+      ...lead,
+      ...built.found.filter((line) => line.template !== COULD_NOT_CHECK_SENTENCE.id)
+    ],
+    ...unconfirmed === void 0 ? {} : { unconfirmed }
+  };
+}
+function cardsFor(verification, builders) {
+  const context = { ranEvidence: verification.ranEvidence };
+  const cards = VERIFY_CATEGORIES.map((category) => {
+    const result = verification.categories[category];
+    if (result.status === "not-checked") return notCheckedCard(category);
+    const build = builders[category];
+    if (build === void 0 || result.facts === void 0) {
+      return couldNotCheckCard(category, result.matches ?? 0);
+    }
+    const built = build(result, context);
+    return confirmedCard(built, result.facts, verification);
+  });
+  return orderCards(cards);
+}
+var HEADLINE_ORDER = [
+  "secrets",
+  "skipped-checks",
+  "lost-work",
+  "cloud",
+  "tests",
+  "destructive"
+];
+var HEADLINE_TONES = {
+  secrets: "act",
+  "skipped-checks": "act",
+  "lost-work": "act",
+  cloud: "review",
+  tests: "act",
+  destructive: "act"
+};
+var HEADLINE_BASIS = {
+  secrets: "likely-real-credentials",
+  "skipped-checks": "commits-on-main-without-checks",
+  "lost-work": "recoverable-deleted-work",
+  cloud: "iam-changes",
+  tests: "lowered-test-floors",
+  destructive: "unguarded-recursive-deletes"
+};
+function pickHeadline(cards, context) {
+  if (context.ranEvidence === "output-record") return void 0;
+  for (const category of HEADLINE_ORDER) {
+    const card = cards.find(
+      (c) => c.category === category && c.headline !== void 0 && c.tone === HEADLINE_TONES[category] && c.headline.basis === HEADLINE_BASIS[category] && c.headline.count > 0 && !c.headline.restsOnCodexRan && c.unconfirmed === void 0
+    );
+    if (card !== void 0) return card;
+  }
+  return void 0;
+}
+var LOCAL_ONLY = /* @__PURE__ */ Symbol("local-only");
+var LOCAL_FIX_SERIALIZED = "a local fix command belongs in the local fixes file only, and is never serialized";
+function localFix(category, command) {
+  return Object.freeze({
+    [LOCAL_ONLY]: true,
+    category,
+    command,
+    toJSON() {
+      throw new Error(LOCAL_FIX_SERIALIZED);
+    }
+  });
+}
+var SAFE_REF = /^[A-Za-z0-9_@%+=:,./-]+$/;
+var SHA = /^(?:[0-9a-fA-F]{7,40}|[0-9a-fA-F]{64})$/;
+function isSafeBranch(name) {
+  if (!SAFE_REF.test(name) || name.includes(":")) return false;
+  if (name === "@" || name === "HEAD" || name.includes("..") || name.includes("@{")) return false;
+  if (name.includes("//") || name.startsWith("/") || name.endsWith("/")) return false;
+  if (name.endsWith(".")) return false;
+  return name.split("/").every((part) => !part.startsWith(".") && !part.endsWith(".lock"));
+}
+function isSafeRepoPath(path) {
+  return SAFE_REF.test(path) && !path.includes(":") && !path.startsWith("/") && !path.includes("..");
+}
+function safeValue(part) {
+  let value;
+  let safe;
+  if ("sha" in part) {
+    value = part.sha;
+    safe = SHA.test(value);
+  } else if ("branch" in part) {
+    value = part.branch;
+    safe = isSafeBranch(value);
+  } else if ("repoPath" in part) {
+    value = part.repoPath;
+    safe = isSafeRepoPath(value);
+  } else {
+    value = part.ref;
+    safe = SAFE_REF.test(value);
+  }
+  return safe && !value.startsWith("-") ? value : void 0;
+}
+function quoteArgument(argument) {
+  return `'${argument.replace(/'/g, "'\\''")}'`;
+}
+function localFixCommand(category, parts) {
+  const argv = [];
+  for (const part of parts) {
+    if (typeof part === "string") {
+      argv.push(quoteArgument(part));
+      continue;
+    }
+    const value = safeValue(part);
+    if (value === void 0) {
+      return { category, unsafe: true, note: "could not make a safe command" };
+    }
+    argv.push(quoteArgument(value));
+  }
+  return localFix(category, argv.join(" "));
+}
+function isLocalFix(value) {
+  return typeof value === "object" && value !== null && LOCAL_ONLY in value;
+}
+
+// src/core/verify/hosts.ts
+var LOCAL_NAMES = /* @__PURE__ */ new Set([
+  "localhost",
+  "localhost.localdomain",
+  "ip6-localhost",
+  "ip6-loopback",
+  "host.docker.internal",
+  "gateway.docker.internal",
+  "host.containers.internal",
+  "0.0.0.0",
+  "::",
+  "::1",
+  "[::1]",
+  "[::]"
+]);
+var LOCALSTACK = /^localstack$|(?:^|\.)localhost\.localstack\.cloud$/;
+function isLocalHost(host) {
+  const name = host.toLowerCase().replace(/\.$/, "");
+  if (LOCAL_NAMES.has(name)) return true;
+  if (/^127(?:\.\d{1,3}){3}$/.test(name)) return true;
+  if (/\.localhost$/.test(name)) return true;
+  return LOCALSTACK.test(name);
+}
+function hostOf(target) {
+  const url = /^[a-z][a-z0-9+.-]*:\/\/(?:[^@/?#\s]*@)?(\[[^\]]+\]|[^:/?#\s]+)/i.exec(target);
+  if (url !== null) return url[1];
+  const remote = /^(?:[^@/:\s]+@)?(\[[^\]]+\]|[^:/\s]+):(?!\/\/)/.exec(target);
+  if (remote !== null) return remote[1];
+  return void 0;
+}
+function bareHost(target) {
+  const match = /^(\[[^\]]+\]|[A-Za-z0-9.-]+)(?::\d+)?(?:\/.*)?$/.exec(target);
+  return match?.[1];
+}
+function endpointUrls(args2) {
+  const out = [];
+  for (let k = 0; k < args2.length; k++) {
+    const arg = args2[k];
+    if (arg === "--endpoint-url") out.push(args2[k + 1] ?? "");
+    else if (arg.startsWith("--endpoint-url=")) out.push(arg.slice("--endpoint-url=".length));
+  }
+  return out;
+}
+function endpointsLocal(args2) {
+  const urls = endpointUrls(args2);
+  if (urls.length === 0) return void 0;
+  return urls.every((url) => {
+    const host = hostOf(url) ?? bareHost(url);
+    return host !== void 0 && isLocalHost(host);
+  });
+}
+
+// src/core/verify/repos.ts
+import { dirname, isAbsolute, join as join3 } from "path";
+function rootCache() {
+  return /* @__PURE__ */ new Map();
+}
+async function repoRoot(io, dir, cache) {
+  const known = cache.get(dir);
+  if (known !== void 0) return known;
+  let outcome;
+  if (io.isDirectory(dir) !== true) outcome = { ok: false, reason: "missing" };
+  else {
+    const top = await io.git(dir, ["rev-parse", "--show-toplevel"]);
+    const root = top.ok ? top.stdout.trim() : "";
+    outcome = top.ok ? root === "" ? { ok: false, reason: "failed" } : { ok: true, root } : { ok: false, reason: top.reason };
+  }
+  cache.set(dir, outcome);
+  return outcome;
+}
+function placed(path, cwd) {
+  if (isAbsolute(path)) return path;
+  return cwd === null || cwd === "" ? void 0 : join3(cwd, path);
+}
+async function readRepoFile(io, path, cache) {
+  const root = await repoRoot(io, dirname(path), cache);
+  if (!root.ok) return { ok: false, reason: root.reason };
+  return io.readFile(path);
+}
+
+// src/core/verify/cloud.ts
+var AWS_VALUE_OPTIONS = /* @__PURE__ */ new Set([
+  "--profile",
+  "--region",
+  "--endpoint-url",
+  "--output",
+  "--query",
+  "--color",
+  "--ca-bundle",
+  "--cli-read-timeout",
+  "--cli-connect-timeout",
+  "--cli-binary-format"
+]);
+function optionValue(args2, name) {
+  for (let k = 0; k < args2.length; k++) {
+    const arg = args2[k];
+    if (arg === name) return args2[k + 1];
+    if (arg.startsWith(`${name}=`)) return arg.slice(name.length + 1);
+  }
+  return void 0;
+}
+function operands(args2) {
+  const out = [];
+  for (let k = 0; k < args2.length; k++) {
+    const arg = args2[k];
+    if (arg.startsWith("--")) {
+      if (!arg.includes("=") && k + 1 < args2.length && !args2[k + 1].startsWith("-")) {
+        if (!/^--(?:recursive|dryrun|dry-run|quiet|force|delete|exact-timestamps)$/.test(arg))
+          k += 1;
+      }
+      continue;
+    }
+    if (arg.startsWith("-")) continue;
+    out.push(arg);
+  }
+  return out;
+}
+function iamSubject(operation) {
+  if (operation.includes("access-key")) return "access-keys";
+  if (/login-profile|password|mfa|ssh-public-key|signing-certificate|service-specific-credential/.test(
+    operation
+  )) {
+    return "credentials";
+  }
+  if (operation.includes("policy")) return "policies";
+  if (operation.includes("role") || operation.includes("instance-profile")) return "roles";
+  if (operation.includes("group")) return "groups";
+  if (operation.includes("user")) return "users";
+  return "other";
+}
+function review(parts) {
+  return localFixCommand("cloud", parts);
+}
+function iamReview(subject, args2) {
+  const user = optionValue(args2, "--user-name");
+  const role = optionValue(args2, "--role-name");
+  const group = optionValue(args2, "--group-name");
+  if (subject === "access-keys" && user !== void 0) {
+    return review(["aws", "iam", "list-access-keys", "--user-name", { ref: user }]);
+  }
+  if (role !== void 0) {
+    return review(["aws", "iam", "list-attached-role-policies", "--role-name", { ref: role }]);
+  }
+  if (group !== void 0)
+    return review(["aws", "iam", "get-group", "--group-name", { ref: group }]);
+  if (user !== void 0) {
+    return review(["aws", "iam", "list-attached-user-policies", "--user-name", { ref: user }]);
+  }
+  return void 0;
+}
+function bucketReview(bucket) {
+  return review(["aws", "s3", "ls", { ref: `s3://${bucket}` }]);
+}
+function readAws(args2, local) {
+  let k = 0;
+  while (k < args2.length && args2[k].startsWith("--")) {
+    k += AWS_VALUE_OPTIONS.has(args2[k]) ? 2 : 1;
+  }
+  const service = args2[k] ?? "";
+  const operation = args2[k + 1] ?? "";
+  const rest = args2.slice(k + 2);
+  const toLocal = endpointsLocal(args2) ?? local;
+  let change;
+  if (service === "iam" && operation !== "" && !/^(?:get|list|simulate|generate|wait|help)\b/.test(operation)) {
+    const subject = iamSubject(operation);
+    const review2 = iamReview(subject, rest);
+    change = { service: "iam", subject, ...review2 === void 0 ? {} : { review: review2 } };
+  } else if (service === "autoscaling" && operation !== "" && !/^(?:describe|get|wait|help)\b/.test(operation)) {
+    const group = optionValue(rest, "--auto-scaling-group-name");
+    change = {
+      service: "auto-scaling",
+      ...group === void 0 ? {} : {
+        review: review([
+          "aws",
+          "autoscaling",
+          "describe-auto-scaling-groups",
+          "--auto-scaling-group-names",
+          { ref: group }
+        ])
+      }
+    };
+  } else if (service === "s3") {
+    const targets = operands(rest);
+    const last = targets[targets.length - 1] ?? "";
+    const writes = ["rm", "rb", "mb", "website"].includes(operation) || ["cp", "mv", "sync"].includes(operation) && last.startsWith("s3://");
+    const bucket = targets.map((t) => /^s3:\/\/([^/\s]+)/.exec(t)?.[1]).find((b) => b !== void 0);
+    if (writes) {
+      change = {
+        service: "s3",
+        ...bucket === void 0 ? {} : { review: bucketReview(bucket) }
+      };
+    }
+  } else if (service === "s3api" && operation !== "" && !/^(?:get|list|head|wait|help|select)\b/.test(operation)) {
+    const bucket = optionValue(rest, "--bucket");
+    change = {
+      service: "s3",
+      ...bucket === void 0 ? {} : { review: bucketReview(bucket) }
+    };
+  }
+  if (change === void 0) return [];
+  return toLocal ? "local" : [change];
+}
+var TERRAFORM_CHANGES = /* @__PURE__ */ new Set([
+  "apply",
+  "destroy",
+  "import",
+  "taint",
+  "untaint",
+  "force-unlock"
+]);
+var STATE_CHANGES = /* @__PURE__ */ new Set(["rm", "mv", "push", "replace-provider"]);
+function readTerraform(args2, cwd) {
+  let folder;
+  const words2 = [];
+  for (const arg of args2) {
+    if (arg.startsWith("-chdir=")) folder = arg.slice("-chdir=".length);
+    else if (!arg.startsWith("-")) words2.push(arg);
+  }
+  const [first, second] = words2[0] === "run-all" || words2[0] === "run" ? words2.slice(1) : words2;
+  const changes = first !== void 0 && TERRAFORM_CHANGES.has(first) || first === "state" && second !== void 0 && STATE_CHANGES.has(second) || first === "workspace" && second === "delete";
+  if (!changes) return [];
+  const where = folder === void 0 ? cwd ?? void 0 : placed(folder, cwd) ?? folder;
+  return [
+    {
+      service: "terraform",
+      autoApprove: args2.some((a) => /^--?auto-approve(?:=true)?$/.test(a)),
+      // The folder goes in as an argument, never as shell text: `sh` runs the fixed script with
+      // it as `$1`.
+      ...where === void 0 ? {} : {
+        review: review(["sh", "-c", 'cd "$1" && terraform show', "sh", { ref: where }])
+      }
+    }
+  ];
+}
+function readCloud(command, cwd = null) {
+  const changes = [];
+  let localStack = 0;
+  for (const simple of simpleCommands(command)) {
+    const { program, args: args2 } = programAndArgs(simple);
+    if (program === "aws" || program === "awslocal") {
+      const read = readAws(args2, program === "awslocal");
+      if (read === "local") localStack += 1;
+      else changes.push(...read);
+    } else if (program === "terraform" || program === "tofu" || program === "terragrunt") {
+      changes.push(...readTerraform(args2, cwd));
+    }
+  }
+  return { changes, localStack };
+}
+var TERRAFORM_RULES = /* @__PURE__ */ new Set([
+  "pi.terraform-auto-approve",
+  "pi.terraform-state-mutate"
+]);
+var IAM_RULES = /* @__PURE__ */ new Set(["ps.iam-grant"]);
+function checkCloud(input) {
+  const { agent, calls } = input.calls;
+  const terraformRule = rulesMatcher(
+    input.catalog,
+    input.allowlist,
+    (r) => TERRAFORM_RULES.has(r.rule.id)
+  );
+  const autoApproveRule = rulesMatcher(
+    input.catalog,
+    input.allowlist,
+    (r) => r.rule.id === "pi.terraform-auto-approve"
+  );
+  const iamRule = rulesMatcher(input.catalog, input.allowlist, (r) => IAM_RULES.has(r.rule.id));
+  const counts = {
+    iamChanges: 0,
+    autoScalingChanges: 0,
+    s3Changes: 0,
+    terraformChanges: 0,
+    terraformAutoApprove: 0,
+    localStack: 0,
+    mentioned: 0,
+    unconfirmed: 0
+  };
+  const subjects = /* @__PURE__ */ new Set();
+  const fixes = [];
+  const reviews = /* @__PURE__ */ new Set();
+  let matches = 0;
+  for (const call of calls) {
+    if (!isShell(call)) continue;
+    const ruled = call.ruleIds.some((id) => TERRAFORM_RULES.has(id) || IAM_RULES.has(id));
+    const reading = readCloud(call.command, call.cwd);
+    if (!ruled && reading.changes.length === 0 && reading.localStack === 0) continue;
+    const holds = (command) => {
+      const r = readCloud(command, call.cwd);
+      return r.changes.length > 0 || r.localStack > 0 || terraformRule(call, command) || iamRule(call, command);
+    };
+    matches += 1;
+    const state = runStateOf(agent, call, holds);
+    if (state === "mentioned") {
+      counts.mentioned += 1;
+      continue;
+    }
+    if (state === "unknown") {
+      counts.unconfirmed += 1;
+      continue;
+    }
+    const ran = executedText(call.command);
+    const read = readCloud(ran, call.cwd);
+    const changes = [...read.changes];
+    counts.localStack += read.localStack;
+    if (!changes.some((c) => c.service === "terraform") && terraformRule(call, ran)) {
+      changes.push({ service: "terraform", autoApprove: autoApproveRule(call, ran) });
+    }
+    if (!changes.some((c) => c.service === "iam") && iamRule(call, ran)) {
+      changes.push({ service: "iam", subject: "other" });
+    }
+    for (const change of changes) {
+      if (change.service === "iam") {
+        counts.iamChanges += 1;
+        subjects.add(change.subject ?? "other");
+      } else if (change.service === "auto-scaling") counts.autoScalingChanges += 1;
+      else if (change.service === "s3") counts.s3Changes += 1;
+      else {
+        counts.terraformChanges += 1;
+        if (change.autoApprove === true) counts.terraformAutoApprove += 1;
+      }
+      const review2 = change.review;
+      if (review2 === void 0 || fixes.length >= MAX_LOCAL_FIXES) continue;
+      if (isLocalFix(review2)) {
+        if (reviews.has(review2.command)) continue;
+        reviews.add(review2.command);
+      }
+      fixes.push(review2);
+    }
+  }
+  const facts = {
+    ...counts,
+    iamSubjects: IAM_SUBJECTS.filter((s) => subjects.has(s)),
+    couldHide: couldHideCount(input.calls),
+    hidingForms: heldHidingForms(input.calls)
+  };
+  return { check: { status: cloudStatus(facts), matches, facts }, localFixes: fixes };
+}
+function changesOf(f) {
+  return f.iamChanges + f.autoScalingChanges + f.s3Changes + f.terraformChanges;
+}
+function cloudStatus(facts) {
+  return changesOf(facts) > 0 ? "review" : quietStatus(facts.unconfirmed, facts.couldHide);
+}
+var SUBJECT_WORDS = {
+  "access-keys": "access keys",
+  policies: "policies",
+  roles: "roles",
+  users: "users",
+  groups: "groups",
+  credentials: "sign-in credentials",
+  other: "other IAM settings"
+};
+function whenAny(id, count2, say) {
+  return { id, render: (f) => count2(f) > 0 ? say(count2(f), f) : void 0 };
+}
+var CLOUD_FOUND = [
+  whenAny(
+    "cloud.iam",
+    (f) => f.iamChanges,
+    (n2, f) => `${counted(n2, "IAM change", "IAM changes")} ran, touching ${f.iamSubjects.map((s) => SUBJECT_WORDS[s]).join(", ")}.`
+  ),
+  whenAny(
+    "cloud.auto-scaling",
+    (f) => f.autoScalingChanges,
+    (n2) => `${counted(n2, "Auto Scaling change", "Auto Scaling changes")} ran.`
+  ),
+  whenAny(
+    "cloud.s3",
+    (f) => f.s3Changes,
+    (n2) => `${counted(n2, "S3 write or delete", "S3 writes or deletes")} ran.`
+  ),
+  whenAny(
+    "cloud.terraform",
+    (f) => f.terraformChanges,
+    (n2, f) => `${counted(n2, "Terraform command that changes", "Terraform commands that change")} infrastructure or state ran${f.terraformAutoApprove > 0 ? `, ${f.terraformAutoApprove} of them with -auto-approve` : ""}.`
+  ),
+  {
+    id: "cloud.nothing",
+    render: (f) => changesOf(f) === 0 && f.couldHide === 0 && f.unconfirmed === 0 ? "No IAM, Auto Scaling, S3 or Terraform change ran." : void 0
+  },
+  couldHideTemplate("cloud.could-hide"),
+  whenAny(
+    "cloud.local-stack",
+    (f) => f.localStack,
+    (n2) => `${counted(n2, "AWS call", "AWS calls")} went to LocalStack on this machine and ${n2 === 1 ? "is" : "are"} not counted.`
+  ),
+  whenAny(
+    "cloud.mentioned",
+    (f) => f.mentioned,
+    (n2) => `${counted(n2, "more match", "more matches")} only mentioned a cloud command and did not run.`
+  ),
+  whenAny(
+    "cloud.unconfirmed",
+    (f) => f.unconfirmed,
+    (n2) => `${counted(n2, "match", "matches")} could not be confirmed as run.`
+  )
+];
+var CLOUD_NOW = [
+  whenAny(
+    "cloud.cannot-check",
+    changesOf,
+    () => "Cloud changes cannot be checked from this machine: their current state is in the cloud account, so each needs a person to review it."
+  )
+];
+var CLOUD_FIX_STEPS = [
+  whenAny(
+    "cloud.fix.review",
+    changesOf,
+    (_, f) => f.iamChanges > 0 ? "Review each change in the cloud account, starting with IAM, with the read-only commands below." : "Review each change in the cloud account with the read-only commands below."
+  )
+];
+var CLOUD_HEADLINE = whenAny(
+  "cloud.headline",
+  (f) => f.iamChanges,
+  (n2) => `${counted(n2, "IAM change", "IAM changes")} ran and ${n2 === 1 ? "needs" : "need"} review`
+);
+var CLOUD_CHIP = {
+  id: "cloud.chip",
+  render: (f) => noun(changesOf(f), "cloud change to review", "cloud changes to review")
+};
+function cloudShapes(f) {
+  const shapes = [];
+  if (f.iamSubjects.includes("access-keys")) {
+    shapes.push({ shape: "aws iam list-access-keys --user-name <user>" });
+  }
+  if (f.iamSubjects.some((s) => s === "policies" || s === "roles")) {
+    shapes.push({ shape: "aws iam list-attached-role-policies --role-name <role>" });
+  }
+  if (f.iamSubjects.includes("users")) {
+    shapes.push({ shape: "aws iam list-attached-user-policies --user-name <user>" });
+  }
+  if (f.iamSubjects.includes("groups"))
+    shapes.push({ shape: "aws iam get-group --group-name <group>" });
+  if (f.autoScalingChanges > 0) {
+    shapes.push({
+      shape: "aws autoscaling describe-auto-scaling-groups --auto-scaling-group-names <group>"
+    });
+  }
+  if (f.s3Changes > 0) shapes.push({ shape: "aws s3 ls s3://<bucket>" });
+  if (f.terraformChanges > 0) shapes.push({ shape: "cd <folder> && terraform show" });
+  return shapes;
+}
+var cloudCard = (result, context) => {
+  const f = result.facts;
+  const headline2 = sentence(CLOUD_HEADLINE, f);
+  const card = {
+    category: "cloud",
+    tone: result.status,
+    count: result.matches,
+    found: sentences(CLOUD_FOUND, f),
+    now: sentences(CLOUD_NOW, f),
+    fixes: cloudShapes(f),
+    fixSteps: sentences(CLOUD_FIX_STEPS, f),
+    chip: {
+      count: changesOf(f),
+      label: sentence(CLOUD_CHIP, f) ?? { template: CLOUD_CHIP.id, text: "" }
+    },
+    codexCaveat: restsOnCodex(context) && changesOf(f) > 0,
+    ...headline2 === void 0 ? {} : {
+      headline: {
+        basis: "iam-changes",
+        count: f.iamChanges,
+        restsOnCodexRan: restsOnCodex(context),
+        sentence: headline2
+      }
+    }
+  };
+  return card;
+};
+
+// src/core/verify/egress.ts
+var CURL_VALUE_OPTIONS = /* @__PURE__ */ new Set([
+  "-H",
+  "--header",
+  "-d",
+  "--data",
+  "--data-binary",
+  "--data-raw",
+  "--data-ascii",
+  "--data-urlencode",
+  "--json",
+  "-X",
+  "--request",
+  "-o",
+  "--output",
+  "-u",
+  "--user",
+  "-F",
+  "--form",
+  "-T",
+  "--upload-file",
+  "-A",
+  "--user-agent",
+  "-e",
+  "--referer",
+  "-b",
+  "--cookie",
+  "-c",
+  "--cookie-jar",
+  "-m",
+  "--max-time",
+  "--connect-timeout",
+  "-w",
+  "--write-out",
+  "-x",
+  "--proxy",
+  "--url",
+  "--resolve",
+  "--cacert",
+  "--cert",
+  "--key",
+  "-K",
+  "--config",
+  "--retry"
+]);
+function realHost(host) {
+  return host !== void 0 && host.length > 1;
+}
+function targetHost(target) {
+  return hostOf(target) ?? bareHost(target);
+}
+var CURL_ROUTING = /* @__PURE__ */ new Set([
+  "-x",
+  "--proxy",
+  "--preproxy",
+  "--socks4",
+  "--socks4a",
+  "--socks5",
+  "--socks5-hostname",
+  "--resolve",
+  "--connect-to",
+  "--proxy1.0",
+  "-K",
+  "--config"
+]);
+var CURL_SHORT_VALUES = "HdXouFTAebcmwxKErQYyzCDtPU";
+function curlWords(args2) {
+  const options = [];
+  const operands3 = [];
+  for (let k = 0; k < args2.length; k++) {
+    const arg = args2[k];
+    if (arg.startsWith("--") && arg.length > 2) {
+      const eq = arg.indexOf("=");
+      if (eq > 0) options.push({ name: arg.slice(0, eq), value: arg.slice(eq + 1) });
+      else if (CURL_VALUE_OPTIONS.has(arg) || CURL_ROUTING.has(arg)) {
+        options.push({ name: arg, value: args2[k + 1] ?? "" });
+        k += 1;
+      } else options.push({ name: arg, value: "" });
+    } else if (arg.startsWith("-") && arg.length > 1) {
+      for (let i = 1; i < arg.length; i++) {
+        const letter = arg[i];
+        if (!CURL_SHORT_VALUES.includes(letter)) {
+          options.push({ name: `-${letter}`, value: "" });
+          continue;
+        }
+        const attached = arg.slice(i + 1);
+        if (attached !== "") options.push({ name: `-${letter}`, value: attached });
+        else {
+          options.push({ name: `-${letter}`, value: args2[k + 1] ?? "" });
+          k += 1;
+        }
+        break;
+      }
+    } else operands3.push(arg);
+  }
+  return { options, operands: operands3 };
+}
+var CURL_DATA = /^(?:-d|--data(?:-binary|-raw|-ascii|-urlencode)?|--json)$/;
+function readCurl(args2, routedByEnvironment) {
+  const { options, operands: operands3 } = curlWords(args2);
+  let sendsFile = false;
+  let routed = routedByEnvironment;
+  const hosts = operands3.map(targetHost);
+  for (const { name, value } of options) {
+    if (CURL_ROUTING.has(name)) routed = true;
+    if (name === "--url") hosts.push(targetHost(value));
+    if (name === "-T" || name === "--upload-file") sendsFile = true;
+    if ((name === "-F" || name === "--form") && /[@<]/.test(value)) sendsFile = true;
+    if (CURL_DATA.test(name) && value.startsWith("@")) sendsFile = true;
+  }
+  if (!sendsFile) return void 0;
+  const local = !routed && hosts.length > 0 && hosts.every((host) => realHost(host) && isLocalHost(host));
+  return { kind: "upload", upload: "http-upload", local };
+}
+function copyOperands(args2, valueOptions) {
+  const out = [];
+  for (let k = 0; k < args2.length; k++) {
+    const arg = args2[k];
+    if (valueOptions.has(arg)) {
+      k += 1;
+      continue;
+    }
+    if (!arg.startsWith("-")) out.push(arg);
+  }
+  return out;
+}
+var SSH_ROUTING = /(?:^|\s)-J\b|ProxyJump|ProxyCommand/i;
+function sshRouted(args2) {
+  for (let k = 0; k < args2.length; k++) {
+    const arg = args2[k];
+    if (arg === "-J" || /^-J./.test(arg)) return true;
+    if (/^-o/.test(arg) && SSH_ROUTING.test(arg === "-o" ? args2[k + 1] ?? "" : arg)) return true;
+    if ((arg === "-e" || arg === "--rsh") && SSH_ROUTING.test(args2[k + 1] ?? "")) return true;
+    if (arg.startsWith("--rsh=") && SSH_ROUTING.test(arg)) return true;
+  }
+  return false;
+}
+function readRemoteCopy(args2, routedByEnvironment) {
+  const operands3 = copyOperands(
+    args2,
+    /* @__PURE__ */ new Set(["-P", "-i", "-o", "-F", "-J", "-e", "-l", "--rsh", "--port"])
+  );
+  const destination = operands3[operands3.length - 1];
+  if (operands3.length < 2 || destination === void 0) return void 0;
+  const host = hostOf(destination);
+  if (!realHost(host)) return void 0;
+  const routed = routedByEnvironment || sshRouted(args2);
+  return { kind: "upload", upload: "file-copy", local: !routed && isLocalHost(host) };
+}
+function readStorageCopy(operands3, bucket, local) {
+  const destination = operands3[operands3.length - 1] ?? "";
+  if (operands3.length < 2 || !bucket.test(destination)) return void 0;
+  if (operands3.slice(0, -1).every((source) => bucket.test(source))) return void 0;
+  return { kind: "upload", upload: "cloud-storage", local };
+}
+function readAwsS3(args2, awslocal, routedByEnvironment) {
+  const local = !routedByEnvironment && (endpointsLocal(args2) ?? awslocal);
+  const words2 = copyOperands(
+    args2,
+    /* @__PURE__ */ new Set([
+      "--profile",
+      "--region",
+      "--endpoint-url",
+      "--acl",
+      "--exclude",
+      "--include",
+      "--storage-class",
+      "--output",
+      "--query"
+    ])
+  );
+  if (words2[0] !== "s3" || !["cp", "mv", "sync"].includes(words2[1] ?? "")) return void 0;
+  return readStorageCopy(words2.slice(2), /^s3:\/\//, local);
+}
+function readNetcat(args2, routedByEnvironment) {
+  if (args2.some((a) => /^-[A-Za-z]*[lz]/.test(a))) return void 0;
+  const operands3 = copyOperands(
+    args2,
+    /* @__PURE__ */ new Set(["-w", "-p", "-s", "-i", "-q", "-x", "-X", "-e", "-c"])
+  );
+  const host = operands3[0];
+  if (!realHost(host) || operands3.length < 2) return void 0;
+  const routed = routedByEnvironment || args2.some((a) => /^-[xX]/.test(a));
+  return { kind: "upload", upload: "raw-socket", local: !routed && isLocalHost(host) };
+}
+var SSH_VALUE_OPTIONS = /* @__PURE__ */ new Set([
+  "-p",
+  "-i",
+  "-l",
+  "-o",
+  "-F",
+  "-J",
+  "-L",
+  "-R",
+  "-D",
+  "-b",
+  "-c",
+  "-E",
+  "-e",
+  "-m",
+  "-O",
+  "-Q",
+  "-S",
+  "-W",
+  "-w",
+  "-B"
+]);
+function sshHost(args2) {
+  const destination = copyOperands(args2, SSH_VALUE_OPTIONS)[0] ?? "";
+  return destination.includes("@") ? destination.split("@").pop() : destination;
+}
+function readSsh(simple, args2) {
+  const routed = sshRouted(args2);
+  const host = sshHost(args2);
+  const local = !routed && realHost(host) && isLocalHost(host);
+  if (args2.some((a) => /^-[A-Za-z]*R/.test(a))) return { kind: "tunnel", local };
+  if ((simple.readsFile || simple.pipedIn) && realHost(host)) {
+    return { kind: "upload", upload: "file-copy", local };
+  }
+  return void 0;
+}
+var SOCAT_CONNECT = /^(?:(TCP[46]?(?:-CONNECT)?|OPENSSL(?:-CONNECT)?|SSL|UDP[46]?(?:-SENDTO|-CONNECT)?|SCTP[46]?-CONNECT|DCCP-CONNECT)|(SOCKS4A?|SOCKS5|PROXY(?:-CONNECT)?)):/i;
+function readSocat(args2) {
+  let connects = false;
+  let local = true;
+  for (const arg of args2) {
+    if (arg.startsWith("-")) continue;
+    const type = SOCAT_CONNECT.exec(arg);
+    if (type === null) continue;
+    connects = true;
+    if (type[2] !== void 0) {
+      local = false;
+      continue;
+    }
+    const rest = arg.slice(type[0].length);
+    const host = rest.startsWith("[") ? rest.slice(0, rest.indexOf("]") + 1) : rest.split(":")[0];
+    if (!realHost(host) || !isLocalHost(host)) local = false;
+  }
+  return connects ? { kind: "upload", upload: "raw-socket", local } : void 0;
+}
+var TUNNEL_STARTERS = /* @__PURE__ */ new Map([
+  ["ngrok", ["http", "tcp", "tls", "start", "tunnel"]],
+  ["cloudflared", ["tunnel"]],
+  ["lt", []],
+  ["localtunnel", []],
+  ["bore", ["local"]],
+  ["frpc", []],
+  ["chisel", ["client"]],
+  ["zrok", ["share"]],
+  ["devtunnel", ["host"]],
+  ["tmole", []],
+  ["loclx", ["tunnel"]],
+  ["inlets", ["client"]]
+]);
+var PROXY_VARIABLE = /^(?:https?|all|ftp|socks|rsync)_proxy=/i;
+var WGET_VALUE_OPTIONS = /* @__PURE__ */ new Set([
+  "-O",
+  "-o",
+  "-a",
+  "-e",
+  "-P",
+  "-U",
+  "--post-file",
+  "--body-file",
+  "--post-data",
+  "--body-data",
+  "--header",
+  "--method",
+  "--user",
+  "--password",
+  "--output-document"
+]);
+function readWget(args2, routedByEnvironment) {
+  if (!args2.some((a) => /^--(?:post|body)-file\b/.test(a))) return void 0;
+  const routed = routedByEnvironment || args2.some((a, k) => a === "-e" ? /proxy/i.test(args2[k + 1] ?? "") : /^-e.*proxy/i.test(a));
+  const hosts = copyOperands(args2, WGET_VALUE_OPTIONS).map(targetHost);
+  const local = !routed && hosts.length > 0 && hosts.every((host) => realHost(host) && isLocalHost(host));
+  return { kind: "upload", upload: "http-upload", local };
+}
+function readSimple(simple, routedBefore) {
+  const { program, args: args2, assignments } = programAndArgs(simple);
+  const routed = routedBefore || assignments.some((a) => PROXY_VARIABLE.test(a));
+  const first = args2.find((a) => !a.startsWith("-")) ?? "";
+  const starter = TUNNEL_STARTERS.get(program);
+  if (starter !== void 0 && (starter.length === 0 || starter.includes(first))) {
+    return { kind: "tunnel", local: false };
+  }
+  switch (program) {
+    case "curl":
+      return readCurl(args2, routed);
+    case "wget":
+      return readWget(args2, routed);
+    case "scp":
+    case "rsync":
+      return readRemoteCopy(args2, routed);
+    case "aws":
+    case "awslocal":
+      return readAwsS3(args2, program === "awslocal", routed);
+    case "gsutil":
+      return ["cp", "mv", "rsync"].includes(first) ? readStorageCopy(copyOperands(args2, /* @__PURE__ */ new Set()).slice(1), /^gs:\/\//, false) : void 0;
+    case "gcloud":
+      return args2[0] === "storage" && ["cp", "mv", "rsync"].includes(args2[1] ?? "") ? readStorageCopy(copyOperands(args2, /* @__PURE__ */ new Set()).slice(2), /^gs:\/\//, false) : void 0;
+    case "az":
+      return args2[0] === "storage" && args2[1] === "blob" && /^upload/.test(args2[2] ?? "") ? { kind: "upload", upload: "cloud-storage", local: false } : void 0;
+    case "rclone":
+      return ["copy", "copyto", "move", "moveto", "sync"].includes(first) ? readStorageCopy(copyOperands(args2, /* @__PURE__ */ new Set()).slice(1), /^[A-Za-z0-9_-]{2,}:/, false) : void 0;
+    case "gh":
+      if (args2[0] === "gist" && args2[1] === "create") {
+        return { kind: "upload", upload: "paste", local: false };
+      }
+      return args2[0] === "release" && args2[1] === "upload" ? { kind: "upload", upload: "http-upload", local: false } : void 0;
+    case "nc":
+    case "ncat":
+    case "netcat":
+      return readNetcat(args2, routed);
+    case "socat":
+      return readSocat(args2);
+    case "ssh":
+      return readSsh(simple, args2);
+    default:
+      return void 0;
+  }
+}
+function readEgress(command) {
+  const out = [];
+  let routed = false;
+  for (const simple of simpleCommands(command)) {
+    const { program, args: args2 } = programAndArgs(simple);
+    if (program === "export" && args2.some((a) => PROXY_VARIABLE.test(a))) routed = true;
+    const traffic = readSimple(simple, routed);
+    if (traffic !== void 0) out.push(traffic);
+  }
+  return out;
+}
+var EGRESS_RULES = /* @__PURE__ */ new Map([
+  ["ex.file-upload", "other"],
+  ["se.secret-egress", "other"],
+  ["ex.paste-service", "paste"],
+  ["ex.reverse-shell", "raw-socket"],
+  ["ex.tunnel-expose", "tunnel"]
+]);
+function tunnelProgramOf(entry) {
+  const name = (entry.trim().split(/[\\/]/).pop() ?? "").trim().toLowerCase().replace(/\.exe$/, "");
+  return TUNNEL_PROCESS_NAMES.includes(name) ? name : void 0;
+}
+function tunnelProgramsIn(running) {
+  const seen = /* @__PURE__ */ new Set();
+  for (const entry of running) {
+    const program = tunnelProgramOf(entry);
+    if (program !== void 0) seen.add(program);
+  }
+  return TUNNEL_PROCESS_NAMES.filter((p) => seen.has(p));
+}
+async function checkEgress(input) {
+  const { agent, calls } = input.calls;
+  const egressRule = rulesMatcher(
+    input.catalog,
+    input.allowlist,
+    (r) => EGRESS_RULES.has(r.rule.id)
+  );
+  const counts = {
+    uploads: 0,
+    tunnelsStarted: 0,
+    localOnly: 0,
+    mentioned: 0,
+    unconfirmed: 0
+  };
+  const kinds = /* @__PURE__ */ new Set();
+  let matches = 0;
+  for (const call of calls) {
+    if (!isShell(call)) continue;
+    const ruled = call.ruleIds.filter((id) => EGRESS_RULES.has(id));
+    if (ruled.length === 0 && readEgress(call.command).length === 0) continue;
+    matches += 1;
+    const holds = (command) => readEgress(command).length > 0 || egressRule(call, command);
+    const state = runStateOf(agent, call, holds);
+    if (state === "mentioned") {
+      counts.mentioned += 1;
+      continue;
+    }
+    if (state === "unknown") {
+      counts.unconfirmed += 1;
+      continue;
+    }
+    const ran = executedText(call.command);
+    const traffic = readEgress(ran);
+    if (traffic.length === 0 && egressRule(call, ran)) {
+      const as = ruled.map((id) => EGRESS_RULES.get(id)).find((k) => k !== void 0) ?? "other";
+      traffic.push(
+        as === "tunnel" ? { kind: "tunnel", local: false } : { kind: "upload", upload: as, local: false }
+      );
+    }
+    for (const item of traffic) {
+      if (item.local) counts.localOnly += 1;
+      else if (item.kind === "tunnel") counts.tunnelsStarted += 1;
+      else {
+        counts.uploads += 1;
+        kinds.add(item.upload);
+      }
+    }
+  }
+  const listed = await input.io.processNames();
+  const running = listed.ok ? tunnelProgramsIn(listed.running) : [];
+  const facts = {
+    ...counts,
+    uploadKinds: UPLOAD_KINDS.filter((k) => kinds.has(k)),
+    tunnelsRunning: running.length,
+    tunnelPrograms: running,
+    processCheck: listed.ok ? "checked" : "could-not-check",
+    couldHide: couldHideCount(input.calls),
+    hidingForms: heldHidingForms(input.calls)
+  };
+  const fixes = running.map(
+    (program) => (
+      // The program is one of `TUNNEL_PROCESS_NAMES`, so the command carries no data.
+      localFixCommand("egress", ["pgrep", "-lx", program])
+    )
+  );
+  return { check: { status: egressStatus(facts), matches, facts }, localFixes: fixes };
+}
+function egressStatus(facts) {
+  if (facts.tunnelsRunning > 0) return "act";
+  if (facts.uploads + facts.tunnelsStarted > 0) return "review";
+  if (facts.processCheck === "could-not-check") return "could-not-check";
+  return quietStatus(facts.unconfirmed, facts.couldHide);
+}
+var KIND_WORDS = {
+  "http-upload": "HTTP uploads",
+  "file-copy": "copies to another host",
+  "cloud-storage": "copies into cloud storage",
+  paste: "paste or gist posts",
+  "raw-socket": "raw network sends",
+  other: "other uploads a guardrail matched"
+};
+function when(id, test, say) {
+  return { id, render: (f) => test(f) ? say(f) : void 0 };
+}
+var EGRESS_FOUND = [
+  when(
+    "egress.uploads",
+    (f) => f.uploads > 0,
+    (f) => `${counted(f.uploads, "upload", "uploads")} that ran sent data off this machine: ${f.uploadKinds.map((k) => KIND_WORDS[k]).join(", ")}.`
+  ),
+  when(
+    "egress.tunnels-started",
+    (f) => f.tunnelsStarted > 0,
+    (f) => `${counted(f.tunnelsStarted, "tunnel was", "tunnels were")} started to expose a port on this machine.`
+  ),
+  when(
+    "egress.none",
+    (f) => f.uploads + f.tunnelsStarted === 0 && f.couldHide === 0 && f.unconfirmed === 0,
+    () => "No upload or tunnel that ran sent data off this machine."
+  ),
+  when(
+    "egress.local-only",
+    (f) => f.localOnly > 0,
+    (f) => `${counted(f.localOnly, "match", "matches")} went only to this machine (a local server or LocalStack) and ${f.localOnly === 1 ? "is" : "are"} not counted.`
+  ),
+  couldHideTemplate("egress.could-hide"),
+  when(
+    "egress.mentioned",
+    (f) => f.mentioned > 0,
+    (f) => `${counted(f.mentioned, "more match", "more matches")} only mentioned an upload or a tunnel (in a test, a search or a message) and did not run.`
+  ),
+  when(
+    "egress.unconfirmed",
+    (f) => f.unconfirmed > 0,
+    (f) => `${counted(f.unconfirmed, "match", "matches")} could not be confirmed as run.`
+  )
+];
+var EGRESS_NOW = [
+  when(
+    "egress.running",
+    (f) => f.tunnelsRunning > 0,
+    (f) => `${counted(f.tunnelsRunning, "tunnel or relay program is", "tunnel or relay programs are")} running now: ${f.tunnelPrograms.join(", ")}.`
+  ),
+  when(
+    "egress.running-none",
+    (f) => f.processCheck === "checked" && f.tunnelsRunning === 0,
+    () => "No known tunnel or relay program is running now."
+  ),
+  when(
+    "egress.running-unknown",
+    (f) => f.processCheck === "could-not-check",
+    () => "The running programs could not be listed, so running tunnels were not checked."
+  )
+];
+var EGRESS_FIX_STEPS = [
+  when(
+    "egress.fix.running",
+    (f) => f.tunnelsRunning > 0,
+    () => "Stop the tunnel or relay programs you did not start on purpose."
+  ),
+  when(
+    "egress.fix.uploads",
+    (f) => f.uploads + f.tunnelsStarted > 0,
+    () => "Check what each upload or tunnel sent, and to where."
+  )
+];
+var EGRESS_CHIP = {
+  id: "egress.chip",
+  render: (f) => noun(f.uploads, "upload off this machine", "uploads off this machine")
+};
+var egressCard = (result, context) => {
+  const f = result.facts;
+  const card = {
+    category: "egress",
+    tone: result.status,
+    count: result.matches,
+    found: sentences(EGRESS_FOUND, f),
+    now: sentences(EGRESS_NOW, f),
+    fixes: f.tunnelsRunning > 0 ? [{ shape: "pgrep -lx <program>" }] : [],
+    fixSteps: sentences(EGRESS_FIX_STEPS, f),
+    chip: {
+      count: f.uploads,
+      label: sentence(EGRESS_CHIP, f) ?? { template: EGRESS_CHIP.id, text: "" }
+    },
+    codexCaveat: restsOnCodex(context) && f.uploads + f.tunnelsStarted > 0
+  };
+  return card;
+};
+
+// src/core/verify/prod-infra.ts
+var PROD_INFRA_CATEGORY = "prod-infra";
+var KIND_OF_RULE = /* @__PURE__ */ new Map([
+  ["pi.terraform-auto-approve", "terraform"],
+  ["pi.terraform-state-mutate", "terraform"],
+  ["pi.kubectl-delete", "kubernetes"],
+  ["pi.prod-namespace", "kubernetes"],
+  ["pi.helm-release", "helm"],
+  ["pi.cloud-resource-delete", "cloud-delete"],
+  ["pi.deploy-to-prod", "deploy"],
+  ["block-prod-config-edit", "prod-config"]
+]);
+var LOCAL_KUBE_CONTEXT = /^(?:kind-.+|k3d-.+|minikube|docker-desktop|docker-for-desktop|rancher-desktop|colima(?:-.+)?|orbstack|localhost)$/;
+var CONTEXT_OPTIONS = /* @__PURE__ */ new Set(["--context", "--kube-context"]);
+var KUBE_TARGET_OPTIONS = /* @__PURE__ */ new Set([
+  "--server",
+  "-s",
+  "--kubeconfig",
+  "--cluster",
+  "--kube-apiserver"
+]);
+var KUBECONFIG_VARIABLE = /^KUBECONFIG=/;
+function targetsOnlyThisMachine(command) {
+  let any = false;
+  let kubeconfigSet = false;
+  for (const simple of simpleCommands(command)) {
+    const { program, args: args2, assignments } = programAndArgs(simple);
+    if (program === "export" && args2.some((a) => KUBECONFIG_VARIABLE.test(a))) kubeconfigSet = true;
+    if (program === "kubectl" || program === "helm") {
+      any = true;
+      if (kubeconfigSet || assignments.some((a) => KUBECONFIG_VARIABLE.test(a))) return false;
+      let context;
+      for (let k = 0; k < args2.length; k++) {
+        const arg = args2[k];
+        const eq = arg.indexOf("=");
+        const name = arg.startsWith("-") && eq > 0 ? arg.slice(0, eq) : arg;
+        if (KUBE_TARGET_OPTIONS.has(name)) return false;
+        if (CONTEXT_OPTIONS.has(arg)) context = args2[k + 1];
+        else if (eq > 0 && CONTEXT_OPTIONS.has(name)) context = arg.slice(eq + 1);
+      }
+      if (context === void 0 || !LOCAL_KUBE_CONTEXT.test(context)) return false;
+    } else if (program === "tflocal" || program === "awslocal") any = true;
+    else if (program === "terraform" || program === "tofu" || program === "terragrunt")
+      return false;
+    else if (program === "aws") {
+      any = true;
+      if (endpointsLocal(args2) !== true) return false;
+    }
+  }
+  return any;
+}
+function checkProdInfra(input) {
+  const { agent, calls } = input.calls;
+  const isProdRule = (rule) => rule.rule.category === PROD_INFRA_CATEGORY;
+  const prodIds = new Set(input.catalog.filter(isProdRule).map((r) => r.rule.id));
+  const prodRule = rulesMatcher(input.catalog, input.allowlist, isProdRule);
+  const kinds = /* @__PURE__ */ new Set();
+  let infraMatches = 0;
+  let localInfra = 0;
+  let mentioned = 0;
+  let unconfirmed = 0;
+  let candidates = 0;
+  for (const call of calls) {
+    const matched = call.ruleIds.filter((id) => prodIds.has(id));
+    if (matched.length === 0) continue;
+    candidates += 1;
+    const state = isShell(call) ? runStateOf(agent, call, (command) => prodRule(call, command)) : runStateOf(agent, call, () => true);
+    if (state === "mentioned") mentioned += 1;
+    else if (state === "unknown") unconfirmed += 1;
+    else if (isShell(call) && targetsOnlyThisMachine(executedText(call.command))) localInfra += 1;
+    else {
+      infraMatches += 1;
+      for (const id of matched) kinds.add(KIND_OF_RULE.get(id) ?? "other");
+    }
+  }
+  const supplied = input.databaseTargets;
+  const facts = {
+    databaseTargets: {
+      local: supplied?.local ?? 0,
+      scratch: supplied?.scratch ?? 0,
+      other: supplied?.other ?? 0
+    },
+    databaseCheck: supplied === void 0 ? "not-available" : "checked",
+    infraMatches,
+    infraKinds: INFRA_KINDS.filter((k) => kinds.has(k)),
+    localInfra,
+    mentioned,
+    unconfirmed: unconfirmed + Math.max(0, input.databaseTargetsUnresolved ?? 0),
+    couldHide: couldHideCount(input.calls),
+    hidingForms: heldHidingForms(input.calls)
+  };
+  return {
+    status: prodInfraStatus(facts),
+    matches: candidates + facts.databaseTargets.other,
+    facts
+  };
+}
+function prodInfraStatus(facts) {
+  if (facts.databaseTargets.other > 0 || facts.infraMatches > 0) return "review";
+  if (facts.databaseCheck === "not-available") return "could-not-check";
+  return quietStatus(facts.unconfirmed, facts.couldHide);
+}
+var KIND_WORDS2 = {
+  terraform: "Terraform",
+  kubernetes: "Kubernetes",
+  helm: "Helm releases",
+  "cloud-delete": "cloud resource deletes",
+  deploy: "production deploys",
+  "prod-config": "production config edits",
+  other: "your own production guardrails"
+};
+function when2(id, test, say) {
+  return { id, render: (f) => test(f) ? say(f) : void 0 };
+}
+var PROD_FOUND = [
+  when2(
+    "prod.databases",
+    (f) => f.databaseCheck === "checked" && f.databaseTargets.other > 0,
+    (f) => `${counted(f.databaseTargets.other, "database command", "database commands")} that ran targeted a database that is not on this machine or a scratch copy, which this report counts as production.`
+  ),
+  when2(
+    "prod.databases-local",
+    (f) => f.databaseCheck === "checked" && f.databaseTargets.local + f.databaseTargets.scratch > 0,
+    (f) => {
+      const n2 = f.databaseTargets.local + f.databaseTargets.scratch;
+      return `${counted(n2, "database command", "database commands")} targeted a local or scratch database and ${n2 === 1 ? "is" : "are"} not counted.`;
+    }
+  ),
+  when2(
+    "prod.databases-none",
+    (f) => f.databaseCheck === "checked" && f.databaseTargets.other === 0 && f.couldHide === 0 && f.unconfirmed === 0,
+    () => "No database command that ran targeted a database beyond local and scratch ones."
+  ),
+  when2(
+    "prod.databases-unavailable",
+    (f) => f.databaseCheck === "not-available",
+    () => "Database targets could not be checked, so this is not a clean result."
+  ),
+  when2(
+    "prod.infra",
+    (f) => f.infraMatches > 0,
+    (f) => `${counted(f.infraMatches, "command or edit", "commands or edits")} that ran matched a production infrastructure guardrail: ${f.infraKinds.map((k) => KIND_WORDS2[k]).join(", ")}.`
+  ),
+  when2(
+    "prod.local-infra",
+    (f) => f.localInfra > 0,
+    (f) => `${counted(f.localInfra, "match", "matches")} targeted this machine (a local Kubernetes cluster or LocalStack) and ${f.localInfra === 1 ? "is" : "are"} not counted.`
+  ),
+  when2(
+    "prod.infra-none",
+    (f) => f.infraMatches === 0 && f.couldHide === 0 && f.unconfirmed === 0,
+    // After the line on matches that targeted this machine, "other" keeps the two from
+    // contradicting each other.
+    (f) => f.localInfra > 0 ? "No other command or edit that ran matched a production infrastructure guardrail." : "No command or edit that ran matched a production infrastructure guardrail."
+  ),
+  couldHideTemplate("prod.could-hide"),
+  when2(
+    "prod.mentioned",
+    (f) => f.mentioned > 0,
+    (f) => `${counted(f.mentioned, "more match", "more matches")} only mentioned a production command and did not run.`
+  ),
+  when2(
+    "prod.unconfirmed",
+    (f) => f.unconfirmed > 0,
+    (f) => `${counted(f.unconfirmed, "match", "matches")} could not be confirmed as run.`
+  )
+];
+function anyTarget(f) {
+  return f.databaseTargets.other > 0 || f.infraMatches > 0;
+}
+var PROD_NOW = [
+  when2(
+    "prod.cannot-check",
+    anyTarget,
+    () => "What these did to a production system cannot be checked from this machine."
+  )
+];
+var PROD_FIX_STEPS = [
+  when2(
+    "prod.fix.review",
+    anyTarget,
+    () => "Review each one with whoever owns the production system it touched."
+  )
+];
+var PROD_CHIP = {
+  id: "prod.chip",
+  render: (f) => noun(f.databaseTargets.other, "production database touched", "production databases touched")
+};
+var prodInfraCard = (result, context) => {
+  const f = result.facts;
+  const card = {
+    category: "prod-infra",
+    tone: result.status,
+    count: result.matches,
+    found: sentences(PROD_FOUND, f),
+    now: sentences(PROD_NOW, f),
+    fixes: [],
+    fixSteps: sentences(PROD_FIX_STEPS, f),
+    chip: {
+      count: f.databaseTargets.other,
+      label: sentence(PROD_CHIP, f) ?? { template: PROD_CHIP.id, text: "" }
+    },
+    codexCaveat: restsOnCodex(context) && anyTarget(f)
+  };
+  return card;
+};
+
+// src/core/verify/tests.ts
+import { dirname as dirname2 } from "path";
+var TEST_CONFIG = /^(?:(?:vitest|vite|jest|karma)\.(?:config|workspace)(?:\.[\w-]+)?\.(?:[cm]?[jt]s|json)|package\.json|\.nycrc(?:\.(?:json|ya?ml))?|\.c8rc(?:\.json)?|\.coveragerc|pytest\.ini|tox\.ini|setup\.cfg|pyproject\.toml|\.?codecov\.ya?ml)$/i;
+var COVERAGE_FILE = /^(?:\.nycrc(?:\.(?:json|ya?ml))?|\.c8rc(?:\.json)?|\.coveragerc|\.?codecov\.ya?ml)$/i;
+var COVERAGE_TEXT = /threshold|coverage|fail[_-]under|check-coverage/i;
+var THRESHOLD = /["']?\b(lines|branches|functions|statements|fail[_-]under|target)\b["']?\s*[:=]\s*["']?(\d+(?:\.\d+)?)/g;
+var AUTO_UPDATE_ON = /\bautoUpdate\b["']?\s*:\s*(?!false\b)[^\s,}]/;
+var EXCLUDE_LIST = /\b(?:exclude|coveragePathIgnorePatterns|testPathIgnorePatterns|modulePathIgnorePatterns|testIgnore|omit)\b["']?\s*[:=]\s*\[([^\]]*)\]/g;
+var QUOTED2 = /(["'`])(?:(?!\1).)+\1/g;
+var PASS_FLAG = /--pass-?with-?no-?tests\b(?!\s*=\s*false)/i;
+var PASS_SETTING = /passWithNoTests["']?\s*:\s*true|--pass-?with-?no-?tests\b(?!\s*=\s*false)/gi;
+var FORCED_TRUE = /\|\|\s*(?:true\b|exit\s+0\b|:(?=[\s"';)]|$))/gm;
+var CI_FILE = /(?:^|[\\/])(?:\.github[\\/]workflows[\\/][^\\/]+\.ya?ml|\.gitlab-ci\.ya?ml|\.circleci[\\/]config\.ya?ml|azure-pipelines\.ya?ml|bitbucket-pipelines\.ya?ml|\.travis\.ya?ml|Jenkinsfile|\.buildkite[\\/][^\\/]+)$/;
+var BUILD_OUTPUT = /(?:^|[\\/])(?:dist|build|out|coverage|node_modules)[\\/]/;
+function isTestPath(path) {
+  if (BUILD_OUTPUT.test(path)) return false;
+  const name = baseName(path.replace(/[\\/]+$/, ""));
+  return /[._](?:test|spec)\.[a-z0-9]+$/i.test(name) || /^test_.+\.py$/i.test(name) || /_test\.(?:go|py|rb|exs?)$/i.test(name) || /(?:^|[\\/])__tests__(?:[\\/]|$)/.test(path);
+}
+function isTestConfig(path) {
+  return TEST_CONFIG.test(baseName(path));
+}
+function isCiFile(path) {
+  return CI_FILE.test(path);
+}
+function thresholds(text2) {
+  const out = /* @__PURE__ */ new Map();
+  for (const match of text2.matchAll(THRESHOLD)) {
+    const key = match[1].replace("-", "_");
+    const list = out.get(key) ?? [];
+    list.push(Number(match[2]));
+    out.set(key, list);
+  }
+  return out;
+}
+function lowersThreshold(edit) {
+  if (edit.whole || edit.deleted) return false;
+  const name = baseName(edit.path);
+  if (!COVERAGE_FILE.test(name) && !COVERAGE_TEXT.test(`${edit.removed}
+${edit.added}`)) {
+    return false;
+  }
+  const before = thresholds(edit.removed);
+  const after = thresholds(edit.added);
+  if (before.size > 0 && after.size === 0) return true;
+  for (const [key, was2] of before) {
+    const now = after.get(key);
+    if (now === void 0) continue;
+    for (let i = 0; i < Math.min(was2.length, now.length); i++) {
+      if (now[i] < was2[i]) return true;
+    }
+  }
+  return false;
+}
+function excludeEntries(text2) {
+  let count2 = 0;
+  for (const match of text2.matchAll(EXCLUDE_LIST)) {
+    count2 += [...(match[1] ?? "").matchAll(QUOTED2)].length;
+  }
+  return count2;
+}
+function addsExclude(edit) {
+  return !edit.whole && !edit.deleted && excludeEntries(edit.added) > excludeEntries(edit.removed);
+}
+function occurrences(pattern, text2) {
+  return [...text2.matchAll(pattern)].length;
+}
+function addsPassWithNoTests(edit) {
+  return occurrences(PASS_SETTING, edit.added) > occurrences(PASS_SETTING, edit.removed);
+}
+function forcesCiStep(edit) {
+  return occurrences(FORCED_TRUE, edit.added) > occurrences(FORCED_TRUE, edit.removed);
+}
+function deletedTestPaths(command) {
+  const out = [];
+  for (const simple of simpleCommands(command)) {
+    const { program, args: args2 } = programAndArgs(simple);
+    let targets = [];
+    if (program === "rm" || program === "unlink") targets = args2;
+    else if (program === "git") {
+      let k = 0;
+      while (k < args2.length && args2[k].startsWith("-")) {
+        k += args2[k] === "-C" || args2[k] === "-c" ? 2 : 1;
+      }
+      if (args2[k] === "rm") targets = args2.slice(k + 1);
+    }
+    for (const target of targets) {
+      if (!target.startsWith("-") && isTestPath(target)) out.push(target);
+    }
+  }
+  return out;
+}
+var TEST_RUN = /\b(?:vitest|jest|mocha|pytest|playwright\s+test|go\s+test|cargo\s+test|(?:npm|pnpm|yarn|bun)\s+(?:run\s+)?test(?::[\w-]+)?)\b/;
+var FAILED_LINE = /\bFAIL(?:ED)?\b|✗|×|\b[1-9]\d* (?:failed|failing)\b/;
+var NAME_BEFORE = /[\s/\\"'`([]/;
+var NAME_AFTER = /[\s:"'`)\],>]/;
+function namesFile(line, name) {
+  if (name === "") return false;
+  for (let at = line.indexOf(name); at >= 0; at = line.indexOf(name, at + 1)) {
+    const before = line[at - 1];
+    const after = line[at + name.length];
+    if ((before === void 0 || NAME_BEFORE.test(before)) && (after === void 0 || NAME_AFTER.test(after))) {
+      return true;
+    }
+  }
+  return false;
+}
+function namesAsFailing(output, name) {
+  return output.split(/\r?\n/).some((line) => FAILED_LINE.test(line) && namesFile(line, name));
+}
+function shellWrittenPaths(command) {
+  const out = [];
+  for (const simple of simpleCommands(command)) {
+    out.push(...simple.writes);
+    const { program, args: args2 } = programAndArgs(simple);
+    const operands3 = args2.filter((a) => !a.startsWith("-"));
+    if (program === "sed" && args2.some((a) => /^-[A-Za-z]*i|^--in-place/.test(a)) || program === "perl" && args2.some((a) => /^-[A-Za-z]*i/.test(a))) {
+      const scripted = args2.some((a) => /^-[A-Za-z]*e$/.test(a));
+      out.push(...scripted ? operands3 : operands3.slice(1));
+    } else if (program === "tee") out.push(...operands3);
+    else if ((program === "cp" || program === "mv") && operands3.length >= 2) {
+      out.push(operands3[operands3.length - 1]);
+    }
+  }
+  return out;
+}
+var GIT_GLOBAL_VALUES = /* @__PURE__ */ new Set([
+  "-C",
+  "-c",
+  "--git-dir",
+  "--work-tree",
+  "--namespace",
+  "--config-env"
+]);
+var APPLY_REPORTS = /^--(?:check|stat|numstat|summary)$/;
+function changesFilesUnread(command) {
+  for (const simple of simpleCommands(command)) {
+    const { program, args: args2 } = programAndArgs(simple);
+    if (program === "patch") {
+      if (!args2.includes("--dry-run")) return true;
+      continue;
+    }
+    if (program !== "git") continue;
+    let k = 0;
+    while (k < args2.length && args2[k].startsWith("-")) {
+      k += GIT_GLOBAL_VALUES.has(args2[k]) ? 2 : 1;
+    }
+    const sub = args2[k];
+    const rest = args2.slice(k + 1);
+    if (sub === "apply" && (rest.includes("--apply") || !rest.some((a) => APPLY_REPORTS.test(a)))) {
+      return true;
+    }
+    if (sub === "am") return true;
+    if ((sub === "checkout" || sub === "restore") && rest.some((a) => !a.startsWith("-") && (isTestConfig(a) || isCiFile(a)))) {
+      return true;
+    }
+  }
+  return false;
+}
+function writesConfigByShell(command) {
+  return shellWrittenPaths(command).some((path) => isTestConfig(path) || isCiFile(path)) || changesFilesUnread(command);
+}
+function isTestRun(text2) {
+  return TEST_RUN.test(text2);
+}
+function isCoverageRun(text2) {
+  return isTestRun(text2) && /\bcoverage\b/i.test(text2);
+}
+function historyFix(path, deleted) {
+  const dir = { ref: dirname2(path) };
+  const file2 = { repoPath: baseName(path) };
+  return localFixCommand(
+    "tests",
+    deleted ? ["git", "-C", dir, "log", "--diff-filter=D", "--oneline", "--", file2] : ["git", "-C", dir, "log", "-p", "--", file2]
+  );
+}
+async function checkTests(input) {
+  const { agent, calls } = input.calls;
+  const outputRecorded = agent === "claude";
+  const counts = {
+    thresholdsLowered: 0,
+    autoUpdateReverts: 0,
+    configsRewritten: 0,
+    excludesAdded: 0,
+    passWithNoTests: 0,
+    ciStepsForcedTrue: 0,
+    testFilesDeleted: 0,
+    deletedAfterFailing: 0,
+    deletedFailureUnknown: 0,
+    unreadEdits: 0,
+    mentioned: 0,
+    unconfirmed: 0
+  };
+  let matches = 0;
+  const fixes = [];
+  const addFix = (fix) => {
+    if (fixes.length < MAX_LOCAL_FIXES) fixes.push(fix);
+  };
+  const configs = /* @__PURE__ */ new Set();
+  const lowering = [];
+  const seen = /* @__PURE__ */ new Map();
+  const seenKey = (call, path) => `${call.session}\0${path}`;
+  const see = (call, path, text2) => {
+    const values = thresholds(text2);
+    if (values.size === 0) return;
+    const list = seen.get(seenKey(call, path)) ?? [];
+    list.push({ order: call.order, values });
+    seen.set(seenKey(call, path), list);
+  };
+  const written = /* @__PURE__ */ new Map();
+  const runs = /* @__PURE__ */ new Map();
+  const tally = (state) => {
+    matches += 1;
+    if (state === "mentioned") counts.mentioned += 1;
+    else if (state === "unknown") counts.unconfirmed += 1;
+    return state === "ran";
+  };
+  const failedBefore = (call, path) => {
+    const name = baseName(path.replace(/[\\/]+$/, ""));
+    return (runs.get(call.session) ?? []).some(
+      (run) => run.order < call.order && run.result !== void 0 && namesAsFailing(run.result.content, name)
+    );
+  };
+  const revertsToSeen = (call, edit) => {
+    const coverageRuns = (runs.get(call.session) ?? []).filter(
+      (run) => run.order < call.order && isCoverageRun(executedText(run.command ?? ""))
+    );
+    const lastRun = coverageRuns[coverageRuns.length - 1];
+    if (lastRun === void 0) return false;
+    const before = /* @__PURE__ */ new Map();
+    for (const entry of seen.get(seenKey(call, edit.path)) ?? []) {
+      if (entry.order >= lastRun.order) continue;
+      for (const [key, values] of entry.values) {
+        const set = before.get(key) ?? /* @__PURE__ */ new Set();
+        for (const value of values) set.add(value);
+        before.set(key, set);
+      }
+    }
+    const was2 = thresholds(edit.removed);
+    const now = thresholds(edit.added);
+    let lowered = false;
+    for (const [key, values] of now) {
+      const old = was2.get(key) ?? [];
+      for (let i = 0; i < Math.min(old.length, values.length); i++) {
+        if (values[i] >= old[i]) continue;
+        lowered = true;
+        if (!before.get(key)?.has(values[i])) return false;
+      }
+    }
+    return lowered;
+  };
+  for (const call of calls) {
+    if (isShell(call)) {
+      const raw2 = call.command;
+      const deletes = deletedTestPaths(raw2).length > 0;
+      const passes = PASS_FLAG.test(raw2);
+      const testRun = isTestRun(raw2);
+      if (writesConfigByShell(raw2)) {
+        if (tally(runStateOf(agent, call, writesConfigByShell))) counts.unreadEdits += 1;
+        if (!deletes && !passes && !testRun) continue;
+      }
+      if (!deletes && !passes && !testRun) continue;
+      if (testRun && !deletes && !passes) {
+        if (runStateOf(agent, call, isTestRun) === "ran") {
+          const list = runs.get(call.session) ?? [];
+          list.push(call);
+          runs.set(call.session, list);
+        }
+        continue;
+      }
+      const holds = (command) => deletedTestPaths(command).length > 0 || PASS_FLAG.test(command);
+      if (!tally(runStateOf(agent, call, holds))) continue;
+      const ran = executedText(raw2);
+      if (isTestRun(ran)) {
+        const list = runs.get(call.session) ?? [];
+        list.push(call);
+        runs.set(call.session, list);
+      }
+      if (PASS_FLAG.test(ran)) counts.passWithNoTests += 1;
+      for (const target of deletedTestPaths(ran)) {
+        counts.testFilesDeleted += 1;
+        if (!outputRecorded) counts.deletedFailureUnknown += 1;
+        else if (failedBefore(call, target)) counts.deletedAfterFailing += 1;
+        const path2 = placed(target, call.cwd);
+        if (path2 !== void 0) addFix(historyFix(path2, true));
+      }
+      continue;
+    }
+    if (!isEdit(call)) {
+      const read = call.mapped.args.file_path;
+      if (call.mapped.tool === "Read" && read !== void 0 && isTestConfig(read) && call.result !== void 0 && !call.result.isError) {
+        see(call, read, call.result.content);
+      }
+      continue;
+    }
+    const raw = call.edit;
+    const previous = raw.whole ? written.get(seenKey(call, raw.path)) : void 0;
+    const edit = previous === void 0 ? raw : { ...raw, removed: previous, whole: false };
+    const config = isTestConfig(edit.path);
+    const ci = isCiFile(edit.path);
+    const deletesTest = edit.deleted && isTestPath(edit.path);
+    if (!config && !ci && !deletesTest) continue;
+    const findings = {
+      lowers: config && lowersThreshold(edit),
+      rewrites: (config || ci) && edit.whole,
+      excludes: config && addsExclude(edit),
+      passes: (config || ci) && !edit.whole && addsPassWithNoTests(edit),
+      forces: ci && !edit.whole && forcesCiStep(edit)
+    };
+    const record = () => {
+      if (runStateOf(agent, call, () => true) !== "ran") return;
+      if (raw.whole) written.set(seenKey(call, raw.path), raw.added);
+      else written.delete(seenKey(call, raw.path));
+      if (config) see(call, raw.path, `${raw.removed}
+${raw.added}`);
+    };
+    if (!deletesTest && !Object.values(findings).some(Boolean)) {
+      record();
+      continue;
+    }
+    if (!tally(runStateOf(agent, call, () => true))) continue;
+    const reverts = findings.lowers && revertsToSeen(call, edit);
+    record();
+    const path = placed(edit.path, call.cwd);
+    if (config && path !== void 0) configs.add(path);
+    if (findings.lowers) {
+      lowering.push({
+        path,
+        autoUpdateInEdit: AUTO_UPDATE_ON.test(`${edit.removed}
+${edit.added}`),
+        revertsToSeen: reverts
+      });
+      if (path !== void 0) addFix(historyFix(path, false));
+    }
+    if (findings.rewrites) counts.configsRewritten += 1;
+    if (findings.excludes) counts.excludesAdded += 1;
+    if (findings.passes) counts.passWithNoTests += 1;
+    if (findings.forces) counts.ciStepsForcedTrue += 1;
+    if (deletesTest) {
+      counts.testFilesDeleted += 1;
+      if (!outputRecorded) counts.deletedFailureUnknown += 1;
+      else if (failedBefore(call, edit.path)) counts.deletedAfterFailing += 1;
+      if (path !== void 0) addFix(historyFix(path, true));
+    }
+  }
+  const cache = rootCache();
+  const onDisk = /* @__PURE__ */ new Map();
+  const autoUpdateNow = { on: 0, off: 0, unread: 0 };
+  for (const path of configs) {
+    const read = await readRepoFile(input.io, path, cache);
+    const on = read.ok ? AUTO_UPDATE_ON.test(read.text) : void 0;
+    onDisk.set(path, on);
+    if (on === void 0) autoUpdateNow.unread += 1;
+    else if (on) autoUpdateNow.on += 1;
+    else autoUpdateNow.off += 1;
+  }
+  for (const lower of lowering) {
+    const on = lower.autoUpdateInEdit || lower.path !== void 0 && onDisk.get(lower.path) === true;
+    if (on && lower.revertsToSeen) counts.autoUpdateReverts += 1;
+    else counts.thresholdsLowered += 1;
+  }
+  const facts = {
+    ...counts,
+    autoUpdateNow,
+    couldHide: couldHideCount(input.calls),
+    hidingForms: heldHidingForms(input.calls)
+  };
+  return { check: { status: testsStatus(facts), matches, facts }, localFixes: fixes };
+}
+function testsStatus(facts) {
+  if (facts.thresholdsLowered + facts.passWithNoTests + facts.ciStepsForcedTrue + facts.deletedAfterFailing > 0) {
+    return "act";
+  }
+  if (facts.excludesAdded + facts.testFilesDeleted + facts.autoUpdateReverts + facts.configsRewritten > 0) {
+    return "review";
+  }
+  return quietStatus(facts.unconfirmed + facts.unreadEdits, facts.couldHide);
+}
+function whenAny2(id, count2, say) {
+  return { id, render: (f) => count2(f) > 0 ? say(count2(f), f) : void 0 };
+}
+function signals(f) {
+  return f.thresholdsLowered + f.autoUpdateReverts + f.configsRewritten + f.excludesAdded + f.passWithNoTests + f.ciStepsForcedTrue + f.testFilesDeleted;
+}
+var TESTS_FOUND = [
+  whenAny2(
+    "tests.thresholds-lowered",
+    (f) => f.thresholdsLowered,
+    (n2) => `${counted(n2, "edit that ran lowered", "edits that ran lowered")} a test coverage threshold.`
+  ),
+  whenAny2(
+    "tests.auto-update-reverts",
+    (f) => f.autoUpdateReverts,
+    (n2) => `${counted(n2, "edit", "edits")} lowered a threshold back to a value it had before a coverage run with autoUpdate on, which may be undoing an automatic raise.`
+  ),
+  whenAny2(
+    "tests.configs-rewritten",
+    (f) => f.configsRewritten,
+    (n2) => `${counted(n2, "test config or CI file was", "test configs or CI files were")} rewritten whole with no earlier content to compare, so what changed cannot be told from the edit.`
+  ),
+  whenAny2(
+    "tests.excludes-added",
+    (f) => f.excludesAdded,
+    (n2) => `${counted(n2, "edit that ran added", "edits that ran added")} files to a test or coverage exclude list.`
+  ),
+  whenAny2(
+    "tests.pass-with-no-tests",
+    (f) => f.passWithNoTests,
+    (n2) => `${counted(n2, "test run or config was", "test runs or configs were")} set to pass with no tests (passWithNoTests).`
+  ),
+  whenAny2(
+    "tests.ci-forced-true",
+    (f) => f.ciStepsForcedTrue,
+    (n2) => `${counted(n2, "edit gave a CI step", "edits gave CI steps")} "|| true", so a failing step passes.`
+  ),
+  whenAny2(
+    "tests.deleted",
+    (f) => f.testFilesDeleted,
+    (n2) => `${counted(n2, "test file was", "test files were")} deleted by commands or edits that ran.`
+  ),
+  whenAny2(
+    "tests.deleted-after-failing",
+    (f) => f.deletedAfterFailing,
+    (n2) => `${n2} of them ${n2 === 1 ? "was" : "were"} deleted after a test run in the same session reported ${n2 === 1 ? "it" : "them"} failing.`
+  ),
+  whenAny2(
+    "tests.deleted-failure-unknown",
+    (f) => f.deletedFailureUnknown,
+    (n2) => `For ${n2} of them the test output was not recorded, so whether ${n2 === 1 ? "it" : "they"} failed first is not known.`
+  ),
+  whenAny2(
+    "tests.unread-edits",
+    (f) => f.unreadEdits,
+    (n2) => `${counted(n2, "command that ran", "commands that ran")} changed a test config or CI file through the shell or git, or applied a patch, which this check does not read, so it could not confirm what changed.`
+  ),
+  {
+    id: "tests.nothing",
+    render: (f) => signals(f) === 0 && f.couldHide === 0 && f.unconfirmed === 0 && f.unreadEdits === 0 ? "No edit or command that ran lowered a coverage threshold, added a test exclude, passed with no tests, forced a CI step to pass or deleted a test file." : void 0
+  },
+  couldHideTemplate("tests.could-hide"),
+  whenAny2(
+    "tests.mentioned",
+    (f) => f.mentioned,
+    (n2) => `${counted(n2, "more match", "more matches")} only mentioned one of these and did not run.`
+  ),
+  whenAny2(
+    "tests.unconfirmed",
+    (f) => f.unconfirmed,
+    (n2) => `${counted(n2, "match", "matches")} could not be confirmed as run.`
+  )
+];
+var TESTS_NOW = [
+  {
+    id: "tests.auto-update-now",
+    render: ({ autoUpdateNow: a }) => {
+      const read = a.on + a.off;
+      return read > 0 ? `Coverage autoUpdate is on in ${a.on} of the ${counted(read, "test config", "test configs")} these edits touched that could be read.` : void 0;
+    }
+  },
+  whenAny2(
+    "tests.auto-update-unread",
+    (f) => f.autoUpdateNow.unread,
+    (n2) => `${counted(n2, "test config", "test configs")} these edits touched could not be read now.`
+  )
+];
+var TESTS_FIX_STEPS = [
+  whenAny2(
+    "tests.fix.thresholds",
+    (f) => f.thresholdsLowered,
+    () => "Put the lowered thresholds back, or set them to today's coverage."
+  ),
+  whenAny2(
+    "tests.fix.pass-with-no-tests",
+    (f) => f.passWithNoTests,
+    () => "Remove passWithNoTests, so a run that finds no tests fails."
+  ),
+  whenAny2(
+    "tests.fix.ci",
+    (f) => f.ciStepsForcedTrue,
+    () => 'Take "|| true" off the CI steps, so a failing step fails the build.'
+  ),
+  whenAny2(
+    "tests.fix.deleted",
+    (f) => f.deletedAfterFailing,
+    () => "Restore the deleted tests from history and fix what made them fail."
+  )
+];
+var TESTS_HEADLINE = whenAny2(
+  "tests.headline",
+  (f) => f.thresholdsLowered,
+  (n2) => `${counted(n2, "edit", "edits")} lowered a test coverage threshold`
+);
+var TESTS_CHIP = {
+  id: "tests.chip",
+  render: (f) => noun(f.thresholdsLowered, "test floor lowered", "test floors lowered")
+};
+var testsCard = (result, context) => {
+  const f = result.facts;
+  const headline2 = sentence(TESTS_HEADLINE, f);
+  const ran = signals(f) > 0;
+  const card = {
+    category: "tests",
+    tone: result.status,
+    count: result.matches,
+    found: sentences(TESTS_FOUND, f),
+    now: sentences(TESTS_NOW, f),
+    fixes: [
+      ...f.thresholdsLowered > 0 ? [{ shape: "git log -p -- <test config>" }] : [],
+      ...f.testFilesDeleted > 0 ? [{ shape: "git log --diff-filter=D --oneline -- <test file>" }] : []
+    ],
+    fixSteps: sentences(TESTS_FIX_STEPS, f),
+    chip: {
+      count: f.thresholdsLowered,
+      label: sentence(TESTS_CHIP, f) ?? { template: TESTS_CHIP.id, text: "" }
+    },
+    codexCaveat: restsOnCodex(context) && ran,
+    ...headline2 === void 0 ? {} : {
+      headline: {
+        basis: "lowered-test-floors",
+        count: f.thresholdsLowered,
+        restsOnCodexRan: restsOnCodex(context),
+        sentence: headline2
+      }
+    }
+  };
+  return card;
+};
+
+// src/core/verify/unreviewed.ts
+var GIT_VALUE_OPTIONS = /* @__PURE__ */ new Set(["-C", "-c", "--git-dir", "--work-tree"]);
+var PUSH_VALUE_OPTIONS = /* @__PURE__ */ new Set([
+  "-o",
+  "--push-option",
+  "--receive-pack",
+  "--exec",
+  "--signed"
+]);
+var MAIN_BRANCH = /^(?:refs\/heads\/)?(main|master)$/;
+function readPushes(command) {
+  const out = [];
+  let dir;
+  for (const simple of simpleCommands(command)) {
+    const { program, args: args2 } = programAndArgs(simple);
+    if (program === "cd") {
+      dir = args2[0];
+      continue;
+    }
+    if (program !== "git") continue;
+    let k = 0;
+    let here = dir;
+    while (k < args2.length && args2[k].startsWith("-")) {
+      const arg = args2[k];
+      if (arg === "-C") here = args2[k + 1];
+      k += GIT_VALUE_OPTIONS.has(arg) ? 2 : 1;
+    }
+    if (args2[k] !== "push") continue;
+    let remote;
+    let dryRun = false;
+    const refspecs = [];
+    const rest = args2.slice(k + 1);
+    for (let i = 0; i < rest.length; i++) {
+      const arg = rest[i];
+      if (arg === "--dry-run" || arg === "-n") dryRun = true;
+      else if (arg.startsWith("--repo=")) remote = arg.slice("--repo=".length);
+      else if (arg === "--repo") {
+        remote = rest[i + 1];
+        i += 1;
+      } else if (PUSH_VALUE_OPTIONS.has(arg)) i += 1;
+      else if (arg.startsWith("-")) continue;
+      else if (remote === void 0) remote = arg;
+      else refspecs.push(arg);
+    }
+    out.push({
+      remote: remote ?? "origin",
+      dir: here,
+      dryRun,
+      destinations: refspecs.map((spec) => spec.replace(/^\+/, "").split(":").pop() ?? spec)
+    });
+  }
+  return out;
+}
+function hasPush(command) {
+  return readPushes(command).length > 0;
+}
+function pushedRefs(output) {
+  const out = [];
+  for (const raw of output.split(/\r?\n/)) {
+    const line = raw.trimStart();
+    const range = /^\+?\s*([0-9a-f]{7,64})\.\.\.?([0-9a-f]{7,64})\s+(\S+)\s+->\s+(\S+)/.exec(line);
+    if (range !== null) {
+      out.push({ from: range[1], to: range[2], branch: range[4] });
+      continue;
+    }
+    const created = /^\*\s+\[new branch\]\s+(\S+)\s+->\s+(\S+)/.exec(line);
+    if (created !== null)
+      out.push({ from: void 0, to: void 0, branch: created[2] });
+  }
+  return out;
+}
+function saysWhatHappened(output) {
+  return /\s->\s|Everything up-to-date|\[up to date\]/.test(output);
+}
+async function place(io, root, update) {
+  const branch = MAIN_BRANCH.exec(update.branch)?.[1];
+  if (branch === void 0 || update.from === void 0 || update.to === void 0) {
+    return void 0;
+  }
+  const contains = await io.git(root, [
+    "for-each-ref",
+    "--contains",
+    update.to,
+    "--format=%(refname)",
+    "refs/remotes/origin/main",
+    "refs/remotes/origin/master"
+  ]);
+  if (!contains.ok) return void 0;
+  const range = await io.git(root, [
+    "log",
+    "--format=%H",
+    "--max-count=1000",
+    update.to,
+    "--not",
+    update.from
+  ]);
+  if (!range.ok) return void 0;
+  const commits2 = range.stdout.split("\n").filter((l) => l.trim() !== "").length;
+  const ref = `refs/remotes/origin/${branch}`;
+  return { onMain: contains.stdout.split("\n").some((l) => l.trim() === ref), commits: commits2 };
+}
+async function checkUnreviewed(input) {
+  const { agent, calls } = input.calls;
+  const cache = rootCache();
+  const fixes = [];
+  const counts = {
+    pushesToMain: 0,
+    commitsOnMain: 0,
+    commitsNotOnMain: 0,
+    pushesNotChecked: 0,
+    pushesCreatingMain: 0,
+    mentioned: 0,
+    unconfirmed: 0
+  };
+  let matches = 0;
+  for (const call of calls) {
+    if (!isShell(call) || !hasPush(call.command)) continue;
+    matches += 1;
+    const state = runStateOf(agent, call, hasPush);
+    if (state === "mentioned") {
+      counts.mentioned += 1;
+      continue;
+    }
+    if (state === "unknown") {
+      counts.unconfirmed += 1;
+      continue;
+    }
+    const pushes = readPushes(executedText(call.command)).filter((p) => !p.dryRun);
+    const push = pushes[0];
+    if (push === void 0) continue;
+    const output = call.result?.content ?? "";
+    const updates = pushedRefs(output).filter((u) => MAIN_BRANCH.test(u.branch));
+    if (updates.length === 0) {
+      const couldBeMain = push.destinations.length === 0 || push.destinations.some((d) => MAIN_BRANCH.test(d));
+      if (couldBeMain && !saysWhatHappened(output)) counts.pushesNotChecked += 1;
+      continue;
+    }
+    counts.pushesToMain += updates.length;
+    counts.pushesCreatingMain += updates.filter((u) => u.from === void 0).length;
+    const dir = placed(push.dir ?? call.cwd ?? "", call.cwd);
+    const root = dir === void 0 || dir === "" ? void 0 : await repoRoot(input.io, dir, cache);
+    if (root === void 0 || !root.ok || push.remote !== "origin") {
+      counts.pushesNotChecked += updates.length;
+      continue;
+    }
+    for (const update of updates) {
+      const placement = await place(input.io, root.root, update);
+      if (placement === void 0) {
+        counts.pushesNotChecked += 1;
+        continue;
+      }
+      if (placement.onMain) {
+        counts.commitsOnMain += placement.commits;
+        if (fixes.length < MAX_LOCAL_FIXES) {
+          fixes.push(
+            localFixCommand("unreviewed", [
+              "git",
+              "-C",
+              { ref: root.root },
+              "log",
+              "--oneline",
+              { sha: update.to ?? "" },
+              "--not",
+              { sha: update.from ?? "" }
+            ])
+          );
+        }
+      } else counts.commitsNotOnMain += placement.commits;
+    }
+  }
+  const facts = {
+    ...counts,
+    couldHide: couldHideCount(input.calls),
+    hidingForms: heldHidingForms(input.calls)
+  };
+  return { check: { status: unreviewedStatus(facts), matches, facts }, localFixes: fixes };
+}
+function unreviewedStatus(facts) {
+  if (facts.commitsOnMain > 0) return "review";
+  if (facts.pushesNotChecked > 0) return "could-not-check";
+  return quietStatus(facts.unconfirmed, facts.couldHide);
+}
+function when3(id, test, say) {
+  return { id, render: (f) => test(f) ? say(f) : void 0 };
+}
+var UNREVIEWED_FOUND = [
+  when3(
+    "unreviewed.pushes",
+    (f) => f.pushesToMain > 0,
+    (f) => `${counted(f.pushesToMain, "push that ran", "pushes that ran")} went straight to a main branch.`
+  ),
+  when3(
+    "unreviewed.none",
+    (f) => f.pushesToMain === 0 && f.pushesNotChecked === 0 && f.couldHide === 0 && f.unconfirmed === 0,
+    () => "No push that ran went straight to a main branch."
+  ),
+  when3(
+    "unreviewed.creates-main",
+    (f) => f.pushesCreatingMain > 0,
+    (f) => `${counted(f.pushesCreatingMain, "push", "pushes")} created a main branch on the remote, so its output names no range of commits, and ${f.pushesCreatingMain === 1 ? "it was" : "they were"} not checked.`
+  ),
+  when3(
+    "unreviewed.not-checked",
+    (f) => f.pushesNotChecked > f.pushesCreatingMain,
+    (f) => {
+      const n2 = f.pushesNotChecked - f.pushesCreatingMain;
+      const other = f.pushesCreatingMain > 0;
+      return `${counted(n2, other ? "more push" : "push", other ? "more pushes" : "pushes")} could not be checked: the output or the repo could not be read.`;
+    }
+  ),
+  couldHideTemplate("unreviewed.could-hide"),
+  when3(
+    "unreviewed.mentioned",
+    (f) => f.mentioned > 0,
+    (f) => `${counted(f.mentioned, "more push was", "more pushes were")} only mentioned and did not run.`
+  ),
+  when3(
+    "unreviewed.unconfirmed",
+    (f) => f.unconfirmed > 0,
+    (f) => `${counted(f.unconfirmed, "push", "pushes")} could not be confirmed as run.`
+  )
+];
+var UNREVIEWED_NOW = [
+  when3(
+    "unreviewed.on-main",
+    (f) => f.commitsOnMain > 0,
+    (f) => `${counted(f.commitsOnMain, "commit is", "commits are")} on the remote's main branch, as this machine last fetched it.`
+  ),
+  when3(
+    "unreviewed.not-on-main",
+    (f) => f.commitsNotOnMain > 0,
+    (f) => `${counted(f.commitsNotOnMain, "pushed commit is", "pushed commits are")} no longer on it.`
+  )
+];
+var UNREVIEWED_FIX_STEPS = [
+  when3(
+    "unreviewed.fix.review",
+    (f) => f.commitsOnMain > 0,
+    () => "Review these commits as a pull request would have, and require pull requests on main."
+  )
+];
+var UNREVIEWED_CHIP = {
+  id: "unreviewed.chip",
+  render: (f) => noun(f.commitsOnMain, "commit pushed straight to main", "commits pushed straight to main")
+};
+var unreviewedCard = (result, context) => {
+  const f = result.facts;
+  const card = {
+    category: "unreviewed",
+    tone: result.status,
+    count: result.matches,
+    found: sentences(UNREVIEWED_FOUND, f),
+    now: sentences(UNREVIEWED_NOW, f),
+    fixes: f.commitsOnMain > 0 ? [{ shape: "git log --oneline <from>..<to>" }] : [],
+    fixSteps: sentences(UNREVIEWED_FIX_STEPS, f),
+    chip: {
+      count: f.commitsOnMain,
+      label: sentence(UNREVIEWED_CHIP, f) ?? { template: UNREVIEWED_CHIP.id, text: "" }
+    },
+    codexCaveat: restsOnCodex(context) && f.pushesToMain > 0
+  };
+  return card;
+};
+
+// src/core/verify/command-cards.ts
+var COMMAND_CHECK_CARDS = {
+  tests: testsCard,
+  cloud: cloudCard,
+  "prod-infra": prodInfraCard,
+  unreviewed: unreviewedCard,
+  egress: egressCard
+};
+
+// src/core/verify/destructive.ts
+import { dirname as dirname3, relative as relative2, sep as sep2 } from "path";
+
+// src/core/verify/git-copy.ts
+function counted2(n2, singular, plural2 = `${singular}s`) {
+  return `${formatCount(n2)} ${n2 === 1 ? singular : plural2}`;
+}
+function was(n2) {
+  return n2 === 1 ? "was" : "were";
+}
+function is(n2) {
+  return n2 === 1 ? "is" : "are";
+}
+function addTallies(...tallies) {
+  const sum = { ran: 0, mentioned: 0, unknown: 0 };
+  for (const tally of tallies) {
+    sum.ran += tally.ran;
+    sum.mentioned += tally.mentioned;
+    sum.unknown += tally.unknown;
+  }
+  return sum;
+}
+function statusOf(found) {
+  if (found.sessions === 0) return "not-checked";
+  if (found.act) return "act";
+  if (found.review) return "review";
+  if (found.incomplete) return "could-not-check";
+  return "clean";
+}
+function codexCaveat(context, ran) {
+  return context.ranEvidence === "output-record" && ran > 0;
+}
+var CODEX_LIMITED = "The Codex reading is limited and unverified: it is tested only on synthetic sessions built from Codex's documented rollout format, a Codex call counted as ran may be one a hook blocked, and ids a Codex command printed are not identified.";
+function codexLimitedTemplate(category) {
+  return { id: `${category}.codex-limited`, render: () => CODEX_LIMITED };
+}
+function codexLines(template, context, facts) {
+  return context.ranEvidence === "output-record" ? sentences([template], facts) : [];
+}
+function cardExtras(chip, fixSteps) {
+  return {
+    ...chip.label === void 0 ? {} : { chip: { count: chip.count, label: chip.label } },
+    ...fixSteps.length === 0 ? {} : { fixSteps }
+  };
+}
+var FixList = class {
+  made = [];
+  unsafe = [];
+  #category;
+  constructor(category) {
+    this.#category = category;
+  }
+  /** Make one command from `parts`, or keep it as unsafe. */
+  add(parts) {
+    const fix = localFixCommand(this.#category, parts);
+    if (isLocalFix(fix)) this.made.push(fix);
+    else this.unsafe.push(fix);
+  }
+};
+var FORM_WORDS = {
+  "shell-string": "a shell given a string to run",
+  "inline-code": "inline code given to an interpreter",
+  "piped-script": "a script piped into a shell or an interpreter",
+  "find-exec": "find -exec",
+  xargs: "xargs",
+  "process-substitution": "process substitution",
+  "command-substitution": "a command substitution",
+  eval: "eval",
+  "git-config": "git with its own -c settings",
+  "git-exec": "git running a command it was given",
+  "git-hook": "git after a hook or its config was written",
+  "unread-shell": "a shell this scan does not read"
+};
+function couldNotConfirmLine(n2, forms, what) {
+  if (n2 === 0) return void 0;
+  const words2 = forms.map((form) => FORM_WORDS[form]).join(", ");
+  return `Could not confirm that no ${what} ran: ${counted2(n2, "command")} that ran, or may have run, ${n2 === 1 ? "uses" : "use"} a form this check does not read inside (${words2}).`;
+}
+function unsafeFixLine(n2) {
+  return n2 > 0 ? `Could not make a safe command for ${counted2(n2, "fix", "fixes")}: a name or path in ${n2 === 1 ? "it" : "them"} holds characters a command cannot carry safely, so ${n2 === 1 ? "it is" : "they are"} left out of the local fixes file.` : void 0;
+}
+var MAX_PROBED_ITEMS = 500;
+var TEMP_ROOTS = [
+  "/tmp",
+  "/private/tmp",
+  "/var/tmp",
+  "/private/var/tmp",
+  "/var/folders",
+  "/private/var/folders",
+  "/dev/shm"
+];
+function isUnder(path, roots) {
+  return roots.some((root) => {
+    const base = root.replace(/[\\/]+$/, "");
+    return path === base || path.startsWith(`${base}/`) || path.startsWith(`${base}\\`);
+  });
+}
+
+// src/core/verify/repo-probe.ts
+import { isAbsolute as isAbsolute2, join as join4, relative, resolve, sep } from "path";
+function isFailure(value) {
+  return typeof value === "object" && value !== null && "failed" in value;
+}
+function isCommitId(value) {
+  return /^[0-9a-f]{7,64}$/.test(value);
+}
+function literalPathspec(folder, path) {
+  const rel = relative(folder, path);
+  if (rel.startsWith("..") || isAbsolute2(rel)) return void 0;
+  const posix2 = rel === "" ? "." : rel.split(sep).join("/");
+  if (posix2.startsWith("-") || /[\0\r\n\\]/.test(posix2)) return void 0;
+  return `:(literal)${posix2}`;
+}
+var COMMIT_HOOKS = ["pre-commit", "commit-msg"];
+var CHECK_HOOKS = [
+  "pre-commit",
+  "commit-msg",
+  "pre-push",
+  "pre-merge-commit",
+  "prepare-commit-msg"
+];
+var RepoProbe = class {
+  #io;
+  #toplevels = /* @__PURE__ */ new Map();
+  #hooks = /* @__PURE__ */ new Map();
+  #defaults = /* @__PURE__ */ new Map();
+  #stashes = /* @__PURE__ */ new Map();
+  constructor(io) {
+    this.#io = io;
+  }
+  /**
+   * Is anything at `path`? `false` only when the seam says nothing is there; `undefined` when
+   * it cannot be told, which no caller reads as missing.
+   */
+  exists(path) {
+    if (this.#io.pathExists !== void 0) return this.#io.pathExists(path);
+    return this.#io.isDirectory(path) === void 0 ? void 0 : true;
+  }
+  /** Is `path` a folder: `undefined` when it cannot be read. */
+  isFolder(path) {
+    return this.#io.isDirectory(path);
+  }
+  /**
+   * The top folder of the repository `folder` is in. `missing` only when the folder is not
+   * there; a folder that cannot be told about is `failed`.
+   */
+  toplevel(folder) {
+    let answer = this.#toplevels.get(folder);
+    if (answer === void 0) {
+      answer = (async () => {
+        const isFolder3 = this.#io.isDirectory(folder);
+        if (isFolder3 === false) return { failed: "missing" };
+        if (isFolder3 === void 0) {
+          return { failed: this.exists(folder) === false ? "missing" : "failed" };
+        }
+        const top = await this.#io.git(folder, ["rev-parse", "--show-toplevel"]);
+        if (!top.ok) return { failed: top.reason };
+        const root = top.stdout.trim();
+        return root === "" ? { failed: "failed" } : root;
+      })();
+      this.#toplevels.set(folder, answer);
+    }
+    return answer;
+  }
+  /** The folder git runs a repository's hooks from now, after `core.hooksPath`. */
+  hooksFolder(root) {
+    let answer = this.#hooks.get(root);
+    if (answer === void 0) {
+      answer = (async () => {
+        const out = await this.#io.git(root, ["rev-parse", "--git-path", "hooks"]);
+        if (!out.ok) return { failed: out.reason };
+        const path = out.stdout.trim();
+        if (path === "") return { failed: "failed" };
+        return isAbsolute2(path) ? path : resolve(root, path);
+      })();
+      this.#hooks.set(root, answer);
+    }
+    return answer;
+  }
+  /**
+   * Does the repository have any of `names` as a hook file now? A folder by a hook's name is no
+   * hook. A name that cannot be told about, with no hook found, is a failure, never "none".
+   */
+  async hasHooks(root, names) {
+    const folder = await this.hooksFolder(root);
+    if (isFailure(folder)) return folder;
+    return this.#anyHook(folder, names);
+  }
+  /** Is any of `names` a hook file in `folder`: yes, no, or a failure when it cannot be told. */
+  #anyHook(folder, names) {
+    let unsure = false;
+    for (const name of names) {
+      const path = join4(folder, name);
+      const there = this.exists(path);
+      if (there === false) continue;
+      const isFolder3 = there === void 0 ? void 0 : this.#io.isDirectory(path);
+      if (isFolder3 === false) return true;
+      if (isFolder3 === void 0) unsure = true;
+    }
+    return unsure ? { failed: "failed" } : false;
+  }
+  /**
+   * The repository's hooks now: `on` when the folder in effect holds one of `names`; `off` when
+   * `core.hooksPath` points away from the default folder at one that holds none (switched
+   * off); `none` when the default folder holds none (never set up).
+   */
+  async hooksState(root, names) {
+    const folder = await this.hooksFolder(root);
+    if (isFailure(folder)) return folder;
+    const hook = this.#anyHook(folder, names);
+    if (isFailure(hook)) return hook;
+    if (hook) return "on";
+    const common = await this.#io.git(root, ["rev-parse", "--git-common-dir"]);
+    if (!common.ok) return { failed: common.reason };
+    const dir = common.stdout.trim();
+    if (dir === "") return { failed: "failed" };
+    const standard = resolve(isAbsolute2(dir) ? dir : resolve(root, dir), "hooks");
+    return resolve(folder) === standard ? "none" : "off";
+  }
+  /** The full id of a commit that is still in the object store, or `null` when it is not. */
+  async commit(root, id) {
+    if (!isCommitId(id)) return { failed: "refused" };
+    const out = await this.#io.git(root, [
+      "log",
+      "--no-walk",
+      "--ignore-missing",
+      "--format=%H",
+      id
+    ]);
+    if (!out.ok) return { failed: out.reason };
+    const full = out.stdout.trim().split("\n")[0] ?? "";
+    if (full === "") return null;
+    return isCommitId(full) && full.startsWith(id) ? full : { failed: "failed" };
+  }
+  /** Which of origin/main and origin/master the repository has. */
+  defaultRefs(root) {
+    let answer = this.#defaults.get(root);
+    if (answer === void 0) {
+      answer = (async () => {
+        const out = await this.#io.git(root, [
+          "for-each-ref",
+          "--format=%(refname)",
+          "refs/remotes/origin/main",
+          "refs/remotes/origin/master"
+        ]);
+        return out.ok ? lines(out.stdout) : { failed: out.reason };
+      })();
+      this.#defaults.set(root, answer);
+    }
+    return answer;
+  }
+  /** Is the commit on origin/main or origin/master? Pass a full id `commit` returned. */
+  async onDefaultBranch(root, full) {
+    if (!isCommitId(full)) return { failed: "refused" };
+    const out = await this.#io.git(root, [
+      "for-each-ref",
+      "--contains",
+      full,
+      "--format=%(refname)",
+      "refs/remotes/origin/main",
+      "refs/remotes/origin/master"
+    ]);
+    return out.ok ? lines(out.stdout).length > 0 : { failed: out.reason };
+  }
+  /** Is the commit on any branch, remote-tracking branch or tag? */
+  async onAnyRef(root, full) {
+    if (!isCommitId(full)) return { failed: "refused" };
+    const out = await this.#io.git(root, [
+      "for-each-ref",
+      "--contains",
+      full,
+      "--format=%(refname)",
+      "refs/heads",
+      "refs/remotes",
+      "refs/tags"
+    ]);
+    return out.ok ? lines(out.stdout).length > 0 : { failed: out.reason };
+  }
+  /** The commits in the repository's stash list now. */
+  stashes(root) {
+    let answer = this.#stashes.get(root);
+    if (answer === void 0) {
+      answer = (async () => {
+        const out = await this.#io.git(root, ["stash", "list", "--format=%H"]);
+        return out.ok ? new Set(lines(out.stdout)) : { failed: out.reason };
+      })();
+      this.#stashes.set(root, answer);
+    }
+    return answer;
+  }
+  /**
+   * The tracked files under `path`, asked from `folder` (an existing folder `path` is in), and
+   * how many of them are missing from the working tree now.
+   */
+  async tracked(folder, path) {
+    const spec = literalPathspec(folder, path);
+    if (spec === void 0) return { failed: "refused" };
+    const all = await this.#io.git(folder, ["ls-files", "-z", "--", spec]);
+    if (!all.ok) return { failed: all.reason };
+    const tracked = entries(all.stdout).length;
+    if (tracked === 0) return { tracked: 0, missing: 0 };
+    const gone = await this.#io.git(folder, ["ls-files", "--deleted", "-z", "--", spec]);
+    if (!gone.ok) return { failed: gone.reason };
+    return { tracked, missing: entries(gone.stdout).length };
+  }
+  /** Read one file through the seam. */
+  read(path) {
+    return this.#io.readFile(path);
+  }
+};
+function lines(text2) {
+  return text2.split(/\r?\n/).map((line) => line.trim()).filter((line) => line !== "");
+}
+function entries(text2) {
+  return text2.split("\0").filter((entry) => entry !== "");
+}
+
+// src/core/verify/shell-calls.ts
+import { isAbsolute as isAbsolute3, join as join5, resolve as resolve2 } from "path";
+
 // src/core/verify/shell-words.ts
 var SHELLS2 = /* @__PURE__ */ new Set(["sh", "bash", "zsh", "dash", "ksh"]);
-function skipQuoted2(text, at, quote) {
+function skipQuoted2(text2, at, quote) {
   let i = at + 1;
-  while (i < text.length) {
-    const ch = text[i];
+  while (i < text2.length) {
+    const ch = text2[i];
     if (quote !== "'" && ch === "\\") {
       i += 2;
       continue;
@@ -11648,15 +14134,15 @@ function skipQuoted2(text, at, quote) {
     if (ch === quote) return i + 1;
     i += 1;
   }
-  return text.length;
+  return text2.length;
 }
-function skipSubstitution2(text, at) {
+function skipSubstitution2(text2, at) {
   let depth = 0;
   let i = at;
-  while (i < text.length) {
-    const ch = text[i];
+  while (i < text2.length) {
+    const ch = text2[i];
     if (ch === "'" || ch === '"' || ch === "`") {
-      i = skipQuoted2(text, i, ch);
+      i = skipQuoted2(text2, i, ch);
       continue;
     }
     if (ch === "\\") {
@@ -11670,9 +14156,9 @@ function skipSubstitution2(text, at) {
     }
     i += 1;
   }
-  return text.length;
+  return text2.length;
 }
-function shellItems(text) {
+function shellItems(text2) {
   const items = [];
   const pending = [];
   let words2 = [];
@@ -11684,7 +14170,7 @@ function shellItems(text) {
   let globAt = -1;
   const endWord = (end) => {
     if (start < 0) return;
-    const word = { raw: text.slice(start, end), value, expands, globAt };
+    const word = { raw: text2.slice(start, end), value, expands, globAt };
     if (next === "word") words2.push(word);
     else if (next === "write") writes.push(word);
     else if (next === "heredoc" || next === "heredoc-tabs") {
@@ -11706,8 +14192,8 @@ function shellItems(text) {
     if (start < 0) start = at;
   };
   let i = 0;
-  while (i < text.length) {
-    const ch = text[i];
+  while (i < text2.length) {
+    const ch = text2[i];
     if (ch === "\n") {
       endCommand(i);
       i += 1;
@@ -11718,11 +14204,11 @@ function shellItems(text) {
           pending.length = 0;
           break;
         }
-        while (i < text.length) {
-          const lineEnd = text.indexOf("\n", i);
-          const stop = lineEnd < 0 ? text.length : lineEnd;
-          const line = text.slice(i, stop);
-          i = lineEnd < 0 ? text.length : lineEnd + 1;
+        while (i < text2.length) {
+          const lineEnd = text2.indexOf("\n", i);
+          const stop = lineEnd < 0 ? text2.length : lineEnd;
+          const line = text2.slice(i, stop);
+          i = lineEnd < 0 ? text2.length : lineEnd + 1;
           if ((doc.stripTabs ? line.replace(/^\t+/, "") : line) === doc.delimiter) break;
         }
       }
@@ -11734,14 +14220,14 @@ function shellItems(text) {
       continue;
     }
     if (ch === "#" && start < 0) {
-      const lineEnd = text.indexOf("\n", i);
-      i = lineEnd < 0 ? text.length : lineEnd;
+      const lineEnd = text2.indexOf("\n", i);
+      i = lineEnd < 0 ? text2.length : lineEnd;
       continue;
     }
     if (ch === "'" || ch === '"') {
       begin(i);
-      const end = skipQuoted2(text, i, ch);
-      const inner = text.slice(i + 1, Math.max(i + 1, end - 1));
+      const end = skipQuoted2(text2, i, ch);
+      const inner = text2.slice(i + 1, Math.max(i + 1, end - 1));
       if (ch === '"') {
         if (inner.includes("$") || inner.includes("`")) expands = true;
         value += inner.replace(/\\(["\\$`])/g, "$1");
@@ -11751,28 +14237,28 @@ function shellItems(text) {
     }
     if (ch === "\\") {
       begin(i);
-      if (text[i + 1] !== "\n") value += text[i + 1] ?? "";
+      if (text2[i + 1] !== "\n") value += text2[i + 1] ?? "";
       i += 2;
       continue;
     }
     if (ch === "$") {
       begin(i);
-      if (text[i + 1] === "(") {
-        const end = skipSubstitution2(text, i + 1);
-        value += text.slice(i, end);
+      if (text2[i + 1] === "(") {
+        const end = skipSubstitution2(text2, i + 1);
+        value += text2.slice(i, end);
         expands = true;
         i = end;
         continue;
       }
-      if (/[A-Za-z_{0-9@*#?$!-]/.test(text[i + 1] ?? "")) expands = true;
+      if (/[A-Za-z_{0-9@*#?$!-]/.test(text2[i + 1] ?? "")) expands = true;
       value += ch;
       i += 1;
       continue;
     }
     if (ch === "`") {
       begin(i);
-      const end = skipQuoted2(text, i, "`");
-      value += text.slice(i, end);
+      const end = skipQuoted2(text2, i, "`");
+      value += text2.slice(i, end);
       expands = true;
       i = end;
       continue;
@@ -11782,28 +14268,28 @@ function shellItems(text) {
         start = -1;
         value = "";
       } else endWord(i);
-      if (text.startsWith("<<<", i)) {
+      if (text2.startsWith("<<<", i)) {
         next = "herestring";
         i += 3;
-      } else if (text.startsWith("<<-", i)) {
+      } else if (text2.startsWith("<<-", i)) {
         next = "heredoc-tabs";
         i += 3;
-      } else if (text.startsWith("<<", i)) {
+      } else if (text2.startsWith("<<", i)) {
         next = "heredoc";
         i += 2;
       } else {
-        const writing = ch === ">" || text[i + 1] === ">";
+        const writing = ch === ">" || text2[i + 1] === ">";
         i += 1;
-        const duplicating = text[i] === "&";
-        while (i < text.length && /[>|&<]/.test(text[i])) i += 1;
+        const duplicating = text2[i] === "&";
+        while (i < text2.length && /[>|&<]/.test(text2[i])) i += 1;
         next = duplicating ? "read" : writing ? "write" : "read";
       }
       continue;
     }
-    if (ch === "&" && text[i + 1] === ">") {
+    if (ch === "&" && text2[i + 1] === ">") {
       endWord(i);
       i += 2;
-      if (text[i] === ">") i += 1;
+      if (text2[i] === ">") i += 1;
       next = "write";
       continue;
     }
@@ -11816,7 +14302,7 @@ function shellItems(text) {
     if (ch === ";" || ch === "&" || ch === "|") {
       endCommand(i);
       i += 1;
-      if (/[&|;]/.test(text[i] ?? "")) i += 1;
+      if (/[&|;]/.test(text2[i] ?? "")) i += 1;
       continue;
     }
     begin(i);
@@ -11824,13 +14310,13 @@ function shellItems(text) {
     value += ch;
     i += 1;
   }
-  endCommand(text.length);
+  endCommand(text2.length);
   return items;
 }
-function shellCommands(text) {
-  return shellItems(text).filter((item) => item.kind === "command");
+function shellCommands(text2) {
+  return shellItems(text2).filter((item) => item.kind === "command");
 }
-var PREFIX_WORDS2 = /* @__PURE__ */ new Set([
+var PREFIX_WORDS3 = /* @__PURE__ */ new Set([
   "sudo",
   "env",
   "command",
@@ -11852,7 +14338,7 @@ var PREFIX_WORDS2 = /* @__PURE__ */ new Set([
   "while",
   "until"
 ]);
-var PREFIX_VALUE_OPTIONS2 = /* @__PURE__ */ new Set(["-u", "-g", "-n", "-s", "-k", "-C"]);
+var PREFIX_VALUE_OPTIONS3 = /* @__PURE__ */ new Set(["-u", "-g", "-n", "-s", "-k", "-C"]);
 var ASSIGNMENT4 = /^[A-Za-z_][A-Za-z0-9_]*=/;
 function programName2(word) {
   const base = word.value.split(/[\\/]/).pop() ?? "";
@@ -11869,17 +14355,17 @@ function commandStart(words2) {
       continue;
     }
     const name = programName2(word);
-    if (!PREFIX_WORDS2.has(name)) return { index: k, assignments };
+    if (!PREFIX_WORDS3.has(name)) return { index: k, assignments };
     k += 1;
     while (k < words2.length && words2[k].value.startsWith("-")) {
       const option = words2[k].value;
-      k += PREFIX_VALUE_OPTIONS2.has(option) ? 2 : 1;
+      k += PREFIX_VALUE_OPTIONS3.has(option) ? 2 : 1;
     }
     if (name === "timeout" && k < words2.length) k += 1;
   }
   return { index: k, assignments };
 }
-var GIT_VALUE_OPTIONS = /* @__PURE__ */ new Set([
+var GIT_VALUE_OPTIONS2 = /* @__PURE__ */ new Set([
   "-C",
   "-c",
   "--git-dir",
@@ -11899,12 +14385,12 @@ function gitCommand(words2) {
     const option = words2[k].value;
     if (option.startsWith("--git-dir") || option.startsWith("--work-tree")) elsewhere = true;
     if (option === "-C" && words2[k + 1] !== void 0) folders.push(words2[k + 1]);
-    k += GIT_VALUE_OPTIONS.has(option) ? 2 : 1;
+    k += GIT_VALUE_OPTIONS2.has(option) ? 2 : 1;
   }
   const sub = words2[k]?.value ?? "";
   return { sub, args: words2.slice(k + 1), folders, elsewhere };
 }
-function operands(args2, valueOptions = /* @__PURE__ */ new Set()) {
+function operands2(args2, valueOptions = /* @__PURE__ */ new Set()) {
   const out = [];
   let k = 0;
   while (k < args2.length) {
@@ -11929,7 +14415,7 @@ function directoryChange(words2) {
   const name = programName2(program);
   if (name === "popd") return { kind: "unknown" };
   if (name !== "cd" && name !== "pushd") return { kind: "none" };
-  const targets = operands(words2.slice(at + 1));
+  const targets = operands2(words2.slice(at + 1));
   if (targets.length === 0) return name === "cd" ? { kind: "home" } : { kind: "unknown" };
   const target = targets[0];
   if (targets.length > 1 || target.expands || target.value === "-") return { kind: "unknown" };
@@ -11963,16 +14449,16 @@ function writtenTexts(value, out = [], depth = 0) {
 function resolvePath(folder, path, home) {
   if (path === "") return void 0;
   if (path === "~") return home;
-  if (path.startsWith("~/")) return join4(home, path.slice(2));
+  if (path.startsWith("~/")) return join5(home, path.slice(2));
   if (path.startsWith("~")) return void 0;
-  if (isAbsolute2(path)) return resolve2(path);
+  if (isAbsolute3(path)) return resolve2(path);
   if (folder === void 0) return void 0;
   return resolve2(folder, path);
 }
-function walkCommands(text, cwd, home, visit, depth = 0) {
+function walkCommands(text2, cwd, home, visit, depth = 0) {
   let folder = cwd;
   const saved = [];
-  for (const item of shellItems(text)) {
+  for (const item of shellItems(text2)) {
     if (item.kind === "open") {
       saved.push(folder);
       continue;
@@ -12051,13 +14537,13 @@ function gitFolder(folder, options, home) {
   return at;
 }
 function sessionFolder(cwd) {
-  return cwd !== null && cwd !== "" && isAbsolute2(cwd) ? resolve2(cwd) : void 0;
+  return cwd !== null && cwd !== "" && isAbsolute3(cwd) ? resolve2(cwd) : void 0;
 }
-function folderAfter(text, from, home) {
+function folderAfter(text2, from, home) {
   let folder = from;
   let depth = 0;
   let changed = false;
-  for (const item of shellItems(text)) {
+  for (const item of shellItems(text2)) {
     if (item.kind === "open") depth += 1;
     else if (item.kind === "close") depth = Math.max(0, depth - 1);
     else if (depth === 0) {
@@ -12074,7 +14560,7 @@ function folderAfter(text, from, home) {
 var CWD_RESET = /Shell cwd was reset to (\S[^\n]*?)\s*$/m;
 function claudeFolderAfter(agent, mapped, command, result, from, home) {
   const reset = result === void 0 ? void 0 : CWD_RESET.exec(result.content)?.[1];
-  if (reset !== void 0) return isAbsolute2(reset) ? resolve2(reset) : void 0;
+  if (reset !== void 0) return isAbsolute3(reset) ? resolve2(reset) : void 0;
   const after = folderAfter(command, from, home);
   if (after.kind === "same") return from;
   const verdict2 = runVerdict(agent, mapped, result, () => true);
@@ -12085,7 +14571,7 @@ function codexFolders(input) {
   if (typeof source !== "string") return [];
   return [...readShimWorkdirs(source) ?? []];
 }
-function readCalls(corpus, home) {
+function readCalls2(corpus, home) {
   const agent = corpus.agent ?? "claude";
   const shell = [];
   const writes = [];
@@ -12113,7 +14599,7 @@ function readCalls(corpus, home) {
           for (const mapped of call.candidates) {
             id += 1;
             const forms = hidingFormsOf(mapped);
-            if (forms.length > 0 && ranOrMayHaveRun(runVerdict(agent, mapped, result, () => true))) {
+            if (forms.length > 0 && ranOrMayHaveRun2(runVerdict(agent, mapped, result, () => true))) {
               hidingCalls += 1;
               for (const form of forms) hidingForms.add(form);
             }
@@ -12162,9 +14648,9 @@ function readCalls(corpus, home) {
 }
 function redirectWrites(agent, call, home) {
   if (!/>/.test(call.view)) return [];
-  const find = (text) => {
+  const find = (text2) => {
     const out = [];
-    walkCommands(text, call.cwd, home, (command, folder) => {
+    walkCommands(text2, call.cwd, home, (command, folder) => {
       for (const target of command.writes) {
         if (target.expands) continue;
         const path = resolvePath(folder, target.value, home);
@@ -12243,7 +14729,7 @@ function tallyOf(judged) {
   }
   return tally;
 }
-function ranOrMayHaveRun(verdict2) {
+function ranOrMayHaveRun2(verdict2) {
   if (isResultBackedRun(verdict2)) return true;
   return verdict2.state === "unknown" && (verdict2.why === "no-result" || verdict2.why === "not-recorded");
 }
@@ -12252,6 +14738,16 @@ function outputOf(call) {
 }
 
 // src/core/verify/destructive.ts
+function databaseTargetClasses(check) {
+  if (!("facts" in check)) return void 0;
+  const classes = check.facts.databases.classes;
+  return {
+    local: classes.local,
+    scratch: classes.scratch,
+    other: classes.other,
+    unresolved: classes.unresolved
+  };
+}
 function recursiveRmTargets(args2) {
   let recursive = false;
   for (const word of args2) {
@@ -12260,11 +14756,11 @@ function recursiveRmTargets(args2) {
     if (value === "--recursive") recursive = true;
     else if (/^-[A-Za-z]+$/.test(value) && /[rR]/.test(value)) recursive = true;
   }
-  return recursive ? operands(args2) : [];
+  return recursive ? operands2(args2) : [];
 }
-var rmTargets = (text, cwd, home) => {
+var rmTargets = (text2, cwd, home) => {
   const out = [];
-  walkCommands(text, cwd, home, (command, folder) => {
+  walkCommands(text2, cwd, home, (command, folder) => {
     const start = commandStart(command.words).index;
     const program = command.words[start];
     if (program === void 0 || programName2(program) !== "rm") return;
@@ -12338,7 +14834,7 @@ async function classify2(context, target) {
   let folder = path;
   let steps = 0;
   while (context.probe.isFolder(folder) !== true && steps < MAX_PARENT_STEPS) {
-    const up = dirname(folder);
+    const up = dirname3(folder);
     if (up === folder) break;
     folder = up;
     steps += 1;
@@ -12422,14 +14918,14 @@ function hostClass(host, noHost) {
   return LOCAL_HOST.test(host) ? "local" : "remote";
 }
 var CONNINFO = /(?:^|\s)(?:host|hostaddr|service|dbname)\s*=/;
-function conninfoOf(text) {
+function conninfoOf(text2) {
   const out = /* @__PURE__ */ new Map();
-  for (const match of text.matchAll(/(\w+)\s*=\s*(?:'((?:[^'\\]|\\.)*)'|(\S*))/g)) {
+  for (const match of text2.matchAll(/(\w+)\s*=\s*(?:'((?:[^'\\]|\\.)*)'|(\S*))/g)) {
     out.set(match[1].toLowerCase(), match[2] ?? match[3] ?? "");
   }
   return out;
 }
-function optionValue(words2, short, long) {
+function optionValue2(words2, short, long) {
   for (let k = 0; k < words2.length; k++) {
     const value = words2[k].value;
     const word = words2[k];
@@ -12447,14 +14943,14 @@ function optionValue(words2, short, long) {
 }
 function serverOf(args2, assignments, options, sql = "") {
   const urls = args2.filter((a) => /^[a-z][a-z0-9+.-]*:\/\//i.test(a.value));
-  const hostWord = optionValue(args2, options.host[0], options.host[1]);
-  const nameWord = options.name === void 0 ? void 0 : optionValue(args2, options.name[0], options.name[1]);
+  const hostWord = optionValue2(args2, options.host[0], options.host[1]);
+  const nameWord = options.name === void 0 ? void 0 : optionValue2(args2, options.name[0], options.name[1]);
   const urlWord = urls[0] ?? (nameWord !== void 0 && /:\/\//.test(nameWord.value) ? nameWord : void 0);
   const fromUrl = urlWord?.value.match(URL_PARTS) ?? void 0;
   const infoWord = args2.find((a) => CONNINFO.test(a.value));
   const info = infoWord === void 0 ? void 0 : conninfoOf(infoWord.value);
   const pgHost = assignments.find((a) => a.value.startsWith("PGHOST="));
-  const rest = operands(args2, DATABASE_VALUE_OPTIONS);
+  const rest = operands2(args2, DATABASE_VALUE_OPTIONS);
   const positional = options.positionalHost === true && rest[0] !== void 0 && !rest[0].value.includes("://") && /^[^/\s]+(?::\d+)?\//.test(rest[0].value) ? rest[0] : void 0;
   const host = fromUrl?.[1] ?? info?.get("host") ?? info?.get("hostaddr") ?? positional?.value.split("/")[0]?.replace(/:\d+$/, "") ?? hostWord?.value ?? pgHost?.value.slice("PGHOST=".length);
   const service = host === void 0 && info?.has("service") === true;
@@ -12552,12 +15048,12 @@ function databaseTargets(words2, scratchRoots, view, depth = 0) {
       return values[k] === "exec" && dash > k ? relay(args2.slice(dash + 1), "remote") : [];
     }
     case "ssh": {
-      const rest = operands(args2, /* @__PURE__ */ new Set(["-p", "-i", "-l", "-o", "-F", "-J", "-L", "-R", "-D"]));
-      const text = rest.slice(1).map((w) => w.value).join(" ");
-      return shellCommands(text).flatMap((c) => relay(c.words, "remote"));
+      const rest = operands2(args2, /* @__PURE__ */ new Set(["-p", "-i", "-l", "-o", "-F", "-J", "-L", "-R", "-D"]));
+      const text2 = rest.slice(1).map((w) => w.value).join(" ");
+      return shellCommands(text2).flatMap((c) => relay(c.words, "remote"));
     }
     case "psql": {
-      const sql = optionValue(args2, "-c", "--command")?.value ?? view;
+      const sql = optionValue2(args2, "-c", "--command")?.value ?? view;
       return DESTRUCTIVE_SQL.test(sql) ? [
         serverOf(
           args2,
@@ -12571,7 +15067,7 @@ function databaseTargets(words2, scratchRoots, view, depth = 0) {
       return [serverOf(args2, start.assignments, { host: ["-h", "--host"], noHost: "unresolved" })];
     case "mysql":
     case "mariadb": {
-      const sql = optionValue(args2, "-e", "--execute")?.value ?? view;
+      const sql = optionValue2(args2, "-e", "--execute")?.value ?? view;
       return DESTRUCTIVE_SQL.test(sql) ? [
         serverOf(
           args2,
@@ -12593,7 +15089,7 @@ function databaseTargets(words2, scratchRoots, view, depth = 0) {
       ] : [];
     case "mongo":
     case "mongosh": {
-      const script = optionValue(args2, void 0, "--eval")?.value ?? "";
+      const script = optionValue2(args2, void 0, "--eval")?.value ?? "";
       return /dropDatabase\s*\(|\.drop\s*\(/.test(script) ? [
         serverOf(args2, start.assignments, {
           host: [void 0, "--host"],
@@ -12603,7 +15099,7 @@ function databaseTargets(words2, scratchRoots, view, depth = 0) {
       ] : [];
     }
     case "sqlite3": {
-      const [file2, sql] = operands(args2);
+      const [file2, sql] = operands2(args2);
       if (file2 === void 0 || !DESTRUCTIVE_SQL.test(sql?.value ?? view)) return [];
       return [
         {
@@ -12629,10 +15125,10 @@ function databaseClass(target) {
   return target.scratch ? "scratch" : "local";
 }
 function databaseDetector(scratchRoots) {
-  return (text, cwd, home) => {
+  return (text2, cwd, home) => {
     const out = [];
-    walkCommands(text, cwd, home, (command) => {
-      out.push(...databaseTargets(command.words, scratchRoots, text));
+    walkCommands(text2, cwd, home, (command) => {
+      out.push(...databaseTargets(command.words, scratchRoots, text2));
     });
     return out;
   };
@@ -12679,23 +15175,23 @@ function n(f, c) {
 }
 var HEADLINE = {
   id: "destructive.headline",
-  render: (f) => n(f, "unguarded-variable") > 0 ? `${counted(n(f, "unguarded-variable"), "rm -rf target")} ${was(n(f, "unguarded-variable"))} built from a variable with no guard.` : void 0
+  render: (f) => n(f, "unguarded-variable") > 0 ? `${counted2(n(f, "unguarded-variable"), "rm -rf target")} ${was(n(f, "unguarded-variable"))} built from a variable with no guard.` : void 0
 };
 var CODEX = codexLimitedTemplate("destructive");
 var CHIP = {
   id: "destructive.chip",
-  render: (f) => `${counted(n(f, "unguarded-variable"), "rm -rf target")} built from an unguarded variable`
+  render: (f) => `${counted2(n(f, "unguarded-variable"), "rm -rf target")} built from an unguarded variable`
 };
 function classLine(c, what) {
   return {
     id: `destructive.rm.${c}`,
-    render: (f) => n(f, c) > 0 ? `${counted(n(f, c), "target")} ${what(n(f, c))}` : void 0
+    render: (f) => n(f, c) > 0 ? `${counted2(n(f, c), "target")} ${what(n(f, c))}` : void 0
   };
 }
 var FOUND = [
   {
     id: "destructive.rm",
-    render: (f) => f.rm.calls.ran > 0 ? `${counted(f.rm.calls.ran, "rm -rf command")} ran, with ${counted(f.rm.targets, "target")}.` : void 0
+    render: (f) => f.rm.calls.ran > 0 ? `${counted2(f.rm.calls.ran, "rm -rf command")} ran, with ${counted2(f.rm.targets, "target")}.` : void 0
   },
   classLine(
     "home-or-above",
@@ -12728,21 +15224,21 @@ var FOUND = [
       if (c.unresolved > 0) parts.push(`${c.unresolved} whose host is set elsewhere`);
       if (c.local > 0) parts.push(`${c.local} local`);
       if (c.scratch > 0) parts.push(`${c.scratch} local scratch or test`);
-      return `${counted(total, "database")} ${was(total)} dropped or wiped: ${parts.join(", ")}.`;
+      return `${counted2(total, "database")} ${was(total)} dropped or wiped: ${parts.join(", ")}.`;
     }
   },
   {
     id: "destructive.mentioned",
     render: (f) => {
       const m = allCalls(f).mentioned;
-      return m > 0 ? `${counted(m, "match", "matches")} only mentioned a delete, and ${m === 1 ? "is" : "are"} not counted.` : void 0;
+      return m > 0 ? `${counted2(m, "match", "matches")} only mentioned a delete, and ${m === 1 ? "is" : "are"} not counted.` : void 0;
     }
   },
   {
     id: "destructive.unknown",
     render: (f) => {
       const u = allCalls(f).unknown;
-      return u > 0 ? `${counted(u, "command")} could not be confirmed as run.` : void 0;
+      return u > 0 ? `${counted2(u, "command")} could not be confirmed as run.` : void 0;
     }
   },
   {
@@ -12761,19 +15257,19 @@ var NOW = [
   },
   {
     id: "destructive.now.tracked-gone",
-    render: (f) => f.rm.trackedGone > 0 ? `${counted(f.rm.trackedGone, "tracked target")} ${is(f.rm.trackedGone)} still gone.` : void 0
+    render: (f) => f.rm.trackedGone > 0 ? `${counted2(f.rm.trackedGone, "tracked target")} ${is(f.rm.trackedGone)} still gone.` : void 0
   },
   {
     id: "destructive.now.tracked-partly-back",
-    render: (f) => f.rm.trackedPartlyBack > 0 ? `${counted(f.rm.trackedPartlyBack, "tracked target")} ${is(f.rm.trackedPartlyBack)} partly back, with tracked files still missing. No exact command is made for ${f.rm.trackedPartlyBack === 1 ? "it" : "them"}: restoring a whole target would overwrite any new changes in the files that are back.` : void 0
+    render: (f) => f.rm.trackedPartlyBack > 0 ? `${counted2(f.rm.trackedPartlyBack, "tracked target")} ${is(f.rm.trackedPartlyBack)} partly back, with tracked files still missing. No exact command is made for ${f.rm.trackedPartlyBack === 1 ? "it" : "them"}: restoring a whole target would overwrite any new changes in the files that are back.` : void 0
   },
   {
     id: "destructive.now.tracked-back",
-    render: (f) => f.rm.trackedBack > 0 ? `${counted(f.rm.trackedBack, "tracked target")} ${f.rm.trackedBack === 1 ? "has" : "have"} every tracked file back.` : void 0
+    render: (f) => f.rm.trackedBack > 0 ? `${counted2(f.rm.trackedBack, "tracked target")} ${f.rm.trackedBack === 1 ? "has" : "have"} every tracked file back.` : void 0
   },
   {
     id: "destructive.now.could-not-check",
-    render: (f) => f.rm.couldNotCheck > 0 ? `${counted(f.rm.couldNotCheck, "target")} could not be checked on this machine.` : void 0
+    render: (f) => f.rm.couldNotCheck > 0 ? `${counted2(f.rm.couldNotCheck, "target")} could not be checked on this machine.` : void 0
   }
 ];
 var FIX_STEPS = [
@@ -12865,9 +15361,9 @@ function forceDeletesBranch(args2) {
   }
   return del && force && !remote;
 }
-var branchDeletes = (text, cwd, home) => {
+var branchDeletes = (text2, cwd, home) => {
   const out = [];
-  walkCommands(text, cwd, home, (command, folder) => {
+  walkCommands(text2, cwd, home, (command, folder) => {
     const git = gitCommand(command.words);
     if (git?.sub === "branch" && forceDeletesBranch(git.args)) {
       out.push({ folder: folderOf(git, folder, home) });
@@ -12875,9 +15371,9 @@ var branchDeletes = (text, cwd, home) => {
   });
   return out;
 };
-var stashDrops = (text, cwd, home) => {
+var stashDrops = (text2, cwd, home) => {
   const out = [];
-  walkCommands(text, cwd, home, (command, folder) => {
+  walkCommands(text2, cwd, home, (command, folder) => {
     const git = gitCommand(command.words);
     if (git?.sub !== "stash") return;
     const verb = git.args[0]?.value;
@@ -12897,7 +15393,7 @@ function discardedPaths(sub, args2) {
       if (paths.length === 0) return void 0;
       return paths.some((p) => p.value === ".") ? "all" : paths;
     }
-    const rest = operands(args2);
+    const rest = operands2(args2);
     if (rest.length === 1 && rest[0]?.value === ".") return "all";
     return args2.some((a) => a.value === "-f" || a.value === "--force") ? "all" : void 0;
   }
@@ -12912,7 +15408,7 @@ function discardedPaths(sub, args2) {
     if (args2.some((a) => /^-[A-Za-z]*n[A-Za-z]*$/.test(a.value) || a.value === "--dry-run")) {
       return void 0;
     }
-    const paths = operands(args2, /* @__PURE__ */ new Set(["-e", "--exclude"]));
+    const paths = operands2(args2, /* @__PURE__ */ new Set(["-e", "--exclude"]));
     return paths.length === 0 || paths.some((p) => p.value === ".") ? "all" : paths;
   }
   if (sub === "restore") {
@@ -12921,15 +15417,15 @@ function discardedPaths(sub, args2) {
     const worktree = values.includes("--worktree") || values.includes("-W");
     if (staged && !worktree) return void 0;
     if (values.some((v) => v.startsWith("--pathspec-from-file"))) return "all";
-    const paths = operands(args2, RESTORE_VALUE_OPTIONS);
+    const paths = operands2(args2, RESTORE_VALUE_OPTIONS);
     if (paths.length === 0) return void 0;
     return paths.some((p) => p.value === ".") ? "all" : paths;
   }
   return void 0;
 }
-var discards = (text, cwd, home) => {
+var discards = (text2, cwd, home) => {
   const out = [];
-  walkCommands(text, cwd, home, (command, folder) => {
+  walkCommands(text2, cwd, home, (command, folder) => {
     const git = gitCommand(command.words);
     if (git === void 0) return;
     const paths = discardedPaths(git.sub, git.args);
@@ -12958,21 +15454,21 @@ var CLONE_VALUE_OPTIONS = /* @__PURE__ */ new Set([
   "--server-option"
 ]);
 var WORKTREE_VALUE_OPTIONS = /* @__PURE__ */ new Set(["-b", "-B", "--reason", "--orphan"]);
-var copies = (text, cwd, home) => {
+var copies = (text2, cwd, home) => {
   const out = [];
   const add = (folder, word) => {
     if (word === void 0 || word.expands) return;
     const path = resolvePath(folder, word.value, home);
     if (path !== void 0) out.push(path);
   };
-  walkCommands(text, cwd, home, (command, folder) => {
+  walkCommands(text2, cwd, home, (command, folder) => {
     const git = gitCommand(command.words);
     if (git !== void 0) {
       const base = folderOf(git, folder, home);
       if (git.sub === "worktree" && git.args[0]?.value === "add") {
-        add(base, operands(git.args.slice(1), WORKTREE_VALUE_OPTIONS)[0]);
+        add(base, operands2(git.args.slice(1), WORKTREE_VALUE_OPTIONS)[0]);
       } else if (git.sub === "clone") {
-        const [url, into] = operands(git.args, CLONE_VALUE_OPTIONS);
+        const [url, into] = operands2(git.args, CLONE_VALUE_OPTIONS);
         if (into !== void 0) add(base, into);
         else if (url !== void 0 && !url.expands) {
           const name = url.value.replace(/[\\/]+$/, "").split(/[\\/:]/).pop() ?? "";
@@ -12991,7 +15487,7 @@ var copies = (text, cwd, home) => {
     const recursive = args2.some(
       (a) => /^-[A-Za-z]*[rRa]/.test(a.value) || a.value === "--recursive"
     );
-    const rest = operands(args2);
+    const rest = operands2(args2);
     if (recursive && rest.length >= 2) add(folder, rest[rest.length - 1]);
   });
   return out;
@@ -13230,51 +15726,51 @@ function recoverable(f) {
 }
 var HEADLINE2 = {
   id: "lost-work.headline",
-  render: (f) => recoverable(f) > 0 ? `${counted(recoverable(f), "deleted branch or stash", "deleted branches or stashes")} can still be recovered.` : void 0
+  render: (f) => recoverable(f) > 0 ? `${counted2(recoverable(f), "deleted branch or stash", "deleted branches or stashes")} can still be recovered.` : void 0
 };
 var FOUND2 = [
   {
     id: "lost-work.branches",
-    render: (f) => f.branches.deleted > 0 ? `${counted(f.branches.deleted, "branch", "branches")} ${was(f.branches.deleted)} force-deleted.` : void 0
+    render: (f) => f.branches.deleted > 0 ? `${counted2(f.branches.deleted, "branch", "branches")} ${was(f.branches.deleted)} force-deleted.` : void 0
   },
   {
     id: "lost-work.stashes",
-    render: (f) => f.stashes.dropped > 0 ? `${counted(f.stashes.dropped, "stash", "stashes")} ${was(f.stashes.dropped)} dropped.` : void 0
+    render: (f) => f.stashes.dropped > 0 ? `${counted2(f.stashes.dropped, "stash", "stashes")} ${was(f.stashes.dropped)} dropped.` : void 0
   },
   {
     id: "lost-work.stashes-cleared",
-    render: (f) => f.stashes.cleared > 0 ? `${counted(f.stashes.cleared, "git stash clear command")} ran. It prints no ids, so what it removed could not be looked up.` : void 0
+    render: (f) => f.stashes.cleared > 0 ? `${counted2(f.stashes.cleared, "git stash clear command")} ran. It prints no ids, so what it removed could not be looked up.` : void 0
   },
   {
     id: "lost-work.not-identified",
     render: (f) => {
       const n2 = f.branches.notIdentified + f.stashes.notIdentified;
-      return n2 > 0 ? `${counted(n2, "branch or stash deletion", "branch or stash deletions")} ran, but the commit id is not in the recorded output, so it could not be looked up.` : void 0;
+      return n2 > 0 ? `${counted2(n2, "branch or stash deletion", "branch or stash deletions")} ran, but the commit id is not in the recorded output, so it could not be looked up.` : void 0;
     }
   },
   {
     id: "lost-work.failed",
     render: (f) => {
       const n2 = f.branches.failed + f.stashes.failed;
-      return n2 > 0 ? `${counted(n2, "branch or stash deletion", "branch or stash deletions")} ended in an error and reported nothing deleted, so ${n2 === 1 ? "it is" : "they are"} not counted as lost work.` : void 0;
+      return n2 > 0 ? `${counted2(n2, "branch or stash deletion", "branch or stash deletions")} ended in an error and reported nothing deleted, so ${n2 === 1 ? "it is" : "they are"} not counted as lost work.` : void 0;
     }
   },
   {
     id: "lost-work.discards",
-    render: (f) => f.discards.paths > 0 ? `Uncommitted changes to ${counted(f.discards.paths, "path")} were discarded with git checkout, git restore, git reset --hard, git switch or git clean.` : void 0
+    render: (f) => f.discards.paths > 0 ? `Uncommitted changes to ${counted2(f.discards.paths, "path")} were discarded with git checkout, git restore, git reset --hard, git switch or git clean.` : void 0
   },
   {
     id: "lost-work.mentioned",
     render: (f) => {
       const n2 = allCalls2(f).mentioned;
-      return n2 > 0 ? `${counted(n2, "match", "matches")} only mentioned deleting work, and ${n2 === 1 ? "is" : "are"} not counted.` : void 0;
+      return n2 > 0 ? `${counted2(n2, "match", "matches")} only mentioned deleting work, and ${n2 === 1 ? "is" : "are"} not counted.` : void 0;
     }
   },
   {
     id: "lost-work.unknown",
     render: (f) => {
       const n2 = allCalls2(f).unknown;
-      return n2 > 0 ? `${counted(n2, "command")} could not be confirmed as run.` : void 0;
+      return n2 > 0 ? `${counted2(n2, "command")} could not be confirmed as run.` : void 0;
     }
   },
   {
@@ -13297,51 +15793,51 @@ var NOW2 = [
   },
   {
     id: "lost-work.now.recoverable-branches",
-    render: (f) => f.branches.recoverable > 0 ? `${counted(f.branches.recoverable, "deleted branch", "deleted branches")} ${is(f.branches.recoverable)} still in the repo and on no other branch: recoverable by commit id.` : void 0
+    render: (f) => f.branches.recoverable > 0 ? `${counted2(f.branches.recoverable, "deleted branch", "deleted branches")} ${is(f.branches.recoverable)} still in the repo and on no other branch: recoverable by commit id.` : void 0
   },
   {
     id: "lost-work.now.recoverable-stashes",
-    render: (f) => f.stashes.recoverable > 0 ? `${counted(f.stashes.recoverable, "dropped stash", "dropped stashes")} ${is(f.stashes.recoverable)} still in the repo: recoverable by commit id.` : void 0
+    render: (f) => f.stashes.recoverable > 0 ? `${counted2(f.stashes.recoverable, "dropped stash", "dropped stashes")} ${is(f.stashes.recoverable)} still in the repo: recoverable by commit id.` : void 0
   },
   {
     id: "lost-work.now.on-another-ref",
-    render: (f) => f.branches.onAnotherRef > 0 ? `${counted(f.branches.onAnotherRef, "deleted branch", "deleted branches")} ${is(f.branches.onAnotherRef)} still on another branch or tag, so nothing is lost.` : void 0
+    render: (f) => f.branches.onAnotherRef > 0 ? `${counted2(f.branches.onAnotherRef, "deleted branch", "deleted branches")} ${is(f.branches.onAnotherRef)} still on another branch or tag, so nothing is lost.` : void 0
   },
   {
     id: "lost-work.now.listed",
-    render: (f) => f.stashes.listed > 0 ? `${counted(f.stashes.listed, "dropped stash", "dropped stashes")} ${is(f.stashes.listed)} back in the stash list.` : void 0
+    render: (f) => f.stashes.listed > 0 ? `${counted2(f.stashes.listed, "dropped stash", "dropped stashes")} ${is(f.stashes.listed)} back in the stash list.` : void 0
   },
   {
     id: "lost-work.now.gone",
     render: (f) => {
       const n2 = f.branches.gone + f.stashes.gone;
-      return n2 > 0 ? `${counted(n2, "deleted branch or stash", "deleted branches or stashes")} ${is(n2)} no longer in the repo.` : void 0;
+      return n2 > 0 ? `${counted2(n2, "deleted branch or stash", "deleted branches or stashes")} ${is(n2)} no longer in the repo.` : void 0;
     }
   },
   {
     id: "lost-work.now.discards-main",
-    render: (f) => f.discards.mainCheckout > 0 ? `${counted(f.discards.mainCheckout, "discarded path")} ${was(f.discards.mainCheckout)} in a main checkout with no agent edit on record, so ${f.discards.mainCheckout === 1 ? "it" : "they"} may have held someone's own changes. Git keeps no copy of those.` : void 0
+    render: (f) => f.discards.mainCheckout > 0 ? `${counted2(f.discards.mainCheckout, "discarded path")} ${was(f.discards.mainCheckout)} in a main checkout with no agent edit on record, so ${f.discards.mainCheckout === 1 ? "it" : "they"} may have held someone's own changes. Git keeps no copy of those.` : void 0
   },
   {
     id: "lost-work.now.discards-agent",
-    render: (f) => f.discards.agentEdited > 0 ? `${counted(f.discards.agentEdited, "discarded path")} held files the agent had edited.` : void 0
+    render: (f) => f.discards.agentEdited > 0 ? `${counted2(f.discards.agentEdited, "discarded path")} held files the agent had edited.` : void 0
   },
   {
     id: "lost-work.now.discards-own",
-    render: (f) => f.discards.ownCopy > 0 ? `${counted(f.discards.ownCopy, "discarded path")} ${was(f.discards.ownCopy)} in the agent's own worktree or a scratch copy.` : void 0
+    render: (f) => f.discards.ownCopy > 0 ? `${counted2(f.discards.ownCopy, "discarded path")} ${was(f.discards.ownCopy)} in the agent's own worktree or a scratch copy.` : void 0
   },
   {
     id: "lost-work.now.could-not-check",
     render: (f) => {
       const n2 = f.branches.couldNotCheck + f.stashes.couldNotCheck + f.discards.couldNotCheck;
-      return n2 > 0 ? `${counted(n2, "item")} could not be checked on this machine.` : void 0;
+      return n2 > 0 ? `${counted2(n2, "item")} could not be checked on this machine.` : void 0;
     }
   }
 ];
 var CODEX2 = codexLimitedTemplate("lost-work");
 var CHIP2 = {
   id: "lost-work.chip",
-  render: (f) => `${counted(recoverable(f), "deleted branch or stash", "deleted branches or stashes")} still recoverable`
+  render: (f) => `${counted2(recoverable(f), "deleted branch or stash", "deleted branches or stashes")} still recoverable`
 };
 var FIX_STEPS2 = [
   {
@@ -13504,13 +16000,13 @@ var CHIP_TONE = {
   render: ({ tone }) => TONE_LABELS[tone].toLowerCase()
 };
 function chipText(card) {
-  const counted5 = card.chip !== void 0 && (card.tone === "act" || card.tone === "review" || card.tone === "clean");
-  if (card.unconfirmed !== void 0 && (!counted5 || (card.chip?.count ?? 0) === 0)) {
+  const counted6 = card.chip !== void 0 && (card.tone === "act" || card.tone === "review" || card.tone === "clean");
+  if (card.unconfirmed !== void 0 && (!counted6 || (card.chip?.count ?? 0) === 0)) {
     return {
       label: sentence(CHIP_UNCONFIRMED, card) ?? { template: CHIP_UNCONFIRMED.id, text: "" }
     };
   }
-  if (counted5 && card.chip !== void 0) {
+  if (counted6 && card.chip !== void 0) {
     return { count: card.chip.count, label: card.chip.label };
   }
   return { label: sentence(CHIP_TONE, card) ?? { template: CHIP_TONE.id, text: "" } };
@@ -13748,7 +16244,7 @@ var secretsCard = (result) => {
 };
 
 // src/core/verify/skipped.ts
-import { dirname as dirname2, join as join5 } from "path";
+import { dirname as dirname4, join as join6 } from "path";
 var COMMIT_VALUE_OPTIONS = /* @__PURE__ */ new Set([
   "-m",
   "--message",
@@ -13794,9 +16290,9 @@ function commitSkipsHooks(args2) {
   }
   return false;
 }
-function commits(text, cwd, home) {
+function commits(text2, cwd, home) {
   const out = [];
-  walkCommands(text, cwd, home, (command, folder) => {
+  walkCommands(text2, cwd, home, (command, folder) => {
     const git = gitCommand(command.words);
     if (git === void 0 || git.sub !== "commit") return;
     out.push({
@@ -13806,10 +16302,10 @@ function commits(text, cwd, home) {
   });
   return out;
 }
-var noVerifyCommits = (text, cwd, home) => commits(text, cwd, home).filter((c) => c.skips);
-var otherNoVerify = (text, cwd, home) => {
+var noVerifyCommits = (text2, cwd, home) => commits(text2, cwd, home).filter((c) => c.skips);
+var otherNoVerify = (text2, cwd, home) => {
   const out = [];
-  walkCommands(text, cwd, home, (command, folder) => {
+  walkCommands(text2, cwd, home, (command, folder) => {
     const git = gitCommand(command.words);
     if (git === void 0 || git.sub === "commit") return;
     if (git.args.some((a) => a.value === "--no-verify" && a.raw === a.value)) {
@@ -13824,9 +16320,9 @@ function huskyOff(word) {
   const value = match[2].toLowerCase();
   return match[1] === "HUSKY" ? value === "0" || value === "false" : value === "1" || value === "true";
 }
-var huskyCommands = (text, cwd, home) => {
+var huskyCommands = (text2, cwd, home) => {
   const out = [];
-  walkCommands(text, cwd, home, (command, folder) => {
+  walkCommands(text2, cwd, home, (command, folder) => {
     const start = commandStart(command.words);
     const program = command.words[start.index];
     const exported = program !== void 0 && programName2(program) === "export" && command.words.slice(start.index + 1).some(huskyOff);
@@ -13838,9 +16334,9 @@ var huskyCommands = (text, cwd, home) => {
   });
   return out;
 };
-var oneCommandSkips = (text, cwd, home) => {
+var oneCommandSkips = (text2, cwd, home) => {
   const out = [];
-  walkCommands(text, cwd, home, (command, folder) => {
+  walkCommands(text2, cwd, home, (command, folder) => {
     const git = gitCommand(command.words);
     if (git === void 0) return;
     const start = commandStart(command.words);
@@ -13873,13 +16369,13 @@ var CONFIG_READS = /* @__PURE__ */ new Set([
   "get",
   "list"
 ]);
-var hooksPathChanges = (text, cwd, home) => {
+var hooksPathChanges = (text2, cwd, home) => {
   const out = [];
-  walkCommands(text, cwd, home, (command, folder) => {
+  walkCommands(text2, cwd, home, (command, folder) => {
     const git = gitCommand(command.words);
     if (git === void 0 || git.sub !== "config") return;
     if (git.args.some((a) => CONFIG_READS.has(a.value))) return;
-    const rest = operands(git.args, CONFIG_VALUE_OPTIONS);
+    const rest = operands2(git.args, CONFIG_VALUE_OPTIONS);
     const verb = rest[0]?.value;
     const named = verb === "set" || verb === "unset" ? rest.slice(1) : rest;
     if (named[0]?.value.toLowerCase() !== "core.hookspath") return;
@@ -13922,8 +16418,8 @@ var SKIP_LINE = new RegExp(
   "i"
 );
 var NEGATED = /\b(?:never|don'?t|do\s+not|does\s+not|must\s+not|mustn'?t|should\s+not|shouldn'?t|can'?t|cannot|avoid|forbidden|not\s+allowed|no\s+longer|refuse|instead\s+of|rather\s+than)\b/i;
-function tellsToSkip(text) {
-  return text.split(/\r?\n/).some((line) => SKIP_LINE.test(line) && !NEGATED.test(line));
+function tellsToSkip(text2) {
+  return text2.split(/\r?\n/).some((line) => SKIP_LINE.test(line) && !NEGATED.test(line));
 }
 var SKIP_GREP = "grep -n -i -E 'no-verify|HUSKY|SKIP=|hooks'";
 var SKIP_GREP_PARTS = [
@@ -14068,9 +16564,9 @@ function homeInstructions(context) {
   const home = context.log.home;
   switch (context.log.agent) {
     case "claude":
-      return [join5(home, ".claude", "CLAUDE.md")];
+      return [join6(home, ".claude", "CLAUDE.md")];
     case "codex":
-      return [join5(home, ".codex", "AGENTS.md")];
+      return [join6(home, ".codex", "AGENTS.md")];
     default:
       return [];
   }
@@ -14092,7 +16588,7 @@ async function checkInstructions(context, fixes) {
       continue;
     }
     for (const name of REPO_INSTRUCTION_FILES) {
-      const path = join5(root, name);
+      const path = join6(root, name);
       if (!files.has(path)) files.set(path, { agentWrote: false, lookedFor: true });
     }
   }
@@ -14120,14 +16616,14 @@ async function checkInstructions(context, fixes) {
       if (file2.agentWrote) agentWroteRemoved += 1;
       continue;
     }
-    if (!file2.lookedFor) await context.probe.toplevel(dirname2(path));
-    const text = await context.probe.read(path);
-    if (!text.ok) {
+    if (!file2.lookedFor) await context.probe.toplevel(dirname4(path));
+    const text2 = await context.probe.read(path);
+    if (!text2.ok) {
       couldNotRead += 1;
       continue;
     }
     read += 1;
-    const says = tellsToSkip(text.text);
+    const says = tellsToSkip(text2.text);
     if (says) {
       sayToSkip += 1;
       fixes.add([...SKIP_GREP_PARTS, { ref: path }]);
@@ -14193,61 +16689,61 @@ function allCalls3(f) {
 }
 var HEADLINE3 = {
   id: "skipped-checks.headline",
-  render: (f) => f.noVerify.onMain > 0 ? `${counted(f.noVerify.onMain, "commit")} reached main without ${f.noVerify.onMain === 1 ? "its" : "their"} checks.` : void 0
+  render: (f) => f.noVerify.onMain > 0 ? `${counted2(f.noVerify.onMain, "commit")} reached main without ${f.noVerify.onMain === 1 ? "its" : "their"} checks.` : void 0
 };
 var FOUND3 = [
   {
     id: "skipped-checks.no-verify",
-    render: (f) => withHooks(f) > 0 ? `${counted(withHooks(f), "commit")} ${was(withHooks(f))} made with --no-verify in a repo with commit hooks.` : void 0
+    render: (f) => withHooks(f) > 0 ? `${counted2(withHooks(f), "commit")} ${was(withHooks(f))} made with --no-verify in a repo with commit hooks.` : void 0
   },
   {
     id: "skipped-checks.no-verify-no-hooks",
-    render: (f) => f.noVerify.withoutHooks > 0 ? `${counted(f.noVerify.withoutHooks, "commit")} used --no-verify in a repo with no commit hooks, so no check was skipped.` : void 0
+    render: (f) => f.noVerify.withoutHooks > 0 ? `${counted2(f.noVerify.withoutHooks, "commit")} used --no-verify in a repo with no commit hooks, so no check was skipped.` : void 0
   },
   {
     id: "skipped-checks.no-verify-not-identified",
-    render: (f) => f.noVerify.notIdentified > 0 ? `${counted(f.noVerify.notIdentified, "commit command")} with --no-verify ran, but the commit id is not in the recorded output, so it could not be looked up.` : void 0
+    render: (f) => f.noVerify.notIdentified > 0 ? `${counted2(f.noVerify.notIdentified, "commit command")} with --no-verify ran, but the commit id is not in the recorded output, so it could not be looked up.` : void 0
   },
   {
     id: "skipped-checks.no-verify-failed",
-    render: (f) => f.noVerify.failed > 0 ? `${counted(f.noVerify.failed, "commit command")} with --no-verify ended in an error and printed no commit, so no commit is counted.` : void 0
+    render: (f) => f.noVerify.failed > 0 ? `${counted2(f.noVerify.failed, "commit command")} with --no-verify ended in an error and printed no commit, so no commit is counted.` : void 0
   },
   {
     id: "skipped-checks.other-no-verify",
-    render: (f) => f.otherNoVerify.ran > 0 ? `${counted(f.otherNoVerify.ran, "push, merge or rebase", "pushes, merges or rebases")} ran with --no-verify.` : void 0
+    render: (f) => f.otherNoVerify.ran > 0 ? `${counted2(f.otherNoVerify.ran, "push, merge or rebase", "pushes, merges or rebases")} ran with --no-verify.` : void 0
   },
   {
     id: "skipped-checks.husky",
-    render: (f) => f.husky.ran > 0 ? `${counted(f.husky.ran, "command")} ran with Husky's hooks turned off for that one command (HUSKY=0).` : void 0
+    render: (f) => f.husky.ran > 0 ? `${counted2(f.husky.ran, "command")} ran with Husky's hooks turned off for that one command (HUSKY=0).` : void 0
   },
   {
     id: "skipped-checks.one-command",
-    render: (f) => f.oneCommand.ran > 0 ? `${counted(f.oneCommand.ran, "git command")} ran with hooks turned off for that one command (pre-commit's SKIP= or git -c core.hooksPath).` : void 0
+    render: (f) => f.oneCommand.ran > 0 ? `${counted2(f.oneCommand.ran, "git command")} ran with hooks turned off for that one command (pre-commit's SKIP= or git -c core.hooksPath).` : void 0
   },
   {
     id: "skipped-checks.hooks-path",
-    render: (f) => f.hooksPath.calls.ran > 0 ? `${counted(f.hooksPath.calls.ran, "change")} to core.hooksPath ran, which switches hooks for every later command.` : void 0
+    render: (f) => f.hooksPath.calls.ran > 0 ? `${counted2(f.hooksPath.calls.ran, "change")} to core.hooksPath ran, which switches hooks for every later command.` : void 0
   },
   {
     id: "skipped-checks.instructions",
-    render: (f) => f.instructions.sayToSkip > 0 ? `${counted(f.instructions.sayToSkip, "agent instruction or memory file")} ${f.instructions.sayToSkip === 1 ? "tells" : "tell"} the agent to skip checks.` : void 0
+    render: (f) => f.instructions.sayToSkip > 0 ? `${counted2(f.instructions.sayToSkip, "agent instruction or memory file")} ${f.instructions.sayToSkip === 1 ? "tells" : "tell"} the agent to skip checks.` : void 0
   },
   {
     id: "skipped-checks.instructions-written",
-    render: (f) => f.instructions.agentWrote > 0 ? `The agent wrote an instruction to skip checks into ${counted(f.instructions.agentWrote, "file")} itself.` : void 0
+    render: (f) => f.instructions.agentWrote > 0 ? `The agent wrote an instruction to skip checks into ${counted2(f.instructions.agentWrote, "file")} itself.` : void 0
   },
   {
     id: "skipped-checks.mentioned",
     render: (f) => {
       const n2 = allCalls3(f).mentioned;
-      return n2 > 0 ? `${counted(n2, "match", "matches")} only mentioned skipping a check, and ${n2 === 1 ? "is" : "are"} not counted.` : void 0;
+      return n2 > 0 ? `${counted2(n2, "match", "matches")} only mentioned skipping a check, and ${n2 === 1 ? "is" : "are"} not counted.` : void 0;
     }
   },
   {
     id: "skipped-checks.unknown",
     render: (f) => {
       const n2 = allCalls3(f).unknown;
-      return n2 > 0 ? `${counted(n2, "command")} could not be confirmed as run.` : void 0;
+      return n2 > 0 ? `${counted2(n2, "command")} could not be confirmed as run.` : void 0;
     }
   },
   {
@@ -14255,7 +16751,7 @@ var FOUND3 = [
     render: (f) => {
       if (allCalls3(f).ran > 0 || f.instructions.sayToSkip > 0 || f.hidingCalls > 0)
         return void 0;
-      return f.instructions.read > 0 ? `No command this check could read skipped a hook, and none of the ${counted(f.instructions.read, "instruction file")} read says to.` : "No command this check could read skipped a hook.";
+      return f.instructions.read > 0 ? `No command this check could read skipped a hook, and none of the ${counted2(f.instructions.read, "instruction file")} read says to.` : "No command this check could read skipped a hook.";
     }
   },
   {
@@ -14270,48 +16766,48 @@ var NOW3 = [
   },
   {
     id: "skipped-checks.now.on-main",
-    render: (f) => f.noVerify.onMain > 0 ? `${counted(f.noVerify.onMain, "of those commits", "of those commits")} ${is(f.noVerify.onMain)} on origin/main or origin/master now.` : void 0
+    render: (f) => f.noVerify.onMain > 0 ? `${counted2(f.noVerify.onMain, "of those commits", "of those commits")} ${is(f.noVerify.onMain)} on origin/main or origin/master now.` : void 0
   },
   {
     id: "skipped-checks.now.off-main",
-    render: (f) => f.noVerify.offMain > 0 ? `${counted(f.noVerify.offMain, "commit")} ${is(f.noVerify.offMain)} not on origin/main or origin/master.` : void 0
+    render: (f) => f.noVerify.offMain > 0 ? `${counted2(f.noVerify.offMain, "commit")} ${is(f.noVerify.offMain)} not on origin/main or origin/master.` : void 0
   },
   {
     id: "skipped-checks.now.no-main",
-    render: (f) => f.noVerify.noMainToCheck > 0 ? `${counted(f.noVerify.noMainToCheck, "commit")} ${is(f.noVerify.noMainToCheck)} in a repo with no origin/main or origin/master to check against.` : void 0
+    render: (f) => f.noVerify.noMainToCheck > 0 ? `${counted2(f.noVerify.noMainToCheck, "commit")} ${is(f.noVerify.noMainToCheck)} in a repo with no origin/main or origin/master to check against.` : void 0
   },
   {
     id: "skipped-checks.now.gone",
-    render: (f) => f.noVerify.gone > 0 ? `${counted(f.noVerify.gone, "commit")} ${is(f.noVerify.gone)} no longer in the repo.` : void 0
+    render: (f) => f.noVerify.gone > 0 ? `${counted2(f.noVerify.gone, "commit")} ${is(f.noVerify.gone)} no longer in the repo.` : void 0
   },
   {
     id: "skipped-checks.now.hooks-off",
-    render: (f) => f.hooksPath.off > 0 ? `Hooks are switched off now in ${counted(f.hooksPath.off, "repo")} where a check was skipped: core.hooksPath points at a folder with no hook.` : void 0
+    render: (f) => f.hooksPath.off > 0 ? `Hooks are switched off now in ${counted2(f.hooksPath.off, "repo")} where a check was skipped: core.hooksPath points at a folder with no hook.` : void 0
   },
   {
     id: "skipped-checks.now.hooks-on",
-    render: (f) => f.hooksPath.on > 0 ? `Hooks are on now in ${counted(f.hooksPath.on, "repo")} where a check was skipped.` : void 0
+    render: (f) => f.hooksPath.on > 0 ? `Hooks are on now in ${counted2(f.hooksPath.on, "repo")} where a check was skipped.` : void 0
   },
   {
     id: "skipped-checks.now.instructions-still",
-    render: (f) => f.instructions.agentWroteStill > 0 ? `${counted(f.instructions.agentWroteStill, "file")} still ${f.instructions.agentWroteStill === 1 ? "holds" : "hold"} the instruction the agent wrote.` : void 0
+    render: (f) => f.instructions.agentWroteStill > 0 ? `${counted2(f.instructions.agentWroteStill, "file")} still ${f.instructions.agentWroteStill === 1 ? "holds" : "hold"} the instruction the agent wrote.` : void 0
   },
   {
     id: "skipped-checks.now.instructions-removed",
-    render: (f) => f.instructions.agentWroteRemoved > 0 ? `The instruction the agent wrote is gone from ${counted(f.instructions.agentWroteRemoved, "file")}.` : void 0
+    render: (f) => f.instructions.agentWroteRemoved > 0 ? `The instruction the agent wrote is gone from ${counted2(f.instructions.agentWroteRemoved, "file")}.` : void 0
   },
   {
     id: "skipped-checks.now.could-not-check",
     render: (f) => {
       const n2 = f.noVerify.couldNotCheck + f.hooksPath.couldNotCheck + f.instructions.couldNotRead;
-      return n2 > 0 ? `${counted(n2, "item")} could not be checked on this machine.` : void 0;
+      return n2 > 0 ? `${counted2(n2, "item")} could not be checked on this machine.` : void 0;
     }
   }
 ];
 var CODEX3 = codexLimitedTemplate("skipped-checks");
 var CHIP3 = {
   id: "skipped-checks.chip",
-  render: (f) => `${counted(f.noVerify.onMain, "commit")} reached main without ${f.noVerify.onMain === 1 ? "its" : "their"} checks`
+  render: (f) => `${counted2(f.noVerify.onMain, "commit")} reached main without ${f.noVerify.onMain === 1 ? "its" : "their"} checks`
 };
 var FIX_STEPS3 = [
   {
@@ -14374,7 +16870,10 @@ var CARD_BUILDERS = {
   secrets: secretsCard,
   "skipped-checks": skippedChecksCard,
   "lost-work": lostWorkCard,
-  destructive: destructiveCard
+  destructive: destructiveCard,
+  // The command checks' builders: tests, cloud, production infrastructure, unreviewed code and
+  // egress, as many as exist.
+  ...COMMAND_CHECK_CARDS
 };
 
 // src/core/report.ts
@@ -14435,7 +16934,7 @@ function escapeHtml(value) {
 function agentName(agent) {
   return agentDisplayName(agent);
 }
-function counted2(n2, one, many) {
+function counted3(n2, one, many) {
   return `${formatCount(n2)} ${n2 === 1 ? one : many}`;
 }
 function ruleSlug(id) {
@@ -14480,10 +16979,10 @@ var OWN_CARD_HEADING = "A guardrail you added";
 function packLabel(category) {
   return PACK_LABELS[category] ?? category;
 }
-function wrapLines(text, width) {
+function wrapLines(text2, width) {
   const lines2 = [];
   let line = "";
-  for (const word of text.split(/\s+/).filter(Boolean)) {
+  for (const word of text2.split(/\s+/).filter(Boolean)) {
     if (line === "") line = word;
     else if (line.length + 1 + word.length <= width) line = `${line} ${word}`;
     else {
@@ -14586,6 +17085,12 @@ function copyVerification(verification, capLists) {
       destructive: copyCategory(categories.destructive, capLists),
       unreviewed: copyCategory(categories.unreviewed, capLists),
       egress: copyCategory(categories.egress, capLists)
+    },
+    ...verification.dependencies === void 0 ? {} : {
+      dependencies: copyFacts(
+        verification.dependencies,
+        capLists
+      )
     }
   };
 }
@@ -14696,9 +17201,9 @@ function reportPayload(result, meta, builders = CARD_BUILDERS) {
     }
   };
 }
-function postLength(text) {
+function postLength(text2) {
   let n2 = 0;
-  for (const ch of text) {
+  for (const ch of text2) {
     const code2 = ch.codePointAt(0) ?? 0;
     const light = code2 <= 4351 || code2 >= 8192 && code2 <= 8205 || code2 >= 8208 && code2 <= 8223 || code2 >= 8242 && code2 <= 8247;
     n2 += light ? 1 : 2;
@@ -14712,7 +17217,7 @@ function topLibraryBlocker(result) {
 }
 function shareText(result) {
   const { block, require_approval: ask, warn } = result.riskyByAction;
-  const calls = counted2(result.toolCalls, "tool call", "tool calls");
+  const calls = counted3(result.toolCalls, "tool call", "tool calls");
   const head = `I scanned ${calls} from ${agentName(result.agent)} with AgentTrail Guard`;
   const tail = ". Checked locally, nothing uploaded.";
   const top = topLibraryBlocker(result);
@@ -14730,9 +17235,9 @@ function shareText(result) {
   const full = compose(true);
   return postLength(full) <= POST_LIMIT ? full : compose(false);
 }
-function shareLink(text, agent) {
+function shareLink(text2, agent) {
   const url = siteLink("/agenttrail-guard", agent, "share");
-  return `https://x.com/intent/post?text=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}&hashtags=agenttrail`;
+  return `https://x.com/intent/post?text=${encodeURIComponent(text2)}&url=${encodeURIComponent(url)}&hashtags=agenttrail`;
 }
 function skippedPhrases(skipped) {
   const unrecognized = skipped.unmappedTools.reduce((sum, tool) => sum + tool.count, 0);
@@ -14755,7 +17260,7 @@ function skippedPhrases(skipped) {
       "tool calls of a kind this reader does not recognize"
     ]
   ];
-  return kinds.filter(([n2]) => n2 > 0).map(([n2, one, many]) => counted2(n2, one, many));
+  return kinds.filter(([n2]) => n2 > 0).map(([n2, one, many]) => counted3(n2, one, many));
 }
 function severityClass(severity) {
   switch (severity) {
@@ -14802,9 +17307,9 @@ function actionChip(action) {
 function inlineTitle(title) {
   return escapeHtml(title).replace(/`([^`\n]+)`/g, "<code>$1</code>");
 }
-function outLink(url, text, className) {
+function outLink(url, text2, className) {
   const cls = className === void 0 ? "" : ` class="${className}"`;
-  return `<a${cls} href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${text}</a>`;
+  return `<a${cls} href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${text2}</a>`;
 }
 function copyable(id, command, name) {
   return `<div class="command"><code id="${escapeHtml(id)}">${escapeHtml(command)}</code><button type="button" class="copy js-only" data-copy="${escapeHtml(id)}" data-label="Copy" aria-label="${escapeHtml(name)}" hidden>Copy</button></div>`;
@@ -14814,12 +17319,12 @@ function stat(value, label, note) {
   return `<div class="stat"><div class="stat-value">${escapeHtml(value)}</div><div class="stat-label">${escapeHtml(label)}</div>${noteHtml}</div>`;
 }
 function firstSentence(lines2) {
-  const text = lines2.join(" ");
-  const end = text.search(/\.(\s|$)/);
-  return end === -1 ? text : text.slice(0, end + 1);
+  const text2 = lines2.join(" ");
+  const end = text2.search(/\.(\s|$)/);
+  return end === -1 ? text2 : text2.slice(0, end + 1);
 }
-function libraryText(text, className = "library-text") {
-  const html = wrapLines(inlineTitle(text), DESCRIPTION_LINE).join("\n");
+function libraryText(text2, className = "library-text") {
+  const html = wrapLines(inlineTitle(text2), DESCRIPTION_LINE).join("\n");
   return `<p class="${className}">${html}</p>`;
 }
 var MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -14832,7 +17337,7 @@ function headline(result) {
     return result.sessions === 0 ? "No sessions found to scan" : "No tool calls found to scan";
   }
   const { block, require_approval: ask, warn } = result.riskyByAction;
-  const actions = (n2) => counted2(n2, "action", "actions");
+  const actions = (n2) => counted3(n2, "action", "actions");
   if (block > 0 && ask > 0) {
     return `AgentTrail Guard would have stopped ${actions(block)} and asked you about ${formatCount(ask)} more`;
   }
@@ -14885,7 +17390,7 @@ function mostSerious(payload) {
   return `<p class="top-match">Most serious match: ${severityBadge(library.severity)} <span class="top-title">${inlineTitle(library.title)}</span></p>`;
 }
 function emptyLead(result) {
-  const read = result.sessions === 0 ? `The scan found no ${agentName(result.agent)} sessions to read` : `The scan read ${counted2(result.sessions, "session", "sessions")} with no tool calls in them`;
+  const read = result.sessions === 0 ? `The scan found no ${agentName(result.agent)} sessions to read` : `The scan read ${counted3(result.sessions, "session", "sessions")} with no tool calls in them`;
   return `${read}, so nothing was checked. This is not a clean result: check that the folder and the agent are the ones you meant, then scan again.`;
 }
 function heroSection(result, payload, meta, variant, lead) {
@@ -14972,13 +17477,13 @@ function chipsFor(cards, lead) {
     const card = cards.find((c) => c.category === category);
     if (card === void 0) return [];
     const chip = chipText(card);
-    const text = chip.count === void 0 ? chip.label.text : `${formatCount(chip.count)} ${chip.label.text}`;
+    const text2 = chip.count === void 0 ? chip.label.text : `${formatCount(chip.count)} ${chip.label.text}`;
     return [
       {
         category,
         tone: card.tone,
         title: CATEGORY_TITLES[category],
-        text,
+        text: text2,
         template: chip.label.template
       }
     ];
@@ -15129,7 +17634,7 @@ function tuningSection(result, payload) {
     ) : `<p class="note">Set <code>${escapeHtml(id)}</code> to warn with <code>agenttrail-guard guardrails set-action</code>. Its id has characters a shell would read, so no command is offered to copy.</p>`
   ).join("\n");
   return `<div class="hint">
-<p><strong>${escapeHtml(counted2(n2, "guardrail accounts", "guardrails account"))} for ${pct}% of the asks.</strong> Setting ${n2 === 1 ? "it" : "them"} to warn would take the tool calls you are asked about from ${escapeHtml(formatCount(hint.asks))} to ${escapeHtml(formatCount(hint.remaining))}, and the agent would be shown a warning on those calls instead.</p>
+<p><strong>${escapeHtml(counted3(n2, "guardrail accounts", "guardrails account"))} for ${pct}% of the asks.</strong> Setting ${n2 === 1 ? "it" : "them"} to warn would take the tool calls you are asked about from ${escapeHtml(formatCount(hint.asks))} to ${escapeHtml(formatCount(hint.remaining))}, and the agent would be shown a warning on those calls instead.</p>
 ${commands}
 </div>`;
 }
@@ -15222,7 +17727,7 @@ function owaspSection(payload) {
   const risks = payload.owasp.map(
     (t) => `<li class="risk" id="risk-${escapeHtml(t.id.toLowerCase())}">
 <p class="risk-name">${outLink(owaspRiskLink(t.id, payload.agent), riskLabel(t.id))}</p>
-<p class="risk-counts">${escapeHtml(counted2(t.callCount, "tool call", "tool calls"))} &middot; ${escapeHtml(counted2(t.guardrailCount, "guardrail", "guardrails"))}</p>
+<p class="risk-counts">${escapeHtml(counted3(t.callCount, "tool call", "tool calls"))} &middot; ${escapeHtml(counted3(t.guardrailCount, "guardrail", "guardrails"))}</p>
 <button type="button" class="tool js-only" data-risk="${escapeHtml(t.id)}" aria-label="Show its findings: ${escapeHtml(t.id)}" hidden>Show its findings</button>
 </li>`
   ).join("\n");
@@ -15310,7 +17815,7 @@ function findingsSection(payload, variant) {
   ].map(
     ([value, label]) => `<button type="button" class="filter" data-filter="${value}" aria-pressed="${value === "all" ? "true" : "false"}">${label}</button>`
   ).join("\n");
-  const matched = counted2(
+  const matched = counted3(
     payload.findings.length + payload.moreFindings,
     "guardrail matched",
     "guardrails matched"
@@ -15344,7 +17849,7 @@ function recurringSection(payload) {
   for (const item of payload.recurring) {
     byShape.set(item.text, [...byShape.get(item.text) ?? [], item]);
   }
-  const rows = [...byShape].map(([text, items]) => {
+  const rows = [...byShape].map(([text2, items]) => {
     const times = Math.max(...items.map((item) => item.calls));
     const names = items.map((item) => {
       const index = payload.findings.findIndex((f) => f.ruleId === item.ruleId);
@@ -15352,7 +17857,7 @@ function recurringSection(payload) {
       const named = index === -1 ? title : `<a href="#finding-${index}">${title}</a>`;
       return item.count === times ? named : `${named} (${escapeHtml(formatCount(item.count))}&times;)`;
     }).join("<br>");
-    return `<tr role="row"><td class="shape" role="cell"><code>${escapeHtml(text)}</code></td><td class="num" role="cell">${escapeHtml(formatCount(times))}&times;</td><td class="rule-name" role="cell">${names}</td></tr>`;
+    return `<tr role="row"><td class="shape" role="cell"><code>${escapeHtml(text2)}</code></td><td class="num" role="cell">${escapeHtml(formatCount(times))}&times;</td><td class="rule-name" role="cell">${names}</td></tr>`;
   }).join("\n");
   return `<section id="repeats"><h2>Repeat offenders</h2>
 <p class="note">The same shape, seen more than once. Paths are redacted before counting, so many different paths under one command become one repeat.</p>
@@ -15362,7 +17867,7 @@ function recurringSection(payload) {
 ${rows}
 </tbody>
 </table></div>${payload.moreRecurring > 0 ? `
-<p class="note">${escapeHtml(counted2(payload.moreRecurring, "further repeat is", "further repeats are"))} not listed here.</p>` : ""}
+<p class="note">${escapeHtml(counted3(payload.moreRecurring, "further repeat is", "further repeats are"))} not listed here.</p>` : ""}
 </section>`;
 }
 var OTHER_AGENTS = {
@@ -15404,8 +17909,8 @@ function shareSectionHtml(result, payload, variant) {
 </section>`;
 }
 function beforeYouShareSection(result, variant) {
-  const review = `<code>agenttrail-guard scan --agent ${escapeHtml(result.agent)} --review</code>`;
-  const check = variant === "artifact" ? `Redaction is thorough but not a guarantee. Read the findings before passing this page on; the person who published it can check every line with ${review} before the file is written.` : `Redaction is thorough but not a guarantee. Read the findings before posting this anywhere public, and run ${review} to see every line before the file is written.`;
+  const review2 = `<code>agenttrail-guard scan --agent ${escapeHtml(result.agent)} --review</code>`;
+  const check = variant === "artifact" ? `Redaction is thorough but not a guarantee. Read the findings before passing this page on; the person who published it can check every line with ${review2} before the file is written.` : `Redaction is thorough but not a guarantee. Read the findings before posting this anywhere public, and run ${review2} to see every line before the file is written.`;
   const warning = result.toolCalls === 0 ? "" : `
 <p class="warning">${check}</p>`;
   return `<section class="callout" id="privacy">
@@ -15494,12 +17999,12 @@ ${skipped.unmappedTools.map(
   const notes = [];
   if (skipped.notActions > 0) {
     notes.push(
-      `${counted2(skipped.notActions, "tool call was", "tool calls were")} not evaluated because no guardrail checks that kind of call: plans, to-do lists, questions, and starting a sub-agent, whose own tool calls are read from its file.`
+      `${counted3(skipped.notActions, "tool call was", "tool calls were")} not evaluated because no guardrail checks that kind of call: plans, to-do lists, questions, and starting a sub-agent, whose own tool calls are read from its file.`
     );
   }
   if (skipped.turnsEndedWithError > 0) {
     notes.push(
-      `${counted2(skipped.turnsEndedWithError, "turn", "turns")} ended with an error; the tool calls made before it were read.`
+      `${counted3(skipped.turnsEndedWithError, "turn", "turns")} ended with an error; the tool calls made before it were read.`
     );
   }
   return `<section id="not-evaluated"><h2>What was not evaluated</h2>
@@ -15775,18 +18280,18 @@ function fixesFileText(fixes, meta) {
 }
 
 // src/core/paths.ts
-import { join as join6 } from "path";
+import { join as join7 } from "path";
 function guardDir(homedir4) {
-  return join6(homedir4, ".agenttrail", "guard");
+  return join7(homedir4, ".agenttrail", "guard");
 }
 function configPath(homedir4) {
-  return join6(guardDir(homedir4), "config.json");
+  return join7(guardDir(homedir4), "config.json");
 }
 function userRulesPath(homedir4) {
-  return join6(guardDir(homedir4), "guardrails.json");
+  return join7(guardDir(homedir4), "guardrails.json");
 }
 function productLineStatePath(homedir4) {
-  return join6(guardDir(homedir4), ".product-line");
+  return join7(guardDir(homedir4), ".product-line");
 }
 
 // src/core/product-line.ts
@@ -15842,10 +18347,10 @@ function productLineEnabled(configText) {
     return true;
   }
 }
-function readState(text) {
-  if (text === void 0) return {};
+function readState(text2) {
+  if (text2 === void 0) return {};
   try {
-    const raw = JSON.parse(text);
+    const raw = JSON.parse(text2);
     return raw !== null && typeof raw === "object" && !Array.isArray(raw) ? { ...raw } : {};
   } catch {
     return {};
@@ -15866,14 +18371,14 @@ function recordProductLine(stateText, surface, now) {
 }
 function takeProductLine(ctx, facts) {
   if (!ctx.interactive || !productLineEnabled(ctx.configText)) return void 0;
-  const text = productLineText(facts);
-  if (text === void 0) return void 0;
+  const text2 = productLineText(facts);
+  if (text2 === void 0) return void 0;
   const state = ctx.readFile(ctx.statePath);
   if (!productLineDue(state, facts.surface, ctx.now)) return void 0;
   if (!ctx.writeFile(ctx.statePath, recordProductLine(state, facts.surface, ctx.now))) {
     return void 0;
   }
-  return text;
+  return text2;
 }
 
 // src/engine/matchers.ts
@@ -16338,9 +18843,9 @@ async function parseSession(path, fallbackSessionId, source = fileLineSource) {
         }
       }
       if (!sawToolResult) {
-        const text = joinText(blocks);
-        if (text.length > 0) {
-          userPrompts.push({ messageUuid: uuid, timestamp: ts ?? "", text, isSidechain });
+        const text2 = joinText(blocks);
+        if (text2.length > 0) {
+          userPrompts.push({ messageUuid: uuid, timestamp: ts ?? "", text: text2, isSidechain });
           if (!isSidechain) currentPromptUuid = uuid;
         }
       }
@@ -16372,9 +18877,9 @@ async function parseSession(path, fallbackSessionId, source = fileLineSource) {
 // src/core/transcript/scan.ts
 import { readdirSync, statSync } from "fs";
 import { homedir } from "os";
-import { basename as basename2, isAbsolute as isAbsolute3, join as join7, relative as relative3 } from "path";
+import { basename as basename2, isAbsolute as isAbsolute4, join as join8, relative as relative3 } from "path";
 function defaultProjectsRoot(home = homedir()) {
-  return join7(home, ".claude", "projects");
+  return join8(home, ".claude", "projects");
 }
 var SNIFF_LINE_CAP = 40;
 async function sniff(path, source) {
@@ -16403,7 +18908,7 @@ async function sniff(path, source) {
 function isSessionInProject(cwd, projectRoot) {
   if (cwd === null) return false;
   const rel = relative3(projectRoot, cwd);
-  return rel === "" || !rel.startsWith("..") && !isAbsolute3(rel);
+  return rel === "" || !rel.startsWith("..") && !isAbsolute4(rel);
 }
 async function scanTranscripts(projectsRoot = defaultProjectsRoot(), projectRoot, io = {}) {
   const readdir = io.readdir ?? ((p) => readdirSync(p));
@@ -16422,7 +18927,7 @@ async function scanTranscripts(projectsRoot = defaultProjectsRoot(), projectRoot
   const projects = [];
   let totalSessions = 0;
   for (const project of projectDirs.sort()) {
-    const dir = join7(projectsRoot, project);
+    const dir = join8(projectsRoot, project);
     let entries2;
     try {
       if (!stat2(dir).isDirectory()) continue;
@@ -16433,7 +18938,7 @@ async function scanTranscripts(projectsRoot = defaultProjectsRoot(), projectRoot
     const sessions = [];
     for (const entry of entries2.sort()) {
       if (!entry.endsWith(".jsonl")) continue;
-      const file2 = join7(dir, entry);
+      const file2 = join8(dir, entry);
       let size = 0;
       let mtimeMs = 0;
       try {
@@ -16482,11 +18987,11 @@ function hasSelectableMatch(match) {
   const populated = (arm) => Array.isArray(arm) && arm.length > 0;
   return populated(m.any_of) || populated(m.all_of);
 }
-function parseUserRulesData(text) {
-  if (text === void 0 || text.trim().length === 0) return [];
+function parseUserRulesData(text2) {
+  if (text2 === void 0 || text2.trim().length === 0) return [];
   let parsed2;
   try {
-    parsed2 = JSON.parse(text);
+    parsed2 = JSON.parse(text2);
   } catch {
     return [];
   }
@@ -16516,6 +19021,148 @@ function parseUserRulesData(text) {
 // src/core/verify/verify.ts
 import { homedir as homedir2 } from "os";
 
+// src/core/verify/deps.ts
+function operandsOf(args2) {
+  return args2.filter((a) => !a.startsWith("-"));
+}
+function readJs(manager, args2) {
+  const words2 = operandsOf(args2);
+  const sub = words2[0];
+  const packages = words2.slice(1);
+  if (manager === "yarn" && sub === void 0) return { manager, restore: true };
+  if (sub === "ci") return manager === "npm" ? { manager, restore: true } : void 0;
+  if (sub === "install" || sub === "i") return { manager, restore: packages.length === 0 };
+  if (sub === "add" || sub === "update" || sub === "up" || sub === "upgrade") {
+    return { manager, restore: false };
+  }
+  return void 0;
+}
+function readPip(args2) {
+  if (args2[0] !== "install") return void 0;
+  const rest = args2.slice(1);
+  const fromFile = rest.some((a) => a === "-r" || a.startsWith("--requirement") || a === "-c");
+  const packages = rest.filter(
+    (a, k) => !a.startsWith("-") && !["-r", "-c", "-e"].includes(rest[k - 1] ?? "")
+  );
+  const project = rest.some((a) => a === "-e" || a === ".");
+  return { manager: "pip", restore: fromFile || project && packages.every((p) => p === ".") };
+}
+function readSimple2(simple) {
+  const { program, args: args2 } = programAndArgs(simple);
+  switch (program) {
+    case "npm":
+    case "pnpm":
+    case "yarn":
+    case "bun":
+      return readJs(program, args2);
+    case "pip":
+    case "pip3":
+      return readPip(args2);
+    case "python":
+    case "python3":
+      return args2[0] === "-m" && (args2[1] === "pip" || args2[1] === "pip3") ? readPip(args2.slice(2)) : void 0;
+    case "uv": {
+      if (args2[0] === "sync") return { manager: "uv", restore: true };
+      if (args2[0] === "add") return { manager: "uv", restore: false };
+      if (args2[0] === "pip" && args2[1] === "sync") return { manager: "uv", restore: true };
+      if (args2[0] === "pip") {
+        const pip = readPip(args2.slice(1));
+        return pip === void 0 ? void 0 : { manager: "uv", restore: pip.restore };
+      }
+      return void 0;
+    }
+    case "poetry":
+      if (args2[0] === "install") return { manager: "poetry", restore: true };
+      return args2[0] === "add" || args2[0] === "update" ? { manager: "poetry", restore: false } : void 0;
+    case "pipenv": {
+      if (args2[0] === "sync") return { manager: "pipenv", restore: true };
+      if (args2[0] !== "install") return void 0;
+      return { manager: "pipenv", restore: operandsOf(args2.slice(1)).length === 0 };
+    }
+    case "cargo":
+      return args2[0] === "add" || args2[0] === "install" ? { manager: "cargo", restore: false } : void 0;
+    case "go":
+      if (args2[0] === "get" || args2[0] === "install") return { manager: "go", restore: false };
+      return args2[0] === "mod" && args2[1] === "download" ? { manager: "go", restore: true } : void 0;
+    case "gem":
+      return args2[0] === "install" ? { manager: "gem", restore: false } : void 0;
+    case "bundle":
+    case "bundler":
+      if (args2[0] === "install") return { manager: "bundler", restore: true };
+      return args2[0] === "add" ? { manager: "bundler", restore: false } : void 0;
+    case "composer":
+      if (args2[0] === "install") return { manager: "composer", restore: true };
+      return args2[0] === "require" || args2[0] === "update" ? { manager: "composer", restore: false } : void 0;
+    default:
+      return void 0;
+  }
+}
+function readInstalls(command) {
+  const out = [];
+  for (const simple of simpleCommands(command)) {
+    const reading = readSimple2(simple);
+    if (reading !== void 0) out.push(reading);
+  }
+  return out;
+}
+function checkDependencies(calls) {
+  const managers = /* @__PURE__ */ new Set();
+  let installs = 0;
+  let lockfileRestores = 0;
+  let mentioned = 0;
+  let unconfirmed = 0;
+  for (const call of calls.calls) {
+    if (!isShell(call) || readInstalls(call.command).length === 0) continue;
+    const state = runStateOf(calls.agent, call, (command) => readInstalls(command).length > 0);
+    if (state === "mentioned") mentioned += 1;
+    else if (state === "unknown") unconfirmed += 1;
+    else {
+      for (const reading of readInstalls(executedText(call.command))) {
+        if (reading.restore) lockfileRestores += 1;
+        else {
+          installs += 1;
+          managers.add(reading.manager);
+        }
+      }
+    }
+  }
+  return {
+    installs,
+    lockfileRestores,
+    managers: PACKAGE_MANAGERS.filter((m) => managers.has(m)),
+    packageAge: PACKAGE_AGE_NOT_CHECKED,
+    mentioned,
+    unconfirmed,
+    couldHide: couldHideCount(calls),
+    hidingForms: heldHidingForms(calls)
+  };
+}
+function whenAny3(id, count2, say) {
+  return { id, render: (f) => count2(f) > 0 ? say(count2(f), f) : void 0 };
+}
+var LOCKFILE_RESTORES_LEFT_OUT = whenAny3(
+  "deps.restores-left-out",
+  (f) => f.lockfileRestores,
+  (n2) => `${counted(n2, "lockfile restore was", "lockfile restores were")} left out.`
+);
+var DEPENDENCY_SENTENCES = [
+  whenAny3(
+    "deps.installs",
+    (f) => f.installs,
+    (n2, f) => `${counted(n2, "install that ran", "installs that ran")} added or changed packages, with ${f.managers.join(", ")}.`
+  ),
+  {
+    id: "deps.none",
+    render: (f) => f.installs === 0 && f.couldHide === 0 && f.unconfirmed === 0 ? "No install that ran added or changed a package." : void 0
+  },
+  couldHideTemplate("deps.could-hide"),
+  LOCKFILE_RESTORES_LEFT_OUT,
+  {
+    id: "deps.package-age",
+    render: () => "Package age: not checked, because the scan runs offline."
+  }
+];
+
 // src/core/verify/fingerprint.ts
 import { createHmac, randomBytes } from "crypto";
 var FINGERPRINT_HEX = 32;
@@ -16538,7 +19185,7 @@ async function checkGitBacked(input) {
   let context;
   try {
     context = {
-      log: readCalls(input.corpus, input.home),
+      log: readCalls2(input.corpus, input.home),
       probe: new RepoProbe(input.io),
       scratchRoots: input.scratchRoots ?? TEMP_ROOTS
     };
@@ -16572,7 +19219,7 @@ function isNetworkPath(path) {
 var EMPTY = { pieces: [], workingDirs: [] };
 var MAX_DEPTH2 = 32;
 var MAX_LEAVES = 1e4;
-function isRecord4(value) {
+function isRecord5(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 function stringLeaves(value, out = [], depth = 0) {
@@ -16581,7 +19228,7 @@ function stringLeaves(value, out = [], depth = 0) {
     if (value !== "") out.push(value);
   } else if (Array.isArray(value)) {
     for (const item of value) stringLeaves(item, out, depth + 1);
-  } else if (isRecord4(value)) {
+  } else if (isRecord5(value)) {
     for (const item of Object.values(value)) stringLeaves(item, out, depth + 1);
   }
   return out;
@@ -16593,7 +19240,7 @@ function contentText(content) {
   for (const item of content) {
     if (typeof item === "string") {
       if (item !== "") out.push(item);
-    } else if (isRecord4(item) && typeof item.text === "string" && item.text !== "") {
+    } else if (isRecord5(item) && typeof item.text === "string" && item.text !== "") {
       out.push(item.text);
     }
   }
@@ -16603,7 +19250,7 @@ function collector() {
   const pieces = [];
   return {
     add: (via, texts) => {
-      for (const text of texts) pieces.push({ text, via });
+      for (const text2 of texts) pieces.push({ text: text2, via });
     },
     pieces
   };
@@ -16613,13 +19260,13 @@ function nonEmpty3(value) {
 }
 function claudeLine(record) {
   const { add, pieces } = collector();
-  const message = isRecord4(record.message) ? record.message : void 0;
+  const message = isRecord5(record.message) ? record.message : void 0;
   const content = message?.content;
   if (record.type === "user") {
     if (typeof content === "string") add("pasted-into-prompt", contentText(content));
     else if (Array.isArray(content)) {
       for (const block of content) {
-        if (!isRecord4(block)) continue;
+        if (!isRecord5(block)) continue;
         if (block.type === "text" && typeof block.text === "string") {
           add("pasted-into-prompt", [block.text]);
         } else if (block.type === "tool_result") {
@@ -16632,7 +19279,7 @@ function claudeLine(record) {
     }
   } else if (record.type === "assistant" && Array.isArray(content)) {
     for (const block of content) {
-      if (!isRecord4(block)) continue;
+      if (!isRecord5(block)) continue;
       if (block.type === "text" && typeof block.text === "string") {
         add("in-agent-reply", [block.text]);
       } else if (block.type === "thinking" && typeof block.thinking === "string") {
@@ -16645,7 +19292,7 @@ function claudeLine(record) {
   return { pieces, workingDirs: nonEmpty3(record.cwd) };
 }
 function codexLine(record) {
-  const payload = isRecord4(record.payload) ? record.payload : {};
+  const payload = isRecord5(record.payload) ? record.payload : {};
   if (record.type === "session_meta" || record.type === "turn_context") {
     return { pieces: [], workingDirs: nonEmpty3(payload.cwd) };
   }
@@ -16686,7 +19333,7 @@ function codexLine(record) {
         ]);
         break;
       case "item_completed": {
-        const item = isRecord4(payload.item) ? payload.item : {};
+        const item = isRecord5(payload.item) ? payload.item : {};
         if (item.type === "CommandExecution") {
           add("printed-by-command", nonEmpty3(item.aggregated_output));
         }
@@ -16697,13 +19344,13 @@ function codexLine(record) {
   return { pieces, workingDirs: [] };
 }
 function cursorLine(record) {
-  const message = isRecord4(record.message) ? record.message : void 0;
+  const message = isRecord5(record.message) ? record.message : void 0;
   if (message === void 0) return EMPTY;
   const { add, pieces } = collector();
   if (record.role === "user") add("pasted-into-prompt", contentText(message.content));
   else if (record.role === "assistant" && Array.isArray(message.content)) {
     for (const item of message.content) {
-      if (!isRecord4(item)) continue;
+      if (!isRecord5(item)) continue;
       if (item.type === "text" && typeof item.text === "string") {
         add("in-agent-reply", [item.text]);
       } else if (item.type === "tool_use") {
@@ -16722,7 +19369,7 @@ function lineText(agent, line) {
   } catch {
     return EMPTY;
   }
-  if (!isRecord4(record)) return EMPTY;
+  if (!isRecord5(record)) return EMPTY;
   switch (agent) {
     case "claude":
       return claudeLine(record);
@@ -16761,16 +19408,16 @@ function kindOf(label) {
   if (known !== void 0) return known;
   return label.startsWith("secret:") ? "other" : void 0;
 }
-function alignValues(text, literals) {
+function alignValues(text2, literals) {
   const count2 = literals.length - 1;
   if (count2 <= 0) return [];
   const head = literals[0];
   const tail = literals[count2];
-  const tailStart = text.length - tail.length;
-  if (!text.startsWith(head) || !text.endsWith(tail) || tailStart <= head.length) return void 0;
+  const tailStart = text2.length - tail.length;
+  if (!text2.startsWith(head) || !text2.endsWith(tail) || tailStart <= head.length) return void 0;
   const spans = [];
   let steps = 0;
-  const place = (index, start) => {
+  const place2 = (index, start) => {
     steps += 1;
     if (steps > MAX_ALIGN_STEPS) return false;
     if (index === count2 - 1) {
@@ -16781,18 +19428,18 @@ function alignValues(text, literals) {
     const literal = literals[index + 1];
     let from = start + 1;
     for (; ; ) {
-      const at = text.indexOf(literal, from);
+      const at = text2.indexOf(literal, from);
       if (at < 0 || at + literal.length >= tailStart) return false;
       spans[index] = [start, at];
-      if (place(index + 1, at + literal.length)) return true;
+      if (place2(index + 1, at + literal.length)) return true;
       if (steps > MAX_ALIGN_STEPS) return false;
       from = at + 1;
     }
   };
-  return place(0, head.length) ? spans : void 0;
+  return place2(0, head.length) ? spans : void 0;
 }
-function findValues(text) {
-  const clean = text.includes(SCRUB_SENTINEL) ? text.split(SCRUB_SENTINEL).join("") : text;
+function findValues(text2) {
+  const clean = text2.includes(SCRUB_SENTINEL) ? text2.split(SCRUB_SENTINEL).join("") : text2;
   const redacted2 = redactSecrets(scrubText(clean).text);
   if (redacted2 === clean) return { values: [], unaligned: false };
   const literals = [];
@@ -16875,14 +19522,14 @@ var EXAMPLE_HOST = /(?:^|\.)(?:example\.(?:com|net|org)|example|invalid|test)$/i
 function placeholderReason(found) {
   const bare = secretPart(found).replace(/^["']|["']$/g, "");
   if (PLACEHOLDER_SHAPE.test(bare) || COMMON_WORDS.has(bare.toLowerCase())) return "stand-in";
-  const host = hostOf(found);
+  const host = hostOf2(found);
   if (host !== void 0 && EXAMPLE_HOST.test(host)) return "stand-in";
   if (bare.length >= 6 && new Set(bare).size <= 3) return "stand-in";
   if (NAMED_KINDS.has(found.kind) && !credentialShaped(bare)) return "named-not-credential-shaped";
   return void 0;
 }
 var LOCAL_HOST2 = /^(?:localhost|127(?:\.\d{1,3}){3}|0\.0\.0\.0|::1|host\.docker\.internal|[a-z0-9-]+\.localhost)$/i;
-function hostOf(found) {
+function hostOf2(found) {
   let rest;
   if (found.kind === "database-url") {
     rest = found.value.slice(found.value.lastIndexOf("@") + 1) + found.after;
@@ -16895,7 +19542,7 @@ function hostOf(found) {
   return rest.match(/^[^\s/:?#@[\]]+/)?.[0];
 }
 function isLocalDev(found) {
-  const host = hostOf(found);
+  const host = hostOf2(found);
   return host !== void 0 && LOCAL_HOST2.test(host);
 }
 var MAX_HELD_VALUES = 5e3;
@@ -17175,13 +19822,15 @@ async function classifySecrets(input, keep) {
 
 // src/core/verify/verify.ts
 var VERIFY_BY_DEFAULT = false;
-var NOT_CHECKED = { status: "not-checked" };
 var UNAVAILABLE_VERIFY_IO = {
   git: () => Promise.resolve({ ok: false, reason: "missing" }),
   isDirectory: () => void 0,
   readFile: () => Promise.resolve({ ok: false, reason: "missing" }),
   processNames: () => Promise.resolve({ ok: false, reason: "missing" })
 };
+function chargeTime(io, ms) {
+  io.charge?.(Math.max(0, ms));
+}
 async function verifyScan(input) {
   const agent = input.corpus.agent ?? "claude";
   const matched = tallyMatchedCalls(input.corpus, input.catalog, input.allowlist);
@@ -17198,6 +19847,23 @@ async function verifyScan(input) {
     home: input.home ?? homedir2(),
     ...input.scratchRoots === void 0 ? {} : { scratchRoots: input.scratchRoots }
   });
+  const started = Date.now();
+  const calls = readCalls(input.corpus, input.catalog, input.allowlist);
+  const rules12 = { catalog: input.catalog, allowlist: input.allowlist };
+  const cloud = checkCloud({ calls, ...rules12 });
+  const classes = databaseTargetClasses(git.destructive);
+  const databaseTargets2 = classes === void 0 ? void 0 : { local: classes.local, scratch: classes.scratch, other: classes.other };
+  const prodInfra = checkProdInfra({
+    calls,
+    ...rules12,
+    databaseTargets: databaseTargets2,
+    databaseTargetsUnresolved: classes?.unresolved ?? 0
+  });
+  const dependencies = checkDependencies(calls);
+  chargeTime(input.io, Date.now() - started);
+  const tests = await checkTests({ calls, io: input.io });
+  const unreviewed = await checkUnreviewed({ calls, io: input.io });
+  const egress = await checkEgress({ calls, ...rules12, io: input.io });
   const verification = {
     matchedCalls: matched.tally,
     resultsRecorded: matched.resultsRecorded,
@@ -17206,15 +19872,26 @@ async function verifyScan(input) {
       secrets,
       "skipped-checks": git["skipped-checks"],
       "lost-work": git["lost-work"],
-      cloud: NOT_CHECKED,
-      "prod-infra": NOT_CHECKED,
-      tests: NOT_CHECKED,
+      cloud: cloud.check,
+      "prod-infra": prodInfra,
+      tests: tests.check,
       destructive: git.destructive,
-      unreviewed: NOT_CHECKED,
-      egress: NOT_CHECKED
-    }
+      unreviewed: unreviewed.check,
+      egress: egress.check
+    },
+    dependencies
   };
-  return { verification, localFixes: git.localFixes, unsafeFixes: git.unsafeFixes };
+  return {
+    verification,
+    localFixes: [
+      ...git.localFixes,
+      ...tests.localFixes,
+      ...cloud.localFixes,
+      ...unreviewed.localFixes,
+      ...egress.localFixes
+    ],
+    unsafeFixes: git.unsafeFixes
+  };
 }
 
 // src/core/version.ts
@@ -17242,7 +19919,7 @@ ${lines2.join("")}`;
 }
 
 // src/commands/scan-scrub.ts
-import { join as join8, relative as relative4 } from "path";
+import { join as join9, relative as relative4 } from "path";
 
 // src/core/scrub-transcripts.ts
 import { createHash as createHash2 } from "crypto";
@@ -17253,8 +19930,8 @@ function scrubPlaceholder(kind) {
 function sha256(bytes) {
   return createHash2("sha256").update(bytes).digest("hex");
 }
-function jsonForm(text) {
-  return JSON.stringify(text).slice(1, -1);
+function jsonForm(text2) {
+  return JSON.stringify(text2).slice(1, -1);
 }
 function asciiForm(form) {
   let out = "";
@@ -17283,32 +19960,32 @@ function formsOf(targets) {
   }
   return forms;
 }
-function escapedAt(text, at) {
+function escapedAt(text2, at) {
   let slashes = 0;
-  for (let i = at - 1; i >= 0 && text.charCodeAt(i) === 92; i--) slashes += 1;
+  for (let i = at - 1; i >= 0 && text2.charCodeAt(i) === 92; i--) slashes += 1;
   return slashes % 2 === 1;
 }
 function replaceInString(inner, forms, counts) {
-  let text = inner;
+  let text2 = inner;
   for (const form of forms) {
-    if (!text.includes(form.raw)) continue;
+    if (!text2.includes(form.raw)) continue;
     let out = "";
     let from = 0;
     for (; ; ) {
-      const at = text.indexOf(form.raw, from);
+      const at = text2.indexOf(form.raw, from);
       if (at < 0) break;
-      if (escapedAt(text, at)) {
-        out += text.slice(from, at + 1);
+      if (escapedAt(text2, at)) {
+        out += text2.slice(from, at + 1);
         from = at + 1;
         continue;
       }
-      out += text.slice(from, at) + form.placeholder;
+      out += text2.slice(from, at) + form.placeholder;
       from = at + form.raw.length;
       counts.set(form.kind, (counts.get(form.kind) ?? 0) + 1);
     }
-    text = out + text.slice(from);
+    text2 = out + text2.slice(from);
   }
-  return text;
+  return text2;
 }
 function replaceInLine(line, forms, counts) {
   let out = "";
@@ -17364,13 +20041,13 @@ function parsed(line) {
     return void 0;
   }
 }
-function planFileScrub(text, targets, held = []) {
-  const forms = formsOf(targets).filter((form) => text.includes(form.raw));
+function planFileScrub(text2, targets, held = []) {
+  const forms = formsOf(targets).filter((form) => text2.includes(form.raw));
   const heldValues = [...new Set(held.filter((v) => v !== ""))];
   const counts = /* @__PURE__ */ new Map();
   if (forms.length === 0 && heldValues.length === 0) {
     return {
-      text,
+      text: text2,
       changed: false,
       replaced: {},
       total: 0,
@@ -17380,7 +20057,7 @@ function planFileScrub(text, targets, held = []) {
     };
   }
   const values = [...new Set(targets.map((t) => t.value).filter((v) => v !== ""))];
-  const lines2 = text.split("\n");
+  const lines2 = text2.split("\n");
   let linesChanged = 0;
   let linesLeft = 0;
   let linesIncomplete = 0;
@@ -17417,7 +20094,7 @@ function planFileScrub(text, targets, held = []) {
   }
   const changed = linesChanged > 0;
   return {
-    text: changed ? lines2.join("\n") : text,
+    text: changed ? lines2.join("\n") : text2,
     changed,
     replaced,
     total,
@@ -17433,7 +20110,7 @@ var RECENT_WRITE_WINDOW_MS = 5 * 60 * 1e3;
 var MAX_SCRUB_VALUES = 5e4;
 var MAX_RESTORE_LINES_SHOWN = 10;
 function scrubBackupsRoot(home) {
-  return join8(home, ".agenttrail", "scrub-backups");
+  return join9(home, ".agenttrail", "scrub-backups");
 }
 function backupFolderName(now) {
   return now.toISOString().replace(/[:.]/g, "-");
@@ -17545,12 +20222,12 @@ function planFiles(files, found, held, scrubIO) {
       planning.skipped.push({ path, reason: "hard-link" });
       continue;
     }
-    const text = utf8(read.bytes);
-    if (text === void 0) {
+    const text2 = utf8(read.bytes);
+    if (text2 === void 0) {
       planning.skipped.push({ path, reason: "not-utf8" });
       continue;
     }
-    const { text: _text, ...plan } = planFileScrub(text, found.values, held.get(path));
+    const { text: _text, ...plan } = planFileScrub(text2, found.values, held.get(path));
     const entry = { path, stat: read.stat, sha256: sha256(read.bytes), plan };
     if (plan.changed) planning.changes.push(entry);
     else if (plan.linesLeft > 0) planning.stuck.push(entry);
@@ -17563,7 +20240,7 @@ function replacementText(plan) {
   const parts = kinds.map(([kind, n2]) => `${formatCount(n2)} ${kind}`).join(", ");
   return `${formatCount(plan.total)} ${plan.total === 1 ? "replacement" : "replacements"}: ${parts}`;
 }
-function counted3(n2, singular, plural2 = `${singular}s`) {
+function counted4(n2, singular, plural2 = `${singular}s`) {
   return `${formatCount(n2)} ${n2 === 1 ? singular : plural2}`;
 }
 function sessionFilesName(agent) {
@@ -17616,15 +20293,15 @@ async function runScrub(input) {
   lines2.push("");
   const likely = facts.classes["likely-real"];
   lines2.push(
-    `${counted3(likely, "likely-real credential")} in ${counted3(facts.filesRead, "transcript file")}.`
+    `${counted4(likely, "likely-real credential")} in ${counted4(facts.filesRead, "transcript file")}.`
   );
   const leftAlone = [];
   if (facts.classes["committed-fixture"] > 0) {
-    leftAlone.push(counted3(facts.classes["committed-fixture"], "committed fixture"));
+    leftAlone.push(counted4(facts.classes["committed-fixture"], "committed fixture"));
   }
   if (facts.classes.placeholder > 0) {
     leftAlone.push(
-      counted3(
+      counted4(
         facts.classes.placeholder,
         "placeholder or false positive",
         "placeholders or false positives"
@@ -17632,23 +20309,23 @@ async function runScrub(input) {
     );
   }
   if (facts.classes["local-dev"] > 0) {
-    leftAlone.push(counted3(facts.classes["local-dev"], "local dev value"));
+    leftAlone.push(counted4(facts.classes["local-dev"], "local dev value"));
   }
   if (leftAlone.length > 0) lines2.push(c.dim(`Left alone: ${leftAlone.join(", ")}.`));
   const gaps = [];
   const notRead = input.corpus.notRead + input.corpus.quarantined + facts.filesNotRead;
-  if (notRead > 0) gaps.push(`${counted3(notRead, "transcript file")} could not be read or checked`);
+  if (notRead > 0) gaps.push(`${counted4(notRead, "transcript file")} could not be read or checked`);
   if (facts.unplaced > 0)
-    gaps.push(`${counted3(facts.unplaced, "redacted text")} could not be classed`);
+    gaps.push(`${counted4(facts.unplaced, "redacted text")} could not be classed`);
   if (found.notHeld > 0) {
     gaps.push(
-      `${counted3(found.notHeld, "likely-real value")} past the limit of ${formatCount(input.maxValues ?? MAX_SCRUB_VALUES)} cannot be replaced in this run`
+      `${counted4(found.notHeld, "likely-real value")} past the limit of ${formatCount(input.maxValues ?? MAX_SCRUB_VALUES)} cannot be replaced in this run`
     );
   }
   if (facts.reposNotChecked > 0) {
     lines2.push(
       c.dim(
-        `${counted3(facts.reposNotChecked, "repo")} could not be searched for committed fixtures, so a fixture there counts as likely real.`
+        `${counted4(facts.reposNotChecked, "repo")} could not be searched for committed fixtures, so a fixture there counts as likely real.`
       )
     );
   } else if (likely > 0 && facts.fixtureCheck === "unavailable") {
@@ -17660,7 +20337,7 @@ async function runScrub(input) {
   }
   for (const entry of planning.stuck) {
     gaps.push(
-      `${shown(entry.path)}: ${counted3(entry.plan.linesLeft, "line")} holding a value could not be edited (not JSON, or in a form this command does not edit)`
+      `${shown(entry.path)}: ${counted4(entry.plan.linesLeft, "line")} holding a value could not be edited (not JSON, or in a form this command does not edit)`
     );
   }
   for (const path of planning.notFound) {
@@ -17774,15 +20451,15 @@ async function runScrub(input) {
       outcomes.push({ path: file2.path, reason: "changed" });
       continue;
     }
-    const text = new TextDecoder("utf-8", { ignoreBOM: true }).decode(read.bytes);
+    const text2 = new TextDecoder("utf-8", { ignoreBOM: true }).decode(read.bytes);
     const name = backupFileName(i + 1, targets.length, file2.path);
-    const backup = join8(backupDir, name);
+    const backup = join9(backupDir, name);
     if (!scrubIO.writeBackupFile(backup, read.bytes)) {
       backupFailed = true;
       break;
     }
     written.push(backup);
-    const after = new TextEncoder().encode(planFileScrub(text, found.values).text);
+    const after = new TextEncoder().encode(planFileScrub(text2, found.values).text);
     backedUp.push({
       file: { ...file2, stat: read.stat },
       backup,
@@ -17808,8 +20485,8 @@ async function runScrub(input) {
     (b) => restoreCommand(input.platform, b.backup, b.file.path) ?? `# could not make a safe restore command for ${displayPath(b.file.path)}; copy ${displayPath(b.backup)} back by hand`
   );
   const encoder = new TextEncoder();
-  const manifestPath = join8(backupDir, "manifest.json");
-  const restorePath = join8(backupDir, "restore.txt");
+  const manifestPath = join9(backupDir, "manifest.json");
+  const restorePath = join9(backupDir, "restore.txt");
   if (!backupFailed && backedUp.length > 0) {
     if (scrubIO.writeBackupFile(
       manifestPath,
@@ -17839,7 +20516,7 @@ async function runScrub(input) {
   }
   lines2.push("");
   lines2.push(
-    `Backed up ${counted3(backedUp.length, "file")} to ${displayPath(backupDir)} (readable only by you).`
+    `Backed up ${counted4(backedUp.length, "file")} to ${displayPath(backupDir)} (readable only by you).`
   );
   lines2.push(
     c.yellow(
@@ -17872,14 +20549,14 @@ async function runScrub(input) {
       if (b.file.plan.linesIncomplete > 0) {
         lines2.push(
           c.yellow(
-            `    ${counted3(b.file.plan.linesIncomplete, "line")} still ${b.file.plan.linesIncomplete === 1 ? "holds" : "hold"} a value written in a form this command does not edit`
+            `    ${counted4(b.file.plan.linesIncomplete, "line")} still ${b.file.plan.linesIncomplete === 1 ? "holds" : "hold"} a value written in a form this command does not edit`
           )
         );
       }
       if (b.file.plan.linesLeft > 0) {
         lines2.push(
           c.yellow(
-            `    ${counted3(b.file.plan.linesLeft, "line")} holding a value could not be edited (not JSON, or in a form this command does not edit), and ${b.file.plan.linesLeft === 1 ? "was" : "were"} left as ${b.file.plan.linesLeft === 1 ? "it was" : "they were"}`
+            `    ${counted4(b.file.plan.linesLeft, "line")} holding a value could not be edited (not JSON, or in a form this command does not edit), and ${b.file.plan.linesLeft === 1 ? "was" : "were"} left as ${b.file.plan.linesLeft === 1 ? "it was" : "they were"}`
           )
         );
       }
@@ -17984,7 +20661,7 @@ function parseScanFlags(argv) {
   let artifact = false;
   let out;
   let help = false;
-  let review = false;
+  let review2 = false;
   let verify = false;
   let scrub = false;
   let apply = false;
@@ -18008,7 +20685,7 @@ function parseScanFlags(argv) {
     else if (arg === "--quiet") quiet = true;
     else if (arg === "--no-open") noOpen = true;
     else if (arg === "--artifact") artifact = true;
-    else if (arg === "--review") review = true;
+    else if (arg === "--review") review2 = true;
     else if (arg === "--verify") verify = true;
     else if (arg === "--scrub") scrub = true;
     else if (arg === "--apply") apply = true;
@@ -18044,7 +20721,7 @@ function parseScanFlags(argv) {
     artifact,
     out,
     help,
-    review,
+    review: review2,
     verify,
     scrub,
     apply,
@@ -18056,10 +20733,10 @@ function shouldOpen(flags, env) {
   return (env.CI ?? "") === "";
 }
 function reportPathFor(out, filename, io) {
-  if (out === void 0) return join9(io.cwd(), filename);
+  if (out === void 0) return join10(io.cwd(), filename);
   const target = resolve4(io.cwd(), out);
   try {
-    if (io.stat(target).isDirectory()) return join9(target, filename);
+    if (io.stat(target).isDirectory()) return join10(target, filename);
   } catch {
   }
   return target;
@@ -18094,7 +20771,7 @@ async function readClaudeSession(io, item) {
   }
   let opened = 1;
   const files = [item.file];
-  const subDir = join9(dirname3(item.file), basename3(item.file, ".jsonl"), "subagents");
+  const subDir = join10(dirname5(item.file), basename3(item.file, ".jsonl"), "subagents");
   let names;
   try {
     names = io.readdir(subDir);
@@ -18108,7 +20785,7 @@ async function readClaudeSession(io, item) {
   let skippedLines = session.skippedLines;
   for (const name of [...names].sort()) {
     if (!name.endsWith(".jsonl")) continue;
-    const subPath = join9(subDir, name);
+    const subPath = join10(subDir, name);
     try {
       if (io.stat(subPath).isDirectory()) continue;
     } catch {
@@ -18190,28 +20867,28 @@ var CONTROL_CHARS = new RegExp(
   `[${String.fromCharCode(0)}-${String.fromCharCode(31)}${String.fromCharCode(127)}-${String.fromCharCode(159)}]+`,
   "g"
 );
-function terminalText(text) {
-  return text.replace(CONTROL_CHARS, " ").replace(/\s+/g, " ").trim();
+function terminalText(text2) {
+  return text2.replace(CONTROL_CHARS, " ").replace(/\s+/g, " ").trim();
 }
 function renderSummary(result, colorsEnabled, reportPath, fixesPath, checksFailed = false) {
   const c = createColors(colorsEnabled);
   const out = [];
   const t = result.tokens;
-  const severityTone = (severity, text) => {
+  const severityTone = (severity, text2) => {
     switch (severity) {
       case "critical":
-        return c.bold(c.red(text));
+        return c.bold(c.red(text2));
       case "high":
-        return c.red(text);
+        return c.red(text2);
       case "medium":
-        return c.yellow(text);
+        return c.yellow(text2);
       case "low":
-        return c.cyan(text);
+        return c.cyan(text2);
       default:
-        return c.dim(text);
+        return c.dim(text2);
     }
   };
-  const actionTone = (action, text) => action === "block" ? c.red(text) : action === "require_approval" ? c.yellow(text) : c.dim(text);
+  const actionTone = (action, text2) => action === "block" ? c.red(text2) : action === "require_approval" ? c.yellow(text2) : c.dim(text2);
   const plural2 = (n2, word) => `${formatCount(n2)} ${word}${n2 === 1 ? "" : "s"}`;
   const was2 = (n2) => n2 === 1 ? "was" : "were";
   out.push(
@@ -18320,7 +20997,7 @@ function samePath(a, b, platform) {
   return platform === "darwin" || platform === "win32" ? a.toLowerCase() === b.toLowerCase() : a === b;
 }
 var CHECKS_FAILED_LINE = "Checked on this machine: the checks could not run, so this report shows no verified results.";
-function counted4(n2, singular, plural2 = `${singular}s`) {
+function counted5(n2, singular, plural2 = `${singular}s`) {
   return `${formatCount(n2)} ${n2 === 1 ? singular : plural2}`;
 }
 function verificationSummary(verification) {
@@ -18329,18 +21006,18 @@ function verificationSummary(verification) {
   const parts = [];
   if (secrets.status === "not-checked") parts.push("no transcript files to check for secrets");
   else {
-    let line = `${counted4(facts.classes["likely-real"], "likely-real credential")} in ${counted4(facts.filesRead, "transcript file")}`;
+    let line = `${counted5(facts.classes["likely-real"], "likely-real credential")} in ${counted5(facts.filesRead, "transcript file")}`;
     const also = [];
     const fixtures = facts.classes["committed-fixture"];
     const placeholders = facts.classes.placeholder;
     const local = facts.classes["local-dev"];
-    if (fixtures > 0) also.push(counted4(fixtures, "committed fixture"));
+    if (fixtures > 0) also.push(counted5(fixtures, "committed fixture"));
     if (placeholders > 0) {
       also.push(
-        counted4(placeholders, "placeholder or false positive", "placeholders or false positives")
+        counted5(placeholders, "placeholder or false positive", "placeholders or false positives")
       );
     }
-    if (local > 0) also.push(counted4(local, "local dev value"));
+    if (local > 0) also.push(counted5(local, "local dev value"));
     if (also.length > 0) line += ` (and ${also.join(", ")})`;
     parts.push(line);
     const { unnamedOutputOnly, namedNotCredentialShaped } = facts.setAside;
@@ -18353,18 +21030,18 @@ function verificationSummary(verification) {
         why.push(`${formatCount(namedNotCredentialShaped)} named but not shaped like a credential`);
       }
       parts.push(
-        `${counted4(unnamedOutputOnly + namedNotCredentialShaped, "value")} not counted as likely real: ${why.join(", ")}`
+        `${counted5(unnamedOutputOnly + namedNotCredentialShaped, "value")} not counted as likely real: ${why.join(", ")}`
       );
     }
     if (facts.filesNotRead > 0) {
-      parts.push(`${counted4(facts.filesNotRead, "transcript file")} could not be read`);
+      parts.push(`${counted5(facts.filesNotRead, "transcript file")} could not be read`);
     }
     if (facts.unplaced > 0) {
-      parts.push(`${counted4(facts.unplaced, "redacted text")} could not be classed`);
+      parts.push(`${counted5(facts.unplaced, "redacted text")} could not be classed`);
     }
     if (facts.reposNotChecked > 0) {
       parts.push(
-        `${counted4(facts.reposNotChecked, "repo")} could not be searched for committed fixtures`
+        `${counted5(facts.reposNotChecked, "repo")} could not be searched for committed fixtures`
       );
     } else if (facts.fixtureCheck === "unavailable") {
       parts.push("no repo was found to search for committed fixtures");
@@ -18373,18 +21050,18 @@ function verificationSummary(verification) {
   const skipped = verification.categories["skipped-checks"];
   if ("facts" in skipped && skipped.facts !== void 0) {
     const files = skipped.facts.instructions;
-    let line = `${counted4(files.read, "instruction or memory file")} read for an instruction to skip checks, keeping only yes or no`;
+    let line = `${counted5(files.read, "instruction or memory file")} read for an instruction to skip checks, keeping only yes or no`;
     if (files.couldNotRead > 0) line += ` (${formatCount(files.couldNotRead)} could not be read)`;
     parts.push(line);
   }
   const calls = verification.matchedCalls;
   if (!verification.resultsRecorded) {
     parts.push(
-      "this app records no command output, so no matched call could be confirmed as run" + (calls.mentioned > 0 ? ` (${counted4(calls.mentioned, "match", "matches")} only mentioned a command)` : "")
+      "this app records no command output, so no matched call could be confirmed as run" + (calls.mentioned > 0 ? ` (${counted5(calls.mentioned, "match", "matches")} only mentioned a command)` : "")
     );
   } else {
     parts.push(
-      `${counted4(calls.ran, "matched call")} ran, ${formatCount(calls.mentioned)} only mentioned a command, ${formatCount(calls.unknown)} could not be confirmed`
+      `${counted5(calls.ran, "matched call")} ran, ${formatCount(calls.mentioned)} only mentioned a command, ${formatCount(calls.unknown)} could not be confirmed`
     );
     if (verification.ranEvidence === "output-record" && calls.ran > 0) {
       parts.push(
@@ -18542,7 +21219,7 @@ ${SCAN_USAGE}`);
   );
   const colors = createColors(shouldUseColor({ env: io.env, isTTY: io.isTTY() }));
   const fixes = outcome?.localFixes ?? [];
-  const fixesTarget = join9(dirname3(reportPath), FIXES_FILENAME);
+  const fixesTarget = join10(dirname5(reportPath), FIXES_FILENAME);
   const fixesIsReport = samePath(fixesTarget, reportPath, deps.platform ?? process.platform);
   const writesFixes = hasFileFixes(fixes) && !fixesIsReport;
   if (flags.review) {
@@ -18571,12 +21248,12 @@ ${SCAN_USAGE}`);
   }
   let fixesPath;
   if (writesFixes) {
-    const text = fixesFileText(fixes, {
+    const text2 = fixesFileText(fixes, {
       version: VERSION,
       generatedAt: now,
       reportName: basename3(reportPath)
     });
-    if (io.writeFile(fixesTarget, text)) fixesPath = fixesTarget;
+    if (io.writeFile(fixesTarget, text2)) fixesPath = fixesTarget;
     else io.writeStdout(colors.yellow(`Could not write the fix commands to ${fixesTarget}
 `));
   }
@@ -18625,7 +21302,7 @@ Could not write the report to ${reportPath}
       statePath: productLineStatePath(home),
       now,
       readFile: (path) => io.readFile(path),
-      writeFile: (path, text) => io.writeFile(path, text)
+      writeFile: (path, text2) => io.writeFile(path, text2)
     },
     {
       surface: "scan",
@@ -18665,16 +21342,16 @@ import {
   writeFileSync
 } from "fs";
 import { homedir as homedir3 } from "os";
-import { basename as basename4, dirname as dirname4, join as join10 } from "path";
+import { basename as basename4, dirname as dirname6, join as join11 } from "path";
 import { createInterface as createInterface2 } from "readline";
 function openCommand(platform, path) {
   if (platform === "darwin") return ["open", path];
   if (platform === "win32") return ["cmd", "/c", "start", "", path];
   return ["xdg-open", path];
 }
-function writePrivateFile(path, text) {
-  const temporary = join10(
-    dirname4(path),
+function writePrivateFile(path, text2) {
+  const temporary = join11(
+    dirname6(path),
     `.${basename4(path)}.${process.pid}.${randomBytes2(6).toString("hex")}.tmp`
   );
   let fd;
@@ -18685,7 +21362,7 @@ function writePrivateFile(path, text) {
       384
     );
     fchmodSync(fd, 384);
-    writeFileSync(fd, text, "utf8");
+    writeFileSync(fd, text2, "utf8");
     fsyncSync(fd);
     closeSync(fd);
     fd = void 0;
@@ -18737,8 +21414,8 @@ function createRealScanIO() {
     cwd() {
       return process.cwd();
     },
-    writeStdout(text) {
-      process.stdout.write(text);
+    writeStdout(text2) {
+      process.stdout.write(text2);
     },
     readLine() {
       return new Promise((resolve5) => {
@@ -18755,8 +21432,8 @@ function createRealScanIO() {
         rl.once("close", () => done(void 0));
       });
     },
-    writeFile(path, text) {
-      return writePrivateFile(path, text);
+    writeFile(path, text2) {
+      return writePrivateFile(path, text2);
     },
     openInBrowser(path) {
       try {
@@ -18796,7 +21473,7 @@ import {
   unlinkSync as unlinkSync2,
   writeSync
 } from "fs";
-import { basename as basename5, dirname as dirname5, join as join11 } from "path";
+import { basename as basename5, dirname as dirname7, join as join12 } from "path";
 var MAX_SCRUB_FILE_BYTES = 256 * 1024 * 1024;
 var BACKUP_DIR_MODE = 448;
 var BACKUP_FILE_MODE = 384;
@@ -18922,7 +21599,7 @@ function createRealScrubIO(options = {}) {
     createBackupDir(root, name) {
       try {
         fs.mkdirSync(root, { recursive: true, mode: BACKUP_DIR_MODE });
-        for (const folder of [dirname5(root), root]) {
+        for (const folder of [dirname7(root), root]) {
           const stat2 = fs.lstatSync(folder);
           if (stat2.isSymbolicLink() || !stat2.isDirectory()) return void 0;
         }
@@ -18930,7 +21607,7 @@ function createRealScrubIO(options = {}) {
         return void 0;
       }
       for (let attempt = 0; attempt < MAX_BACKUP_DIR_ATTEMPTS; attempt++) {
-        const dir = join11(root, attempt === 0 ? name : `${name}-${attempt}`);
+        const dir = join12(root, attempt === 0 ? name : `${name}-${attempt}`);
         try {
           fs.mkdirSync(dir, { mode: BACKUP_DIR_MODE });
         } catch (error) {
@@ -18965,12 +21642,12 @@ function createRealScrubIO(options = {}) {
         removeQuietly(fs, path);
         return false;
       }
-      syncFolder(fs, dirname5(path));
+      syncFolder(fs, dirname7(path));
       return true;
     },
     replaceFile(path, bytes, expected) {
-      const folder = dirname5(path);
-      const temp = join11(folder, `.${basename5(path)}.${randomBytes3(6).toString("hex")}.scrub-tmp`);
+      const folder = dirname7(path);
+      const temp = join12(folder, `.${basename5(path)}.${randomBytes3(6).toString("hex")}.scrub-tmp`);
       let fd;
       try {
         fd = fs.openSync(temp, "wx", expected.stat.mode);
@@ -19022,7 +21699,7 @@ import {
   realpathSync,
   statSync as statSync3
 } from "fs";
-import { isAbsolute as isAbsolute4, join as join12, posix, relative as relative5, win32 } from "path";
+import { isAbsolute as isAbsolute5, join as join13, posix, relative as relative5, win32 } from "path";
 var SHA2 = { slot: "sha" };
 var LITERAL_PATH = { slot: "literal-path" };
 var GIT_ALLOW_LIST = [
@@ -19061,7 +21738,10 @@ var GIT_ALLOW_LIST = [
   ["stash", "list", "--format=%H"],
   // The tracked files under a path, and those of them missing from the working tree.
   ["ls-files", "-z", "--", LITERAL_PATH],
-  ["ls-files", "--deleted", "-z", "--", LITERAL_PATH]
+  ["ls-files", "--deleted", "-z", "--", LITERAL_PATH],
+  // Unreviewed code: the commits a push carried, those reachable from the new id and not from
+  // the old one.
+  ["log", "--format=%H", "--max-count=1000", SHA2, "--not", SHA2]
 ];
 var LITERAL_PATHSPEC = ":(literal)";
 function slotAccepts(slot, value) {
@@ -19145,6 +21825,7 @@ function watchedProcessOf(entry) {
   if (/^cursor(?: helper(?: \([a-z ]+\))?)?$/.test(name) || name === "cursor-agent") {
     return "cursor";
   }
+  if (TUNNEL_PROCESS_NAMES.includes(name)) return name;
   return void 0;
 }
 function watchedIn(lines2, entryOf) {
@@ -19163,7 +21844,7 @@ function watchedInPs(stdout) {
 function watchedInTasklist(stdout) {
   return watchedIn(stdout.split(/\r?\n/), (line) => /^"([^"]*)"/.exec(line.trim())?.[1] ?? "");
 }
-function isInside(root, path, paths = { relative: relative5, isAbsolute: isAbsolute4 }) {
+function isInside(root, path, paths = { relative: relative5, isAbsolute: isAbsolute5 }) {
   const rel = paths.relative(root, path);
   return rel !== "" && !rel.startsWith("..") && !paths.isAbsolute(rel);
 }
@@ -19195,7 +21876,7 @@ function agentRoots(home) {
   const roots = [];
   for (const folder of AGENT_FOLDERS) {
     try {
-      roots.push(realpathSync(join12(home, folder)));
+      roots.push(realpathSync(join13(home, folder)));
     } catch {
     }
   }

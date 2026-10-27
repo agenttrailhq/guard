@@ -104,6 +104,7 @@ describe("the git allow-list", () => {
       ["stash", "list", "--format=%H"],
       ["ls-files", "-z", "--", path],
       ["ls-files", "--deleted", "-z", "--", path],
+      ["log", "--format=%H", "--max-count=1000", sha, "--not", sha],
     ]);
   });
 

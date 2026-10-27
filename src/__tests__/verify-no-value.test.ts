@@ -24,18 +24,7 @@ import { runScan } from "../commands/scan.js";
 import { FIXES_FILENAME } from "../core/report.js";
 import type { AgentSource } from "../core/types.js";
 import { isLocalFix, type LocalFix, localFixCommand } from "../core/verify/cards.js";
-import { GIT_FACT_ENUMS, GIT_FACT_KEYS } from "../core/verify/git-facts.js";
-import {
-  FIXTURE_CHECKS,
-  HIDING_FORMS,
-  RAN_EVIDENCE,
-  RUN_STATES,
-  SECRET_CLASSES,
-  SECRET_KINDS,
-  SECRET_PROVENANCES,
-  VERIFY_CATEGORIES,
-  VERIFY_STATUSES,
-} from "../core/verify/types.js";
+import { FACT_KEYS, FACT_VALUE_ENUMS } from "../core/verify/types.js";
 import { verifyScan } from "../core/verify/verify.js";
 import { createRealScanIO, type ScanIO } from "../scan-io.js";
 import { createRealVerifyIO } from "../verify-io.js";
@@ -129,15 +118,10 @@ const leaves = (value: unknown): string[] => stringLeaves(value);
 
 /** Every string the verification may hold: its enums, its category names and its keys. */
 const ALLOWED = new Set<string>([
-  ...VERIFY_CATEGORIES,
-  ...SECRET_CLASSES,
-  ...SECRET_KINDS,
-  ...SECRET_PROVENANCES,
-  ...RUN_STATES,
-  ...RAN_EVIDENCE,
-  ...VERIFY_STATUSES,
-  ...FIXTURE_CHECKS,
-  // Keys.
+  // Every enum value and fact key the report's boundary keeps: one registry for every check.
+  ...FACT_VALUE_ENUMS.flat(),
+  ...FACT_KEYS,
+  // The verification's own structure.
   "matchedCalls",
   "resultsRecorded",
   "ranEvidence",
@@ -145,26 +129,6 @@ const ALLOWED = new Set<string>([
   "status",
   "matches",
   "facts",
-  "classes",
-  "items",
-  "moreItems",
-  "filesRead",
-  "filesNotRead",
-  "unplaced",
-  "setAside",
-  "unnamedOutputOnly",
-  "namedNotCredentialShaped",
-  "fixtureCheck",
-  "reposChecked",
-  "reposNotChecked",
-  "kind",
-  "via",
-  "files",
-  // The git-backed checks: skipped checks, lost work, destructive commands.
-  ...GIT_FACT_ENUMS.flat(),
-  ...GIT_FACT_KEYS,
-  ...HIDING_FORMS,
-  "hidingForms",
 ]);
 
 describe.each([

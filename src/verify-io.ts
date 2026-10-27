@@ -59,6 +59,7 @@ import {
   statSync,
 } from "node:fs";
 import { isAbsolute, join, posix, relative, win32 } from "node:path";
+import { TUNNEL_PROCESS_NAMES } from "./core/verify/command-facts.js";
 import { isNetworkPath } from "./core/verify/paths.js";
 import {
   type CheckFailure,
@@ -133,6 +134,9 @@ export const GIT_ALLOW_LIST: readonly (readonly GitAllowedArg[])[] = [
   // The tracked files under a path, and those of them missing from the working tree.
   ["ls-files", "-z", "--", LITERAL_PATH],
   ["ls-files", "--deleted", "-z", "--", LITERAL_PATH],
+  // Unreviewed code: the commits a push carried, those reachable from the new id and not from
+  // the old one.
+  ["log", "--format=%H", "--max-count=1000", SHA, "--not", SHA],
 ];
 
 /** The `:(literal)` pathspec magic a `literal-path` slot starts with. */
@@ -311,6 +315,7 @@ export function watchedProcessOf(entry: string): WatchedProcess | undefined {
   if (/^cursor(?: helper(?: \([a-z ]+\))?)?$/.test(name) || name === "cursor-agent") {
     return "cursor";
   }
+  if ((TUNNEL_PROCESS_NAMES as readonly string[]).includes(name)) return name as WatchedProcess;
   return undefined;
 }
 

@@ -7,22 +7,31 @@
  * belongs to. Read-only: the only things it starts are the allow-listed `git` calls on
  * `VerifyIO`, and it writes nothing.
  *
- * Today it runs: whether each matched call ran (`ran.ts`), the secrets check (`secrets.ts`),
- * and the git-backed checks for skipped checks, lost work and destructive commands
- * (`git-checks.ts`). Every other category reads `not-checked` until its check exists, which the
- * report states as such and never as clean.
+ * It runs whether each matched call ran (`ran.ts`), the secrets check (`secrets.ts`), the
+ * git-backed checks for skipped checks, lost work and destructive commands (`git-checks.ts`),
+ * and the checks that read what commands and edits did (`calls.ts`): tests, cloud, production
+ * infrastructure, unreviewed code, egress and dependencies. A category without a check reads
+ * `not-checked`, which the report states as such and never as clean.
  */
 
 import { homedir } from "node:os";
 import type { CompiledAllowlist } from "../evaluate.js";
 import type { CompiledRule } from "../rules.js";
 import type { ScanCorpus } from "../scan-report.js";
+import { readCalls } from "./calls.js";
 import type { LocalFix, UnsafeFix } from "./cards.js";
+import { checkCloud } from "./cloud.js";
+import { checkDependencies } from "./deps.js";
+import { databaseTargetClasses } from "./destructive.js";
+import { checkEgress } from "./egress.js";
 import { createFingerprinter, type Fingerprinter } from "./fingerprint.js";
 import { checkGitBacked } from "./git-checks.js";
+import { checkProdInfra, type DatabaseTargetCounts } from "./prod-infra.js";
 import { tallyMatchedCalls } from "./ran.js";
 import { checkSecrets } from "./secrets.js";
-import type { PendingCheck, Verification, VerifyIO } from "./types.js";
+import { checkTests } from "./tests.js";
+import type { Verification, VerifyIO } from "./types.js";
+import { checkUnreviewed } from "./unreviewed.js";
 
 /** What verification needs. */
 export interface VerifyInput {
@@ -48,20 +57,18 @@ export const VERIFY_BY_DEFAULT = false;
 
 /**
  * What verification produced: the value-free `Verification` that `ScanResult` carries, and,
- * beside it and never inside it, the exact fix commands for the local fixes file.
+ * beside it and never inside it, the exact fix commands for the local fixes file. A command
+ * that could not be made safe is an `UnsafeFix`, which carries no command text.
  */
 export interface VerifyOutcome {
   readonly verification: Verification;
-  readonly localFixes: readonly LocalFix[];
+  readonly localFixes: readonly (LocalFix | UnsafeFix)[];
   /**
    * Fixes a check could not make a safe command for, each with its note. No command text.
    * For the local fixes file to list as notes; the categories' facts count them too.
    */
   readonly unsafeFixes?: readonly UnsafeFix[];
 }
-
-/** A category with no check yet. */
-const NOT_CHECKED: PendingCheck = { status: "not-checked" };
 
 /**
  * A `VerifyIO` that can do nothing: every call fails as `missing`. Verification run with it
@@ -73,6 +80,14 @@ export const UNAVAILABLE_VERIFY_IO: VerifyIO = {
   readFile: () => Promise.resolve({ ok: false, reason: "missing" }),
   processNames: () => Promise.resolve({ ok: false, reason: "missing" }),
 };
+
+/**
+ * Charge in-process work to the run's one time budget, where the seam keeps one (`charge`);
+ * a seam without a budget is left alone.
+ */
+function chargeTime(io: VerifyIO, ms: number): void {
+  (io as VerifyIO & { charge?: (ms: number) => boolean }).charge?.(Math.max(0, ms));
+}
 
 /** Run every check there is. Never throws. */
 export async function verifyScan(input: VerifyInput): Promise<VerifyOutcome> {
@@ -91,6 +106,34 @@ export async function verifyScan(input: VerifyInput): Promise<VerifyOutcome> {
     home: input.home ?? homedir(),
     ...(input.scratchRoots === undefined ? {} : { scratchRoots: input.scratchRoots }),
   });
+
+  // The checks that read what commands and edits did share one reading of the calls. That
+  // reading and the checks that need nothing else run in-process first.
+  const started = Date.now();
+  const calls = readCalls(input.corpus, input.catalog, input.allowlist);
+  const rules = { catalog: input.catalog, allowlist: input.allowlist };
+  const cloud = checkCloud({ calls, ...rules });
+  // Database targets by class (local, scratch, other), from the destructive-commands check. A
+  // target it could not resolve is never local: the production check counts it as unconfirmed.
+  // When that check could not run, the targets are not available.
+  const classes = databaseTargetClasses(git.destructive);
+  const databaseTargets: DatabaseTargetCounts | undefined =
+    classes === undefined
+      ? undefined
+      : { local: classes.local, scratch: classes.scratch, other: classes.other };
+  const prodInfra = checkProdInfra({
+    calls,
+    ...rules,
+    databaseTargets,
+    databaseTargetsUnresolved: classes?.unresolved ?? 0,
+  });
+  const dependencies = checkDependencies(calls);
+  chargeTime(input.io, Date.now() - started);
+
+  const tests = await checkTests({ calls, io: input.io });
+  const unreviewed = await checkUnreviewed({ calls, io: input.io });
+  const egress = await checkEgress({ calls, ...rules, io: input.io });
+
   const verification: Verification = {
     matchedCalls: matched.tally,
     resultsRecorded: matched.resultsRecorded,
@@ -99,13 +142,24 @@ export async function verifyScan(input: VerifyInput): Promise<VerifyOutcome> {
       secrets,
       "skipped-checks": git["skipped-checks"],
       "lost-work": git["lost-work"],
-      cloud: NOT_CHECKED,
-      "prod-infra": NOT_CHECKED,
-      tests: NOT_CHECKED,
+      cloud: cloud.check,
+      "prod-infra": prodInfra,
+      tests: tests.check,
       destructive: git.destructive,
-      unreviewed: NOT_CHECKED,
-      egress: NOT_CHECKED,
+      unreviewed: unreviewed.check,
+      egress: egress.check,
     },
+    dependencies,
   };
-  return { verification, localFixes: git.localFixes, unsafeFixes: git.unsafeFixes };
+  return {
+    verification,
+    localFixes: [
+      ...git.localFixes,
+      ...tests.localFixes,
+      ...cloud.localFixes,
+      ...unreviewed.localFixes,
+      ...egress.localFixes,
+    ],
+    unsafeFixes: git.unsafeFixes,
+  };
 }
