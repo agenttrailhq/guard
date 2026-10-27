@@ -33,10 +33,10 @@
 import type { CompiledAllowlist } from "../evaluate.js";
 import type { CompiledRule } from "../rules.js";
 import {
+  backstopCalls,
   type CorpusCalls,
-  couldHideCount,
   executedText,
-  heldHidingForms,
+  hidingFacts,
   isShell,
   programAndArgs,
   quietStatus,
@@ -59,6 +59,7 @@ import {
 } from "./cards.js";
 import { PROCESS_CHECKS, TUNNEL_PROCESS_NAMES, UPLOAD_KINDS } from "./command-facts.js";
 import { bareHost, endpointsLocal, hostOf, isLocalHost } from "./hosts.js";
+import { READ_PROGRAMS } from "./ran.js";
 import type { CheckedCategory, HidingForm, VerifyIO, VerifyStatus } from "./types.js";
 
 export { PROCESS_CHECKS, TUNNEL_PROCESS_NAMES, UPLOAD_KINDS };
@@ -679,8 +680,16 @@ export async function checkEgress(input: EgressInput): Promise<EgressOutcome> {
     tunnelsRunning: running.length,
     tunnelPrograms: running,
     processCheck: listed.ok ? "checked" : "could-not-check",
-    couldHide: couldHideCount(input.calls),
-    hidingForms: heldHidingForms(input.calls),
+    // Traffic behind a program no check reads, in any call, read or not.
+    ...hidingFacts(
+      input.calls,
+      backstopCalls(
+        input.calls,
+        READ_PROGRAMS.egress,
+        (tail) => readEgress(tail).some((t) => !t.local),
+        egressRule,
+      ),
+    ),
   };
   const fixes = running.map((program) =>
     // The program is one of `TUNNEL_PROCESS_NAMES`, so the command carries no data.

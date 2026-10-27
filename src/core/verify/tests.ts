@@ -25,12 +25,12 @@
 
 import { dirname } from "node:path";
 import {
+  backstopCalls,
   baseName,
   type CorpusCalls,
-  couldHideCount,
   executedText,
   type FileEdit,
-  heldHidingForms,
+  hidingFacts,
   isEdit,
   isShell,
   programAndArgs,
@@ -59,6 +59,7 @@ import {
   type UnsafeFix,
 } from "./cards.js";
 import { gitSubcommandIndex } from "./prefix-words.js";
+import { READ_PROGRAMS } from "./ran.js";
 import { placed, readRepoFile, rootCache } from "./repos.js";
 import type { CheckedCategory, HidingForm, RunState, VerifyIO, VerifyStatus } from "./types.js";
 
@@ -651,11 +652,18 @@ export async function checkTests(input: TestsInput): Promise<TestsOutcome> {
     else counts.thresholdsLowered += 1;
   }
 
+  // A test file deleted, a test config or CI file written, or a patch applied, behind a program
+  // no check reads.
+  const behind = backstopCalls(
+    input.calls,
+    READ_PROGRAMS.tests,
+    (tail) =>
+      deletedTestPaths(tail).length > 0 || writesConfigByShell(tail) || changesFilesUnread(tail),
+  );
   const facts: TestsFacts = {
     ...counts,
     autoUpdateNow,
-    couldHide: couldHideCount(input.calls),
-    hidingForms: heldHidingForms(input.calls),
+    ...hidingFacts(input.calls, behind),
   };
   return { check: { status: testsStatus(facts), matches, facts }, localFixes: fixes };
 }

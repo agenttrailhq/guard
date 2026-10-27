@@ -24,6 +24,7 @@
 import type { CompiledAllowlist } from "../evaluate.js";
 import type { CompiledRule } from "../rules.js";
 import {
+  backstopCalls,
   type CorpusCalls,
   executedText,
   hidingFacts,
@@ -58,6 +59,7 @@ import {
 } from "./cards.js";
 import { IAM_SUBJECTS } from "./command-facts.js";
 import { endpointsLocal } from "./hosts.js";
+import { READ_PROGRAMS } from "./ran.js";
 import { placed } from "./repos.js";
 import type { CheckedCategory, HidingForm, VerifyStatus } from "./types.js";
 
@@ -368,13 +370,7 @@ export const CLOUD_UNREAD_RULES: ReadonlySet<string> = new Set([
 ]);
 
 /** The programs this module's reading takes apart. */
-const CLOUD_PROGRAMS: ReadonlySet<string> = new Set([
-  "aws",
-  "awslocal",
-  "terraform",
-  "tofu",
-  "terragrunt",
-]);
+const CLOUD_PROGRAMS: ReadonlySet<string> = READ_PROGRAMS.cloud;
 
 /** What the cloud check needs. */
 export interface CloudInput {
@@ -493,10 +489,17 @@ export function checkCloud(input: CloudInput): CloudOutcome {
     }
   }
 
+  // A cloud command behind a program no check reads, in any call, read or not.
+  const behind = backstopCalls(
+    input.calls,
+    READ_PROGRAMS.cloud,
+    (tail, call) => readCloud(tail, call.cwd).changes.length > 0,
+    (call, text) => unreadRule(call, text) || terraformRule(call, text) || iamRule(call, text),
+  );
   const facts: CloudFacts = {
     ...counts,
     iamSubjects: IAM_SUBJECTS.filter((s) => subjects.has(s)),
-    ...hidingFacts(input.calls, unread),
+    ...hidingFacts(input.calls, [...unread, ...behind]),
   };
   return { check: { status: cloudStatus(facts), matches, facts }, localFixes: fixes };
 }

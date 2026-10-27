@@ -56,8 +56,10 @@ import {
   unsafeFixLine,
   was,
 } from "./git-copy.js";
+import { READ_PROGRAMS } from "./ran.js";
 import { CHECK_HOOKS, COMMIT_HOOKS, isFailure } from "./repo-probe.js";
 import {
+  backstopIds,
   type Detector,
   gitFolder,
   type Judged,
@@ -65,6 +67,7 @@ import {
   outputOf,
   tallyOf,
   walkCommands,
+  withUnread,
 } from "./shell-calls.js";
 import { commandStart, gitCommand, operands, programName, type ShellWord } from "./shell-words.js";
 import type { CheckedCategory, HidingForm, RunTally, VerifyStatus } from "./types.js";
@@ -785,6 +788,13 @@ export async function checkSkippedChecks(context: GitCheckContext): Promise<Skip
     fixes,
   );
   const instructions = await checkInstructions(context, fixes);
+  // A git command that skips hooks behind a program no check reads.
+  const behind = backstopIds(log, READ_PROGRAMS["skipped-checks"], [
+    noVerifyCommits,
+    otherNoVerify,
+    oneCommandSkips,
+    hooksPathChanges,
+  ]);
   const facts: SkippedChecksFacts = {
     noVerify,
     otherNoVerify: tallyOf(otherCalls),
@@ -793,8 +803,7 @@ export async function checkSkippedChecks(context: GitCheckContext): Promise<Skip
     hooksPath,
     instructions,
     unsafeFixes: fixes.unsafe.length,
-    hidingCalls: log.hiding.calls,
-    hidingForms: [...log.hiding.forms],
+    ...withUnread(log, behind),
   };
 
   const calls = new Set(

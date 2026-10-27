@@ -11813,6 +11813,149 @@ function simpleViews(text2, bodies) {
   });
   return out;
 }
+var READ_PROGRAMS = {
+  "skipped-checks": /* @__PURE__ */ new Set(["git"]),
+  "lost-work": /* @__PURE__ */ new Set(["git", "cp"]),
+  destructive: /* @__PURE__ */ new Set([
+    "rm",
+    "docker",
+    "podman",
+    "kubectl",
+    "ssh",
+    "psql",
+    "dropdb",
+    "mysql",
+    "mariadb",
+    "mysqladmin",
+    "redis-cli",
+    "mongo",
+    "mongosh",
+    "sqlite3",
+    "prisma",
+    "rails",
+    "rake"
+  ]),
+  cloud: /* @__PURE__ */ new Set(["aws", "awslocal", "terraform", "tofu", "terragrunt"]),
+  "prod-infra": /* @__PURE__ */ new Set(["kubectl", "helm", "terraform", "tofu", "terragrunt", "tflocal", "aws"]),
+  tests: /* @__PURE__ */ new Set(["rm", "unlink", "git", "sed", "perl", "tee", "cp", "mv", "patch"]),
+  unreviewed: /* @__PURE__ */ new Set(["git"]),
+  egress: /* @__PURE__ */ new Set([
+    "curl",
+    "wget",
+    "scp",
+    "rsync",
+    "aws",
+    "awslocal",
+    "gsutil",
+    "gcloud",
+    "az",
+    "rclone",
+    "gh",
+    "nc",
+    "ncat",
+    "netcat",
+    "socat",
+    "ssh",
+    "ngrok",
+    "cloudflared",
+    "lt",
+    "localtunnel",
+    "bore",
+    "frpc",
+    "chisel",
+    "zrok",
+    "devtunnel",
+    "tmole",
+    "loclx",
+    "inlets"
+  ]),
+  dependencies: /* @__PURE__ */ new Set([
+    "npm",
+    "pnpm",
+    "yarn",
+    "bun",
+    "pip",
+    "pip3",
+    "python",
+    "python3",
+    "uv",
+    "poetry",
+    "pipenv",
+    "cargo",
+    "go",
+    "gem",
+    "bundle",
+    "bundler",
+    "composer"
+  ])
+};
+var DATA_PROGRAMS = /* @__PURE__ */ new Set([
+  ...PRINTERS,
+  ...LOOKUPS,
+  ...SEARCHERS,
+  ...INPUT_SINKS,
+  ...INERT_PROGRAMS,
+  ...PURE_CONSUMERS,
+  "sed",
+  "awk",
+  "gawk",
+  "find",
+  "tree",
+  "cmp",
+  "basename",
+  "dirname",
+  "realpath",
+  "readlink",
+  "date",
+  "sleep",
+  "test",
+  "[",
+  "[[",
+  "pushd",
+  "popd",
+  "export",
+  "unset",
+  "set",
+  "read",
+  "local",
+  "declare",
+  "alias",
+  "exit",
+  "return",
+  "wait",
+  "fi",
+  "done",
+  "esac"
+]);
+var knownPrograms;
+function isKnownProgram(name) {
+  knownPrograms ??= /* @__PURE__ */ new Set([
+    ...Object.values(READ_PROGRAMS).flatMap((programs) => [...programs]),
+    ...DATA_PROGRAMS,
+    ...SHELLS2
+  ]);
+  return knownPrograms.has(name);
+}
+function opaqueCommands(text2) {
+  const out = [];
+  for (const simple of simpleCommandsOf(text2)) {
+    const at2 = programStart(simple.words).index;
+    const program = simple.words[at2];
+    if (program === void 0 || isKnownProgram(programNameOf(program))) continue;
+    out.push(simple.words.slice(at2));
+  }
+  return out;
+}
+function quoteWords(words2) {
+  return words2.map((word) => `'${word.replace(/'/g, "'\\''")}'`).join(" ");
+}
+function backstopTails(words2, programs) {
+  const out = [];
+  for (let k = 1; k < words2.length; k++) {
+    if (programs.has(programNameOf(words2[k]))) out.push(quoteWords(words2.slice(k)));
+  }
+  return out;
+}
 function hidingFormsOf(mapped) {
   const command = mapped.args.full_command;
   if (command === void 0) return [];
@@ -12121,12 +12264,25 @@ function heldHidingForms(corpus) {
 }
 function hidingFacts(corpus, unread) {
   const known = hidden(corpus);
-  const bare = unread.filter((call) => call.hidingForms.length === 0).length;
+  const bare = [...new Set(unread)].filter((call) => call.hidingForms.length === 0).length;
   if (bare === 0) return { couldHide: known.count, hidingForms: known.forms };
   return {
     couldHide: known.count + bare,
     hidingForms: HIDING_FORMS.filter((f) => f === "unread-match" || known.forms.includes(f))
   };
+}
+function backstopCalls(corpus, programs, reads, rule) {
+  const out = [];
+  for (const call of corpus.calls) {
+    if (!isShell(call)) continue;
+    const opaque = opaqueCommands(executedText(call.command));
+    if (opaque.length === 0) continue;
+    const hit = opaque.some(
+      (words2) => backstopTails(words2, programs).some((tail) => reads(tail, call)) || rule?.(call, words2.join(" ")) === true
+    );
+    if (hit && ranOrMayHaveRun(corpus.agent, call)) out.push(call);
+  }
+  return out;
 }
 function runsAnyOf(command, programs) {
   return simpleCommands(command).some((simple) => programs.has(programAndArgs(simple).program));
@@ -12673,13 +12829,7 @@ var CLOUD_UNREAD_RULES = /* @__PURE__ */ new Set([
   "pi.cloud-resource-delete",
   "se.public-acl"
 ]);
-var CLOUD_PROGRAMS = /* @__PURE__ */ new Set([
-  "aws",
-  "awslocal",
-  "terraform",
-  "tofu",
-  "terragrunt"
-]);
+var CLOUD_PROGRAMS = READ_PROGRAMS.cloud;
 function checkCloud(input) {
   const { agent, calls } = input.calls;
   const terraformRule = rulesMatcher(
@@ -12765,10 +12915,16 @@ function checkCloud(input) {
       fixes.push(review2);
     }
   }
+  const behind = backstopCalls(
+    input.calls,
+    READ_PROGRAMS.cloud,
+    (tail, call) => readCloud(tail, call.cwd).changes.length > 0,
+    (call, text2) => unreadRule(call, text2) || terraformRule(call, text2) || iamRule(call, text2)
+  );
   const facts = {
     ...counts,
     iamSubjects: IAM_SUBJECTS.filter((s) => subjects.has(s)),
-    ...hidingFacts(input.calls, unread)
+    ...hidingFacts(input.calls, [...unread, ...behind])
   };
   return { check: { status: cloudStatus(facts), matches, facts }, localFixes: fixes };
 }
@@ -13314,8 +13470,16 @@ async function checkEgress(input) {
     tunnelsRunning: running.length,
     tunnelPrograms: running,
     processCheck: listed.ok ? "checked" : "could-not-check",
-    couldHide: couldHideCount(input.calls),
-    hidingForms: heldHidingForms(input.calls)
+    // Traffic behind a program no check reads, in any call, read or not.
+    ...hidingFacts(
+      input.calls,
+      backstopCalls(
+        input.calls,
+        READ_PROGRAMS.egress,
+        (tail) => readEgress(tail).some((t) => !t.local),
+        egressRule
+      )
+    )
   };
   const fixes = running.map(
     (program) => (
@@ -14038,11 +14202,15 @@ ${edit.added}`),
     if (on && lower.revertsToSeen) counts.autoUpdateReverts += 1;
     else counts.thresholdsLowered += 1;
   }
+  const behind = backstopCalls(
+    input.calls,
+    READ_PROGRAMS.tests,
+    (tail) => deletedTestPaths(tail).length > 0 || writesConfigByShell(tail) || changesFilesUnread(tail)
+  );
   const facts = {
     ...counts,
     autoUpdateNow,
-    couldHide: couldHideCount(input.calls),
-    hidingForms: heldHidingForms(input.calls)
+    ...hidingFacts(input.calls, behind)
   };
   return { check: { status: testsStatus(facts), matches, facts }, localFixes: fixes };
 }
@@ -14399,8 +14567,7 @@ async function checkUnreviewed(input) {
     const output = call.result?.content ?? "";
     const updates = pushedRefs(output).filter((u) => MAIN_BRANCH.test(u.branch));
     if (updates.length === 0) {
-      const couldBeMain = push.destinations.length === 0 || push.destinations.some((d) => MAIN_BRANCH.test(d));
-      if (couldBeMain && !saysWhatHappened(output)) counts.pushesNotChecked += 1;
+      if (couldReachMain(push) && !saysWhatHappened(output)) counts.pushesNotChecked += 1;
       continue;
     }
     counts.pushesToMain += updates.length;
@@ -14436,8 +14603,17 @@ async function checkUnreviewed(input) {
       } else counts.commitsNotOnMain += placement.commits;
     }
   }
-  const facts = { ...counts, ...hidingFacts(input.calls, unread) };
+  const behind = backstopCalls(
+    input.calls,
+    READ_PROGRAMS.unreviewed,
+    (tail) => readPushes(tail).some((p) => !p.dryRun),
+    pushRule
+  );
+  const facts = { ...counts, ...hidingFacts(input.calls, [...unread, ...behind]) };
   return { check: { status: unreviewedStatus(facts), matches, facts }, localFixes: fixes };
+}
+function couldReachMain(push) {
+  return push.destinations.length === 0 || push.destinations.some((d) => MAIN_BRANCH.test(d));
 }
 function unreviewedStatus(facts) {
   if (facts.commitsOnMain > 0) return "review";
@@ -15312,6 +15488,32 @@ function ranOrMayHaveRun2(verdict2) {
   if (isResultBackedRun(verdict2)) return true;
   return verdict2.state === "unknown" && (verdict2.why === "no-result" || verdict2.why === "not-recorded");
 }
+function backstopIds(log, programs, detectors, rule) {
+  const ids = /* @__PURE__ */ new Set();
+  for (const call of log.shell) {
+    const opaque = opaqueCommands(call.view);
+    if (opaque.length === 0) continue;
+    const reads = (tail) => detectors.some((detect) => detect(tail, call.cwd, log.home).length > 0);
+    const hit = opaque.some(
+      (words2) => backstopTails(words2, programs).some(reads) || rule?.(call.mapped, words2.join(" ")) === true
+    );
+    if (hit && ranOrMayHaveRun2(runVerdict(log.agent, call.mapped, call.result, () => true))) {
+      ids.add(call.id);
+    }
+  }
+  return ids;
+}
+function withUnread(log, unread) {
+  const bare = log.shell.filter(
+    (call) => unread.has(call.id) && hidingFormsOf(call.mapped).length === 0
+  ).length;
+  return {
+    hidingCalls: log.hiding.calls + bare,
+    hidingForms: HIDING_FORMS.filter(
+      (form) => log.hiding.forms.includes(form) || form === "unread-match" && bare > 0
+    )
+  };
+}
 function outputOf(call) {
   return call.result?.content ?? "";
 }
@@ -15721,21 +15923,24 @@ var DESTRUCTIVE_RULES = /* @__PURE__ */ new Set([
 ]);
 function unreadMatches(context, read) {
   const rules12 = context.rules;
-  if (rules12 === void 0) return 0;
-  const subset = rules12.catalog.filter((rule) => DESTRUCTIVE_RULES.has(rule.rule.id));
-  if (subset.length === 0) return 0;
-  const matches = (mapped) => evaluateAction(subset, rules12.allowlist, [mapped]).decision.matches.length > 0;
-  let bare = 0;
+  const subset = rules12?.catalog.filter((rule) => DESTRUCTIVE_RULES.has(rule.rule.id)) ?? [];
+  const matches = (mapped) => rules12 !== void 0 && subset.length > 0 && evaluateAction(subset, rules12.allowlist, [mapped]).decision.matches.length > 0;
+  const detectors = [rmTargets, databaseDetector(context.scratchRoots)];
+  const ids = backstopIds(
+    context.log,
+    READ_PROGRAMS.destructive,
+    detectors,
+    (mapped, text2) => matches({ ...mapped, args: { ...mapped.args, full_command: text2 } })
+  );
   for (const call of context.log.shell) {
     if (read.has(call.id)) continue;
     const ran = { ...call.mapped, args: { ...call.mapped.args, full_command: call.view } };
     if (!matches(ran)) continue;
-    if (!isResultBackedRun(runVerdict(context.log.agent, call.mapped, call.result, matches))) {
-      continue;
+    if (isResultBackedRun(runVerdict(context.log.agent, call.mapped, call.result, matches))) {
+      ids.add(call.id);
     }
-    if (hidingFormsOf(call.mapped).length === 0) bare += 1;
   }
-  return bare;
+  return ids;
 }
 function destructiveStatus(facts, sessions) {
   const { rm, databases } = facts;
@@ -15764,10 +15969,7 @@ async function checkDestructive(context) {
     rm,
     databases,
     unsafeFixes: fixes.unsafe.length,
-    hidingCalls: log.hiding.calls + unread,
-    hidingForms: HIDING_FORMS.filter(
-      (form) => log.hiding.forms.includes(form) || form === "unread-match" && unread > 0
-    )
+    ...withUnread(log, unread)
   };
   const calls = new Set([...rmCalls, ...dbCalls].map((j) => j.call.id));
   const status = destructiveStatus(facts, log.sessions);
@@ -16336,13 +16538,17 @@ async function checkLostWork(context) {
   const branches = await checkBranches(context, branchCalls, fixes);
   const stashes = await checkStashes(context, stashCalls, fixes);
   const discarded = await checkDiscards(context, discardCalls, own);
+  const behind = backstopIds(log, READ_PROGRAMS["lost-work"], [
+    branchDeletes,
+    stashDrops,
+    discards
+  ]);
   const facts = {
     branches,
     stashes,
     discards: discarded,
     unsafeFixes: fixes.unsafe.length,
-    hidingCalls: log.hiding.calls,
-    hidingForms: [...log.hiding.forms]
+    ...withUnread(log, behind)
   };
   const calls = new Set([...branchCalls, ...stashCalls, ...discardCalls].map((j) => j.call.id));
   const status = lostWorkStatus(facts, log.sessions);
@@ -17147,6 +17353,12 @@ async function checkSkippedChecks(context) {
     fixes
   );
   const instructions = await checkInstructions(context, fixes);
+  const behind = backstopIds(log, READ_PROGRAMS["skipped-checks"], [
+    noVerifyCommits,
+    otherNoVerify,
+    oneCommandSkips,
+    hooksPathChanges
+  ]);
   const facts = {
     noVerify,
     otherNoVerify: tallyOf(otherCalls),
@@ -17155,8 +17367,7 @@ async function checkSkippedChecks(context) {
     hooksPath,
     instructions,
     unsafeFixes: fixes.unsafe.length,
-    hidingCalls: log.hiding.calls,
-    hidingForms: [...log.hiding.forms]
+    ...withUnread(log, behind)
   };
   const calls = new Set(
     [...commitCalls, ...otherCalls, ...huskyCalls, ...oneCommandCalls, ...configCalls].map(

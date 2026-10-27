@@ -435,6 +435,28 @@ describe("commands this reading cannot open: could not confirm, never clean", ()
     expect(unconfirmedOf("destructive", result.status, result.facts, true)?.forms).toContain(form);
   });
 
+  it("a delete behind a program no check reads, beside one that was read: could not confirm", async () => {
+    const root = makeRepo("backstop-mixed", {
+      files: { "keep/a.txt": "a\n", "build/b.txt": "b\n" },
+    });
+    // The delete read alone: its tracked files are all there, so nothing is lost.
+    const alone = await destructive(ran(root, `rm -rf ${"build"}`));
+    expect(alone.result.status).toBe("clean");
+    const mixed = await destructive(
+      ran(root, `rm -rf ${"build"} && my-wrapper rm -rf /Users/sample/${"important"}`),
+    );
+    expect(mixed.facts.hidingForms).toEqual(["unread-match"]);
+    expect(mixed.facts.hidingCalls).toBe(1);
+    expect(mixed.result.status).toBe("could-not-check");
+    // Behind a launcher the readers know, the second delete is read, not missed.
+    const launched = await destructive(
+      ran(root, `rm -rf ${"build"} && aws-vault exec prod -- rm -rf /Users/sample/${"important"}`),
+    );
+    expect(launched.facts.hidingForms).toEqual([]);
+    expect(launched.facts.rm.targets).toBe(2);
+    expect(launched.result.status).not.toBe("clean");
+  });
+
   it("a command inside a shell string or a substitution is read too", async () => {
     const root = makeRepo("hiding-read", { files: { "src/a.ts": "a\n" } });
     rmSync(join(root, "src"), { recursive: true });

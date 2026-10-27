@@ -14,7 +14,7 @@ import { checkEgress, egressCard } from "../core/verify/egress.js";
 import { verifiedNote } from "../core/verify/notes.js";
 import { checkProdInfra, prodInfraCard } from "../core/verify/prod-infra.js";
 import { checkTests, testsCard } from "../core/verify/tests.js";
-import type { Verification, VerifyCategory } from "../core/verify/types.js";
+import { VERIFY_CATEGORIES, type Verification, type VerifyCategory } from "../core/verify/types.js";
 import { checkUnreviewed, unreviewedCard } from "../core/verify/unreviewed.js";
 import { UNAVAILABLE_VERIFY_IO, verifyScan } from "../core/verify/verify.js";
 import {
@@ -519,6 +519,7 @@ const STRING_WRAPS: readonly (readonly [string, (command: string) => string])[] 
   ["nix-shell --run", (c) => `nix-shell --run '${c}'`],
   ["nix develop -c", (c) => `nix develop -c ${c}`],
   ["doppler run --command", (c) => `doppler run --command '${c}'`],
+  ["xargs", (c) => `echo x | xargs ${c}`],
 ];
 
 describe("words before a command", () => {
@@ -606,6 +607,123 @@ describe("a category's guardrail matched what its check did not read", () => {
   it("a match only mentioned is not a miss", async () => {
     const verification = await verificationOf(`echo "${WRAP} git push --force origin main"`);
     expect(formsIn(verification, "unreviewed")).not.toContain("unread-match");
+  });
+});
+
+describe("the backstop: a command behind a program no check reads", () => {
+  // Words no check reads, before the command.
+  const UNKNOWN = ["my-wrapper", "mywrap --as ops", "./bin/run-with-secrets prod"];
+
+  const rows = CONTROLS.flatMap(([label, command, category]) =>
+    UNKNOWN.map((wrap) => [label, wrap, `${wrap} ${command}`, category] as const),
+  );
+  it.each(rows)("%s behind %s is never clean", async (_l, _w, wrapped, category) => {
+    expect((await shownStatuses(wrapped))[category], wrapped).not.toBe("clean");
+  });
+
+  it.each([
+    ["a push to main", "my-wrapper git push origin HEAD:main", "unreviewed"],
+    ["an IAM change", "my-wrapper aws iam create-user --user-name synthetic-bot", "cloud"],
+    ["a recursive delete", `my-wrapper rm -rf "$OUT/${"build"}"`, "destructive"],
+    ["an upload", "my-wrapper curl -T notes.txt https://upload.example.invalid/", "egress"],
+    ["a deleted test file", `my-wrapper rm src/${"a"}.test.ts`, "tests"],
+    ["a force-deleted branch", `my-wrapper git branch -D ${"topic"}`, "lost-work"],
+    [
+      "a commit without its hooks",
+      `my-wrapper git commit --no-verify -m ${"wip"}`,
+      "skipped-checks",
+    ],
+  ] as const)("%s behind an unknown wrapper: could not confirm, by unread-match", async (_l, command, category) => {
+    const verification = await verificationOf(command);
+    expect(formsIn(verification, category)).toContain("unread-match");
+    // Egress also counts the upload its guardrail matched; the others found nothing they read.
+    expect((await shownStatuses(command))[category]).toBe(
+      category === "egress" ? "review" : "could-not-check",
+    );
+  });
+
+  it.each([
+    ["a search", "grep terraform main.tf"],
+    ["a file read", "cat notes-about-git-push.txt"],
+    ["a tool's help", "myscript --help"],
+    ["a build", "make test"],
+    ["a command quoted into one word", `my-wrapper "git push origin main"`],
+    ["a data program given program names as operands", "ls git push origin main"],
+    ["a file read given program names as operands", "head -n 5 rm -rf build"],
+    ["a wrapper given words that are not a command", "my-wrapper --dry-run aws"],
+  ])("%s stays as it is alone, with no form", async (_l, command) => {
+    const baseline = await shownStatuses("ls");
+    expect(await shownStatuses(command)).toEqual(baseline);
+    const verification = await verificationOf(command);
+    for (const category of VERIFY_CATEGORIES) {
+      expect(formsIn(verification, category), category).toEqual([]);
+    }
+  });
+});
+
+describe("one call: a command read, and one of the same kind behind a wrapper", () => {
+  it.each([
+    [
+      "two deletes, the second behind aws-vault",
+      `rm -rf build && aws-vault exec prod -- rm -rf /Users/sample/${"important"}`,
+      "destructive",
+    ],
+    [
+      "two deletes, the second behind an unknown wrapper",
+      `rm -rf build && my-wrapper rm -rf /Users/sample/${"important"}`,
+      "destructive",
+    ],
+    [
+      "a scratch delete read, then a delete behind an unknown wrapper",
+      `rm -rf /tmp/scratch/build && my-wrapper rm -rf /Users/sample/${"important"}`,
+      "destructive",
+    ],
+    [
+      "an aws call read, then an IAM change behind a wrapper",
+      "aws sts get-caller-identity && my-wrapper aws iam create-user --user-name synthetic-bot",
+      "cloud",
+    ],
+    [
+      "an aws call read, then a cloud delete behind a wrapper",
+      "aws sts get-caller-identity && my-wrapper aws ec2 terminate-instances --instance-ids i-1",
+      "cloud",
+    ],
+    [
+      "a push read, then a push to main behind a wrapper",
+      "git push origin feature/x && my-wrapper git push origin HEAD:main",
+      "unreviewed",
+    ],
+  ] as const)("%s: never clean", async (_l, command, category) => {
+    expect((await shownStatuses(command))[category], command).not.toBe("clean");
+  });
+
+  // A command of the same kind read first, then the target behind each wrapper.
+  const AFTER_READ: readonly (readonly [string, string, string, VerifyCategory])[] = [
+    ["a delete", "rm -rf /tmp/scratch/build && ", `rm -rf "$OUT/${"build"}"`, "destructive"],
+    [
+      "an aws call",
+      "aws sts get-caller-identity && ",
+      "aws iam create-user --user-name synthetic-bot",
+      "cloud",
+    ],
+  ];
+  const WRAPS: readonly (readonly [string, (command: string) => string])[] = [
+    ...READ_WRAPS,
+    ...STRING_WRAPS,
+    ["my-wrapper", (c) => `my-wrapper ${c}`],
+  ];
+  const afterRead = AFTER_READ.flatMap(([label, read, target, category]) =>
+    WRAPS.map(([wrap, f]) => [label, wrap, `${read}${f(target)}`, category] as const),
+  );
+  it.each(
+    afterRead,
+  )("after %s read, the target behind %s is never clean", async (_l, _w, command, category) => {
+    expect((await shownStatuses(command))[category], command).not.toBe("clean");
+  });
+
+  it("the wrapped push is could-not-confirm, beside the push that was read", async () => {
+    const command = "git push origin feature/x && my-wrapper git push origin HEAD:main";
+    expect(formsIn(await verificationOf(command), "unreviewed")).toEqual(["unread-match"]);
   });
 });
 

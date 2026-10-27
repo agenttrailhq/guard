@@ -28,9 +28,11 @@ import type { ToolResult, ToolUse } from "../transcript/transcript-types.js";
 import type { AgentSource, MappedCall } from "../types.js";
 import { gitSubcommandIndex, programNameOf, programStart } from "./prefix-words.js";
 import {
+  backstopTails,
   executedView,
   hidingFormsOf,
   isResultBackedRun,
+  opaqueCommands,
   runVerdict,
   type SimpleCommandView,
   simpleCommandsOf,
@@ -443,12 +445,41 @@ export function hidingFacts(
   unread: readonly SessionCall[],
 ): { readonly couldHide: number; readonly hidingForms: readonly HidingForm[] } {
   const known = hidden(corpus);
-  const bare = unread.filter((call) => call.hidingForms.length === 0).length;
+  const bare = [...new Set(unread)].filter((call) => call.hidingForms.length === 0).length;
   if (bare === 0) return { couldHide: known.count, hidingForms: known.forms };
   return {
     couldHide: known.count + bare,
     hidingForms: HIDING_FORMS.filter((f) => f === "unread-match" || known.forms.includes(f)),
   };
+}
+
+/**
+ * The backstop, for a check that reads `programs`: the shell calls that ran, or may have run, in
+ * which a simple command whose program no check reads (`opaqueCommands`) holds a command of the
+ * check's kind. Either the check's own reader (`reads`) finds one in the words from one of its
+ * programs on (`backstopTails`), or one of its guardrails (`rule`) matches that simple command.
+ * Each such call can hide what the check looks for, whatever else in it the check did read:
+ * `unread-match`, never a counted finding.
+ */
+export function backstopCalls(
+  corpus: CorpusCalls,
+  programs: ReadonlySet<string>,
+  reads: (text: string, call: SessionCall) => boolean,
+  rule?: (call: SessionCall, text: string) => boolean,
+): SessionCall[] {
+  const out: SessionCall[] = [];
+  for (const call of corpus.calls) {
+    if (!isShell(call)) continue;
+    const opaque = opaqueCommands(executedText(call.command));
+    if (opaque.length === 0) continue;
+    const hit = opaque.some(
+      (words) =>
+        backstopTails(words, programs).some((tail) => reads(tail, call)) ||
+        rule?.(call, words.join(" ")) === true,
+    );
+    if (hit && ranOrMayHaveRun(corpus.agent, call)) out.push(call);
+  }
+  return out;
 }
 
 /**

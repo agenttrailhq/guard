@@ -23,6 +23,7 @@
 import type { CompiledAllowlist } from "../evaluate.js";
 import type { CompiledRule } from "../rules.js";
 import {
+  backstopCalls,
   type CorpusCalls,
   executedText,
   hidingFacts,
@@ -53,6 +54,7 @@ import {
   type UnsafeFix,
 } from "./cards.js";
 import { GIT_GLOBAL_VALUE_OPTIONS } from "./prefix-words.js";
+import { READ_PROGRAMS } from "./ran.js";
 import { placed, repoRoot, rootCache } from "./repos.js";
 import type { CheckedCategory, HidingForm, VerifyIO, VerifyStatus } from "./types.js";
 
@@ -321,9 +323,7 @@ export async function checkUnreviewed(input: UnreviewedInput): Promise<Unreviewe
       // No main update read. A push that names main as its destination, or names nothing at
       // all, could have gone to main: unless its recorded output says what happened to each
       // ref, it is not checked.
-      const couldBeMain =
-        push.destinations.length === 0 || push.destinations.some((d) => MAIN_BRANCH.test(d));
-      if (couldBeMain && !saysWhatHappened(output)) counts.pushesNotChecked += 1;
+      if (couldReachMain(push) && !saysWhatHappened(output)) counts.pushesNotChecked += 1;
       continue;
     }
     counts.pushesToMain += updates.length;
@@ -363,8 +363,20 @@ export async function checkUnreviewed(input: UnreviewedInput): Promise<Unreviewe
     }
   }
 
-  const facts: UnreviewedFacts = { ...counts, ...hidingFacts(input.calls, unread) };
+  // A push behind a program no check reads, in any call, read or not.
+  const behind = backstopCalls(
+    input.calls,
+    READ_PROGRAMS.unreviewed,
+    (tail) => readPushes(tail).some((p) => !p.dryRun),
+    pushRule,
+  );
+  const facts: UnreviewedFacts = { ...counts, ...hidingFacts(input.calls, [...unread, ...behind]) };
   return { check: { status: unreviewedStatus(facts), matches, facts }, localFixes: fixes };
+}
+
+/** Could a push have gone to main: does it name main as its destination, or name nothing? */
+function couldReachMain(push: PushCommand): boolean {
+  return push.destinations.length === 0 || push.destinations.some((d) => MAIN_BRANCH.test(d));
 }
 
 /** The unreviewed-code card's tone: `review` when commits reached main without a review. */

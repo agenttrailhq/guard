@@ -16,10 +16,13 @@ import { evaluateAction } from "../core/scan-report.js";
 import type { AgentSource, MappedCall } from "../core/types.js";
 import {
   AGENT_REPLY,
+  backstopTails,
   commandHidingForms,
   executedView,
   hidingFormsOf,
   isResultBackedRun,
+  opaqueCommands,
+  quoteWords,
   ranEvidenceOf,
   recordsToolResults,
   runVerdict,
@@ -772,6 +775,51 @@ describe("what a call could hide", () => {
     );
     for (const form of all) expect(HIDING_FORMS).toContain(form);
     expect(all.length).toBeGreaterThan(5);
+  });
+});
+
+describe("the backstop: commands behind a program no check reads", () => {
+  it("finds the simple commands whose program no check reads, and no other", () => {
+    const text = [
+      "make test",
+      "grep terraform main.tf",
+      "cat notes-about-git-push.txt",
+      "git status",
+      "aws sts get-caller-identity",
+      "echo git push",
+      "cd app",
+      "bash deploy.sh",
+      "sudo my-wrapper git push origin main",
+    ].join(" && ");
+    expect(opaqueCommands(text)).toEqual([
+      ["make", "test"],
+      ["my-wrapper", "git", "push", "origin", "main"],
+    ]);
+  });
+
+  it("gives the words from each program a check reads on, quoted as they were", () => {
+    expect(
+      backstopTails(["my-wrapper", "git", "push", "origin", "main"], new Set(["git"])),
+    ).toEqual(["'git' 'push' 'origin' 'main'"]);
+    expect(
+      backstopTails(["/usr/local/bin/w", "--x", "/usr/bin/git", "log"], new Set(["git"])),
+    ).toEqual(["'/usr/bin/git' 'log'"]);
+    // The wrapper itself is not a tail, and a word that is not a program name is not one.
+    expect(backstopTails(["git", "status"], new Set(["git"]))).toEqual([]);
+    expect(backstopTails(["make", "test"], new Set(["git"]))).toEqual([]);
+  });
+
+  it("a command quoted into one word is one word, never a tail", () => {
+    const [words] = opaqueCommands(`my-wrapper "git push origin main"`);
+    expect(words).toEqual(["my-wrapper", "git push origin main"]);
+    expect(backstopTails(words ?? [], new Set(["git"]))).toEqual([]);
+  });
+
+  it("quotes each word so a reader splits the tail as it was, a quote included", () => {
+    expect(quoteWords(["git", "commit", "-m", "it's; done"])).toBe(
+      "'git' 'commit' '-m' 'it'\\''s; done'",
+    );
+    expect(simpleCommandsOf(quoteWords(["git", "commit", "-m", "it's; done"]))).toHaveLength(1);
   });
 });
 

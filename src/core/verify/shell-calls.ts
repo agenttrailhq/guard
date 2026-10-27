@@ -32,7 +32,14 @@ import { readShimWorkdirs } from "../codex-transcript/scan.js";
 import { type ScanCorpus, toolUseCalls } from "../scan-report.js";
 import type { ToolResult } from "../transcript/transcript-types.js";
 import type { AgentSource, MappedCall } from "../types.js";
-import { executedView, hidingFormsOf, isResultBackedRun, runVerdict } from "./ran.js";
+import {
+  backstopTails,
+  executedView,
+  hidingFormsOf,
+  isResultBackedRun,
+  opaqueCommands,
+  runVerdict,
+} from "./ran.js";
 import {
   ansiQuoteEnd,
   commandStart,
@@ -560,6 +567,57 @@ export function ranOrMayHaveRun(verdict: RunVerdict): boolean {
   return (
     verdict.state === "unknown" && (verdict.why === "no-result" || verdict.why === "not-recorded")
   );
+}
+
+/**
+ * The backstop, for a git-backed check whose readers take apart `programs`: the ids of the calls
+ * that ran, or may have run, in which a simple command whose program no check reads
+ * (`opaqueCommands`) holds a command of the check's kind. Either one of its detectors finds one
+ * in the words from one of its programs on (`backstopTails`), or `rule`, its guardrails, match
+ * that simple command. Each such call can hide what the check looks for, whatever else in it
+ * the check did read: `unread-match`, never a counted finding.
+ */
+export function backstopIds(
+  log: CallLog,
+  programs: ReadonlySet<string>,
+  detectors: readonly Detector<unknown>[],
+  rule?: (mapped: MappedCall, text: string) => boolean,
+): Set<number> {
+  const ids = new Set<number>();
+  for (const call of log.shell) {
+    const opaque = opaqueCommands(call.view);
+    if (opaque.length === 0) continue;
+    const reads = (tail: string): boolean =>
+      detectors.some((detect) => detect(tail, call.cwd, log.home).length > 0);
+    const hit = opaque.some(
+      (words) =>
+        backstopTails(words, programs).some(reads) || rule?.(call.mapped, words.join(" ")) === true,
+    );
+    if (hit && ranOrMayHaveRun(runVerdict(log.agent, call.mapped, call.result, () => true))) {
+      ids.add(call.id);
+    }
+  }
+  return ids;
+}
+
+/**
+ * A git-backed check's `hidingCalls` and `hidingForms` facts: the log's (`CallLog.hiding`), plus
+ * `unread-match` for the calls in `unread`, by id. A call among them that holds another form is
+ * counted already, and is not counted again.
+ */
+export function withUnread(
+  log: CallLog,
+  unread: ReadonlySet<number>,
+): { readonly hidingCalls: number; readonly hidingForms: HidingForm[] } {
+  const bare = log.shell.filter(
+    (call) => unread.has(call.id) && hidingFormsOf(call.mapped).length === 0,
+  ).length;
+  return {
+    hidingCalls: log.hiding.calls + bare,
+    hidingForms: HIDING_FORMS.filter(
+      (form) => log.hiding.forms.includes(form) || (form === "unread-match" && bare > 0),
+    ),
+  };
 }
 
 /** The output a call recorded, as text. Empty when none was recorded. */

@@ -51,8 +51,10 @@ import {
   unsafeFixLine,
   was,
 } from "./git-copy.js";
+import { READ_PROGRAMS } from "./ran.js";
 import { isFailure } from "./repo-probe.js";
 import {
+  backstopIds,
   type CallLog,
   type Detector,
   gitFolder,
@@ -63,6 +65,7 @@ import {
   type ShellCall,
   tallyOf,
   walkCommands,
+  withUnread,
 } from "./shell-calls.js";
 import { commandStart, gitCommand, operands, programName, type ShellWord } from "./shell-words.js";
 import type { CheckedCategory, HidingForm, RunTally, VerifyStatus } from "./types.js";
@@ -654,13 +657,18 @@ export async function checkLostWork(context: GitCheckContext): Promise<LostWorkO
   const branches = await checkBranches(context, branchCalls, fixes);
   const stashes = await checkStashes(context, stashCalls, fixes);
   const discarded = await checkDiscards(context, discardCalls, own);
+  // A branch delete, stash drop or discard behind a program no check reads.
+  const behind = backstopIds(log, READ_PROGRAMS["lost-work"], [
+    branchDeletes,
+    stashDrops,
+    discards,
+  ]);
   const facts: LostWorkFacts = {
     branches,
     stashes,
     discards: discarded,
     unsafeFixes: fixes.unsafe.length,
-    hidingCalls: log.hiding.calls,
-    hidingForms: [...log.hiding.forms],
+    ...withUnread(log, behind),
   };
 
   const calls = new Set([...branchCalls, ...stashCalls, ...discardCalls].map((j) => j.call.id));

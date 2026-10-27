@@ -1,4 +1,4 @@
-// cspell:words egrep fgrep zgrep apropos whatis tldr whereis stdbuf bunx herestring heredocs redirections whatchanged shortlog pytest nohup iglob mtext Stext ovalue osascript hookspath mksh execdir okdir fdfind encodedcommand runuser
+// cspell:words egrep fgrep zgrep apropos whatis tldr whereis stdbuf bunx herestring heredocs redirections whatchanged shortlog pytest nohup iglob mtext Stext ovalue osascript hookspath mksh execdir okdir fdfind encodedcommand runuser mysqladmin awslocal tflocal ncat netcat frpc zrok devtunnel tmole loclx pipenv pushd popd esac
 /**
  * Ran, or only mentioned: did a matched tool call actually run on this machine?
  *
@@ -1344,6 +1344,195 @@ function simpleViews(text: string, bodies: boolean): SimpleCommandView[] {
       out.push(...simpleViews(text.slice(input.start, input.end), false));
     }
   });
+  return out;
+}
+
+// ── The backstop: commands behind a program no check reads ─────────────────────
+
+/** The checks that read commands by their program's name. */
+export type ProgramReadingCheck =
+  | "skipped-checks"
+  | "lost-work"
+  | "destructive"
+  | "cloud"
+  | "prod-infra"
+  | "tests"
+  | "unreviewed"
+  | "egress"
+  | "dependencies";
+
+/**
+ * The programs each check reads by name: the programs its own reader takes apart. Its reader is
+ * the authority; this table says which program words start a command it would read, for the
+ * backstop (`backstopTails`) and for telling a program no check reads (`opaqueCommands`).
+ */
+export const READ_PROGRAMS: Readonly<Record<ProgramReadingCheck, ReadonlySet<string>>> = {
+  "skipped-checks": new Set(["git"]),
+  "lost-work": new Set(["git", "cp"]),
+  destructive: new Set([
+    "rm",
+    "docker",
+    "podman",
+    "kubectl",
+    "ssh",
+    "psql",
+    "dropdb",
+    "mysql",
+    "mariadb",
+    "mysqladmin",
+    "redis-cli",
+    "mongo",
+    "mongosh",
+    "sqlite3",
+    "prisma",
+    "rails",
+    "rake",
+  ]),
+  cloud: new Set(["aws", "awslocal", "terraform", "tofu", "terragrunt"]),
+  "prod-infra": new Set(["kubectl", "helm", "terraform", "tofu", "terragrunt", "tflocal", "aws"]),
+  tests: new Set(["rm", "unlink", "git", "sed", "perl", "tee", "cp", "mv", "patch"]),
+  unreviewed: new Set(["git"]),
+  egress: new Set([
+    "curl",
+    "wget",
+    "scp",
+    "rsync",
+    "aws",
+    "awslocal",
+    "gsutil",
+    "gcloud",
+    "az",
+    "rclone",
+    "gh",
+    "nc",
+    "ncat",
+    "netcat",
+    "socat",
+    "ssh",
+    "ngrok",
+    "cloudflared",
+    "lt",
+    "localtunnel",
+    "bore",
+    "frpc",
+    "chisel",
+    "zrok",
+    "devtunnel",
+    "tmole",
+    "loclx",
+    "inlets",
+  ]),
+  dependencies: new Set([
+    "npm",
+    "pnpm",
+    "yarn",
+    "bun",
+    "pip",
+    "pip3",
+    "python",
+    "python3",
+    "uv",
+    "poetry",
+    "pipenv",
+    "cargo",
+    "go",
+    "gem",
+    "bundle",
+    "bundler",
+    "composer",
+  ]),
+};
+
+/**
+ * Programs that print, search, look up or read data, and shell words that run no other command:
+ * the printers, lookups, searchers and consumers `executedView` reads, and a few more data
+ * readers. A word after one of these is data, not a command.
+ */
+const DATA_PROGRAMS: ReadonlySet<string> = new Set([
+  ...PRINTERS,
+  ...LOOKUPS,
+  ...SEARCHERS,
+  ...INPUT_SINKS,
+  ...INERT_PROGRAMS,
+  ...PURE_CONSUMERS,
+  "sed",
+  "awk",
+  "gawk",
+  "find",
+  "tree",
+  "cmp",
+  "basename",
+  "dirname",
+  "realpath",
+  "readlink",
+  "date",
+  "sleep",
+  "test",
+  "[",
+  "[[",
+  "pushd",
+  "popd",
+  "export",
+  "unset",
+  "set",
+  "read",
+  "local",
+  "declare",
+  "alias",
+  "exit",
+  "return",
+  "wait",
+  "fi",
+  "done",
+  "esac",
+]);
+
+/** Every program some check reads, every data program, and the shells. Built on first use. */
+let knownPrograms: ReadonlySet<string> | undefined;
+
+/** Is `name` a program the readers know: one a check reads, a data program, or a shell? */
+function isKnownProgram(name: string): boolean {
+  knownPrograms ??= new Set([
+    ...Object.values(READ_PROGRAMS).flatMap((programs) => [...programs]),
+    ...DATA_PROGRAMS,
+    ...SHELLS,
+  ]);
+  return knownPrograms.has(name);
+}
+
+/**
+ * The simple commands of a shell text whose program no check reads and that is not a data
+ * program: a wrapper or tool this reading does not take apart, such as `my-wrapper git push`.
+ * Each as its words from the program on.
+ */
+export function opaqueCommands(text: string): (readonly string[])[] {
+  const out: (readonly string[])[] = [];
+  for (const simple of simpleCommandsOf(text)) {
+    const at = programStart(simple.words).index;
+    const program = simple.words[at];
+    if (program === undefined || isKnownProgram(programNameOf(program))) continue;
+    out.push(simple.words.slice(at));
+  }
+  return out;
+}
+
+/** Words as shell text, each single-quoted, so a reader splits them as they were. */
+export function quoteWords(words: readonly string[]): string {
+  return words.map((word) => `'${word.replace(/'/g, "'\\''")}'`).join(" ");
+}
+
+/**
+ * The backstop's texts for one opaque command (`opaqueCommands`): for each later word that names
+ * one of `programs`, the words from it on, quoted (`quoteWords`). A check reads each again with
+ * its own reader: `my-wrapper git push origin main` gives `'git' 'push' 'origin' 'main'`, which
+ * the push reader reads, while `make test` gives nothing. A text quoted into one word is one
+ * word, and is not read as a command.
+ */
+export function backstopTails(words: readonly string[], programs: ReadonlySet<string>): string[] {
+  const out: string[] = [];
+  for (let k = 1; k < words.length; k++) {
+    if (programs.has(programNameOf(words[k] as string))) out.push(quoteWords(words.slice(k)));
+  }
   return out;
 }
 
