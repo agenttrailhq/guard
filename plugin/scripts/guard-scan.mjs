@@ -8170,15 +8170,23 @@ function hidingFormsIn(facts) {
   return HIDING_FORMS.filter((form) => named.includes(form));
 }
 var READS_TEXT = /* @__PURE__ */ new Set(["secrets"]);
-function confirmedCard(built, facts, verification) {
-  const tone = KNOWN_TONES.has(built.tone) ? built.tone : "could-not-check";
+function unconfirmedOf(category, status, facts, resultsRecorded) {
   const forms = hidingFormsIn(facts);
-  let unconfirmed;
-  if (forms.length > 0) unconfirmed = { reason: "hiding-forms", forms };
-  else if (!verification.resultsRecorded && !READS_TEXT.has(built.category) && tone === "clean") {
-    unconfirmed = { reason: "no-output", forms: [] };
+  if (forms.length > 0) return { reason: "hiding-forms", forms };
+  if (!resultsRecorded && !READS_TEXT.has(category) && status === "clean") {
+    return { reason: "no-output", forms: [] };
   }
-  const finalTone = unconfirmed !== void 0 && tone === "clean" ? "could-not-check" : tone;
+  return void 0;
+}
+function honestStatus(category, status, facts, resultsRecorded) {
+  const known = KNOWN_TONES.has(status) ? status : "could-not-check";
+  return known === "clean" && unconfirmedOf(category, known, facts, resultsRecorded) !== void 0 ? "could-not-check" : known;
+}
+function confirmedCard(built, facts, verification) {
+  const recorded = verification.resultsRecorded;
+  const tone = KNOWN_TONES.has(built.tone) ? built.tone : "could-not-check";
+  const unconfirmed = unconfirmedOf(built.category, tone, facts, recorded);
+  const finalTone = honestStatus(built.category, tone, facts, recorded);
   const lead = unconfirmed !== void 0 ? sentences([UNCONFIRMED_SENTENCE], unconfirmed) : finalTone === "could-not-check" ? sentences([COULD_NOT_CHECK_SENTENCE], void 0) : [];
   return {
     ...built,
@@ -8232,7 +8240,7 @@ function pickHeadline(cards, context) {
   if (context.ranEvidence === "output-record") return void 0;
   for (const category of HEADLINE_ORDER) {
     const card = cards.find(
-      (c) => c.category === category && c.headline !== void 0 && c.tone === HEADLINE_TONES[category] && c.headline.basis === HEADLINE_BASIS[category] && c.headline.count > 0 && !c.headline.restsOnCodexRan
+      (c) => c.category === category && c.headline !== void 0 && c.tone === HEADLINE_TONES[category] && c.headline.basis === HEADLINE_BASIS[category] && c.headline.count > 0 && !c.headline.restsOnCodexRan && c.unconfirmed === void 0
     );
     if (card !== void 0) return card;
   }
@@ -8807,6 +8815,21 @@ function copyVerification(verification, capLists) {
     }
   };
 }
+function honestVerification(verification) {
+  const recorded = verification.resultsRecorded;
+  const categories = {};
+  for (const category of VERIFY_CATEGORIES) {
+    const result = verification.categories[category];
+    categories[category] = {
+      ...result,
+      status: honestStatus(category, result.status, result.facts, recorded)
+    };
+  }
+  return { ...verification, categories };
+}
+function boundaryVerification(verification, capLists) {
+  return honestVerification(copyVerification(verification, capLists));
+}
 function tokenCopy(t) {
   return {
     input: t.input,
@@ -8877,8 +8900,12 @@ function reportPayload(result, meta, builders = CARD_BUILDERS) {
       guardrailCount: t.guardrailCount
     }))
   };
-  const verification = result.verification === void 0 ? void 0 : copyVerification(result.verification, true);
-  const withVerification = verification === void 0 ? payload : { ...payload, verification, cards: cardsFor(verification, builders) };
+  const copied = result.verification === void 0 ? void 0 : copyVerification(result.verification, true);
+  const withVerification = copied === void 0 ? payload : {
+    ...payload,
+    verification: honestVerification(copied),
+    cards: cardsFor(copied, builders)
+  };
   const skipped = result.skipped;
   if (skipped === void 0) return withVerification;
   return {
@@ -9893,7 +9920,7 @@ function verifiedLines(payload) {
   return lines;
 }
 function renderJson(result, meta) {
-  const safe = result.verification === void 0 ? result : { ...result, verification: copyVerification(result.verification, false) };
+  const safe = result.verification === void 0 ? result : { ...result, verification: boundaryVerification(result.verification, false) };
   return `${JSON.stringify(
     {
       tool: "agenttrail-guard",

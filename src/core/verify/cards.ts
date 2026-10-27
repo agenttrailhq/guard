@@ -290,23 +290,59 @@ function hidingFormsIn(facts: unknown): HidingForm[] {
 const READS_TEXT: ReadonlySet<VerifyCategory> = new Set(["secrets"]);
 
 /**
+ * Why a category's result could not confirm what it reports, or `undefined` when it could:
+ * - its facts name hiding forms (`hiding-forms`);
+ * - the app records no command output, the category is a check of commands that ran rather
+ *   than of text, and the result would read clean (`no-output`).
+ */
+export function unconfirmedOf(
+  category: VerifyCategory,
+  status: string,
+  facts: unknown,
+  resultsRecorded: boolean,
+): Unconfirmed | undefined {
+  const forms = hidingFormsIn(facts);
+  if (forms.length > 0) return { reason: "hiding-forms", forms };
+  if (!resultsRecorded && !READS_TEXT.has(category) && status === "clean") {
+    return { reason: "no-output", forms: [] };
+  }
+  return undefined;
+}
+
+/**
+ * The status a category's result may be shown with, anywhere: the card, the report's data block
+ * and `--json`. Computed here once for all of them. A status that is not a known one becomes
+ * could-not-check, and so does a `clean` that could not confirm (`unconfirmedOf`): nothing reads
+ * clean where commands that could hide what it looks for ran, or where no output was recorded.
+ */
+export function honestStatus(
+  category: VerifyCategory,
+  status: string,
+  facts: unknown,
+  resultsRecorded: boolean,
+): VerifyStatus {
+  const known: VerifyStatus = KNOWN_TONES.has(status)
+    ? (status as VerifyStatus)
+    : "could-not-check";
+  return known === "clean" && unconfirmedOf(category, known, facts, resultsRecorded) !== undefined
+    ? "could-not-check"
+    : known;
+}
+
+/**
  * A built card, made honest about what it could confirm:
- * - a tone that is not a known status becomes could-not-check;
+ * - its tone is `honestStatus` of the built tone: a tone that is not a known status becomes
+ *   could-not-check, and so does a clean one that could not confirm;
  * - a check whose facts name hiding forms could not confirm, and never reads clean;
  * - on an app that records no command output, a check of commands that ran that would read
  *   clean could not confirm instead;
  * - a could-not-check card leads with why: could not confirm, or could not be checked.
  */
 function confirmedCard(built: CardView, facts: unknown, verification: Verification): CardView {
+  const recorded = verification.resultsRecorded;
   const tone: VerifyStatus = KNOWN_TONES.has(built.tone) ? built.tone : "could-not-check";
-  const forms = hidingFormsIn(facts);
-  let unconfirmed: Unconfirmed | undefined;
-  if (forms.length > 0) unconfirmed = { reason: "hiding-forms", forms };
-  else if (!verification.resultsRecorded && !READS_TEXT.has(built.category) && tone === "clean") {
-    unconfirmed = { reason: "no-output", forms: [] };
-  }
-  const finalTone: VerifyStatus =
-    unconfirmed !== undefined && tone === "clean" ? "could-not-check" : tone;
+  const unconfirmed = unconfirmedOf(built.category, tone, facts, recorded);
+  const finalTone = honestStatus(built.category, tone, facts, recorded);
   const lead =
     unconfirmed !== undefined
       ? sentences([UNCONFIRMED_SENTENCE], unconfirmed)
@@ -399,8 +435,9 @@ export const HEADLINE_BASIS: Readonly<Record<HeadlineCategory, HeadlineBasis>> =
  * Nothing leads a Codex scan (`ranEvidence: "output-record"`): Codex reading is limited and
  * unverified, so every finding of such a scan is Codex-only. Otherwise a claim leads only when
  * its category is in `HEADLINE_ORDER`, its tone is the one that category may lead from, its
- * basis is the one that category may lead with, its count is above zero and it does not rest
- * on Codex `ran` counts. Among those, the highest priority wins.
+ * basis is the one that category may lead with, its count is above zero, it does not rest on
+ * Codex `ran` counts, and its card confirmed what it reports (`unconfirmed` is unset): a card
+ * that could not confirm never leads. Among those, the highest priority wins.
  */
 export function pickHeadline(
   cards: readonly CardView[],
@@ -415,7 +452,8 @@ export function pickHeadline(
         c.tone === HEADLINE_TONES[category] &&
         c.headline.basis === HEADLINE_BASIS[category] &&
         c.headline.count > 0 &&
-        !c.headline.restsOnCodexRan,
+        !c.headline.restsOnCodexRan &&
+        c.unconfirmed === undefined,
     );
     if (card !== undefined) return card;
   }

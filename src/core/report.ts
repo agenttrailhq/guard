@@ -95,6 +95,7 @@ import {
   type CardSentence,
   type CardView,
   cardsFor,
+  honestStatus,
   isLocalFix,
   LOCAL_FIX_SERIALIZED,
   pickHeadline,
@@ -119,6 +120,7 @@ import {
   FACT_KEYS,
   FACT_VALUE_ENUMS,
   type SecretsCheck,
+  VERIFY_CATEGORIES,
   VERIFY_STATUSES,
   type Verification,
   type VerifyStatus as VerificationStatus,
@@ -579,6 +581,36 @@ function copyVerification(verification: Verification, capLists: boolean): Verifi
   };
 }
 
+/**
+ * A copied verification with each category's status as it is shown (`honestStatus`, the same
+ * rule the cards use): a `clean` that could not confirm, because its facts name hiding forms or
+ * because the app records no command output, becomes could-not-check. The data block and
+ * `--json` carry this, so neither says clean where the page says could not confirm.
+ */
+function honestVerification(verification: Verification): Verification {
+  const recorded = verification.resultsRecorded;
+  const categories: Record<string, unknown> = {};
+  for (const category of VERIFY_CATEGORIES) {
+    const result = verification.categories[category] as {
+      readonly status: VerificationStatus;
+      readonly facts?: unknown;
+    };
+    categories[category] = {
+      ...result,
+      status: honestStatus(category, result.status, result.facts, recorded),
+    };
+  }
+  return { ...verification, categories: categories as unknown as Verification["categories"] };
+}
+
+/**
+ * The verification as every output carries it: copied through the facts boundary, then with
+ * honest statuses. With `capLists`, lists are cut as the file cuts them.
+ */
+export function boundaryVerification(verification: Verification, capLists: boolean): Verification {
+  return honestVerification(copyVerification(verification, capLists));
+}
+
 /** Token totals, copied field by field. */
 function tokenCopy(t: TokenTotals): TokenTotals {
   return {
@@ -670,13 +702,18 @@ export function reportPayload(
         guardrailCount: t.guardrailCount,
       })),
   };
-  // The cards are built from the copy, so they say no more than the file carries.
-  const verification =
+  // The cards are built from the copy, so they say no more than the file carries. The copy the
+  // file carries has the same honest statuses the cards show.
+  const copied =
     result.verification === undefined ? undefined : copyVerification(result.verification, true);
   const withVerification: ReportPayload =
-    verification === undefined
+    copied === undefined
       ? payload
-      : { ...payload, verification, cards: cardsFor(verification, builders) };
+      : {
+          ...payload,
+          verification: honestVerification(copied),
+          cards: cardsFor(copied, builders),
+        };
   const skipped = result.skipped;
   if (skipped === undefined) return withVerification;
   return {
@@ -2161,7 +2198,7 @@ export function renderJson(result: ScanResult, meta: ReportMeta): string {
   const safe: ScanResult =
     result.verification === undefined
       ? result
-      : { ...result, verification: copyVerification(result.verification, false) };
+      : { ...result, verification: boundaryVerification(result.verification, false) };
   return `${JSON.stringify(
     {
       tool: "agenttrail-guard",

@@ -1,4 +1,4 @@
-// cspell:words describedby labelledby
+// cspell:words describedby labelledby UNREGISTEREDFACTCANARY
 /**
  * The verified lead on the page: "What it found, never the values", the "Also checked on this
  * machine" chips, and the nine cards of "What actually happened".
@@ -12,6 +12,7 @@ import {
   escapeHtml,
   FIXES_FILENAME,
   MAX_ROWS,
+  renderJson,
   renderReport,
   reportPayload,
   reviewStrings,
@@ -46,6 +47,7 @@ import {
   HIDING_RESULT,
   LOCAL_FIX_CATEGORIES,
   SECRETS_ACT,
+  SECRETS_CLEAN,
   TEST_ONLY_BUILDERS,
   testFacts,
   VERIFIED_META,
@@ -668,6 +670,35 @@ describe("every hiding form is named, whatever forms there are", () => {
 });
 
 describe("the review and the page agree on every corpus page", () => {
+  // A Codex scan whose secrets would lead on another app: secrets to act on, and calls that ran.
+  const codexVerification = verification(verifiedCategories(), { ranEvidence: "output-record" });
+  const CODEX_ACT = {
+    ...baseResult({
+      ...codexVerification,
+      matchedCalls: { ...codexVerification.matchedCalls, ran: 5 },
+    }),
+    agent: "codex" as const,
+  };
+  /** The first line of a scan's verified review group: where a headline would be. */
+  const firstReviewed = (result: Parameters<typeof reviewStrings>[0]): string =>
+    reviewStrings(result, TEST_ONLY_BUILDERS).find((g) =>
+      g.label.startsWith("What the checks found on this machine"),
+    )?.lines[0] ?? "";
+
+  it("Codex: the review leads with nothing, as the page does", () => {
+    const LEAD = "likely-real credentials";
+    const html = renderReport(CODEX_ACT, VERIFIED_META, OPTIONS);
+    expect(html.match(/<h1[^>]*>[^<]*<\/h1>/)?.[0]).not.toContain(LEAD);
+    expect(firstReviewed(CODEX_ACT)).not.toContain(LEAD);
+    // Negative control: the same scan on Claude Code leads with the credentials, in both.
+    const claude = {
+      ...CODEX_ACT,
+      agent: "claude" as const,
+      verification: { ...codexVerification, ranEvidence: "tool-result" as const },
+    };
+    expect(firstReviewed(claude)).toContain(LEAD);
+  });
+
   const PAGES = [
     ["secrets lead", VERIFIED_RESULT],
     ["cloud lead", CLOUD_LEAD_RESULT],
@@ -675,6 +706,7 @@ describe("the review and the page agree on every corpus page", () => {
     ["Codex", CODEX_ONLY_RESULT],
     ["Cursor", CURSOR_RESULT],
     ["hiding forms", HIDING_RESULT],
+    ["Codex with findings to act on", CODEX_ACT],
   ] as const;
 
   it.each(
@@ -711,6 +743,155 @@ describe("the review and the page agree on every corpus page", () => {
     } as unknown as Verification["categories"]);
     const lines = reviewStrings(baseResult(v), TEST_ONLY_BUILDERS).flatMap((g) => g.lines);
     expect(lines.some((l) => l.includes("may include calls a hook blocked"))).toBe(true);
+  });
+});
+
+describe("the page, the data block and --json agree on what could not be confirmed", () => {
+  /** A category's status in the data block and in --json, and its card's tone on the page. */
+  const views = (result: Parameters<typeof renderReport>[0], category: VerifyCategory) => {
+    const html = renderReport(result, VERIFIED_META, OPTIONS);
+    const block = JSON.parse(
+      html.match(/<script type="application\/json" id="report-data">([\s\S]*?)<\/script>/)?.[1] ??
+        "{}",
+    );
+    const json = JSON.parse(renderJson(result, VERIFIED_META));
+    return {
+      page: cardsOf(html).find((c) => c.category === category)?.tone,
+      cards: block.cards.find((c: { category: string }) => c.category === category)?.tone,
+      data: block.verification.categories[category].status,
+      json: json.result.verification.categories[category].status,
+    };
+  };
+
+  it("hiding forms: a clean check that could not confirm is could-not-check everywhere", () => {
+    expect(views(HIDING_RESULT, "destructive")).toEqual({
+      page: "could-not-check",
+      cards: "could-not-check",
+      data: "could-not-check",
+      json: "could-not-check",
+    });
+    // A check that found something keeps its tone everywhere, and still says it could not confirm.
+    expect(views(HIDING_RESULT, "lost-work")).toEqual({
+      page: "act",
+      cards: "act",
+      data: "act",
+      json: "act",
+    });
+  });
+
+  it("an app with no recorded output: every check of commands that ran agrees", () => {
+    for (const category of ["prod-infra", "destructive", "egress"] as const) {
+      expect(views(CURSOR_RESULT, category), category).toEqual({
+        page: "could-not-check",
+        cards: "could-not-check",
+        data: "could-not-check",
+        json: "could-not-check",
+      });
+    }
+    // The secrets check reads text, so it is not touched.
+    expect(views(CURSOR_RESULT, "secrets").data).toBe("act");
+  });
+
+  it("negative control: with output recorded and no hiding forms, clean stays clean everywhere", () => {
+    expect(views(VERIFIED_RESULT, "destructive")).toEqual({
+      page: "clean",
+      cards: "clean",
+      data: "clean",
+      json: "clean",
+    });
+  });
+});
+
+describe("a card that could not confirm never leads", () => {
+  // Secrets clean, nothing skipped, and deleted work to act on, from calls that used eval.
+  const unconfirmedLead = (forms: readonly ("eval" | "xargs")[] | undefined) =>
+    baseResult(
+      verification({
+        ...verifiedCategories(),
+        secrets: { status: "clean", matches: 3, facts: SECRETS_CLEAN },
+        "skipped-checks": { status: "not-checked" },
+        "lost-work": {
+          status: "act",
+          matches: 3,
+          facts: testFacts("lost-work", { branches: 2, stashes: 1, recoverable: 3 }, forms),
+        },
+      } as unknown as Verification["categories"]),
+    );
+  const LEAD = "3 pieces of deleted work are still recoverable";
+
+  it("the page and --review fall through to the next card that may lead", () => {
+    const result = unconfirmedLead(["eval"]);
+    const html = renderReport(result, VERIFIED_META, OPTIONS);
+    expect(html.match(/<h1[^>]*>[^<]*<\/h1>/)?.[0]).not.toContain(LEAD);
+    // The cloud card, from review, is the next that may lead.
+    expect(html.match(/<h1[^>]*>[^<]*<\/h1>/)?.[0]).toContain("IAM change");
+    const reviewed = reviewStrings(result, TEST_ONLY_BUILDERS).flatMap((g) => g.lines);
+    expect(reviewed.some((l) => l.includes(LEAD))).toBe(false);
+    // The card itself still says what it found, after saying it could not confirm.
+    expect(card(html, "lost-work")).toContain("used eval");
+  });
+
+  it("negative control: the same card leads when it confirmed what it reports", () => {
+    const html = renderReport(unconfirmedLead(undefined), VERIFIED_META, OPTIONS);
+    expect(html.match(/<h1[^>]*>[^<]*<\/h1>/)?.[0]).toContain(LEAD);
+  });
+});
+
+describe("the cards are built from the boundary copy, never the raw facts", () => {
+  const CANARY = "UNREGISTEREDFACTCANARY";
+  // A test-only builder that writes whatever its facts' `note` holds. `note` is not a registered
+  // fact key, so the copy the cards are built from never carries it.
+  const builders = {
+    ...TEST_ONLY_BUILDERS,
+    egress: (result: { status: string; matches: number; facts: { note?: string } }) => ({
+      category: "egress",
+      tone: result.status,
+      count: result.matches,
+      found: [{ template: "test-only.note", text: `Note: ${result.facts.note ?? "none"}` }],
+      now: [],
+      fixes: [],
+      codexCaveat: false,
+    }),
+  } as unknown as typeof TEST_ONLY_BUILDERS;
+  const result = baseResult(
+    verification({
+      ...verifiedCategories(),
+      egress: { status: "clean", matches: 1, facts: { note: CANARY } },
+    } as unknown as Verification["categories"]),
+  );
+
+  it("an unregistered fact reaches no page, data block or review", () => {
+    const html = renderReport(result, VERIFIED_META, { cardBuilders: builders });
+    expect(html).not.toContain(CANARY);
+    expect(card(html, "egress")).toContain("Note: none");
+    expect(JSON.stringify(reportPayload(result, VERIFIED_META, builders))).not.toContain(CANARY);
+    expect(JSON.stringify(reviewStrings(result, builders))).not.toContain(CANARY);
+  });
+
+  it("negative control: the builder does write the fact when given the raw result", () => {
+    const raw = (
+      builders as unknown as Record<string, (r: unknown) => { found: unknown[] }>
+    ).egress?.(result.verification?.categories.egress);
+    expect(JSON.stringify(raw)).toContain(CANARY);
+  });
+});
+
+describe("a counted chip that could not confirm never shows a zero", () => {
+  it("a review card with hiding forms and a zero count reads could not confirm", () => {
+    const result = baseResult(
+      verification({
+        ...verifiedCategories(),
+        cloud: {
+          status: "review",
+          matches: 1,
+          facts: testFacts("cloud", { iam: 0, s3: 1, terraform: 0 }, ["xargs"]),
+        },
+      } as unknown as Verification["categories"]),
+    );
+    const html = renderReport(result, VERIFIED_META, OPTIONS);
+    const chip = chipsOf(html).find((c) => c.href === "#check-cloud")?.text;
+    expect(chip).toBe("could not confirm");
+    expect(chip).not.toMatch(/\b0\b/);
   });
 });
 
