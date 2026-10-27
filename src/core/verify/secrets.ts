@@ -56,6 +56,7 @@ import {
   type SecretKind,
   type SecretProvenance,
   type SecretsCheck,
+  type SecretsFacts,
   type VerifyIO,
   type VerifyStatus,
 } from "./types.js";
@@ -572,6 +573,20 @@ function itemsOf(candidates: Iterable<Candidate>): SecretItem[] {
 }
 
 /**
+ * The secrets check's status, from its facts: not checked when nothing was read, act on a
+ * likely-real credential, could-not-check when a file was not read or a value not placed, and
+ * clean otherwise. Committed fixtures leave it clean.
+ */
+export function secretsStatus(
+  facts: Pick<SecretsFacts, "classes" | "filesRead" | "filesNotRead" | "unplaced">,
+): VerifyStatus {
+  if (facts.filesRead === 0 && facts.filesNotRead === 0) return "not-checked";
+  if (facts.classes["likely-real"] > 0) return "act";
+  if (facts.filesNotRead > 0 || facts.unplaced > 0) return "could-not-check";
+  return "clean";
+}
+
+/**
  * Run the secrets check. See the module header.
  *
  * Never throws: a file that cannot be read is counted, and a repo that cannot be searched is
@@ -747,11 +762,7 @@ async function classifySecrets(input: SecretsInput, keep: boolean): Promise<Like
   }
   const items = itemsOf(candidates.values());
 
-  let status: VerifyStatus;
-  if (filesRead === 0 && filesNotRead === 0) status = "not-checked";
-  else if (classes["likely-real"] > 0) status = "act";
-  else if (filesNotRead > 0 || unplaced > 0) status = "could-not-check";
-  else status = "clean";
+  const status = secretsStatus({ classes, filesRead, filesNotRead, unplaced });
 
   const check: SecretsCheck = {
     status,

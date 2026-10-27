@@ -62,7 +62,7 @@ import {
   walkCommands,
 } from "./shell-calls.js";
 import { commandStart, gitCommand, operands, programName, type ShellWord } from "./shell-words.js";
-import type { CheckedCategory, HidingForm, RunTally } from "./types.js";
+import type { CheckedCategory, HidingForm, RunTally, VerifyStatus } from "./types.js";
 
 /** Force-deleted branches. */
 export interface BranchFacts {
@@ -618,6 +618,27 @@ async function checkDiscards(
   return { calls: tallyOf(judged), paths, ownCopy, agentEdited, mainCheckout, couldNotCheck };
 }
 
+/** The lost-work check's status, from its facts and the number of sessions read. */
+export function lostWorkStatus(facts: LostWorkFacts, sessions: number): VerifyStatus {
+  const { branches, stashes, discards } = facts;
+  const all = addTallies(branches.calls, stashes.calls, discards.calls);
+  return statusOf({
+    sessions,
+    act: branches.recoverable + stashes.recoverable > 0,
+    review: discards.mainCheckout > 0,
+    incomplete:
+      branches.notIdentified +
+        branches.couldNotCheck +
+        stashes.notIdentified +
+        stashes.cleared +
+        stashes.couldNotCheck +
+        discards.couldNotCheck +
+        all.unknown +
+        facts.hidingCalls >
+      0,
+  });
+}
+
 /** Run the lost-work check. Never throws: what cannot be asked is counted. */
 export async function checkLostWork(context: GitCheckContext): Promise<LostWorkOutcome> {
   const log = context.log;
@@ -640,22 +661,7 @@ export async function checkLostWork(context: GitCheckContext): Promise<LostWorkO
   };
 
   const calls = new Set([...branchCalls, ...stashCalls, ...discardCalls].map((j) => j.call.id));
-  const all = addTallies(branches.calls, stashes.calls, discarded.calls);
-  const status = statusOf({
-    sessions: log.sessions,
-    act: branches.recoverable + stashes.recoverable > 0,
-    review: discarded.mainCheckout > 0,
-    incomplete:
-      branches.notIdentified +
-        branches.couldNotCheck +
-        stashes.notIdentified +
-        stashes.cleared +
-        stashes.couldNotCheck +
-        discarded.couldNotCheck +
-        all.unknown +
-        log.hiding.calls >
-      0,
-  });
+  const status = lostWorkStatus(facts, log.sessions);
   return {
     result: { status, matches: calls.size, facts },
     localFixes: fixes.made,

@@ -94,6 +94,7 @@ import {
   type HidingForm,
   type PendingCheck,
   type RunTally,
+  type VerifyStatus,
 } from "./types.js";
 
 export { DATABASE_CLASSES, RM_TARGET_CLASSES };
@@ -829,6 +830,24 @@ function unreadMatches(context: GitCheckContext, read: ReadonlySet<number>): num
   return bare;
 }
 
+/** The destructive-commands check's status, from its facts and the number of sessions read. */
+export function destructiveStatus(facts: DestructiveFacts, sessions: number): VerifyStatus {
+  const { rm, databases } = facts;
+  const all = addTallies(rm.calls, databases.calls);
+  return statusOf({
+    sessions,
+    act:
+      rm.classes["home-or-above"] + rm.classes["unguarded-variable"] > 0 ||
+      trackedMissing(facts) > 0,
+    review:
+      rm.classes.untracked + rm.classes.home + rm.classes.other > 0 ||
+      databases.classes.other + databases.classes.unresolved > 0,
+    // A target built from guarded variables names a folder this check cannot know.
+    incomplete:
+      rm.couldNotCheck + rm.classes["guarded-variable"] + all.unknown + facts.hidingCalls > 0,
+  });
+}
+
 /** Run the destructive-commands check. Never throws: what cannot be asked is counted. */
 export async function checkDestructive(context: GitCheckContext): Promise<DestructiveOutcome> {
   const log = context.log;
@@ -857,19 +876,7 @@ export async function checkDestructive(context: GitCheckContext): Promise<Destru
   };
 
   const calls = new Set([...rmCalls, ...dbCalls].map((j) => j.call.id));
-  const all = addTallies(rm.calls, databases.calls);
-  const status = statusOf({
-    sessions: log.sessions,
-    act:
-      rm.classes["home-or-above"] + rm.classes["unguarded-variable"] > 0 ||
-      trackedMissing(facts) > 0,
-    review:
-      rm.classes.untracked + rm.classes.home + rm.classes.other > 0 ||
-      databases.classes.other + databases.classes.unresolved > 0,
-    // A target built from guarded variables names a folder this check cannot know.
-    incomplete:
-      rm.couldNotCheck + rm.classes["guarded-variable"] + all.unknown + facts.hidingCalls > 0,
-  });
+  const status = destructiveStatus(facts, log.sessions);
   return {
     result: { status, matches: calls.size, facts },
     localFixes: fixes.made,

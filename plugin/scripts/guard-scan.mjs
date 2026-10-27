@@ -12711,17 +12711,17 @@ var CLOUD_CHIP = {
 };
 function cloudShapes(f) {
   const shapes = [];
-  if (f.iamSubjects.includes("access-keys")) {
+  const iam = f.iamChanges > 0 ? f.iamSubjects : [];
+  if (iam.includes("access-keys")) {
     shapes.push({ shape: "aws iam list-access-keys --user-name <user>" });
   }
-  if (f.iamSubjects.some((s) => s === "policies" || s === "roles")) {
+  if (iam.some((s) => s === "policies" || s === "roles")) {
     shapes.push({ shape: "aws iam list-attached-role-policies --role-name <role>" });
   }
-  if (f.iamSubjects.includes("users")) {
+  if (iam.includes("users")) {
     shapes.push({ shape: "aws iam list-attached-user-policies --user-name <user>" });
   }
-  if (f.iamSubjects.includes("groups"))
-    shapes.push({ shape: "aws iam get-group --group-name <group>" });
+  if (iam.includes("groups")) shapes.push({ shape: "aws iam get-group --group-name <group>" });
   if (f.autoScalingChanges > 0) {
     shapes.push({
       shape: "aws autoscaling describe-auto-scaling-groups --auto-scaling-group-names <group>"
@@ -15525,6 +15525,17 @@ function unreadMatches(context, read) {
   }
   return bare;
 }
+function destructiveStatus(facts, sessions) {
+  const { rm, databases } = facts;
+  const all = addTallies(rm.calls, databases.calls);
+  return statusOf({
+    sessions,
+    act: rm.classes["home-or-above"] + rm.classes["unguarded-variable"] > 0 || trackedMissing(facts) > 0,
+    review: rm.classes.untracked + rm.classes.home + rm.classes.other > 0 || databases.classes.other + databases.classes.unresolved > 0,
+    // A target built from guarded variables names a folder this check cannot know.
+    incomplete: rm.couldNotCheck + rm.classes["guarded-variable"] + all.unknown + facts.hidingCalls > 0
+  });
+}
 async function checkDestructive(context) {
   const log = context.log;
   const fixes = new FixList("destructive");
@@ -15547,14 +15558,7 @@ async function checkDestructive(context) {
     )
   };
   const calls = new Set([...rmCalls, ...dbCalls].map((j) => j.call.id));
-  const all = addTallies(rm.calls, databases.calls);
-  const status = statusOf({
-    sessions: log.sessions,
-    act: rm.classes["home-or-above"] + rm.classes["unguarded-variable"] > 0 || trackedMissing(facts) > 0,
-    review: rm.classes.untracked + rm.classes.home + rm.classes.other > 0 || databases.classes.other + databases.classes.unresolved > 0,
-    // A target built from guarded variables names a folder this check cannot know.
-    incomplete: rm.couldNotCheck + rm.classes["guarded-variable"] + all.unknown + facts.hidingCalls > 0
-  });
+  const status = destructiveStatus(facts, log.sessions);
   return {
     result: { status, matches: calls.size, facts },
     localFixes: fixes.made,
@@ -16068,6 +16072,16 @@ async function checkDiscards(context, judged, own) {
   }
   return { calls: tallyOf(judged), paths, ownCopy, agentEdited, mainCheckout, couldNotCheck };
 }
+function lostWorkStatus(facts, sessions) {
+  const { branches, stashes, discards: discards2 } = facts;
+  const all = addTallies(branches.calls, stashes.calls, discards2.calls);
+  return statusOf({
+    sessions,
+    act: branches.recoverable + stashes.recoverable > 0,
+    review: discards2.mainCheckout > 0,
+    incomplete: branches.notIdentified + branches.couldNotCheck + stashes.notIdentified + stashes.cleared + stashes.couldNotCheck + discards2.couldNotCheck + all.unknown + facts.hidingCalls > 0
+  });
+}
 async function checkLostWork(context) {
   const log = context.log;
   const fixes = new FixList("lost-work");
@@ -16087,13 +16101,7 @@ async function checkLostWork(context) {
     hidingForms: [...log.hiding.forms]
   };
   const calls = new Set([...branchCalls, ...stashCalls, ...discardCalls].map((j) => j.call.id));
-  const all = addTallies(branches.calls, stashes.calls, discarded.calls);
-  const status = statusOf({
-    sessions: log.sessions,
-    act: branches.recoverable + stashes.recoverable > 0,
-    review: discarded.mainCheckout > 0,
-    incomplete: branches.notIdentified + branches.couldNotCheck + stashes.notIdentified + stashes.cleared + stashes.couldNotCheck + discarded.couldNotCheck + all.unknown + log.hiding.calls > 0
-  });
+  const status = lostWorkStatus(facts, log.sessions);
   return {
     result: { status, matches: calls.size, facts },
     localFixes: fixes.made,
@@ -16368,6 +16376,10 @@ var NOW_FIXTURES = {
     return n2 === 1 ? "The committed fixture is in a git-tracked file today, and so in the repo's history." : `The ${formatCount(n2)} committed fixtures are in git-tracked files today, and so in the repo's history.`;
   }
 };
+var NOW_FIXTURE_CAVEAT = {
+  id: "secrets.now.fixture-caveat",
+  render: (f) => f.classes["likely-real"] === 0 && f.classes["committed-fixture"] > 0 ? "If a committed fixture is a real secret, it stays in the repo's history even after the file is removed, so rotate it with the service that issued it." : void 0
+};
 var NOW_NOTHING = {
   id: "secrets.now.nothing",
   render: (f) => f.classes["likely-real"] === 0 && f.classes["committed-fixture"] === 0 && f.filesRead > 0 ? "There is no likely-real credential to rotate." : void 0
@@ -16375,6 +16387,7 @@ var NOW_NOTHING = {
 var SECRETS_NOW = [
   NOW_STILL_THERE,
   NOW_FIXTURES,
+  NOW_FIXTURE_CAVEAT,
   NOW_NOTHING
 ];
 var FIX_ROTATE = {
@@ -16387,7 +16400,7 @@ var FIX_ROTATE = {
 };
 var FIX_FIXTURES = {
   id: "secrets.fix.committed-fixtures",
-  render: (f) => f.classes["committed-fixture"] > 0 ? "If a committed fixture is a real secret, rotate it as well: removing the file does not remove it from the repo's history." : void 0
+  render: (f) => f.classes["likely-real"] > 0 && f.classes["committed-fixture"] > 0 ? "If a committed fixture is a real secret, rotate it as well: removing the file does not remove it from the repo's history." : void 0
 };
 var SECRETS_FIX = [FIX_ROTATE, FIX_FIXTURES];
 var SECRETS_HEADLINE = {
@@ -16857,6 +16870,15 @@ async function checkInstructions(context, fixes) {
   }
   return { read, sayToSkip, agentWrote, agentWroteStill, agentWroteRemoved, couldNotRead };
 }
+function skippedChecksStatus(facts, sessions) {
+  const { noVerify, hooksPath, instructions } = facts;
+  return statusOf({
+    sessions,
+    act: noVerify.onMain > 0 || hooksPath.off > 0 || instructions.sayToSkip > 0,
+    review: noVerify.offMain + noVerify.noMainToCheck > 0 || facts.otherNoVerify.ran > 0 || facts.husky.ran > 0 || facts.oneCommand.ran > 0,
+    incomplete: noVerify.notIdentified + noVerify.couldNotCheck + hooksPath.couldNotCheck + instructions.couldNotRead + allCalls3(facts).unknown + facts.hidingCalls > 0
+  });
+}
 async function checkSkippedChecks(context) {
   const log = context.log;
   const fixes = new FixList("skipped-checks");
@@ -16889,13 +16911,7 @@ async function checkSkippedChecks(context) {
       (j) => j.call.id
     )
   );
-  const all = allCalls3(facts);
-  const status = statusOf({
-    sessions: log.sessions,
-    act: noVerify.onMain > 0 || hooksPath.off > 0 || instructions.sayToSkip > 0,
-    review: noVerify.offMain + noVerify.noMainToCheck > 0 || facts.otherNoVerify.ran > 0 || facts.husky.ran > 0 || facts.oneCommand.ran > 0,
-    incomplete: noVerify.notIdentified + noVerify.couldNotCheck + hooksPath.couldNotCheck + instructions.couldNotRead + all.unknown + log.hiding.calls > 0
-  });
+  const status = skippedChecksStatus(facts, log.sessions);
   return {
     result: { status, matches: calls.size, facts },
     localFixes: fixes.made,
@@ -20488,6 +20504,12 @@ function itemsOf(candidates) {
     (a, b) => b.files - a.files || a.kind.localeCompare(b.kind) || a.via.join(" ").localeCompare(b.via.join(" "))
   );
 }
+function secretsStatus(facts) {
+  if (facts.filesRead === 0 && facts.filesNotRead === 0) return "not-checked";
+  if (facts.classes["likely-real"] > 0) return "act";
+  if (facts.filesNotRead > 0 || facts.unplaced > 0) return "could-not-check";
+  return "clean";
+}
 async function checkSecrets(input) {
   return (await classifySecrets(input, false)).check;
 }
@@ -20596,11 +20618,7 @@ async function classifySecrets(input, keep) {
     else if (candidate.setAside === "named-not-credential-shaped") namedNotCredentialShaped += 1;
   }
   const items = itemsOf(candidates.values());
-  let status;
-  if (filesRead === 0 && filesNotRead === 0) status = "not-checked";
-  else if (classes["likely-real"] > 0) status = "act";
-  else if (filesNotRead > 0 || unplaced > 0) status = "could-not-check";
-  else status = "clean";
+  const status = secretsStatus({ classes, filesRead, filesNotRead, unplaced });
   const check = {
     status,
     matches: candidates.size,

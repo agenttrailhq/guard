@@ -64,7 +64,7 @@ import {
   walkCommands,
 } from "./shell-calls.js";
 import { commandStart, gitCommand, operands, programName, type ShellWord } from "./shell-words.js";
-import type { CheckedCategory, HidingForm, RunTally } from "./types.js";
+import type { CheckedCategory, HidingForm, RunTally, VerifyStatus } from "./types.js";
 
 /** The `--no-verify` commits, and where they are now. */
 export interface NoVerifyFacts {
@@ -742,6 +742,28 @@ async function checkInstructions(
   return { read, sayToSkip, agentWrote, agentWroteStill, agentWroteRemoved, couldNotRead };
 }
 
+/** The skipped-checks check's status, from its facts and the number of sessions read. */
+export function skippedChecksStatus(facts: SkippedChecksFacts, sessions: number): VerifyStatus {
+  const { noVerify, hooksPath, instructions } = facts;
+  return statusOf({
+    sessions,
+    act: noVerify.onMain > 0 || hooksPath.off > 0 || instructions.sayToSkip > 0,
+    review:
+      noVerify.offMain + noVerify.noMainToCheck > 0 ||
+      facts.otherNoVerify.ran > 0 ||
+      facts.husky.ran > 0 ||
+      facts.oneCommand.ran > 0,
+    incomplete:
+      noVerify.notIdentified +
+        noVerify.couldNotCheck +
+        hooksPath.couldNotCheck +
+        instructions.couldNotRead +
+        allCalls(facts).unknown +
+        facts.hidingCalls >
+      0,
+  });
+}
+
 /** Run the skipped-checks check. Never throws: what cannot be asked is counted. */
 export async function checkSkippedChecks(context: GitCheckContext): Promise<SkippedChecksOutcome> {
   const log = context.log;
@@ -777,24 +799,7 @@ export async function checkSkippedChecks(context: GitCheckContext): Promise<Skip
       (j) => j.call.id,
     ),
   );
-  const all = allCalls(facts);
-  const status = statusOf({
-    sessions: log.sessions,
-    act: noVerify.onMain > 0 || hooksPath.off > 0 || instructions.sayToSkip > 0,
-    review:
-      noVerify.offMain + noVerify.noMainToCheck > 0 ||
-      facts.otherNoVerify.ran > 0 ||
-      facts.husky.ran > 0 ||
-      facts.oneCommand.ran > 0,
-    incomplete:
-      noVerify.notIdentified +
-        noVerify.couldNotCheck +
-        hooksPath.couldNotCheck +
-        instructions.couldNotRead +
-        all.unknown +
-        log.hiding.calls >
-      0,
-  });
+  const status = skippedChecksStatus(facts, log.sessions);
   return {
     result: { status, matches: calls.size, facts },
     localFixes: fixes.made,

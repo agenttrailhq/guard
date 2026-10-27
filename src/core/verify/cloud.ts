@@ -621,17 +621,18 @@ const CLOUD_CHIP: SentenceTemplate<CloudFacts> = {
 /** The redacted review command shapes, for the page and the JSON. */
 function cloudShapes(f: CloudFacts): { shape: string }[] {
   const shapes: { shape: string }[] = [];
-  if (f.iamSubjects.includes("access-keys")) {
+  // IAM shapes only beside an IAM change, so the card never offers a command it would not review.
+  const iam = f.iamChanges > 0 ? f.iamSubjects : [];
+  if (iam.includes("access-keys")) {
     shapes.push({ shape: "aws iam list-access-keys --user-name <user>" });
   }
-  if (f.iamSubjects.some((s) => s === "policies" || s === "roles")) {
+  if (iam.some((s) => s === "policies" || s === "roles")) {
     shapes.push({ shape: "aws iam list-attached-role-policies --role-name <role>" });
   }
-  if (f.iamSubjects.includes("users")) {
+  if (iam.includes("users")) {
     shapes.push({ shape: "aws iam list-attached-user-policies --user-name <user>" });
   }
-  if (f.iamSubjects.includes("groups"))
-    shapes.push({ shape: "aws iam get-group --group-name <group>" });
+  if (iam.includes("groups")) shapes.push({ shape: "aws iam get-group --group-name <group>" });
   if (f.autoScalingChanges > 0) {
     shapes.push({
       shape: "aws autoscaling describe-auto-scaling-groups --auto-scaling-group-names <group>",

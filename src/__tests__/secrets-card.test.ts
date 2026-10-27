@@ -179,14 +179,24 @@ describe("now, and the fix", () => {
     expect(fix(facts({}, { "likely-real": 3 }))[0]).toMatch(/^Rotate each one first/);
   });
 
-  it("a committed fixture is in the repo's history, and is rotated if real", () => {
+  it("a committed fixture alone: a caveat under Now that it may be real, and no Fix", () => {
+    // Nothing likely real reads clean, and a clean card gives no Fix; a committed fixture may
+    // still be a real secret, so the card says so, never that it is safe.
     expect(now(facts({}, { "committed-fixture": 1 }))).toEqual([
       "The committed fixture is in a git-tracked file today, and so in the repo's history.",
+      "If a committed fixture is a real secret, it stays in the repo's history even after the file is removed, so rotate it with the service that issued it.",
     ]);
     expect(now(facts({}, { "committed-fixture": 2 }))[0]).toMatch(/^The 2 committed fixtures are/);
-    expect(fix(facts({}, { "committed-fixture": 1 }))).toEqual([
+    expect(fix(facts({}, { "committed-fixture": 1 }))).toEqual([]);
+  });
+
+  it("a committed fixture beside a likely-real credential: rotated if real, under Fix", () => {
+    const both = facts({}, { "likely-real": 1, "committed-fixture": 1 });
+    expect(fix(both)).toEqual([
+      "Rotate it first, with the service that issued it, so the copy in the transcripts no longer works.",
       "If a committed fixture is a real secret, rotate it as well: removing the file does not remove it from the repo's history.",
     ]);
+    expect(now(both).join(" ")).not.toContain("stays in the repo's history even after");
   });
 
   it("nothing to rotate when nothing is likely real or committed", () => {

@@ -186,6 +186,18 @@ const NOW_FIXTURES: SentenceTemplate<SecretsFacts> = {
   },
 };
 
+/**
+ * With nothing likely real the card reads clean, and a clean card gives no Fix. A committed
+ * fixture may still be a real secret, so the card says so here, as a caveat.
+ */
+const NOW_FIXTURE_CAVEAT: SentenceTemplate<SecretsFacts> = {
+  id: "secrets.now.fixture-caveat",
+  render: (f) =>
+    f.classes["likely-real"] === 0 && f.classes["committed-fixture"] > 0
+      ? "If a committed fixture is a real secret, it stays in the repo's history even after the file is removed, so rotate it with the service that issued it."
+      : undefined,
+};
+
 const NOW_NOTHING: SentenceTemplate<SecretsFacts> = {
   id: "secrets.now.nothing",
   render: (f) =>
@@ -198,6 +210,7 @@ const NOW_NOTHING: SentenceTemplate<SecretsFacts> = {
 export const SECRETS_NOW: readonly SentenceTemplate<SecretsFacts>[] = [
   NOW_STILL_THERE,
   NOW_FIXTURES,
+  NOW_FIXTURE_CAVEAT,
   NOW_NOTHING,
 ];
 
@@ -212,10 +225,11 @@ const FIX_ROTATE: SentenceTemplate<SecretsFacts> = {
   },
 };
 
+/** Beside a likely-real credential to rotate. With none, `NOW_FIXTURE_CAVEAT` says it instead. */
 const FIX_FIXTURES: SentenceTemplate<SecretsFacts> = {
   id: "secrets.fix.committed-fixtures",
   render: (f) =>
-    f.classes["committed-fixture"] > 0
+    f.classes["likely-real"] > 0 && f.classes["committed-fixture"] > 0
       ? "If a committed fixture is a real secret, rotate it as well: removing the file does not remove it from the repo's history."
       : undefined,
 };
