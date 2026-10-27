@@ -1,0 +1,16 @@
+Codex CLI · 2 sessions · 3 risky actions · 2 recurring mistakes
+2.5K tokens (1.8K cache reads, cumulative — re-charged each turn)
+Matches  2 critical · 3 high
+         3 would block · 2 would ask
+Not evaluated: 1 file whose last line was cut off, 1 line that is not JSON, 1 record of a kind this reader does not know, 2 tool calls of a kind this reader does not recognize. The report lists them.
+
+Top findings
+  critical  would block  2x  rm -rf against an absolute path  dd.rm-rf-absolute
+  high      would ask    2x  Hold `rm -rf` for approval  require-approval-rm-rf
+  high      would block  1x  git checkout used to discard working-tree changes  wt.checkout-discard
+
+Top repeats
+  rm -rf <path>  2x  Hold `rm -rf` for approval
+  rm -rf <path>  2x  rm -rf against an absolute path
+
+Full report: <work>/agenttrail-guard-report.html

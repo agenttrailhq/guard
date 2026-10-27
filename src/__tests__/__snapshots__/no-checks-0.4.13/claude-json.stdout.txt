@@ -1,0 +1,293 @@
+{
+  "tool": "agenttrail-guard",
+  "version": "0.4.13",
+  "generatedAt": "2026-10-25T12:00:00.000Z",
+  "catalog": "guardrail library v0.2.6, published 2 days ago",
+  "result": {
+    "agent": "claude",
+    "sessions": 2,
+    "quarantined": 0,
+    "notRead": 0,
+    "skippedLines": 1,
+    "projects": 2,
+    "toolCalls": 11,
+    "riskyActions": 9,
+    "riskyByAction": {
+      "block": 6,
+      "require_approval": 2,
+      "warn": 1
+    },
+    "decided": [
+      {
+        "action": "block",
+        "ruleIds": [
+          "dd.rm-rf-absolute"
+        ],
+        "calls": 3
+      },
+      {
+        "action": "block",
+        "ruleIds": [
+          "block-force-push"
+        ],
+        "calls": 1
+      },
+      {
+        "action": "block",
+        "ruleIds": [
+          "block-hardcoded-secrets"
+        ],
+        "calls": 1
+      },
+      {
+        "action": "block",
+        "ruleIds": [
+          "wt.checkout-discard"
+        ],
+        "calls": 1
+      },
+      {
+        "action": "require_approval",
+        "ruleIds": [
+          "gb.git-no-verify"
+        ],
+        "calls": 1
+      },
+      {
+        "action": "require_approval",
+        "ruleIds": [
+          "wt.branch-force-delete"
+        ],
+        "calls": 1
+      },
+      {
+        "action": "warn",
+        "ruleIds": [
+          "block-env-file-read"
+        ],
+        "calls": 1
+      }
+    ],
+    "findings": [
+      {
+        "ruleId": "dd.rm-rf-absolute",
+        "title": "rm -rf against an absolute path",
+        "severity": "critical",
+        "action": "block",
+        "count": 3,
+        "examples": [
+          {
+            "text": "rm -rf <path>",
+            "count": 3
+          }
+        ],
+        "owasp": [
+          "ASI02",
+          "LLM03"
+        ],
+        "source": "library",
+        "category": "destructive-data",
+        "description": "Recursive-force delete rooted at `/` rather than at a relative path. Deliberately does NOT fire on `rm -rf ./node_modules` or `rm -rf build`, which are safe and happen many times a day. Both the r and the f flag are required, so `rm -f /tmp/app.pid` is not blocked either. Known misses: the long forms (`rm --recursive --force /`), a quoted target (`rm -rf \"/\"`), and a variable target (`rm -rf $DIR`) whose value is only known at run time — for those, see require-approval-rm-rf, which holds them for approval instead. A quoted MENTION is not a use: a search, a `git commit -m` message, an `echo` or a `curl --data` body that only names this command is left alone. That holds only while every shell metacharacter stays inside the quotes, so `git commit -m \"x\" && …` is still caught; and the carrier must be the first word, so `sudo grep …` is not exempt."
+      },
+      {
+        "ruleId": "require-approval-rm-rf",
+        "title": "Hold `rm -rf` for approval",
+        "severity": "high",
+        "action": "require_approval",
+        "count": 3,
+        "examples": [
+          {
+            "text": "rm -rf <path>",
+            "count": 3
+          }
+        ],
+        "owasp": [
+          "ASI02",
+          "LLM03"
+        ],
+        "source": "library",
+        "category": "working-tree",
+        "description": "Recursive-force delete: held for approval rather than blocked, which is the honest strength for an operation that is destructive but often legitimate. Catches -rf, -Rf, -rvf and the reversed -fr spelling in any case, `rm --recursive`, and PowerShell's `Remove-Item -Recurse`. Clearing a build directory is EXEMPT (node_modules, dist, build, out, coverage, target, .next, .turbo, .cache, .vite, .parcel-cache): that shape appears about 220 times in real Claude Code traces against about 3 for a dangerous delete, and a check that asks every time is one people switch off. An absolute path, a $VARIABLE, a ~ path or a source directory still asks. Does NOT match a delete via a file tool, or flags split across arguments such as `rm -r -f x`. A quoted MENTION is not a use: a search, a `git commit -m` message, an `echo` or a `curl --data` body that only names this command is left alone. That holds only while every shell metacharacter stays inside the quotes, so `git commit -m \"x\" && …` is still caught; and the carrier must be the first word, so `sudo grep …` is not exempt."
+      },
+      {
+        "ruleId": "block-env-file-read",
+        "title": "Flag reading a .env file",
+        "severity": "high",
+        "action": "warn",
+        "count": 1,
+        "examples": [
+          {
+            "text": "Read <path>",
+            "count": 1
+          }
+        ],
+        "owasp": [
+          "ASI02",
+          "ASI03",
+          "LLM02"
+        ],
+        "source": "library",
+        "category": "secret-exposure",
+        "description": "Warns when a file tool READS a dotenv file — the `Read` and `Grep` tools — at both the `.env*` spelling at any depth and the `<name>.env` spelling (production.env, secrets.env). A WRITE is deliberately NOT flagged (`Edit`, `Write`, `MultiEdit`, `NotebookEdit`, and Cursor's `Delete`), because creating or editing config is ordinary work and the exposure this catches is an agent reading an existing secret, so the id names the read. A committed placeholder is NOT flagged either (.env.example, .env.sample, .env.template), because warning on a file that holds no secret teaches the reader to ignore the warning. Matches file-tool access by path: reading a .env through a shell command such as `cat .env` is a command span and is covered by se.env-print instead. It also cannot tell whether the file actually contains a secret."
+      },
+      {
+        "ruleId": "block-force-push",
+        "title": "Block git force-push",
+        "severity": "high",
+        "action": "block",
+        "count": 1,
+        "examples": [
+          {
+            "text": "git push --force origin main",
+            "count": 1
+          }
+        ],
+        "owasp": [
+          "ASI02",
+          "LLM03"
+        ],
+        "source": "library",
+        "category": "working-tree",
+        "description": "Overwrites a remote branch's history, destroying commits other people may already have pulled. The command must contain `git push` and the force flag must sit in the same pipeline segment, so searching for the phrase is not blocked. A global flag between `git` and `push` is tolerated (`git -C <dir> push --force`, `git --no-pager push …`), and an absolute tool path such as `/usr/bin/git` still matches. The safer `--force-with-lease` form IS still blocked; exempting it needs a negative lookahead this corpus does not use. MISSES an alias such as `git pf`, and a force-push issued by a wrapper script whose own text does not say `git push`. A quoted MENTION is not a use: a search, a `git commit -m` message, an `echo` or a `curl --data` body that only names this command is left alone. That holds only while every shell metacharacter stays inside the quotes, so `git commit -m \"x\" && …` is still caught; and the carrier must be the first word, so `sudo grep …` is not exempt."
+      },
+      {
+        "ruleId": "block-hardcoded-secrets",
+        "title": "Block hard-coded secrets in commands",
+        "severity": "critical",
+        "action": "block",
+        "count": 1,
+        "examples": [
+          {
+            "text": "export AWS_ACCESS_KEY_ID=[REDACTED:secret:aws]",
+            "count": 1
+          }
+        ],
+        "owasp": [
+          "ASI02",
+          "ASI03",
+          "LLM02"
+        ],
+        "source": "library",
+        "category": "secret-exposure",
+        "description": "Blocks a shell command carrying a credential with the right SHAPE — an AWS access-key id (AKIA/ASIA plus 16 more characters), a GitHub token (gh?_ with a body of at least 36 characters, or github_pat_ with a long one), a Stripe live key, or PEM PRIVATE key material. Three arms are CASE-SENSITIVE and use detail_contains deliberately: these prefixes are upper- or lower-case by specification, so case IS the signal, and the length check in the same condition is what makes the difference between a mention and a key. Requiring the body is why auditing your own repo for a leak (`grep -rn AKIA .`) is not itself blocked, and requiring PRIVATE KEY beside -----BEGIN is why a public certificate is not. MISSES formats not listed (Slack, OpenAI, Google) and any secret that is not self-identifying, such as a bare password; and it sees command text only, never the contents of a file edit. A quoted MENTION is exempt on only TWO of the four carriers this corpus recognises, and this is the only case where they are not equivalent — because here the carrier IS the exposure rather than a mention of it. A search (`grep -rn AKIA .`) and an `echo` are exempt: the key goes nowhere, and searching for one is how you find it to rotate. A `git commit -m` message and a `curl --data` body are NOT: a key in a commit message is written into history and then pushed, and a key in a POST body has already left the machine. The cost of that, stated in the other direction: documenting a REAL-looking key in a commit message is still blocked, and the only ways through are to redact the body of the key or to use a placeholder that fails the length check. Exemption also holds only while every shell metacharacter stays inside the quotes, and a single leading `sudo` aside, the carrier must be the first word."
+      },
+      {
+        "ruleId": "gb.git-no-verify",
+        "title": "git --no-verify skips the hooks the team installed",
+        "severity": "medium",
+        "action": "require_approval",
+        "count": 1,
+        "examples": [
+          {
+            "text": "git commit --no-verify -m \"<message>\"",
+            "count": 1
+          }
+        ],
+        "owasp": [
+          "ASI09"
+        ],
+        "source": "library",
+        "category": "safety-bypass",
+        "description": "Commits, pushes or merges with `--no-verify`, which skips the pre-commit and pre-push hooks a team installed on purpose — the formatter, the type check, the secret scanner. It is the most common way a check everyone believes is running turns out not to be. Deliberately does NOT widen to skipping tests in general: `mvn -DskipTests package` is ordinary work and is asserted as a negative. Known over-match: a `-n` anywhere in a `git commit` line, including inside a message. Global flags between `git` and its subcommand are tolerated (`git -C <dir> commit --no-verify`, `--no-pager`, `-c k=v`), and an absolute tool path such as `/usr/bin/git` still matches; a flag that itself runs a program is not read. A quoted MENTION is not a use: a search, a `git commit -m` message, an `echo` or a `curl --data` body that only names this command is left alone. That holds only while every shell metacharacter stays inside the quotes, so `git commit -m \"x\" && …` is still caught; and the carrier must be the first word, so `sudo grep …` is not exempt. `git commit` is NOT one of those carriers here, because the trigger here is a flag of `git commit`: a commit message that quotes `--no-verify` still asks."
+      },
+      {
+        "ruleId": "wt.branch-force-delete",
+        "title": "git branch -D force-deletes an unmerged branch",
+        "severity": "medium",
+        "action": "require_approval",
+        "count": 1,
+        "examples": [
+          {
+            "text": "git branch -D <path>",
+            "count": 1
+          }
+        ],
+        "owasp": [
+          "ASI02",
+          "LLM03"
+        ],
+        "source": "library",
+        "category": "working-tree",
+        "description": "Deletes a branch even when its commits are not merged anywhere, so the work becomes unreachable. This match is CASE-SENSITIVE on purpose, which is why it uses detail_contains: `-D` force-deletes while `-d` refuses to delete unmerged work, and the engine's regex matcher is case-insensitive, so a regex here would fire on the safe spelling every time a developer cleans up after a merge. Known miss: the flags written separately as `--delete --force` in the reverse order, and any alias. The `git branch` anchor tolerates repeated or tab whitespace and a global flag in between (`git  branch -D …`, `git -C <dir> branch -D …`), and an absolute tool path such as `/usr/bin/git` still matches, while `-D` stays a case-sensitive substring so the safe `-d` is not caught. A quoted MENTION is not a use: a search, a `git commit -m` message, an `echo` or a `curl --data` body that only names this command is left alone. That holds only while every shell metacharacter stays inside the quotes, so `git commit -m \"x\" && …` is still caught; and the carrier must be the first word, so `sudo grep …` is not exempt."
+      },
+      {
+        "ruleId": "wt.checkout-discard",
+        "title": "git checkout used to discard working-tree changes",
+        "severity": "high",
+        "action": "block",
+        "count": 1,
+        "examples": [
+          {
+            "text": "git checkout -- <path>",
+            "count": 1
+          }
+        ],
+        "owasp": [
+          "ASI02",
+          "LLM03"
+        ],
+        "source": "library",
+        "category": "working-tree",
+        "description": "Overwrites files in the working tree from the index or from another commit, discarding uncommitted edits. Matches the discard spellings only — `git checkout -- <path>`, a bare `git checkout .`, and the `-f`/`--force` forms. It deliberately does NOT match an ordinary branch switch (`git checkout main`, `git checkout -b feature/x`), which is the same command doing something else entirely. It also MISSES `git checkout <commit> <path>` written without the `--` separator. Global flags between `git` and `checkout` are tolerated (`git -C <dir> checkout -- .`, `--no-pager`, `-c k=v`), and an absolute tool path such as `/usr/bin/git` still matches; a flag that itself runs a program is not read. A quoted MENTION is not a use: a search, a `git commit -m` message, an `echo` or a `curl --data` body that only names this command is left alone. That holds only while every shell metacharacter stays inside the quotes, so `git commit -m \"x\" && …` is still caught; and the carrier must be the first word, so `sudo grep …` is not exempt."
+      }
+    ],
+    "recurring": [
+      {
+        "text": "rm -rf <path>",
+        "count": 3,
+        "calls": 3,
+        "ruleId": "require-approval-rm-rf",
+        "title": "Hold `rm -rf` for approval"
+      },
+      {
+        "text": "rm -rf <path>",
+        "count": 3,
+        "calls": 3,
+        "ruleId": "dd.rm-rf-absolute",
+        "title": "rm -rf against an absolute path"
+      }
+    ],
+    "owasp": [
+      {
+        "id": "ASI02",
+        "callCount": 8,
+        "ruleMatches": 11,
+        "guardrailCount": 7
+      },
+      {
+        "id": "ASI03",
+        "callCount": 2,
+        "ruleMatches": 2,
+        "guardrailCount": 2
+      },
+      {
+        "id": "ASI09",
+        "callCount": 1,
+        "ruleMatches": 1,
+        "guardrailCount": 1
+      },
+      {
+        "id": "LLM02",
+        "callCount": 2,
+        "ruleMatches": 2,
+        "guardrailCount": 2
+      },
+      {
+        "id": "LLM03",
+        "callCount": 6,
+        "ruleMatches": 9,
+        "guardrailCount": 5
+      }
+    ],
+    "tokens": {
+      "input": 3500,
+      "output": 360,
+      "cacheRead": 20400,
+      "cacheCreation": 400,
+      "cacheCreation5m": 0,
+      "cacheCreation1h": 0,
+      "turnsWithSplit": 0,
+      "turns": 11
+    }
+  }
+}

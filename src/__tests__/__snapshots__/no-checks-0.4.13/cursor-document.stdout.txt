@@ -1,0 +1,14 @@
+Cursor · 1 session · 5 risky actions · 2 recurring mistakes
+Matches  3 critical · 5 high
+         3 would block · 3 would ask · 2 would warn
+
+Top findings
+  critical  would block  3x  rm -rf against an absolute path  dd.rm-rf-absolute
+  high      would ask    3x  Hold `rm -rf` for approval  require-approval-rm-rf
+  high      would warn   2x  Flag reading a .env file  block-env-file-read
+
+Top repeats
+  rm -rf <path>  3x  Hold `rm -rf` for approval
+  rm -rf <path>  3x  rm -rf against an absolute path
+
+Full report: <work>/agenttrail-guard-report.html

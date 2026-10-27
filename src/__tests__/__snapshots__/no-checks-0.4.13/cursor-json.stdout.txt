@@ -1,0 +1,156 @@
+{
+  "tool": "agenttrail-guard",
+  "version": "0.4.13",
+  "generatedAt": "2026-10-25T12:00:00.000Z",
+  "catalog": "guardrail library v0.2.6, published 2 days ago",
+  "result": {
+    "agent": "cursor",
+    "sessions": 1,
+    "quarantined": 0,
+    "notRead": 0,
+    "skippedLines": 0,
+    "projects": 1,
+    "toolCalls": 9,
+    "riskyActions": 5,
+    "riskyByAction": {
+      "block": 3,
+      "require_approval": 0,
+      "warn": 2
+    },
+    "decided": [
+      {
+        "action": "block",
+        "ruleIds": [
+          "dd.rm-rf-absolute"
+        ],
+        "calls": 3
+      },
+      {
+        "action": "warn",
+        "ruleIds": [
+          "block-env-file-read"
+        ],
+        "calls": 2
+      }
+    ],
+    "findings": [
+      {
+        "ruleId": "dd.rm-rf-absolute",
+        "title": "rm -rf against an absolute path",
+        "severity": "critical",
+        "action": "block",
+        "count": 3,
+        "examples": [
+          {
+            "text": "rm -rf <path>",
+            "count": 3
+          }
+        ],
+        "owasp": [
+          "ASI02",
+          "LLM03"
+        ],
+        "source": "library",
+        "category": "destructive-data",
+        "description": "Recursive-force delete rooted at `/` rather than at a relative path. Deliberately does NOT fire on `rm -rf ./node_modules` or `rm -rf build`, which are safe and happen many times a day. Both the r and the f flag are required, so `rm -f /tmp/app.pid` is not blocked either. Known misses: the long forms (`rm --recursive --force /`), a quoted target (`rm -rf \"/\"`), and a variable target (`rm -rf $DIR`) whose value is only known at run time — for those, see require-approval-rm-rf, which holds them for approval instead. A quoted MENTION is not a use: a search, a `git commit -m` message, an `echo` or a `curl --data` body that only names this command is left alone. That holds only while every shell metacharacter stays inside the quotes, so `git commit -m \"x\" && …` is still caught; and the carrier must be the first word, so `sudo grep …` is not exempt."
+      },
+      {
+        "ruleId": "require-approval-rm-rf",
+        "title": "Hold `rm -rf` for approval",
+        "severity": "high",
+        "action": "require_approval",
+        "count": 3,
+        "examples": [
+          {
+            "text": "rm -rf <path>",
+            "count": 3
+          }
+        ],
+        "owasp": [
+          "ASI02",
+          "LLM03"
+        ],
+        "source": "library",
+        "category": "working-tree",
+        "description": "Recursive-force delete: held for approval rather than blocked, which is the honest strength for an operation that is destructive but often legitimate. Catches -rf, -Rf, -rvf and the reversed -fr spelling in any case, `rm --recursive`, and PowerShell's `Remove-Item -Recurse`. Clearing a build directory is EXEMPT (node_modules, dist, build, out, coverage, target, .next, .turbo, .cache, .vite, .parcel-cache): that shape appears about 220 times in real Claude Code traces against about 3 for a dangerous delete, and a check that asks every time is one people switch off. An absolute path, a $VARIABLE, a ~ path or a source directory still asks. Does NOT match a delete via a file tool, or flags split across arguments such as `rm -r -f x`. A quoted MENTION is not a use: a search, a `git commit -m` message, an `echo` or a `curl --data` body that only names this command is left alone. That holds only while every shell metacharacter stays inside the quotes, so `git commit -m \"x\" && …` is still caught; and the carrier must be the first word, so `sudo grep …` is not exempt."
+      },
+      {
+        "ruleId": "block-env-file-read",
+        "title": "Flag reading a .env file",
+        "severity": "high",
+        "action": "warn",
+        "count": 2,
+        "examples": [
+          {
+            "text": "Grep <path>",
+            "count": 1
+          },
+          {
+            "text": "Read <path>",
+            "count": 1
+          }
+        ],
+        "owasp": [
+          "ASI02",
+          "ASI03",
+          "LLM02"
+        ],
+        "source": "library",
+        "category": "secret-exposure",
+        "description": "Warns when a file tool READS a dotenv file — the `Read` and `Grep` tools — at both the `.env*` spelling at any depth and the `<name>.env` spelling (production.env, secrets.env). A WRITE is deliberately NOT flagged (`Edit`, `Write`, `MultiEdit`, `NotebookEdit`, and Cursor's `Delete`), because creating or editing config is ordinary work and the exposure this catches is an agent reading an existing secret, so the id names the read. A committed placeholder is NOT flagged either (.env.example, .env.sample, .env.template), because warning on a file that holds no secret teaches the reader to ignore the warning. Matches file-tool access by path: reading a .env through a shell command such as `cat .env` is a command span and is covered by se.env-print instead. It also cannot tell whether the file actually contains a secret."
+      }
+    ],
+    "recurring": [
+      {
+        "text": "rm -rf <path>",
+        "count": 3,
+        "calls": 3,
+        "ruleId": "require-approval-rm-rf",
+        "title": "Hold `rm -rf` for approval"
+      },
+      {
+        "text": "rm -rf <path>",
+        "count": 3,
+        "calls": 3,
+        "ruleId": "dd.rm-rf-absolute",
+        "title": "rm -rf against an absolute path"
+      }
+    ],
+    "owasp": [
+      {
+        "id": "ASI02",
+        "callCount": 5,
+        "ruleMatches": 8,
+        "guardrailCount": 3
+      },
+      {
+        "id": "ASI03",
+        "callCount": 2,
+        "ruleMatches": 2,
+        "guardrailCount": 1
+      },
+      {
+        "id": "LLM02",
+        "callCount": 2,
+        "ruleMatches": 2,
+        "guardrailCount": 1
+      },
+      {
+        "id": "LLM03",
+        "callCount": 3,
+        "ruleMatches": 6,
+        "guardrailCount": 2
+      }
+    ],
+    "tokens": null,
+    "skipped": {
+      "unparseableLines": 0,
+      "truncatedLastLines": 0,
+      "unknownRecords": 0,
+      "turnsEndedWithError": 1,
+      "unreadableFiles": 0,
+      "notActions": 3,
+      "unmappedTools": []
+    }
+  }
+}

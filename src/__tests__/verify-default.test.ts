@@ -2,8 +2,10 @@
  * The verify-by-default switch (`VERIFY_BY_DEFAULT`), `--no-checks` and `--verify`.
  *
  * The switch is injected into the command, so both of its values are tested here, with each
- * flag under each value, and flipping it changes no test. `--no-checks` must give exactly the
- * report, the JSON and the summary of a scan without verification, byte for byte.
+ * flag under each value, and flipping it changes no test. `--no-checks` gives the same report,
+ * JSON and summary under either value, byte for byte, and they are not the verified ones.
+ * That they are 0.4.13's own output, from before the checks existed, is pinned against that
+ * release's golden files in `scan-no-checks-0413.test.ts`.
  */
 
 import { mkdtempSync } from "node:fs";
@@ -107,7 +109,9 @@ describe("the switch", () => {
   });
 });
 
-describe("--no-checks is the report without verification, byte for byte", () => {
+describe("--no-checks is the same report whichever way the switch is set, byte for byte", () => {
+  // This compares runs of this build with each other. The comparison with 0.4.13's own
+  // output, the report before the checks existed, is `scan-no-checks-0413.test.ts`.
   it.each([
     [[] as string[]],
     [["--artifact"]],
@@ -115,7 +119,7 @@ describe("--no-checks is the report without verification, byte for byte", () => 
     const { root } = await corpus;
     const work = mkdtempSync(join(tmpdir(), "agenttrail-verify-default-work-"));
     const base = ["--agent", "claude", "--dir", root, ...variant];
-    // Without verification: the switch off and no flag, as before the switch.
+    // Without verification: the switch off and no flag.
     const before = await scan(base, false, work);
     const skipped = await scan([...base, "--no-checks"], true, work);
     const skippedOff = await scan([...base, "--no-checks"], false, work);
@@ -141,10 +145,14 @@ describe("--no-checks is the report without verification, byte for byte", () => 
     // And the default does verify, so the comparison above is not between two unverified runs.
     const verified = await scan(base, true, work);
     expect(verified.stdout).toContain("Checked on this machine (read-only, offline)");
-    // The page carries the verification in its data block; the artifact variant has none yet.
-    if (variant.length === 0) {
-      expect([...verified.written.values()][0]).not.toBe([...before.written.values()][0]);
-    }
+    // Both variants show the verified sections, and only the verified page is styled for them.
+    const [page] = [...verified.written.values()];
+    const [plain] = [...before.written.values()];
+    expect(page).not.toBe(plain);
+    expect(page).toContain('id="what-happened"');
+    expect(page).toContain("--tone-act-fg");
+    expect(plain).not.toContain('id="what-happened"');
+    expect(plain).not.toContain("--tone-act-fg");
   });
 });
 
