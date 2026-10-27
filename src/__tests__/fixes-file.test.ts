@@ -1,3 +1,4 @@
+// cspell:words THROWNCHECKCANARY
 /**
  * The local fixes file: the exact fix commands for this machine, next to the report, at `0600`.
  *
@@ -9,6 +10,7 @@
  */
 
 import {
+  existsSync,
   linkSync,
   lstatSync,
   mkdtempSync,
@@ -20,7 +22,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { runScan } from "../commands/scan.js";
+import { CHECKS_FAILED_LINE, runScan } from "../commands/scan.js";
 import { fixCategories, fixesFileText } from "../core/fixes-file.js";
 import { FIXES_FILENAME, REPORT_FILENAME } from "../core/report.js";
 import {
@@ -131,6 +133,8 @@ async function scan(
     readonly extra?: readonly (LocalFix | UnsafeFix)[];
     /** Make the write of the fixes file fail. */
     readonly failFixes?: boolean;
+    /** Make the checks throw, with this message. */
+    readonly throws?: string;
   } = {},
 ): Promise<{ code: number; stdout: string; work: string }> {
   const { root } = await writeCorpus("claude", [
@@ -164,6 +168,7 @@ async function scan(
     catalog: [RULE_RM_RF],
     now: AT,
     verify: async (input: VerifyInput) => {
+      if (options.throws !== undefined) throw new Error(options.throws);
       const outcome = await verifyScan(input);
       // Secrets is the one category with a check in this build, so its card names the file.
       const base = options.fixes === false ? [] : [...FIXES, SECRETS_LOCAL];
@@ -176,6 +181,36 @@ async function scan(
   });
   return { code, stdout: out.join(""), work };
 }
+
+describe("a check that throws does not take the scan down", () => {
+  const CANARY = "THROWNCHECKCANARY /Users/sample/secret-path";
+
+  it("writes the page without verification, says the checks could not run, exits 0", async () => {
+    const run = await scan(["--verify"], { throws: CANARY });
+    expect(run.code).toBe(0);
+    expect(run.stdout).toContain(CHECKS_FAILED_LINE);
+    // Never the error's text or a stack trace.
+    expect(run.stdout).not.toContain("THROWNCHECKCANARY");
+    expect(run.stdout).not.toMatch(/\n\s+at /);
+    const report = readFileSync(join(run.work, REPORT_FILENAME), "utf8");
+    expect(report).not.toContain('id="what-happened"');
+    expect(report).not.toContain("THROWNCHECKCANARY");
+    expect(existsSync(join(run.work, FIXES_FILENAME))).toBe(false);
+  });
+
+  it("--json still prints a parseable result, with no verification and no error", async () => {
+    const run = await scan(["--verify", "--json"], { throws: CANARY });
+    expect(run.code).toBe(0);
+    expect(JSON.parse(run.stdout).result.verification).toBeUndefined();
+    expect(run.stdout).not.toContain("THROWNCHECKCANARY");
+  });
+
+  it("negative control: checks that run say what they checked, not that they could not", async () => {
+    const run = await scan(["--verify"]);
+    expect(run.stdout).not.toContain(CHECKS_FAILED_LINE);
+    expect(run.stdout).toContain("Checked on this machine (read-only, offline)");
+  });
+});
 
 describe("scan writes the file next to the report", () => {
   it("at mode 0600, with the exact commands, and names it in the summary", async () => {

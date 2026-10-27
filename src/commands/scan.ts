@@ -64,6 +64,7 @@ import {
   ARTIFACT_FILENAME,
   actionLabel,
   agentName,
+  boundaryVerification,
   bySeverityThenCount,
   FIXES_FILENAME,
   MAX_EXAMPLES,
@@ -571,6 +572,8 @@ export function renderSummary(
   reportPath: string | undefined,
   /** The local fixes file, when one was written. */
   fixesPath?: string,
+  /** The checks were asked for and could not run, so the report has no verified results. */
+  checksFailed = false,
 ): string {
   const c = createColors(colorsEnabled);
   const out: string[] = [];
@@ -690,7 +693,11 @@ export function renderSummary(
 
   if (result.verification !== undefined) {
     out.push("");
-    out.push(verificationSummary(result.verification));
+    // From the same boundary copy the page and --json read, so the line says no more than they.
+    out.push(verificationSummary(boundaryVerification(result.verification, false)));
+  } else if (checksFailed) {
+    out.push("");
+    out.push(CHECKS_FAILED_LINE);
   }
 
   if (reportPath !== undefined) {
@@ -710,6 +717,10 @@ export function renderSummary(
 
   return `${out.join("\n")}\n`;
 }
+
+/** The summary line when the checks were asked for and could not run. */
+export const CHECKS_FAILED_LINE =
+  "Checked on this machine: the checks could not run, so this report shows no verified results.";
 
 /** `n` and a noun, with the noun's plural when `n` is not 1. */
 function counted(n: number, singular: string, plural = `${singular}s`): string {
@@ -983,16 +994,25 @@ export async function runScan(
   }
   // Only when asked for, until `VERIFY_BY_DEFAULT` turns it on. The outcome's local fixes stay
   // here, beside the result, for the local fixes file; they never enter `ScanResult`.
-  const outcome: VerifyOutcome | undefined =
-    flags.verify || VERIFY_BY_DEFAULT
-      ? await (deps.verify ?? verifyScan)({
-          corpus,
-          catalog,
-          allowlist,
-          readLines: (path) => io.readLines(path),
-          io: deps.createVerifyIO?.() ?? UNAVAILABLE_VERIFY_IO,
-        })
-      : undefined;
+  let outcome: VerifyOutcome | undefined;
+  let checksFailed = false;
+  if (flags.verify || VERIFY_BY_DEFAULT) {
+    try {
+      outcome = await (deps.verify ?? verifyScan)({
+        corpus,
+        catalog,
+        allowlist,
+        readLines: (path) => io.readLines(path),
+        io: deps.createVerifyIO?.() ?? UNAVAILABLE_VERIFY_IO,
+      });
+    } catch {
+      // The checks promise never to throw. If one does anyway, the scan still writes its page,
+      // without verification, and the summary says the checks could not run. The error itself
+      // is never printed: it could carry text from what was read, and an agent reads stdout.
+      outcome = undefined;
+      checksFailed = true;
+    }
+  }
   // The shipped rule OBJECTS, so a finding is labelled `library` by identity: a user rule
   // that reuses a shipped id is still the user's own rule.
   const result = aggregateScan(corpus, catalog, allowlist, new Set(shipped), outcome?.verification);
@@ -1073,7 +1093,13 @@ export async function runScan(
   // The summary is printed whether or not the file was written — it is the payoff, and
   // it must not depend on a writable working directory.
   io.writeStdout(
-    renderSummary(result, colors.enabled, written ? reportPath : undefined, fixesPath),
+    renderSummary(
+      result,
+      colors.enabled,
+      written ? reportPath : undefined,
+      fixesPath,
+      checksFailed,
+    ),
   );
   // An older fixes file left next to the report is said, never deleted: its commands are from
   // an earlier scan, and this one made none.

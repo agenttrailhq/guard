@@ -15263,7 +15263,7 @@ var CONTROL_CHARS = new RegExp(
 function terminalText(text) {
   return text.replace(CONTROL_CHARS, " ").replace(/\s+/g, " ").trim();
 }
-function renderSummary(result, colorsEnabled, reportPath, fixesPath) {
+function renderSummary(result, colorsEnabled, reportPath, fixesPath, checksFailed = false) {
   const c = createColors(colorsEnabled);
   const out = [];
   const t = result.tokens;
@@ -15364,7 +15364,10 @@ function renderSummary(result, colorsEnabled, reportPath, fixesPath) {
   }
   if (result.verification !== void 0) {
     out.push("");
-    out.push(verificationSummary(result.verification));
+    out.push(verificationSummary(boundaryVerification(result.verification, false)));
+  } else if (checksFailed) {
+    out.push("");
+    out.push(CHECKS_FAILED_LINE);
   }
   if (reportPath !== void 0) {
     out.push("");
@@ -15383,6 +15386,7 @@ function renderSummary(result, colorsEnabled, reportPath, fixesPath) {
   return `${out.join("\n")}
 `;
 }
+var CHECKS_FAILED_LINE = "Checked on this machine: the checks could not run, so this report shows no verified results.";
 function counted3(n, singular, plural2 = `${singular}s`) {
   return `${formatCount(n)} ${n === 1 ? singular : plural2}`;
 }
@@ -15569,13 +15573,22 @@ ${SCAN_USAGE}`);
       colors: shouldUseColor({ env: io.env, isTTY: io.isTTY() })
     });
   }
-  const outcome = flags.verify || VERIFY_BY_DEFAULT ? await (deps.verify ?? verifyScan)({
-    corpus,
-    catalog,
-    allowlist,
-    readLines: (path) => io.readLines(path),
-    io: deps.createVerifyIO?.() ?? UNAVAILABLE_VERIFY_IO
-  }) : void 0;
+  let outcome;
+  let checksFailed = false;
+  if (flags.verify || VERIFY_BY_DEFAULT) {
+    try {
+      outcome = await (deps.verify ?? verifyScan)({
+        corpus,
+        catalog,
+        allowlist,
+        readLines: (path) => io.readLines(path),
+        io: deps.createVerifyIO?.() ?? UNAVAILABLE_VERIFY_IO
+      });
+    } catch {
+      outcome = void 0;
+      checksFailed = true;
+    }
+  }
   const result = aggregateScan(corpus, catalog, allowlist, new Set(shipped), outcome?.verification);
   const meta = { version: VERSION, generatedAt: now };
   if (flags.json) {
@@ -15634,7 +15647,13 @@ ${SCAN_USAGE}`);
     })
   );
   io.writeStdout(
-    renderSummary(result, colors.enabled, written ? reportPath : void 0, fixesPath)
+    renderSummary(
+      result,
+      colors.enabled,
+      written ? reportPath : void 0,
+      fixesPath,
+      checksFailed
+    )
   );
   if (outcome !== void 0 && fixesPath === void 0 && fixesTarget !== reportPath) {
     let stale = false;
