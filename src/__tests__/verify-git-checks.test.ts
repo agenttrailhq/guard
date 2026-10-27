@@ -10,10 +10,17 @@ import { existsSync, mkdirSync, readdirSync, rmSync, statSync, writeFileSync } f
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { runScan } from "../commands/scan.js";
+import { boundaryVerification, renderReport } from "../core/report.js";
+import { CARD_BUILDERS } from "../core/verify/builders.js";
 import { isLocalFix, unconfirmedOf } from "../core/verify/cards.js";
 import { checkGitBacked, GIT_CARD_BUILDERS } from "../core/verify/git-checks.js";
 import { lostWorkCard } from "../core/verify/lost-work.js";
-import type { GitOutcome, VerifyIO } from "../core/verify/types.js";
+import {
+  type GitOutcome,
+  VERIFY_CATEGORIES,
+  type Verification,
+  type VerifyIO,
+} from "../core/verify/types.js";
 import { createRealScanIO, type ScanIO } from "../scan-io.js";
 import { createRealVerifyIO, isAllowedGitCall } from "../verify-io.js";
 import {
@@ -29,7 +36,16 @@ import {
   tempFolder,
   verifyIO,
 } from "./git-check-fixtures.js";
+import { baseResult, SECRETS_CLEAN, VERIFIED_META } from "./verified-corpus.js";
 import { writeCorpus } from "./verify-fixtures.js";
+
+/** The git-backed categories. */
+type GitName = keyof typeof GIT_CARD_BUILDERS;
+
+/** The frame's could-not-confirm line, after a call that ran eval. */
+const CNC = "could-not-confirm";
+const EVAL_LINE =
+  "Could not confirm: commands that ran, or may have run, here used eval, which can run commands this reading does not take apart, so this is not a clean result.";
 
 /** A repo, and a session that ran one command of every kind the checks look up. */
 function everything(label: string): { root: string; sessions: GitSession[] } {
@@ -455,6 +471,92 @@ describe("a hiding form in a call that ran keeps every git-backed category from 
         name,
       ).toEqual([]);
       expect(unconfirmedOf(name, result.status, result.facts, true)?.forms, name).toEqual(["eval"]);
+    }
+  });
+
+  it.each([
+    ["one that ran eval", 'eval "$TASK"', 1],
+    ["none that ran a command the checks read", "ls -la", 0],
+  ])("the real cards through the report's boundary, after %s", async (_name, command, hiding) => {
+    const root = makeRepo("hiding-page");
+    const outcome = await runChecks(
+      "claude",
+      [{ cwd: root, events: [{ kind: "bash", command, output: "" }] }],
+      tempFolder("home"),
+    );
+    /** The three real git results, `drop` taken out of their facts; every other is not checked. */
+    const verificationOf = (drop?: string): Verification => {
+      const categories = Object.fromEntries(
+        VERIFY_CATEGORIES.map((c) => {
+          // The secrets check always carries its facts.
+          if (c === "secrets") return [c, { status: "clean", matches: 0, facts: SECRETS_CLEAN }];
+          if (!(c in GIT_CARD_BUILDERS)) return [c, { status: "not-checked" }];
+          const result = checkedOf<Record<string, unknown>>(outcome[c as GitName] as never);
+          const facts = { ...result.facts };
+          if (drop !== undefined) delete facts[drop];
+          return [c, { ...result, facts }];
+        }),
+      );
+      return {
+        matchedCalls: { ran: 1, mentioned: 0, unknown: 0 },
+        resultsRecorded: true,
+        ranEvidence: "tool-result",
+        categories,
+      } as unknown as Verification;
+    };
+    const page = (drop?: string): string =>
+      renderReport(baseResult(verificationOf(drop)), VERIFIED_META, {
+        cardBuilders: CARD_BUILDERS,
+      });
+    /** Each line of a card on the page, as its template and its text. */
+    const linesOf = (html: string, name: GitName): string[][] => {
+      const at = html.indexOf(`id="check-${name}"`);
+      expect(at, name).toBeGreaterThan(-1);
+      const card = html.slice(html.lastIndexOf("<article", at), html.indexOf("</article>", at));
+      return [...card.matchAll(/<p data-template="([^"]+)">([^<]*)<\/p>/g)].map((m) => [
+        m[1] as string,
+        m[2] as string,
+      ]);
+    };
+    const LINES: Record<GitName, readonly string[][]> =
+      hiding > 0
+        ? {
+            "skipped-checks": [[CNC, EVAL_LINE]],
+            "lost-work": [[CNC, EVAL_LINE]],
+            destructive: [[CNC, EVAL_LINE]],
+          }
+        : {
+            "skipped-checks": [
+              ["skipped-checks.none", "No command this check could read skipped a hook."],
+            ],
+            "lost-work": [
+              [
+                "lost-work.none",
+                "No command this check could read deleted a branch or a stash, or discarded changes.",
+              ],
+            ],
+            destructive: [
+              [
+                "destructive.none",
+                "No rm -rf and no database wipe that this check could read ran.",
+              ],
+            ],
+          };
+    const html = page();
+    const crossed = boundaryVerification(verificationOf(), false);
+    for (const name of Object.keys(LINES) as GitName[]) {
+      // The count of hiding calls is a registered fact key, so it crosses the boundary.
+      const result = crossed.categories[name] as { facts?: { hidingCalls?: number } };
+      expect(result.facts?.hidingCalls, name).toBe(hiding);
+      expect(linesOf(html, name), name).toEqual(LINES[name]);
+    }
+    // Negative control: a boundary that dropped the key would lose the lines that say nothing
+    // ran, which ask for no hiding call at all. (After eval the hiding forms carry the card.)
+    if (hiding === 0) {
+      const dropped = page("hidingCalls");
+      for (const name of ["lost-work", "destructive"] as const) {
+        expect(linesOf(dropped, name), name).toEqual([]);
+      }
     }
   });
 });
