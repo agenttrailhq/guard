@@ -10760,7 +10760,8 @@ var HIDING_FORMS = [
   "git-exec",
   "git-hook",
   "unread-shell",
-  "unterminated-quote"
+  "unterminated-quote",
+  "unread-match"
 ];
 var SECRET_PROVENANCES = [
   "pasted-into-prompt",
@@ -11977,6 +11978,18 @@ function couldHideCount(corpus) {
 function heldHidingForms(corpus) {
   return hidden(corpus).forms;
 }
+function hidingFacts(corpus, unread) {
+  const known = hidden(corpus);
+  const bare = unread.filter((call) => call.hidingForms.length === 0).length;
+  if (bare === 0) return { couldHide: known.count, hidingForms: known.forms };
+  return {
+    couldHide: known.count + bare,
+    hidingForms: HIDING_FORMS.filter((f) => f === "unread-match" || known.forms.includes(f))
+  };
+}
+function runsAnyOf(command, programs) {
+  return simpleCommands(command).some((simple) => programs.has(programAndArgs(simple).program));
+}
 function baseName(path) {
   return path.split(/[\\/]/).pop() ?? path;
 }
@@ -12013,7 +12026,7 @@ var MAX_LOCAL_FIXES = 50;
 function couldHideTemplate(id) {
   return {
     id,
-    render: (f) => f.couldHide > 0 ? `${counted(f.couldHide, "command that ran, or may have run,", "commands that ran, or may have run,")} could run other commands this check does not read (code given to a shell or an interpreter, a script piped into one, find -exec, xargs, eval, a substitution, git config, exec or hooks, a quote left open, or a shell this reading does not parse), so it could not confirm it saw everything.` : void 0
+    render: (f) => f.couldHide > 0 ? `${counted(f.couldHide, "command that ran, or may have run,", "commands that ran, or may have run,")} could run other commands this check does not read (code given to a shell or an interpreter, a script piped into one, find -exec, xargs, eval, a substitution, git config, exec or hooks, a quote left open, a guardrail match in a form this check does not read, or a shell this reading does not parse), so it could not confirm it saw everything.` : void 0
   };
 }
 
@@ -12058,7 +12071,8 @@ var HIDING_FORM_LABELS = {
   "unread-shell": "a shell this reading does not parse",
   "inline-code": "code run inline by an interpreter",
   "piped-script": "a script piped into a shell or interpreter",
-  "unterminated-quote": "a quote left open"
+  "unterminated-quote": "a quote left open",
+  "unread-match": "a command its guardrails matched, in a form this check does not read"
 };
 function hidingFormLabel(form) {
   return HIDING_FORM_LABELS[form] ?? form.replace(/-/g, " ");
@@ -12509,6 +12523,17 @@ var TERRAFORM_RULES = /* @__PURE__ */ new Set([
   "pi.terraform-state-mutate"
 ]);
 var IAM_RULES = /* @__PURE__ */ new Set(["ps.iam-grant"]);
+var CLOUD_UNREAD_RULES = /* @__PURE__ */ new Set([
+  "pi.cloud-resource-delete",
+  "se.public-acl"
+]);
+var CLOUD_PROGRAMS = /* @__PURE__ */ new Set([
+  "aws",
+  "awslocal",
+  "terraform",
+  "tofu",
+  "terragrunt"
+]);
 function checkCloud(input) {
   const { agent, calls } = input.calls;
   const terraformRule = rulesMatcher(
@@ -12522,6 +12547,12 @@ function checkCloud(input) {
     (r) => r.rule.id === "pi.terraform-auto-approve"
   );
   const iamRule = rulesMatcher(input.catalog, input.allowlist, (r) => IAM_RULES.has(r.rule.id));
+  const unreadRule = rulesMatcher(
+    input.catalog,
+    input.allowlist,
+    (r) => CLOUD_UNREAD_RULES.has(r.rule.id)
+  );
+  const unread = [];
   const counts = {
     iamChanges: 0,
     autoScalingChanges: 0,
@@ -12539,11 +12570,12 @@ function checkCloud(input) {
   for (const call of calls) {
     if (!isShell(call)) continue;
     const ruled = call.ruleIds.some((id) => TERRAFORM_RULES.has(id) || IAM_RULES.has(id));
+    const unreadable = call.ruleIds.some((id) => CLOUD_UNREAD_RULES.has(id)) && !runsAnyOf(call.command, CLOUD_PROGRAMS);
     const reading = readCloud(call.command, call.cwd);
-    if (!ruled && reading.changes.length === 0 && reading.localStack === 0) continue;
+    if (!ruled && !unreadable && reading.changes.length === 0 && reading.localStack === 0) continue;
     const holds = (command) => {
       const r = readCloud(command, call.cwd);
-      return r.changes.length > 0 || r.localStack > 0 || terraformRule(call, command) || iamRule(call, command);
+      return r.changes.length > 0 || r.localStack > 0 || terraformRule(call, command) || iamRule(call, command) || unreadable && unreadRule(call, command);
     };
     matches += 1;
     const state = runStateOf(agent, call, holds);
@@ -12564,6 +12596,9 @@ function checkCloud(input) {
     }
     if (!changes.some((c) => c.service === "iam") && iamRule(call, ran)) {
       changes.push({ service: "iam", subject: "other" });
+    }
+    if (unreadable && changes.length === 0 && read.localStack === 0 && !runsAnyOf(ran, CLOUD_PROGRAMS) && unreadRule(call, ran)) {
+      unread.push(call);
     }
     for (const change of changes) {
       if (change.service === "iam") {
@@ -12587,8 +12622,7 @@ function checkCloud(input) {
   const facts = {
     ...counts,
     iamSubjects: IAM_SUBJECTS.filter((s) => subjects.has(s)),
-    couldHide: couldHideCount(input.calls),
-    hidingForms: heldHidingForms(input.calls)
+    ...hidingFacts(input.calls, unread)
   };
   return { check: { status: cloudStatus(facts), matches, facts }, localFixes: fixes };
 }
@@ -14082,6 +14116,7 @@ function pushedRefs(output) {
 function saysWhatHappened(output) {
   return /\s->\s|Everything up-to-date|\[up to date\]/.test(output);
 }
+var PUSH_RULES = /* @__PURE__ */ new Set(["block-force-push"]);
 async function place(io, root, update) {
   const branch = MAIN_BRANCH.exec(update.branch)?.[1];
   if (branch === void 0 || update.from === void 0 || update.to === void 0) {
@@ -14123,8 +14158,20 @@ async function checkUnreviewed(input) {
     unconfirmed: 0
   };
   let matches = 0;
+  const rules12 = input.rules;
+  const pushRule = rules12 === void 0 ? void 0 : rulesMatcher(rules12.catalog, rules12.allowlist, (r) => PUSH_RULES.has(r.rule.id));
+  const unread = [];
   for (const call of calls) {
-    if (!isShell(call) || !hasPush(call.command)) continue;
+    if (!isShell(call)) continue;
+    if (!hasPush(call.command)) {
+      if (pushRule === void 0 || !call.ruleIds.some((id) => PUSH_RULES.has(id))) continue;
+      matches += 1;
+      const state2 = runStateOf(agent, call, (command) => pushRule(call, command));
+      if (state2 === "mentioned") counts.mentioned += 1;
+      else if (state2 === "unknown") counts.unconfirmed += 1;
+      else unread.push(call);
+      continue;
+    }
     matches += 1;
     const state = runStateOf(agent, call, hasPush);
     if (state === "mentioned") {
@@ -14178,11 +14225,7 @@ async function checkUnreviewed(input) {
       } else counts.commitsNotOnMain += placement.commits;
     }
   }
-  const facts = {
-    ...counts,
-    couldHide: couldHideCount(input.calls),
-    hidingForms: heldHidingForms(input.calls)
-  };
+  const facts = { ...counts, ...hidingFacts(input.calls, unread) };
   return { check: { status: unreviewedStatus(facts), matches, facts }, localFixes: fixes };
 }
 function unreviewedStatus(facts) {
@@ -15458,6 +15501,31 @@ function databaseDetector(scratchRoots) {
   };
 }
 var DATABASE_HINT = /drop|truncate|flush|migrate\s+reset|force-reset|db:(?:drop|reset|purge)|dropDatabase|\.drop\s*\(/i;
+var DESTRUCTIVE_RULES = /* @__PURE__ */ new Set([
+  "dd.rm-rf-absolute",
+  "require-approval-rm-rf",
+  "dd.database-drop",
+  "dd.migration-reset",
+  "block-destructive-sql"
+]);
+function unreadMatches(context, read) {
+  const rules12 = context.rules;
+  if (rules12 === void 0) return 0;
+  const subset = rules12.catalog.filter((rule) => DESTRUCTIVE_RULES.has(rule.rule.id));
+  if (subset.length === 0) return 0;
+  const matches = (mapped) => evaluateAction(subset, rules12.allowlist, [mapped]).decision.matches.length > 0;
+  let bare = 0;
+  for (const call of context.log.shell) {
+    if (read.has(call.id)) continue;
+    const ran = { ...call.mapped, args: { ...call.mapped.args, full_command: call.view } };
+    if (!matches(ran)) continue;
+    if (!isResultBackedRun(runVerdict(context.log.agent, call.mapped, call.result, matches))) {
+      continue;
+    }
+    if (hidingFormsOf(call.mapped).length === 0) bare += 1;
+  }
+  return bare;
+}
 async function checkDestructive(context) {
   const log = context.log;
   const fixes = new FixList("destructive");
@@ -15469,12 +15537,15 @@ async function checkDestructive(context) {
     for (const target of j.found) dbClasses[databaseClass(target)] += 1;
   }
   const databases = { calls: tallyOf(dbCalls), classes: dbClasses };
+  const unread = unreadMatches(context, new Set([...rmCalls, ...dbCalls].map((j) => j.call.id)));
   const facts = {
     rm,
     databases,
     unsafeFixes: fixes.unsafe.length,
-    hidingCalls: log.hiding.calls,
-    hidingForms: [...log.hiding.forms]
+    hidingCalls: log.hiding.calls + unread,
+    hidingForms: HIDING_FORMS.filter(
+      (form) => log.hiding.forms.includes(form) || form === "unread-match" && unread > 0
+    )
   };
   const calls = new Set([...rmCalls, ...dbCalls].map((j) => j.call.id));
   const all = addTallies(rm.calls, databases.calls);
@@ -15483,7 +15554,7 @@ async function checkDestructive(context) {
     act: rm.classes["home-or-above"] + rm.classes["unguarded-variable"] > 0 || trackedMissing(facts) > 0,
     review: rm.classes.untracked + rm.classes.home + rm.classes.other > 0 || databases.classes.other + databases.classes.unresolved > 0,
     // A target built from guarded variables names a folder this check cannot know.
-    incomplete: rm.couldNotCheck + rm.classes["guarded-variable"] + all.unknown + log.hiding.calls > 0
+    incomplete: rm.couldNotCheck + rm.classes["guarded-variable"] + all.unknown + facts.hidingCalls > 0
   });
   return {
     result: { status, matches: calls.size, facts },
@@ -19904,7 +19975,8 @@ async function checkGitBacked(input) {
     context = {
       log: readCalls2(input.corpus, input.home),
       probe: new RepoProbe(input.io),
-      scratchRoots: input.scratchRoots ?? TEMP_ROOTS
+      scratchRoots: input.scratchRoots ?? TEMP_ROOTS,
+      ...input.rules === void 0 ? {} : { rules: input.rules }
     };
   } catch {
     return {
@@ -20558,6 +20630,7 @@ async function verifyScan(input) {
   const git = await checkGitBacked({
     corpus: input.corpus,
     io: input.io,
+    rules: { catalog: input.catalog, allowlist: input.allowlist },
     home: input.home ?? homedir2(),
     ...input.scratchRoots === void 0 ? {} : { scratchRoots: input.scratchRoots }
   });
@@ -20576,7 +20649,7 @@ async function verifyScan(input) {
   const dependencies = checkDependencies(calls);
   chargeTime(input.io, Date.now() - started);
   const tests = await checkTests({ calls, io: input.io });
-  const unreviewed = await checkUnreviewed({ calls, io: input.io });
+  const unreviewed = await checkUnreviewed({ calls, io: input.io, rules: rules12 });
   const egress = await checkEgress({ calls, ...rules12, io: input.io });
   const verification = {
     matchedCalls: matched.tally,

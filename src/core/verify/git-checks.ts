@@ -9,7 +9,7 @@
 import type { ScanCorpus } from "../scan-report.js";
 import type { CardBuilders, LocalFix, UnsafeFix } from "./cards.js";
 import { checkDestructive, type DestructiveCheck, destructiveCard } from "./destructive.js";
-import { type GitCheckContext, TEMP_ROOTS } from "./git-copy.js";
+import { type GitCheckContext, type GuardrailSet, TEMP_ROOTS } from "./git-copy.js";
 import { checkLostWork, type LostWorkCheck, lostWorkCard } from "./lost-work.js";
 import { RepoProbe } from "./repo-probe.js";
 import { readCalls } from "./shell-calls.js";
@@ -20,6 +20,11 @@ import type { CouldNotCheckResult, VerifyIO } from "./types.js";
 export interface GitChecksInput {
   readonly corpus: ScanCorpus;
   readonly io: VerifyIO;
+  /**
+   * The guardrails, so a check can tell a match of one of its own guardrails that its reading
+   * found nothing in (`GitCheckContext.rules`).
+   */
+  readonly rules?: GuardrailSet;
   /** The home folder, for `~` and for "under the home folder". */
   readonly home: string;
   /** Folders whose contents are scratch. `TEMP_ROOTS` unless a test sets its own. */
@@ -69,6 +74,7 @@ export async function checkGitBacked(input: GitChecksInput): Promise<GitChecksOu
       log: readCalls(input.corpus, input.home),
       probe: new RepoProbe(input.io),
       scratchRoots: input.scratchRoots ?? TEMP_ROOTS,
+      ...(input.rules === undefined ? {} : { rules: input.rules }),
     };
   } catch {
     return {

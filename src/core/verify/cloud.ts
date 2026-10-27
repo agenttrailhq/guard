@@ -25,14 +25,15 @@ import type { CompiledAllowlist } from "../evaluate.js";
 import type { CompiledRule } from "../rules.js";
 import {
   type CorpusCalls,
-  couldHideCount,
   executedText,
-  heldHidingForms,
+  hidingFacts,
   isShell,
   programAndArgs,
   quietStatus,
   rulesMatcher,
   runStateOf,
+  runsAnyOf,
+  type SessionCall,
   simpleCommands,
 } from "./calls.js";
 import {
@@ -354,6 +355,27 @@ export const TERRAFORM_RULES: ReadonlySet<string> = new Set([
 /** Guardrails whose match is an IAM grant. */
 export const IAM_RULES: ReadonlySet<string> = new Set(["ps.iam-grant"]);
 
+/**
+ * Other guardrails whose match is a cloud change: a cloud resource deleted, a storage ACL made
+ * public. When one matched a command that ran and this module's reading found no `aws` or
+ * Terraform command in it, the command is in a form the reading does not take apart, and the
+ * card could not confirm (`unread-match`). One the reading did take apart, such as an
+ * `aws ec2` delete, is outside what the card counts.
+ */
+export const CLOUD_UNREAD_RULES: ReadonlySet<string> = new Set([
+  "pi.cloud-resource-delete",
+  "se.public-acl",
+]);
+
+/** The programs this module's reading takes apart. */
+const CLOUD_PROGRAMS: ReadonlySet<string> = new Set([
+  "aws",
+  "awslocal",
+  "terraform",
+  "tofu",
+  "terragrunt",
+]);
+
 /** What the cloud check needs. */
 export interface CloudInput {
   readonly calls: CorpusCalls;
@@ -379,6 +401,10 @@ export function checkCloud(input: CloudInput): CloudOutcome {
     (r) => r.rule.id === "pi.terraform-auto-approve",
   );
   const iamRule = rulesMatcher(input.catalog, input.allowlist, (r) => IAM_RULES.has(r.rule.id));
+  const unreadRule = rulesMatcher(input.catalog, input.allowlist, (r) =>
+    CLOUD_UNREAD_RULES.has(r.rule.id),
+  );
+  const unread: SessionCall[] = [];
   const counts = {
     iamChanges: 0,
     autoScalingChanges: 0,
@@ -397,15 +423,20 @@ export function checkCloud(input: CloudInput): CloudOutcome {
   for (const call of calls) {
     if (!isShell(call)) continue;
     const ruled = call.ruleIds.some((id) => TERRAFORM_RULES.has(id) || IAM_RULES.has(id));
+    // Another cloud guardrail matched, and the reading takes apart no command in the call.
+    const unreadable =
+      call.ruleIds.some((id) => CLOUD_UNREAD_RULES.has(id)) &&
+      !runsAnyOf(call.command, CLOUD_PROGRAMS);
     const reading = readCloud(call.command, call.cwd);
-    if (!ruled && reading.changes.length === 0 && reading.localStack === 0) continue;
+    if (!ruled && !unreadable && reading.changes.length === 0 && reading.localStack === 0) continue;
     const holds = (command: string): boolean => {
       const r = readCloud(command, call.cwd);
       return (
         r.changes.length > 0 ||
         r.localStack > 0 ||
         terraformRule(call, command) ||
-        iamRule(call, command)
+        iamRule(call, command) ||
+        (unreadable && unreadRule(call, command))
       );
     };
     matches += 1;
@@ -429,6 +460,16 @@ export function checkCloud(input: CloudInput): CloudOutcome {
     }
     if (!changes.some((c) => c.service === "iam") && iamRule(call, ran)) {
       changes.push({ service: "iam", subject: "other" });
+    }
+    // A cloud guardrail matched what ran and nothing here was read: could not confirm.
+    if (
+      unreadable &&
+      changes.length === 0 &&
+      read.localStack === 0 &&
+      !runsAnyOf(ran, CLOUD_PROGRAMS) &&
+      unreadRule(call, ran)
+    ) {
+      unread.push(call);
     }
     for (const change of changes) {
       if (change.service === "iam") {
@@ -455,8 +496,7 @@ export function checkCloud(input: CloudInput): CloudOutcome {
   const facts: CloudFacts = {
     ...counts,
     iamSubjects: IAM_SUBJECTS.filter((s) => subjects.has(s)),
-    couldHide: couldHideCount(input.calls),
-    hidingForms: heldHidingForms(input.calls),
+    ...hidingFacts(input.calls, unread),
   };
   return { check: { status: cloudStatus(facts), matches, facts }, localFixes: fixes };
 }

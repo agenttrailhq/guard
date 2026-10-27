@@ -39,6 +39,8 @@
  */
 
 import { dirname, relative, sep } from "node:path";
+import { evaluateAction } from "../scan-report.js";
+import type { MappedCall } from "../types.js";
 import {
   type CardContext,
   type CardView,
@@ -68,6 +70,7 @@ import {
   was,
 } from "./git-copy.js";
 import { DATABASE_CLASSES, RM_TARGET_CLASSES } from "./git-facts.js";
+import { hidingFormsOf, isResultBackedRun, runVerdict } from "./ran.js";
 import { isFailure } from "./repo-probe.js";
 import {
   type Detector,
@@ -84,12 +87,13 @@ import {
   type ShellWord,
   shellCommands,
 } from "./shell-words.js";
-import type {
-  CheckedCategory,
-  CouldNotCheckResult,
-  HidingForm,
-  PendingCheck,
-  RunTally,
+import {
+  type CheckedCategory,
+  type CouldNotCheckResult,
+  HIDING_FORMS,
+  type HidingForm,
+  type PendingCheck,
+  type RunTally,
 } from "./types.js";
 
 export { DATABASE_CLASSES, RM_TARGET_CLASSES };
@@ -790,6 +794,41 @@ export interface DestructiveOutcome {
   readonly unsafeFixes: readonly UnsafeFix[];
 }
 
+/** Guardrails whose match is a recursive delete or a database wipe: what this check reads. */
+export const DESTRUCTIVE_RULES: ReadonlySet<string> = new Set([
+  "dd.rm-rf-absolute",
+  "require-approval-rm-rf",
+  "dd.database-drop",
+  "dd.migration-reset",
+  "block-destructive-sql",
+]);
+
+/**
+ * The calls that ran where a `DESTRUCTIVE_RULES` guardrail matched what ran, and this check's
+ * reading found no delete or wipe in them, nor a mention of one (`read`): each is in a form the
+ * reading does not take apart (`unread-match`). How many hold no other hiding form, which
+ * `CallLog.hiding` has counted already.
+ */
+function unreadMatches(context: GitCheckContext, read: ReadonlySet<number>): number {
+  const rules = context.rules;
+  if (rules === undefined) return 0;
+  const subset = rules.catalog.filter((rule) => DESTRUCTIVE_RULES.has(rule.rule.id));
+  if (subset.length === 0) return 0;
+  const matches = (mapped: MappedCall): boolean =>
+    evaluateAction(subset, rules.allowlist, [mapped]).decision.matches.length > 0;
+  let bare = 0;
+  for (const call of context.log.shell) {
+    if (read.has(call.id)) continue;
+    const ran = { ...call.mapped, args: { ...call.mapped.args, full_command: call.view } };
+    if (!matches(ran)) continue;
+    if (!isResultBackedRun(runVerdict(context.log.agent, call.mapped, call.result, matches))) {
+      continue;
+    }
+    if (hidingFormsOf(call.mapped).length === 0) bare += 1;
+  }
+  return bare;
+}
+
 /** Run the destructive-commands check. Never throws: what cannot be asked is counted. */
 export async function checkDestructive(context: GitCheckContext): Promise<DestructiveOutcome> {
   const log = context.log;
@@ -806,12 +845,15 @@ export async function checkDestructive(context: GitCheckContext): Promise<Destru
     for (const target of j.found) dbClasses[databaseClass(target)] += 1;
   }
   const databases: DatabaseFacts = { calls: tallyOf(dbCalls), classes: dbClasses };
+  const unread = unreadMatches(context, new Set([...rmCalls, ...dbCalls].map((j) => j.call.id)));
   const facts: DestructiveFacts = {
     rm,
     databases,
     unsafeFixes: fixes.unsafe.length,
-    hidingCalls: log.hiding.calls,
-    hidingForms: [...log.hiding.forms],
+    hidingCalls: log.hiding.calls + unread,
+    hidingForms: HIDING_FORMS.filter(
+      (form) => log.hiding.forms.includes(form) || (form === "unread-match" && unread > 0),
+    ),
   };
 
   const calls = new Set([...rmCalls, ...dbCalls].map((j) => j.call.id));
@@ -826,7 +868,7 @@ export async function checkDestructive(context: GitCheckContext): Promise<Destru
       databases.classes.other + databases.classes.unresolved > 0,
     // A target built from guarded variables names a folder this check cannot know.
     incomplete:
-      rm.couldNotCheck + rm.classes["guarded-variable"] + all.unknown + log.hiding.calls > 0,
+      rm.couldNotCheck + rm.classes["guarded-variable"] + all.unknown + facts.hidingCalls > 0,
   });
   return {
     result: { status, matches: calls.size, facts },

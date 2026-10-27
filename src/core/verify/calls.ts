@@ -432,6 +432,33 @@ export function heldHidingForms(corpus: CorpusCalls): readonly HidingForm[] {
   return hidden(corpus).forms;
 }
 
+/**
+ * A command check's `couldHide` and `hidingForms` facts: the corpus's (`couldHideCount`,
+ * `heldHidingForms`), plus `unread-match` for `unread`, the calls that ran where one of the
+ * check's own guardrails matched what ran and its reading found nothing. A call among them that
+ * holds another form is counted already, and is not counted again.
+ */
+export function hidingFacts(
+  corpus: CorpusCalls,
+  unread: readonly SessionCall[],
+): { readonly couldHide: number; readonly hidingForms: readonly HidingForm[] } {
+  const known = hidden(corpus);
+  const bare = unread.filter((call) => call.hidingForms.length === 0).length;
+  if (bare === 0) return { couldHide: known.count, hidingForms: known.forms };
+  return {
+    couldHide: known.count + bare,
+    hidingForms: HIDING_FORMS.filter((f) => f === "unread-match" || known.forms.includes(f)),
+  };
+}
+
+/**
+ * Does a shell text run any of `programs`, as the shared reading names a simple command's
+ * program? A check reads a command of its kind when it does.
+ */
+export function runsAnyOf(command: string, programs: ReadonlySet<string>): boolean {
+  return simpleCommands(command).some((simple) => programs.has(programAndArgs(simple).program));
+}
+
 /** The file name at the end of a path, either separator. */
 export function baseName(path: string): string {
   return path.split(/[\\/]/).pop() ?? path;

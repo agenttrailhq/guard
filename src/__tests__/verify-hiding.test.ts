@@ -1,4 +1,4 @@
-// cspell:words xargs execdir okdir doas ionice setsid caffeinate runuser
+// cspell:words xargs execdir okdir doas ionice setsid caffeinate runuser mywrap
 /**
  * Hiding forms (`core/verify/calls.ts`): commands that can run other commands the checks do not
  * read. Where a call that ran holds one, no command check says that nothing ran, and none reads
@@ -399,11 +399,8 @@ const CONTROLS: readonly (readonly [string, string, VerifyCategory])[] = [
   ["a push to main", "git push origin HEAD:main", "unreviewed"],
 ];
 
-/**
- * The status each category shows, as the report and `--json` show it (`honestStatus`), after
- * every check ran on one Claude Code call of `command` that ran.
- */
-async function shownStatuses(command: string): Promise<Record<VerifyCategory, string>> {
+/** Every check, run on one Claude Code call of `command` that ran, with the shipped guardrails. */
+async function verificationOf(command: string): Promise<Verification> {
   const { corpus } = await writeCorpus("claude", [
     [{ kind: "call", command, result: { text: "" } }],
   ]);
@@ -414,6 +411,23 @@ async function shownStatuses(command: string): Promise<Record<VerifyCategory, st
     io: UNAVAILABLE_VERIFY_IO,
     home: "/nonexistent/home",
   });
+  return verification;
+}
+
+/** The hiding forms a category's facts name. */
+function formsIn(verification: Verification, category: VerifyCategory): readonly string[] {
+  const result = verification.categories[category];
+  return "facts" in result
+    ? ((result.facts as { readonly hidingForms?: readonly string[] }).hidingForms ?? [])
+    : [];
+}
+
+/**
+ * The status each category shows, as the report and `--json` show it (`honestStatus`), after
+ * every check ran on one Claude Code call of `command` that ran.
+ */
+async function shownStatuses(command: string): Promise<Record<VerifyCategory, string>> {
+  const verification = await verificationOf(command);
   const out = {} as Record<VerifyCategory, string>;
   for (const [category, result] of Object.entries(verification.categories)) {
     const facts = "facts" in result ? result.facts : undefined;
@@ -494,6 +508,44 @@ describe("words before a command", () => {
   );
   it.each(strings)("%s given to %s is never clean", async (_l, _w, wrapped, category) => {
     expect((await shownStatuses(wrapped))[category], wrapped).not.toBe("clean");
+  });
+});
+
+describe("a category's guardrail matched what its check did not read", () => {
+  // A word this reading does not know, before a command a guardrail matches.
+  const WRAP = "mywrap --as ops";
+
+  it.each([
+    ["a recursive delete", `rm -rf /srv/${"data"}`, "destructive"],
+    ["a force push", `git push --force origin ${"main"}`, "unreviewed"],
+    ["a public bucket ACL", "aws s3api put-bucket-acl --bucket b --acl public-read", "cloud"],
+  ] as const)("%s behind an unknown word: could not confirm, never clean", async (_l, command, category) => {
+    const alone = await verificationOf(command);
+    expect(formsIn(alone, category)).not.toContain("unread-match");
+    expect((await shownStatuses(command))[category]).not.toBe("clean");
+
+    const wrapped = await verificationOf(`${WRAP} ${command}`);
+    expect(formsIn(wrapped, category)).toContain("unread-match");
+    expect((await shownStatuses(`${WRAP} ${command}`))[category]).toBe("could-not-check");
+  });
+
+  it("only the category whose guardrail matched names the form", async () => {
+    const verification = await verificationOf(`${WRAP} git push --force origin ${"main"}`);
+    expect(formsIn(verification, "unreviewed")).toEqual(["unread-match"]);
+    for (const category of ["cloud", "destructive", "prod-infra", "egress", "tests"] as const) {
+      expect(formsIn(verification, category), category).not.toContain("unread-match");
+    }
+  });
+
+  it("a command of its kind the reading took apart is a read, not a miss", async () => {
+    // The reading reads this aws call; it is just not a change the cloud card counts.
+    const verification = await verificationOf("aws ec2 terminate-instances --instance-ids i-1");
+    expect(formsIn(verification, "cloud")).not.toContain("unread-match");
+  });
+
+  it("a match only mentioned is not a miss", async () => {
+    const verification = await verificationOf(`echo "${WRAP} git push --force origin main"`);
+    expect(formsIn(verification, "unreviewed")).not.toContain("unread-match");
   });
 });
 

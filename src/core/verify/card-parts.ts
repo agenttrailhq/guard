@@ -65,7 +65,7 @@ export function couldHideTemplate<F extends { readonly couldHide: number }>(
     id,
     render: (f) =>
       f.couldHide > 0
-        ? `${counted(f.couldHide, "command that ran, or may have run,", "commands that ran, or may have run,")} could run other commands this check does not read (code given to a shell or an interpreter, a script piped into one, find -exec, xargs, eval, a substitution, git config, exec or hooks, a quote left open, or a shell this reading does not parse), so it could not confirm it saw everything.`
+        ? `${counted(f.couldHide, "command that ran, or may have run,", "commands that ran, or may have run,")} could run other commands this check does not read (code given to a shell or an interpreter, a script piped into one, find -exec, xargs, eval, a substitution, git config, exec or hooks, a quote left open, a guardrail match in a form this check does not read, or a shell this reading does not parse), so it could not confirm it saw everything.`
         : undefined,
   };
 }

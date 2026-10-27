@@ -5,6 +5,8 @@
  * Pure, apart from the probe it carries.
  */
 
+import type { CompiledAllowlist } from "../evaluate.js";
+import type { CompiledRule } from "../rules.js";
 import { formatCount } from "../tokens.js";
 import {
   type CardContext,
@@ -166,6 +168,17 @@ export interface GitCheckContext {
   readonly probe: RepoProbe;
   /** Folders whose contents are scratch. `TEMP_ROOTS` unless a test sets its own. */
   readonly scratchRoots: readonly string[];
+  /**
+   * The guardrails, so a check can tell a call that ran where one of its own guardrails matched
+   * and its reading found nothing. Without them, such a call is not looked at.
+   */
+  readonly rules?: GuardrailSet;
+}
+
+/** A compiled catalog and the user's allowlist, evaluated as `scan` evaluates them. */
+export interface GuardrailSet {
+  readonly catalog: readonly CompiledRule[];
+  readonly allowlist: CompiledAllowlist;
 }
 
 /** Is `path` inside one of `roots`, or one of them? */

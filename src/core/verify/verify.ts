@@ -108,6 +108,7 @@ export async function verifyScan(input: VerifyInput): Promise<VerifyOutcome> {
   const git = await checkGitBacked({
     corpus: input.corpus,
     io: input.io,
+    rules: { catalog: input.catalog, allowlist: input.allowlist },
     home: input.home ?? homedir(),
     ...(input.scratchRoots === undefined ? {} : { scratchRoots: input.scratchRoots }),
   });
@@ -136,7 +137,7 @@ export async function verifyScan(input: VerifyInput): Promise<VerifyOutcome> {
   chargeTime(input.io, Date.now() - started);
 
   const tests = await checkTests({ calls, io: input.io });
-  const unreviewed = await checkUnreviewed({ calls, io: input.io });
+  const unreviewed = await checkUnreviewed({ calls, io: input.io, rules });
   const egress = await checkEgress({ calls, ...rules, io: input.io });
 
   const verification: Verification = {

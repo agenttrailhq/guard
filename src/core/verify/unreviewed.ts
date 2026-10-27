@@ -20,15 +20,18 @@
  * the local fixes file, built from quoted parts (`localFixCommand`).
  */
 
+import type { CompiledAllowlist } from "../evaluate.js";
+import type { CompiledRule } from "../rules.js";
 import {
   type CorpusCalls,
-  couldHideCount,
   executedText,
-  heldHidingForms,
+  hidingFacts,
   isShell,
   programAndArgs,
   quietStatus,
+  rulesMatcher,
   runStateOf,
+  type SessionCall,
   simpleCommands,
 } from "./calls.js";
 import {
@@ -198,10 +201,25 @@ function saysWhatHappened(output: string): boolean {
   return /\s->\s|Everything up-to-date|\[up to date\]/.test(output);
 }
 
+/**
+ * Guardrails whose match is a push. When one matched a command that ran and this module's
+ * reading found no `git push` in it, the push is in a form the reading does not take apart, and
+ * the card could not confirm (`unread-match`).
+ */
+export const PUSH_RULES: ReadonlySet<string> = new Set(["block-force-push"]);
+
 /** What the unreviewed-code check needs. */
 export interface UnreviewedInput {
   readonly calls: CorpusCalls;
   readonly io: VerifyIO;
+  /**
+   * The guardrails, to tell whether a `PUSH_RULES` match that the reading found no push in sits
+   * where the shell runs it. Without them, such a match is not looked at.
+   */
+  readonly rules?: {
+    readonly catalog: readonly CompiledRule[];
+    readonly allowlist: CompiledAllowlist;
+  };
 }
 
 /** What the unreviewed-code check produced. */
@@ -262,9 +280,25 @@ export async function checkUnreviewed(input: UnreviewedInput): Promise<Unreviewe
     unconfirmed: 0,
   };
   let matches = 0;
+  const rules = input.rules;
+  const pushRule =
+    rules === undefined
+      ? undefined
+      : rulesMatcher(rules.catalog, rules.allowlist, (r) => PUSH_RULES.has(r.rule.id));
+  const unread: SessionCall[] = [];
 
   for (const call of calls) {
-    if (!isShell(call) || !hasPush(call.command)) continue;
+    if (!isShell(call)) continue;
+    if (!hasPush(call.command)) {
+      // A push guardrail matched a call this reading finds no push in.
+      if (pushRule === undefined || !call.ruleIds.some((id) => PUSH_RULES.has(id))) continue;
+      matches += 1;
+      const state = runStateOf(agent, call, (command) => pushRule(call, command));
+      if (state === "mentioned") counts.mentioned += 1;
+      else if (state === "unknown") counts.unconfirmed += 1;
+      else unread.push(call);
+      continue;
+    }
     matches += 1;
     const state = runStateOf(agent, call, hasPush);
     if (state === "mentioned") {
@@ -327,11 +361,7 @@ export async function checkUnreviewed(input: UnreviewedInput): Promise<Unreviewe
     }
   }
 
-  const facts: UnreviewedFacts = {
-    ...counts,
-    couldHide: couldHideCount(input.calls),
-    hidingForms: heldHidingForms(input.calls),
-  };
+  const facts: UnreviewedFacts = { ...counts, ...hidingFacts(input.calls, unread) };
   return { check: { status: unreviewedStatus(facts), matches, facts }, localFixes: fixes };
 }
 
