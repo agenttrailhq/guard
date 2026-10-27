@@ -491,13 +491,65 @@ describe("only the scrub path can write a transcript", () => {
       "futimesSync",
       "futimes",
       "lutimes",
+      "lutimesSync",
+      "lchmodSync",
+      "lchown",
+      "lchownSync",
+      "fchown",
+      "fchownSync",
+      "fdatasync",
+      "fdatasyncSync",
+      "WriteStream",
+      // `fs.open` and `fs.promises.open` take a string mode that can write; only `openSync` with
+      // an accepted flag expression is allowed.
+      "open",
     ];
+
+    /**
+     * Ways to reach a module, or run code, without an import the checks above can read: a
+     * property or call by one of these names fails the check.
+     */
+    const MODULE_ROUTES = new Set([
+      "getBuiltinModule",
+      "createRequire",
+      "binding",
+      "_linkedBinding",
+      "eval",
+      "Function",
+    ]);
+
+    /** Names that must only ever be the `node:fs` import of the same name. */
+    const FS_ONLY_NAMES = new Set(["constants", "openSync"]);
+
+    /** Is `node` the name a declaration binds, rather than a use of a name? */
+    function isBindingName(node: ts.Identifier): boolean {
+      const parent = node.parent;
+      return (
+        ((ts.isVariableDeclaration(parent) ||
+          ts.isParameter(parent) ||
+          ts.isFunctionDeclaration(parent) ||
+          ts.isFunctionExpression(parent) ||
+          ts.isClassDeclaration(parent) ||
+          ts.isClassExpression(parent) ||
+          ts.isEnumDeclaration(parent) ||
+          ts.isBindingElement(parent) ||
+          ts.isImportClause(parent) ||
+          ts.isNamespaceImport(parent) ||
+          ts.isImportEqualsDeclaration(parent)) &&
+          parent.name === node) ||
+        (ts.isImportSpecifier(parent) && parent.name === node)
+      );
+    }
 
     /** Every reason `source` is not read-only, per the rules above. Empty when it is. */
     function readOnlyProblems(source: string): string[] {
       const file = ts.createSourceFile("verify-io.ts", source, ts.ScriptTarget.Latest, true);
       const problems: string[] = [];
       let openCalls = 0;
+      // The `node:fs` import specifiers, so a binding of the same name elsewhere is caught.
+      const fsSpecifiers = new Set<ts.Node>();
+      const fsImported = new Set<string>();
+      const used = new Set<string>();
       const visit = (node: ts.Node): void => {
         if (ts.isImportDeclaration(node) && ts.isStringLiteral(node.moduleSpecifier)) {
           const from = node.moduleSpecifier.text;
@@ -513,12 +565,41 @@ describe("only the scrub path can write a transcript", () => {
                 const name = (element.propertyName ?? element.name).text;
                 if (element.propertyName !== undefined) problems.push(`renames ${name}`);
                 if (!READ_ONLY_FS_IMPORTS.has(name)) problems.push(`imports ${name}`);
+                fsSpecifiers.add(element.name);
+                fsImported.add(element.name.text);
               }
             }
           }
         }
+        if (ts.isIdentifier(node) && FS_ONLY_NAMES.has(node.text)) {
+          if (isBindingName(node)) {
+            if (!fsSpecifiers.has(node))
+              problems.push(`binds ${node.text} other than from node:fs`);
+          } else {
+            used.add(node.text);
+          }
+        }
+        if (ts.isIdentifier(node) && MODULE_ROUTES.has(node.text)) {
+          problems.push(`reaches ${node.text}`);
+        }
+        if (ts.isElementAccessExpression(node)) {
+          const key = node.argumentExpression;
+          if (ts.isStringLiteralLike(key) || ts.isTemplateExpression(key)) {
+            problems.push("indexes by a string key");
+          }
+        }
+        if (ts.isNewExpression(node)) {
+          const callee = node.expression;
+          const name = ts.isIdentifier(callee)
+            ? callee.text
+            : ts.isPropertyAccessExpression(callee)
+              ? callee.name.text
+              : undefined;
+          if (name !== undefined && WRITING_NAMES.includes(name)) problems.push(`calls ${name}`);
+        }
         if (ts.isCallExpression(node)) {
           const callee = node.expression;
+          if (callee.kind === ts.SyntaxKind.ImportKeyword) problems.push("imports dynamically");
           const name = ts.isIdentifier(callee)
             ? callee.text
             : ts.isPropertyAccessExpression(callee)
@@ -548,6 +629,10 @@ describe("only the scrub path can write a transcript", () => {
       };
       visit(file);
       if (openCalls === 0) problems.push("never calls openSync");
+      // A name used here must resolve to the `node:fs` import, not to a global or nothing.
+      for (const name of used) {
+        if (!fsImported.has(name)) problems.push(`uses ${name} without importing it from node:fs`);
+      }
       return problems;
     }
 
@@ -631,6 +716,120 @@ describe("only the scrub path can write a transcript", () => {
       'import { promises } from "node:fs";',
     ])("negative control: fails on %s", (line) => {
       expect(readOnlyProblems(`${line}\n${real}`)).not.toEqual([]);
+    });
+
+    /** The real source with `code` put on the line before its `openSync` call. */
+    function beforeOpen(code: string): string {
+      const at = real.indexOf("fd = openSync(");
+      if (at < 0) throw new Error("no openSync call");
+      return `${real.slice(0, at)}${code}\n        ${real.slice(at)}`;
+    }
+
+    // The three edits that passed the earlier form of this check, exactly as found.
+    it.each([
+      [
+        "V08: a local constants shadowing the import",
+        [
+          "// MUTANT: a local `constants` whose O_RDONLY is O_WRONLY | O_CREAT | O_TRUNC (macOS values).",
+          "const constants = { O_RDONLY: 0x601, O_NOFOLLOW: 0, O_NONBLOCK: 0 };",
+        ].join("\n"),
+      ],
+      [
+        "V09: a write reached by element access on a module from getBuiltinModule",
+        [
+          "// MUTANT: a write reached by element access on the module object.",
+          // biome-ignore lint/suspicious/noTemplateCurlyInString: source text for the mutant
+          'process.getBuiltinModule("node:fs")["writeFileSync"](`${real}.verified`, "x");',
+        ].join("\n"),
+      ],
+      [
+        "V10: a renamed writer and a promises open for writing, from getBuiltinModule",
+        [
+          "// MUTANT: a writer destructured under another name, and a promises open for writing.",
+          'const { appendFileSync: add, promises: p } = process.getBuiltinModule("node:fs");',
+          // biome-ignore lint/suspicious/noTemplateCurlyInString: source text for the mutant
+          'add(`${real}.verified`, "x");',
+          // biome-ignore lint/suspicious/noTemplateCurlyInString: source text for the mutant
+          'void p.open(`${real}.verified2`, "w");',
+        ].join("\n"),
+      ],
+    ])("negative control: fails on %s", (_name, code) => {
+      const mutated = beforeOpen(code);
+      expect(mutated).not.toBe(real);
+      expect(readOnlyProblems(mutated)).not.toEqual([]);
+    });
+
+    it.each([
+      [
+        "a local constants",
+        "const constants = { O_RDONLY: 0 };",
+        "binds constants other than from node:fs",
+      ],
+      [
+        "a parameter named constants",
+        "const f = (constants: { O_RDONLY: number }) => constants;",
+        "binds constants other than from node:fs",
+      ],
+      [
+        "a destructured constants",
+        "const { constants } = { constants: { O_RDONLY: 0 } };",
+        "binds constants other than from node:fs",
+      ],
+      [
+        "a local openSync",
+        "const openSync = (p: string, f: number) => f;",
+        "binds openSync other than from node:fs",
+      ],
+      [
+        "a function named openSync",
+        "function openSync(p: string, f: number): number { return f; }",
+        "binds openSync other than from node:fs",
+      ],
+      ["a dynamic import", 'void import("node:fs");', "imports dynamically"],
+      [
+        "process.getBuiltinModule",
+        'process.getBuiltinModule("node:fs");',
+        "reaches getBuiltinModule",
+      ],
+      ["module.createRequire", 'module.createRequire("/x")("node:fs");', "reaches createRequire"],
+      ["a bare createRequire", 'createRequire("/x")("node:fs");', "reaches createRequire"],
+      ["process.binding", 'process.binding("fs");', "reaches binding"],
+      ["process._linkedBinding", 'process._linkedBinding("fs");', "reaches _linkedBinding"],
+      ["eval", 'eval("1");', "reaches eval"],
+      ["new Function", 'new Function("return 1")();', "reaches Function"],
+      ["Function called", 'Function("return 1")();', "reaches Function"],
+      [
+        "a string-keyed element access",
+        'const k = globalThis["process"];',
+        "indexes by a string key",
+      ],
+      [
+        "a template-keyed element access",
+        "const k = globalThis[`process`];",
+        "indexes by a string key",
+      ],
+      ["new WriteStream", 'new WriteStream("x");', "calls WriteStream"],
+      ["a promises open", 'void promises.open("x", "w");', "calls open"],
+      ["lchown", 'lchown("x", 0, 0, () => {});', "calls lchown"],
+      ["fdatasync", "fdatasync(1, () => {});", "calls fdatasync"],
+    ])("negative control: fails on %s", (_name, code, problem) => {
+      expect(readOnlyProblems(beforeOpen(code))).toContain(problem);
+    });
+
+    it("negative control: fails when constants is used without the node:fs import", () => {
+      const without = real.replace("  constants,\n", "");
+      expect(without).not.toBe(real);
+      expect(readOnlyProblems(without)).toContain(
+        "uses constants without importing it from node:fs",
+      );
+    });
+
+    it("numeric and computed element access stays allowed, as the real file uses it", () => {
+      expect(
+        readOnlyProblems(
+          beforeOpen("const first = [1][0]; const env = {}; const k = 'a'; void env[k as never];"),
+        ),
+      ).toEqual([]);
     });
 
     it("negative control: fails on require, and on a file that never opens", () => {
