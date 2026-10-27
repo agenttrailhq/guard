@@ -29,7 +29,7 @@
 // from --chrome, then CHROME_PATH, then the usual install paths.
 
 import { spawn } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -181,7 +181,9 @@ async function renderPage(work, allowTestOnly) {
     : notes.notesResult(notes.notesVerification());
   const builders = allowTestOnly ? corpus.TEST_ONLY_BUILDERS : undefined;
   if (result === undefined) fail("the corpus exports no VERIFIED_RESULT");
-  const html = renderReport(result, corpus.VERIFIED_META, {
+  // The page names the version that wrote it: this package's, not the corpus's placeholder.
+  const { version } = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8"));
+  const html = renderReport(result, { ...corpus.VERIFIED_META, version }, {
     variant: "document",
     localFixCategories: corpus.LOCAL_FIX_CATEGORIES ?? [],
     ...(builders === undefined ? {} : { cardBuilders: builders }),

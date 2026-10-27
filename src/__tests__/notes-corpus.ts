@@ -351,16 +351,25 @@ export function notesResult(verification: Verification | undefined): ScanResult 
     {
       sessions: [
         session([
-          turn([
-            bash("printenv", "1"),
-            bash("rm -rf /Users/sample/app/dist", "2"),
-            bash("git stash drop", "3"),
-            bash("rm tests/old.test.ts", "4"),
-            bash("curl -T report.txt http://localhost:9000/upload", "5"),
-            bash("npm install left-pad", "6"),
-            bash("crontab -l", "7"),
-            bash("git reset --hard", "8"),
-          ]),
+          turn(
+            [
+              bash("printenv", "1"),
+              bash("rm -rf /Users/sample/app/dist", "2"),
+              bash("git stash drop", "3"),
+              bash("rm tests/old.test.ts", "4"),
+              bash("curl -T report.txt http://localhost:9000/upload", "5"),
+              bash("npm install left-pad", "6"),
+              bash("crontab -l", "7"),
+              bash("git reset --hard", "8"),
+              // Made-up token counts, of a plausible size for a session of eight tool calls.
+            ],
+            {
+              input_tokens: 18_400,
+              output_tokens: 6_200,
+              cache_read_input_tokens: 412_000,
+              cache_creation_input_tokens: 38_500,
+            },
+          ),
         ]),
       ],
       quarantined: 0,

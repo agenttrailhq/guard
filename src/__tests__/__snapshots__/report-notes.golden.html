@@ -70,7 +70,7 @@
 <div class="stat"><div class="stat-value">8</div><div class="stat-label">risky actions</div></div>
 <div class="stat"><div class="stat-value">0</div><div class="stat-label">repeated command shapes</div></div>
 <div class="stat"><div class="stat-value">0%</div><div class="stat-label">matched no guardrail</div></div>
-<div class="stat"><div class="stat-value">0</div><div class="stat-label">tokens</div><div class="stat-note">0 cache reads (cumulative)</div></div>
+<div class="stat"><div class="stat-value">475.1K</div><div class="stat-label">tokens</div><div class="stat-note">412.0K cache reads (cumulative)</div></div>
 </section>
 <section id="what-happened" class="what-happened" aria-labelledby="what-happened-heading">
 <div class="section-head"><h2 id="what-happened-heading">What actually happened</h2><p class="section-meta" data-template="cards.tally">3 to act on · 3 to review · 1 clean · 1 could not check · 1 not checked</p></div>
@@ -410,12 +410,12 @@
 <section id="tokens"><h2>Tokens</h2>
 <p class="note">Read straight from the transcripts, so these are exact counts and not estimates.</p>
 <div class="table-wrap"><table class="kv">
-<tr><th scope="row">Input</th><td class="num">0</td></tr>
-<tr><th scope="row">Output</th><td class="num">0</td></tr>
-<tr><th scope="row">Read from cache (cumulative)</th><td class="num">0</td></tr>
-<tr><th scope="row">Written to cache</th><td class="num">0</td></tr>
+<tr><th scope="row">Input</th><td class="num">18,400</td></tr>
+<tr><th scope="row">Output</th><td class="num">6,200</td></tr>
+<tr><th scope="row">Read from cache (cumulative)</th><td class="num">412,000</td></tr>
+<tr><th scope="row">Written to cache</th><td class="num">38,500</td></tr>
 </table></div>
-<p class="note">None of these sessions reported a 5-minute / 1-hour cache-write split, so that row is omitted rather than shown as zero.</p></section>
+<p class="note">"Read from cache" is cumulative — the cached prefix is re-read and re-charged every turn, so this counts the same tokens many times over a session. It is a total of what the model billed for, not of distinct input.</p><p class="note">None of these sessions reported a 5-minute / 1-hour cache-write split, so that row is omitted rather than shown as zero.</p></section>
 <aside class="product-note" id="os" aria-label="About AgentTrail OS">
 <p class="eyebrow">AgentTrail OS</p>
 <h2>AgentTrail Guard stops the mistake. AgentTrail OS remembers it and turns it into a rule.</h2>
@@ -617,10 +617,10 @@
  "recurring": [],
  "moreRecurring": 0,
  "tokens": {
-  "input": 0,
-  "output": 0,
-  "cacheRead": 0,
-  "cacheCreation": 0,
+  "input": 18400,
+  "output": 6200,
+  "cacheRead": 412000,
+  "cacheCreation": 38500,
   "cacheCreation5m": 0,
   "cacheCreation1h": 0,
   "turnsWithSplit": 0,
