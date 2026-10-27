@@ -236,7 +236,11 @@ export const FACTS: Readonly<Record<VerifyCategory, object>> = {
   egress: EGRESS_FACTS,
 };
 
-/** The tone each category has in the full corpus. */
+/**
+ * The tone each category has in the full corpus: the one its check's own rule gives these facts
+ * (`verify-clean-no-fix.test.ts` holds them to it), so a page built from the corpus never shows a
+ * tone its lines contradict.
+ */
 const TONES: Readonly<Record<VerifyCategory, VerifyStatus>> = {
   secrets: "act",
   "skipped-checks": "act",
@@ -244,8 +248,8 @@ const TONES: Readonly<Record<VerifyCategory, VerifyStatus>> = {
   cloud: "review",
   "prod-infra": "review",
   tests: "act",
-  destructive: "clean",
-  unreviewed: "act",
+  destructive: "review",
+  unreviewed: "review",
   egress: "clean",
 };
 

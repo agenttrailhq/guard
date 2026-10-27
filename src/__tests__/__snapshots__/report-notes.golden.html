@@ -61,7 +61,7 @@
 <li><a class="check-chip v-could-not-check" href="#check-lost-work"><span class="chip-title">Lost work</span><span class="chip-text" data-template="chip.tone">could not check</span></a></li>
 <li><a class="check-chip v-review" href="#check-cloud"><span class="chip-title">Cloud and permissions</span><span class="chip-text" data-template="chip.tone">review</span></a></li>
 <li><a class="check-chip v-review" href="#check-prod-infra"><span class="chip-title">Production infrastructure</span><span class="chip-text" data-template="chip.tone">review</span></a></li>
-<li><a class="check-chip v-clean" href="#check-destructive"><span class="chip-title">Destructive commands</span><span class="chip-text" data-template="chip.tone">clean</span></a></li>
+<li><a class="check-chip v-review" href="#check-destructive"><span class="chip-title">Destructive commands</span><span class="chip-text" data-template="chip.tone">review</span></a></li>
 </ul>
 </section>
 <section class="stats" aria-label="Summary">
@@ -73,7 +73,7 @@
 <div class="stat"><div class="stat-value">0</div><div class="stat-label">tokens</div><div class="stat-note">0 cache reads (cumulative)</div></div>
 </section>
 <section id="what-happened" class="what-happened" aria-labelledby="what-happened-heading">
-<div class="section-head"><h2 id="what-happened-heading">What actually happened</h2><p class="section-meta" data-template="cards.tally">3 to act on · 2 to review · 2 clean · 1 could not check · 1 not checked</p></div>
+<div class="section-head"><h2 id="what-happened-heading">What actually happened</h2><p class="section-meta" data-template="cards.tally">3 to act on · 3 to review · 1 clean · 1 could not check · 1 not checked</p></div>
 <p class="note">A match means a guardrail fired on a command. Each card says what checking that on this machine found, how things stand now, and how to fix it. The checks only read: they changed nothing on this machine.</p>
 <div class="verified-cards">
 <article class="card verified v-act" id="check-secrets" aria-labelledby="check-secrets-title" aria-describedby="check-secrets-tone">
@@ -113,8 +113,8 @@
 
 </dl>
 </article>
-<article class="card verified v-clean" id="check-destructive" aria-labelledby="check-destructive-title" aria-describedby="check-destructive-tone">
-<div class="card-head"><span class="tone tone-clean" id="check-destructive-tone">Clean</span><span class="times" data-template="card.count">3 matches</span></div>
+<article class="card verified v-review" id="check-destructive" aria-labelledby="check-destructive-title" aria-describedby="check-destructive-tone">
+<div class="card-head"><span class="tone tone-review" id="check-destructive-tone">Review</span><span class="times" data-template="card.count">3 matches</span></div>
 <h3 id="check-destructive-title">Destructive commands</h3>
 <dl class="verified-facts">
 
@@ -229,7 +229,7 @@
 <div class="finding-meta"><span class="badge sev-high">high</span> <span class="chip act-block">would block</span><span class="num" data-label="Matches">1&times;</span></div>
 </div>
 <div class="guardrail-id"><code>dd.rm-rf-absolute</code> &middot; <span class="group">Destructive data</span></div>
-<p class="verified-note v-clean"><span class="verified-note-label">What checking found:</span> <span data-template="note.rm-targets">Mostly scratch, temp or build folders. No tracked file is missing. 1 target held untracked files in a repo.</span></p>
+<p class="verified-note"><span class="verified-note-label">What checking found:</span> <span data-template="note.rm-targets">Mostly scratch, temp or build folders. No tracked file is missing. 1 target held untracked files in a repo.</span></p>
 <details class="commands"><summary>The command shape behind it</summary>
 <ul class="shapes">
 <li><code>rm -rf &lt;path&gt;</code><span class="times">1&times;</span></li>
@@ -816,7 +816,7 @@
     }
    },
    "destructive": {
-    "status": "clean",
+    "status": "review",
     "matches": 3,
     "facts": {
      "rm": {
@@ -953,7 +953,7 @@
   },
   {
    "category": "destructive",
-   "tone": "clean",
+   "tone": "review",
    "count": 3,
    "found": [],
    "now": [],

@@ -1,6 +1,10 @@
 /**
- * A clean card never tells you to fix something.
+ * A clean card never tells you to fix something, and the synthetic notes corpus agrees with the
+ * checks' own status rules.
  *
+ * - Each category's status, computed from its facts by the check's own rule, is the status the
+ *   notes corpus hands it, so a page built from the corpus never shows a tone its lines
+ *   contradict.
  * - Over the real card builders, every facts variant a check's rule calls clean renders no fix
  *   steps and no fix commands.
  * - Over real checks, a category that reads clean made no exact fix commands for the fixes file.
@@ -29,7 +33,7 @@ import {
   setRemoteBranch,
   tempFolder,
 } from "./git-check-fixtures.js";
-import { FACTS } from "./notes-corpus.js";
+import { FACTS, notesVerification } from "./notes-corpus.js";
 import { callsOf, fakeIO, OK, SHIPPED } from "./verify-command-fixtures.js";
 
 /** Each check's own status rule, from its facts. The git checks read one session. */
@@ -49,6 +53,13 @@ const STATUS: Record<VerifyCategory, (facts: never) => VerifyStatus> = {
 function statusOf(category: VerifyCategory, facts: object): VerifyStatus {
   return (STATUS[category] as (facts: object) => VerifyStatus)(facts);
 }
+
+describe("the notes corpus agrees with each check's status rule", () => {
+  it.each(VERIFY_CATEGORIES)("%s", (category) => {
+    const handed = (notesVerification().categories[category] as { status: VerifyStatus }).status;
+    expect(handed).toBe(statusOf(category, FACTS[category]));
+  });
+});
 
 /** Every numeric leaf of an object, as a path of keys. Lists are left alone. */
 function numericPaths(value: unknown, at: readonly string[] = []): string[][] {
