@@ -51,6 +51,7 @@ import {
   type VerifyStatus,
 } from "../core/verify/types.js";
 import { VERIFY_BY_DEFAULT } from "../core/verify/verify.js";
+import { slotAccepts } from "../verify-io.js";
 import { RULE_RM_RF } from "./scan-fixtures.js";
 
 /** Secrets facts with every count zero. */
@@ -392,8 +393,9 @@ describe("exact fix commands are built from quoted parts, and an unsafe ref is r
   it.each([
     "0123abc",
     "0123456789abcdef0123456789abcdef01234567",
-    "ABCDEF0",
-    // A full SHA-256 object id, as a repository using SHA-256 names commits.
+    // A SHA-256 id, abbreviated as git prints it, and in full.
+    "0123456789abcdef0123456789abcdef012345678",
+    "0123456789abcdef".repeat(3),
     "0123456789abcdef".repeat(4),
   ])("takes the sha %j", (sha) => {
     expect(built({ sha })).toBe(`'git' 'show' '${sha}'`);
@@ -401,9 +403,8 @@ describe("exact fix commands are built from quoted parts, and an unsafe ref is r
 
   it.each([
     ["too short", "0123ab"],
-    ["too long for SHA-1, too short for SHA-256", "0123456789abcdef0123456789abcdef012345678"],
-    ["between the two lengths", "0123456789abcdef".repeat(3)],
     ["longer than SHA-256", `${"0123456789abcdef".repeat(4)}0`],
+    ["upper case, which git never prints", "ABCDEF0"],
     ["not hex", "0123abg"],
     ["a branch", "main"],
     ["an option", "-0123abc"],
@@ -411,6 +412,23 @@ describe("exact fix commands are built from quoted parts, and an unsafe ref is r
     ["empty", ""],
   ])("refuses a sha that is %s", (_label, sha) => {
     expect(built({ sha })).toBe("unsafe");
+  });
+
+  it("takes exactly the ids the read-only seam's sha slot takes", () => {
+    const hex = "0123456789abcdef".repeat(5);
+    const candidates = [
+      ...Array.from({ length: 70 }, (_, n) => hex.slice(0, n)),
+      "ABCDEF0",
+      "abcdeF0",
+      "0123abg",
+      "-0123abc",
+      "0123abc ",
+    ];
+    for (const sha of candidates) {
+      expect(built({ sha }) !== "unsafe", JSON.stringify(sha)).toBe(
+        slotAccepts({ slot: "sha" }, sha),
+      );
+    }
   });
 
   it.each(["main", "feature/x-1.2", "release/2026.10", "user@host"])("takes the branch %j", (b) => {

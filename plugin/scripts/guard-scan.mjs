@@ -12218,7 +12218,7 @@ function localFix(category, command) {
   });
 }
 var SAFE_REF = /^[A-Za-z0-9_@%+=:,./-]+$/;
-var SHA = /^(?:[0-9a-fA-F]{7,40}|[0-9a-fA-F]{64})$/;
+var SHA = /^[0-9a-f]{7,64}$/;
 function isSafeBranch(name) {
   if (!SAFE_REF.test(name) || name.includes(":")) return false;
   if (name === "@" || name === "HEAD" || name.includes("..") || name.includes("@{")) return false;

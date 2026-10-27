@@ -560,7 +560,7 @@ function localFix(category: VerifyCategory, command: string): LocalFix {
  * One part of an exact command: a literal from code (`"git"`, `"branch"`), or a value taken
  * from what a check read, by kind:
  *
- * - `sha`: a commit id: 7 to 40 hex digits, or a full 64-digit SHA-256 id.
+ * - `sha`: a commit id: 7 to 64 lower-case hex digits, as the read-only seam's `sha` slot.
  * - `branch`: a branch name that `git check-ref-format --branch` accepts, within the safe set.
  * - `repoPath`: a path inside a repository: relative, with no `..`, within the safe set.
  * - `ref`: any other value from data (a resource name, an absolute path), within the safe set.
@@ -578,8 +578,12 @@ export type CommandPart =
 /** The characters a value from data may hold: no shell syntax, no space, no quote. */
 const SAFE_REF = /^[A-Za-z0-9_@%+=:,./-]+$/;
 
-/** A commit id. */
-const SHA = /^(?:[0-9a-fA-F]{7,40}|[0-9a-fA-F]{64})$/;
+/**
+ * A commit id: 7 to 64 lower-case hex digits, the shape the read-only seam's `sha` slot takes
+ * (`verify-io.ts`), so an id a check could ask git about can go into a fix command. Git prints
+ * ids in lower case, and abbreviates a SHA-256 id to any length up to 64.
+ */
+const SHA = /^[0-9a-f]{7,64}$/;
 
 /**
  * A branch name `git check-ref-format --branch` accepts, within the safe set: no `:` (which the
