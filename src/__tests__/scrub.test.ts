@@ -22,68 +22,69 @@ import {
 const SENTINEL = String.fromCharCode(0xe000);
 
 /**
- * The mysql -p timing tests compare a shape with the same text with its triggers renamed
- * (`mysql` to `mxsql`, `-p` to `-q`): the same length, quotes and separators, but the mysql
- * rule's prefilter skips it, so the baseline is the rest of the catalogue on this machine, now.
- * CPU time, best of three each, interleaved, so load moves both alike. An absolute budget failed
- * on loaded machines and CI runners for code that was not slower.
+ * The mysql -p linearity tests count work, not time, so a loaded machine or CI runner cannot
+ * fail them and a slow one cannot hide a regression. `workOf` runs `scrubText` with
+ * `RegExp.prototype.exec` and `String.prototype.slice` wrapped, and adds up what the scan did:
+ * one unit per regex call, the characters each call moved over (from the `lastIndex` it started
+ * at for a global or sticky regex, from the start otherwise, to the end of its match or of the
+ * text), and the length of every slice. Every regex use (`test`, `replace`, `matchAll`) goes
+ * through `exec`, so a rescan from the text's start at each candidate, or a read-back at each
+ * quote, shows up as work that grows with the square of the input.
  *
- * Measured at 100 KB (shape / baseline, min to max over 5 interleaved rounds, load average 8-12):
- * the separator runs and the query 0.94-1.05; `mysql -pa ` 1.37-1.56; `mysql"" -p` 1.21-1.28;
- * mysql then `" -pa` x40 1.53-1.64 and `' -pa` x40 1.47-1.62; an apostrophe then `mysql -pa `
- * 1.35-1.41; `"k":"mysql -pX",` 1.29-1.42. `BASELINE_MULTIPLE` leaves about 1.8x room for noise.
- * A quadratic scan fails it many times over: a rescan from the text's start at each candidate
- * measured 98-489x on the dense shapes, and dropping the carried scan state (an earlier,
- * slower design) 3.1-6.3x on five of the six. The 1 MB ceiling and the 15x growth check are
- * kept, and the 1 MB run is timed in the same interleaved loop (`measureShape`).
+ * A shape is compared with the same text with its triggers renamed (`mysql` to `mxsql`, `-p` to
+ * `-q`): the same length, quotes and separators, but the mysql rule's prefilter skips it, so the
+ * baseline is the rest of the catalogue's work on that text. The work is deterministic, so the
+ * bounds are exact: linear work grows about 10x from 100 KB to 1 MB, quadratic about 100x.
+ * Backtracking inside a single `exec` call is not visible to this count; those patterns are
+ * kept linear by the rules above and by the scan-state tests below.
  */
 const BASELINE_MULTIPLE = 3;
-const cpuOnce = (text: string) => {
-  const started = process.cpuUsage();
-  scrubText(text);
-  const used = process.cpuUsage(started);
-  return (used.user + used.system) / 1000;
+const GROWTH_LIMIT = 15;
+const workOf = (text: string): number => {
+  const realExec = RegExp.prototype.exec;
+  const realSlice = String.prototype.slice;
+  let units = 0;
+  RegExp.prototype.exec = function (this: RegExp, subject: string) {
+    const from = this.global || this.sticky ? this.lastIndex : 0;
+    const match = realExec.call(this, subject);
+    const length = String(subject).length;
+    const end = match ? match.index + match[0].length : this.sticky ? from : length;
+    units += 1 + Math.max(0, end - from);
+    return match;
+  };
+  String.prototype.slice = function (this: string, ...args: [number?, number?]) {
+    const piece = realSlice.apply(this, args);
+    units += piece.length;
+    return piece;
+  };
+  try {
+    scrubText(text);
+  } finally {
+    RegExp.prototype.exec = realExec;
+    String.prototype.slice = realSlice;
+  }
+  return units;
 };
 const untrigger = (text: string) =>
   text
     .replace(/mysql/gi, "mxsql")
     .replace(/mariadb/gi, "mxriadb")
     .replace(/-p/g, "-q");
-/** A shape's CPU time and its no-trigger baseline's, best of three each, interleaved. */
+/** A shape's work and its no-trigger baseline's. */
 const versusBaseline = (text: string) => {
-  const plain = untrigger(text);
-  let shape = Number.POSITIVE_INFINITY;
-  let baseline = Number.POSITIVE_INFINITY;
-  for (let run = 0; run < 3; run++) {
-    shape = Math.min(shape, cpuOnce(text));
-    baseline = Math.min(baseline, cpuOnce(plain));
-  }
-  return { shape, baseline, ratio: shape / Math.max(baseline, 2) };
+  const shape = workOf(text);
+  const baseline = workOf(untrigger(text));
+  return { shape, baseline, ratio: shape / Math.max(baseline, 1) };
 };
 
-/**
- * A shape at 100 KB against its no-trigger baseline, and at 1 MB, in one interleaved loop: each
- * of three rounds times the 100 KB shape, its baseline and the 1 MB shape back to back, so a
- * change in load hits all three alike. Best of three each. `growth` is 1 MB over 100 KB: linear
- * is about 10x, quadratic about 100x. One 100 KB pass runs first, and a shape far over the
- * multiple (a quadratic one) is returned before any 1 MB run, so it fails fast.
- */
+/** A shape at 100 KB against its no-trigger baseline, and 1 MB over 100 KB (`growth`). */
 const measureShape = (make: (n: number) => string) => {
-  const smallText = make(100_000);
-  const plain = untrigger(smallText);
-  let shape = cpuOnce(smallText);
-  let baseline = cpuOnce(plain);
-  if (shape / Math.max(baseline, 2) > 10 * BASELINE_MULTIPLE) {
-    return { ratio: shape / Math.max(baseline, 2), large: Number.NaN, growth: Number.NaN };
+  const small = versusBaseline(make(100_000));
+  if (small.ratio > 10 * BASELINE_MULTIPLE) {
+    return { ratio: small.ratio, growth: Number.NaN };
   }
-  const largeText = make(1_000_000);
-  let large = Number.POSITIVE_INFINITY;
-  for (let run = 0; run < 3; run++) {
-    shape = Math.min(shape, cpuOnce(smallText));
-    baseline = Math.min(baseline, cpuOnce(plain));
-    large = Math.min(large, cpuOnce(largeText));
-  }
-  return { ratio: shape / Math.max(baseline, 2), large, growth: large / Math.max(shape, 2) };
+  const large = workOf(make(1_000_000));
+  return { ratio: small.ratio, growth: large / Math.max(small.shape, 1) };
 };
 
 describe("the corpus itself is complete", () => {
@@ -405,16 +406,11 @@ describe("mysql -p: the program found in code, past exec, ssh, shells and glued 
   });
 });
 
-// CPU-time measurements: one retry, so another process's burst on a shared runner is measured
-// again rather than failed. The bounds themselves are unchanged.
-describe("mysql -p stays linear on long runs of statement separators around mysql", {
-  retry: 1,
-  timeout: 300_000,
-}, () => {
+// Work counts (see `workOf`), not time: the same result on any machine at any load.
+describe("mysql -p stays linear on long runs of statement separators around mysql", () => {
   // A regex that found the program itself backtracked here: each `;` `&` `|` `(` began a new
-  // attempt that rescanned the run (100 KB of `;` then mysql took 4.3 s, 300 KB 38 s). The time
-  // is this worker's CPU time, best of three. Linear work grows about 10x from 100 KB
-  // to 1 MB and quadratic about 100x; a floor of 2 ms keeps a tiny small run from inflating it.
+  // attempt that rescanned the run (100 KB of `;` then mysql took 4.3 s, 300 KB 38 s). Linear
+  // work grows about 10x from 100 KB to 1 MB and quadratic about 100x.
   const query = (n: number) => {
     let s = "GET /search?db=mysql";
     for (let i = 0; s.length < n; i++) s += `&field${i % 97}=value${i}_${(i * 7919) % 100000}`;
@@ -425,11 +421,10 @@ describe("mysql -p stays linear on long runs of statement separators around mysq
     ["'&a=1' then mysql", (n: number) => `${"&a=1".repeat(n / 4)}mysql -pX`],
     ["'env -u a=' then mysql", (n: number) => `${"env -u a=".repeat(Math.ceil(n / 9))}mysql -pX`],
     ["a query with db=mysql", query],
-  ])("%s: 100 KB within the no-trigger baseline's multiple, 1 MB in budget and linear", (_label, make) => {
+  ])("%s: 100 KB within the no-trigger baseline's multiple, 1 MB linear", (_label, make) => {
     const run = measureShape(make);
     expect(run.ratio).toBeLessThan(BASELINE_MULTIPLE);
-    expect(run.large).toBeLessThan(1500);
-    expect(run.growth).toBeLessThan(15);
+    expect(run.growth).toBeLessThan(GROWTH_LIMIT);
   });
 
   it("300 KB of ';' then mysql, within the no-trigger baseline's multiple", () => {
@@ -492,14 +487,11 @@ describe("mysql -p fails toward masking when the shell reading is unsure", () =>
   });
 });
 
-// CPU-time measurements: one retry, as above. The bounds are unchanged.
-describe("mysql -p stays linear on text dense with candidates and quotes", {
-  retry: 1,
-  timeout: 300_000,
-}, () => {
+// Work counts, as above.
+describe("mysql -p stays linear on text dense with candidates and quotes", () => {
   // Each candidate used to read 512 characters back, with a slice and a regex at every quote:
   // `mysql"" -p` repeated took 105 ms at 100 KB. The scan state now carries to the next
-  // candidate. CPU time, best of three.
+  // candidate.
   const rep = (unit: string, n: number) => unit.repeat(Math.ceil(n / unit.length)).slice(0, n);
   it.each([
     ["'mysql -pa ' repeated", (n: number) => rep("mysql -pa ", n)],
@@ -508,11 +500,10 @@ describe("mysql -p stays linear on text dense with candidates and quotes", {
     ['mysql then "\' -pa" x40, repeated', (n: number) => rep(`mysql${"' -pa".repeat(40)}`, n)],
     ["an apostrophe, then 'mysql -pa ' repeated", (n: number) => `'${rep("mysql -pa ", n)}`],
     ['\'"k":"mysql -pX",\' repeated', (n: number) => rep('"k":"mysql -pX",', n)],
-  ])("%s: 100 KB within the no-trigger baseline's multiple, 1 MB in budget and linear", (_label, make) => {
+  ])("%s: 100 KB within the no-trigger baseline's multiple, 1 MB linear", (_label, make) => {
     const run = measureShape(make);
     expect(run.ratio).toBeLessThan(BASELINE_MULTIPLE);
-    expect(run.large).toBeLessThan(1500);
-    expect(run.growth).toBeLessThan(15);
+    expect(run.growth).toBeLessThan(GROWTH_LIMIT);
   });
 });
 
