@@ -21605,6 +21605,7 @@ async function readClaudeSession(io, item) {
   const userPrompts = [...session.userPrompts];
   const seenTurns = new Set(turns.map((t) => t.messageUuid).filter((u) => u !== ""));
   const seenPrompts = new Set(userPrompts.map((p) => p.messageUuid).filter((u) => u !== ""));
+  const toolResults = new Map(session.toolResults);
   let skippedLines = session.skippedLines;
   for (const name of [...names].sort()) {
     if (!name.endsWith(".jsonl")) continue;
@@ -21633,8 +21634,15 @@ async function readClaudeSession(io, item) {
       if (prompt.messageUuid !== "") seenPrompts.add(prompt.messageUuid);
       userPrompts.push(prompt);
     }
+    for (const [id, result] of sub.toolResults) {
+      if (!toolResults.has(id)) toolResults.set(id, result);
+    }
   }
-  return { session: { ...session, turns, userPrompts, skippedLines }, opened, files };
+  return {
+    session: { ...session, turns, userPrompts, toolResults, skippedLines },
+    opened,
+    files
+  };
 }
 function sessionRootFor(agent, home) {
   switch (agent) {

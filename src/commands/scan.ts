@@ -544,6 +544,11 @@ async function readClaudeSession(
   const userPrompts = [...session.userPrompts];
   const seenTurns = new Set(turns.map((t) => t.messageUuid).filter((u) => u !== ""));
   const seenPrompts = new Set(userPrompts.map((p) => p.messageUuid).filter((u) => u !== ""));
+  // A sub-agent's calls have their results in its own file. They are folded in by tool-use id,
+  // so a call made inside a sub-agent is judged by its recorded result. The main file is read
+  // first and keeps its result for an id that appears twice; so does the earlier of two
+  // sub-agent files, in name order.
+  const toolResults = new Map(session.toolResults);
   let skippedLines = session.skippedLines;
 
   for (const name of [...names].sort()) {
@@ -576,9 +581,16 @@ async function readClaudeSession(
       if (prompt.messageUuid !== "") seenPrompts.add(prompt.messageUuid);
       userPrompts.push(prompt);
     }
+    for (const [id, result] of sub.toolResults) {
+      if (!toolResults.has(id)) toolResults.set(id, result);
+    }
   }
 
-  return { session: { ...session, turns, userPrompts, skippedLines }, opened, files };
+  return {
+    session: { ...session, turns, userPrompts, toolResults, skippedLines },
+    opened,
+    files,
+  };
 }
 
 /**

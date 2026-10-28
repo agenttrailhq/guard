@@ -116,6 +116,21 @@ function diskWith(lines: readonly string[], root = "/home/test/.claude/projects"
 
 const DEPS = { catalog: TEST_CATALOG, now: new Date("2026-09-08T09:00:00.000Z") };
 
+/** One JSONL transcript line carrying a tool result. */
+function toolResultLine(id: string, content: string, isError: boolean): string {
+  return JSON.stringify({
+    type: "user",
+    uuid: `r-${id}`,
+    timestamp: "2026-09-08T00:00:00.000Z",
+    sessionId: "fixture-session",
+    cwd: "/Users/priya/clients/acme/app",
+    message: {
+      role: "user",
+      content: [{ type: "tool_result", tool_use_id: id, content, is_error: isError }],
+    },
+  });
+}
+
 const TRANSCRIPT = [
   userLine("please clean up"),
   assistantLine([bash("rm -rf /Users/priya/clients/acme/build", "t1")], {
@@ -744,6 +759,75 @@ describe("failure directions", () => {
     expect(payload.result.notRead).toBe(0);
     // The identical sub-agent file adds nothing: the count matches a plain single scan.
     expect(payload.result.riskyActions).toBe(3);
+  });
+
+  it("judges a sub-agent's call by the result recorded in the sub-agent's own file", async () => {
+    // A sub-agent's tool results are written to its own transcript, beside its calls. Read
+    // with them, its call that ran counts as ran, not as one with no recorded result.
+    const root = "/home/test/.claude/projects";
+    const project = `${root}/-p`;
+    const nested = `${project}/session-1/subagents`;
+    const SUBAGENT = [
+      userLine("do the cleanup"),
+      assistantLine([bash("rm -rf /tmp/sub-agent-scratch", "s1")]),
+      toolResultLine("s1", "", false),
+    ];
+    const { io, recorded } = fakeIO({
+      dirs: {
+        [root]: ["-p"],
+        [project]: ["session-1.jsonl", "session-1"],
+        [`${project}/session-1`]: ["subagents"],
+        [nested]: ["agent-a.jsonl"],
+      },
+      files: {
+        [`${project}/session-1.jsonl`]: TRANSCRIPT.join("\n"),
+        [`${nested}/agent-a.jsonl`]: SUBAGENT.join("\n"),
+      },
+    });
+    expect(await runScan(["--agent", "claude", "--json"], io, DEPS)).toBe(0);
+    const payload = JSON.parse(recorded.stdout.join(""));
+    // The main transcript records no results, so its matched calls are not confirmed; the
+    // sub-agent's recursive delete, whose result its own file holds, ran.
+    expect(payload.result.verification.matchedCalls.ran).toBe(1);
+  });
+
+  it("keeps the main transcript's result when a sub-agent file records one for the same call", async () => {
+    // Tool-use ids do not repeat across files in practice. Where one does, the main file is read
+    // first and its result stands: one copy says the call ran, the other that it was refused.
+    const root = "/home/test/.claude/projects";
+    const project = `${root}/-p`;
+    const nested = `${project}/session-1/subagents`;
+    const RAN = [
+      userLine("please clean up"),
+      assistantLine([bash("rm -rf /tmp/one", "t1")]),
+      toolResultLine("t1", "", false),
+    ];
+    const REFUSED = [
+      userLine("please clean up"),
+      assistantLine([bash("rm -rf /tmp/one", "t1")]),
+      toolResultLine("t1", "Permission to use Bash has been denied.", true),
+    ];
+    for (const [main, sub, ran] of [
+      [RAN, REFUSED, 1],
+      [REFUSED, RAN, 0],
+    ] as const) {
+      const { io, recorded } = fakeIO({
+        dirs: {
+          [root]: ["-p"],
+          [project]: ["session-1.jsonl", "session-1"],
+          [`${project}/session-1`]: ["subagents"],
+          [nested]: ["agent-a.jsonl"],
+        },
+        files: {
+          [`${project}/session-1.jsonl`]: main.join("\n"),
+          [`${nested}/agent-a.jsonl`]: sub.join("\n"),
+        },
+      });
+      expect(await runScan(["--agent", "claude", "--json"], io, DEPS)).toBe(0);
+      const payload = JSON.parse(recorded.stdout.join(""));
+      expect(payload.result.riskyActions).toBe(1);
+      expect(payload.result.verification.matchedCalls.ran).toBe(ran);
+    }
   });
 
   it("reports nothing about coverage when the whole root was read", async () => {
