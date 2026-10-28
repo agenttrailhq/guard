@@ -414,6 +414,11 @@ after a hook or its config was written, a quote left open, or a command of that 
 behind a program it could not read), the card says **could not confirm** for that category,
 never none or clean.
 
+Each card shows its numbers and its fix first. A card that could not confirm everything ends
+with one line, in the same words on every card, saying how many commands that ran, or may
+have run, used such a form. The forms themselves are listed once, at the bottom of "Also
+checked on this machine", not on each card.
+
 The checks read past these wrappers before a program, with their options: `sudo`, `doas`,
 `env`, `command`, `exec`, `time`, `nice`, `ionice`, `nohup`, `setsid`, `caffeinate`, `stdbuf`,
 `timeout`, `gtimeout`, `chronic`, `unbuffer`, `taskset`, `chrt`, `flock`, `watch -x`,
