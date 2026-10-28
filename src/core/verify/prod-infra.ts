@@ -33,13 +33,7 @@ import {
   runStateOf,
   simpleCommands,
 } from "./calls.js";
-import {
-  couldHideTemplate,
-  counted,
-  type FullCard,
-  moreMatches,
-  restsOnCodex,
-} from "./card-parts.js";
+import { counted, type FullCard, moreMatches, restsOnCodex } from "./card-parts.js";
 import {
   type CardContext,
   type ChipReason,
@@ -398,7 +392,6 @@ export const PROD_FOUND: readonly SentenceTemplate<ProdInfraFacts>[] = [
         ? "No other command or edit that ran matched a production infrastructure guardrail."
         : "No command or edit that ran matched a production infrastructure guardrail.",
   ),
-  couldHideTemplate("prod.could-hide"),
   when(
     "prod.mentioned",
     (f) => f.mentioned > 0,

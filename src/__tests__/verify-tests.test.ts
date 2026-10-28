@@ -449,7 +449,7 @@ describe("excludes, passWithNoTests and CI steps", () => {
     const found = testsCard(result, { ranEvidence: "tool-result" }).found;
     expect(found.map((s) => s.template)).not.toContain("tests.nothing");
     expect(found.find((s) => s.template === "tests.unread-edits")?.text).toBe(
-      "Could not confirm: 1 command that ran changed a test config or CI file through the shell or git, or applied a patch, which this check does not read, so what changed is not known.",
+      "1 command that ran changed a test config or CI file through the shell or git, or applied a patch, which this check does not read, so what changed is not known.",
     );
   });
 
@@ -475,7 +475,7 @@ describe("excludes, passWithNoTests and CI steps", () => {
     expect(result.status).toBe("review");
     const found = testsCard(result, { ranEvidence: "tool-result" }).found;
     expect(found.find((s) => s.template === "tests.unread-edits")?.text).toBe(
-      "Could not confirm all of it: 1 command that ran changed a test config or CI file through the shell or git, or applied a patch, which this check does not read, so there may be more than this card shows.",
+      "1 command that ran changed a test config or CI file through the shell or git, or applied a patch, which this check does not read, so what changed is not known.",
     );
     expect(found.map((s) => s.template)).not.toContain("tests.nothing");
   });

@@ -5,13 +5,7 @@
  * Pure. No I/O.
  */
 
-import type {
-  CardContext,
-  CardSentence,
-  CardView,
-  HeadlineClaim,
-  SentenceTemplate,
-} from "./cards.js";
+import type { CardContext, CardSentence, CardView, HeadlineClaim } from "./cards.js";
 
 /** The chip a card offers to "Also checked on this machine": a count and what it counts. */
 export interface CardChip {
@@ -60,20 +54,3 @@ export function restsOnCodex(context: CardContext): boolean {
 
 /** Most exact fix commands one check writes to the local fixes file. */
 export const MAX_LOCAL_FIXES = 50;
-
-/**
- * The line a card shows when calls that ran, or may have run, could have run other commands its
- * check does not read. A call with no recorded result may have run, so it counts too. Such a
- * card never says that nothing ran, and never reads clean.
- */
-export function couldHideTemplate<F extends { readonly couldHide: number }>(
-  id: string,
-): SentenceTemplate<F> {
-  return {
-    id,
-    render: (f) =>
-      f.couldHide > 0
-        ? `${counted(f.couldHide, "command that ran, or may have run,", "commands that ran, or may have run,")} could run other commands this check does not read (code given to a shell or an interpreter, a script piped into one, find -exec, xargs, eval, a substitution, git config, exec or hooks, a quote left open, a command of its kind behind a program this check does not read, or a shell this reading does not parse), so it could not confirm it saw everything.`
-        : undefined,
-  };
-}

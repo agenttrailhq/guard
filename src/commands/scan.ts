@@ -160,10 +160,12 @@ check that cannot finish says so, and never reads as clean.
 They say which matched commands ran and which were only mentioned, and check
 what the commands that ran did: credentials, test thresholds and deleted tests,
 cloud and production changes, pushes straight to main, uploads and tunnels, and
-package installs. Where a command that ran, or may have run, could run others the
-checks do not read (bash -c, a script piped into a shell, find -exec, xargs, eval,
-a substitution, git config or hooks), they say they could not confirm, never that
-nothing ran. A script run by name (bash ./x.sh, source x.sh) is not read.
+package installs. Each card shows its numbers and its fix first. Where a command
+that ran, or may have run, could run others the checks do not read (bash -c, a
+script piped into a shell, find -exec, xargs, eval, a substitution, git config
+or hooks), the card ends with one line saying how many could not be confirmed,
+never that nothing ran, and the forms are listed once under "Also checked on
+this machine". A script run by name (bash ./x.sh, source x.sh) is not read.
 Exact fix commands for this machine go to agenttrail-guard-fixes.txt next to the
 report, readable only by you (mode 0600), never into the report or --json.
 ${wrapText(CODEX_UNVERIFIED_TEXT, USAGE_WIDTH)}`;

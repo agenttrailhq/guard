@@ -698,12 +698,11 @@ describe("the card", () => {
       } as never,
       { ...GIT_CARD_BUILDERS, secrets: () => ({}) as never } as never,
     ).find((c) => c.category === "lost-work");
-    const lines = (card?.found ?? [])
-      .map((s) => s.text)
-      .filter((t) => t.startsWith("Could not confirm"));
-    expect(lines).toEqual([
-      "Could not confirm: commands that ran, or may have run, here used eval, which can run commands this reading does not take apart, so this is not a clean result.",
-    ]);
+    // Once, as the card's last line, never among what it found.
+    expect((card?.found ?? []).filter((s) => s.text.startsWith("Could not confirm"))).toEqual([]);
+    expect(card?.caveat?.text).toBe(
+      "Could not confirm everything: 2 commands that ran, or may have run, used a form the checks cannot read, listed under Also checked on this machine.",
+    );
   });
 
   it("a recoverable count leads where a call could hide more, and the card still says so", () => {
@@ -736,12 +735,15 @@ describe("the card", () => {
     );
     // The recoverable commits are in the object store: git confirms them, not the commands.
     expect(card?.headline?.confirmedBy).toBe("git-state");
-    expect(card?.unconfirmed).toEqual({ reason: "hiding-forms", forms: ["eval"], found: true });
+    expect(card?.unconfirmed).toEqual({
+      reason: "hiding-forms",
+      forms: ["eval"],
+      calls: 1,
+      found: true,
+    });
     expect(pickHeadline(card === undefined ? [] : [card], TOOL_RESULT)?.category).toBe("lost-work");
-    expect((card?.found ?? []).map((s) => s.text).filter((t) => t.startsWith("Could not"))).toEqual(
-      [
-        "Could not confirm all of it: commands that ran, or may have run, here used eval, which can run commands this reading does not take apart, so there may be more than this card shows.",
-      ],
+    expect(card?.caveat?.text).toBe(
+      "Could not confirm everything: 1 command that ran, or may have run, used a form the checks cannot read, listed under Also checked on this machine.",
     );
     // Never on a Codex scan, git state or not.
     const codex = cardsFor(verification(result, "output-record"), builders);

@@ -9,7 +9,13 @@ import { describe, expect, it } from "vitest";
 import { aggregateScan } from "../core/scan-report.js";
 import { CARD_BUILDERS } from "../core/verify/builders.js";
 import { couldHideCount, heldHidingForms } from "../core/verify/calls.js";
-import { type CardSentence, cardsFor, honestStatus } from "../core/verify/cards.js";
+import {
+  type CardSentence,
+  cardsFor,
+  honestStatus,
+  UNCONFIRMED_SENTENCE,
+  unconfirmedOf,
+} from "../core/verify/cards.js";
 import { checkCloud, cloudCard } from "../core/verify/cloud.js";
 import { checkDependencies, type DependencyFacts } from "../core/verify/deps.js";
 import { checkEgress, egressCard } from "../core/verify/egress.js";
@@ -200,8 +206,23 @@ async function everything(events: readonly CommandEvent[], agent: "claude" | "cu
   const unreviewed = (await checkUnreviewed({ calls, io })).check;
   const egress = (await checkEgress({ calls, ...SHIPPED, io })).check;
   const deps = checkDependencies(calls);
+  const results = { tests, cloud, prod, unreviewed, egress };
+  const category: Record<string, VerifyCategory> = { prod: "prod-infra" };
+  /** The one line each card ends with when it could not confirm, as `cardsFor` adds it. */
+  const caveats = Object.fromEntries(
+    Object.entries(results).map(([name, result]) => {
+      const u = unconfirmedOf(
+        category[name] ?? (name as VerifyCategory),
+        result.status,
+        result.facts,
+        true,
+      );
+      return [name, u === undefined ? undefined : UNCONFIRMED_SENTENCE.render(u)];
+    }),
+  ) as Record<string, string | undefined>;
   return {
-    results: { tests, cloud, prod, unreviewed, egress },
+    results,
+    caveats,
     deps,
     depsNote: depsNoteOf(deps, agent),
     lines: {
@@ -213,6 +234,10 @@ async function everything(events: readonly CommandEvent[], agent: "claude" | "cu
     } as Record<string, readonly CardSentence[]>,
   };
 }
+
+/** The line a card ends with when one call that ran, or may have run, held a hiding form. */
+const ONE_HIDDEN =
+  "Could not confirm everything: 1 command that ran, or may have run, used a form the checks cannot read, listed under Also checked on this machine.";
 
 /** The "nothing ran" line of each card. */
 const NOTHING: Record<string, string> = {
@@ -240,7 +265,7 @@ describe("every command check, with a hiding form in a call that ran", () => {
   });
 
   it("the same, with a hiding form that ran: could-not-check, no 'nothing ran' line, and why", async () => {
-    const { results, lines, deps, depsNote } = await everything([
+    const { results, lines, deps, depsNote, caveats } = await everything([
       { kind: "shell", command: "make", result: OK },
       { kind: "shell", command: "bash -c 'make deploy'", result: OK },
     ]);
@@ -251,14 +276,13 @@ describe("every command check, with a hiding form in a call that ran", () => {
     }
     expect(deps.couldHide).toBe(1);
     expect(deps.hidingForms).toEqual(["shell-string"]);
-    expect(depsNote?.text).toMatch(/^Could not confirm: .*a shell given a string to run/);
+    expect(depsNote?.text).toBe(
+      "Could not confirm: commands that ran, or may have run, used a form the checks cannot read, listed under Also checked on this machine.",
+    );
     for (const [card, id] of Object.entries(NOTHING)) {
       const templates = lines[card]?.map((s) => s.template) ?? [];
       expect(templates, card).not.toContain(id);
-      expect(
-        templates.some((t) => t.endsWith(".could-hide")),
-        card,
-      ).toBe(true);
+      expect(caveats[card], card).toBe(ONE_HIDDEN);
     }
     for (const line of Object.values(lines).flat()) {
       expect(line.text).not.toMatch(/^No /);
@@ -322,7 +346,7 @@ describe("every command check, with a hiding form in a call that ran", () => {
       ["find -exec in a Cursor session", "cursor", find],
       ["a script piped into a shell in a Cursor session", "cursor", piped],
     ] as const)("%s: could not confirm on every card", async (_, agent, command) => {
-      const { results, deps, lines, depsNote } = await everything(
+      const { results, deps, lines, depsNote, caveats } = await everything(
         [{ kind: "shell", command }],
         agent,
       );
@@ -338,9 +362,7 @@ describe("every command check, with a hiding form in a call that ran", () => {
           found.map((s) => s.template),
           card,
         ).not.toContain(id);
-        expect(found.find((s) => s.template.endsWith(".could-hide"))?.text, card).toMatch(
-          /^1 command that ran, or may have run, could run other commands/,
-        );
+        expect(caveats[card], card).toBe(ONE_HIDDEN);
       }
       for (const line of Object.values(lines).flat()) expect(line.text).not.toMatch(/^No /);
     });
@@ -369,7 +391,7 @@ describe("every command check, with a hiding form in a call that ran", () => {
   });
 
   it("a category that found something keeps its tone, and still says it could not see everything", async () => {
-    const { results, lines } = await everything([
+    const { results, caveats } = await everything([
       {
         kind: "edit",
         path: "/p/vitest.config.ts",
@@ -380,7 +402,7 @@ describe("every command check, with a hiding form in a call that ran", () => {
       { kind: "shell", command: "find . -name '*.snap' -exec true {} ;", result: OK },
     ]);
     expect(results.tests.status).toBe("act");
-    expect(lines.tests?.map((s) => s.template)).toContain("tests.could-hide");
+    expect(caveats.tests).toBe(ONE_HIDDEN);
   });
 });
 

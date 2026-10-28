@@ -113,40 +113,40 @@ ex.tunnel-expose  note.no-output  Could not confirm: these sessions record no co
 flag-dependency-install  note.no-output  Could not confirm: these sessions record no command output to check this against.
 rce.unverified-package  note.no-output  Could not confirm: these sessions record no command output to check this against.
 # Hiding forms in every check
-gb.git-no-verify  could-not-confirm  Could not confirm: commands that ran, or may have run, here used a shell given a string to run, which can run commands this reading does not take apart, so this is not a clean result.
-gb.hooks-disable  could-not-confirm  Could not confirm: commands that ran, or may have run, here used a shell given a string to run, which can run commands this reading does not take apart, so this is not a clean result.
-wt.branch-force-delete  could-not-confirm  Could not confirm: commands that ran, or may have run, here used a shell given a string to run, which can run commands this reading does not take apart, so this is not a clean result.
-wt.stash-drop  could-not-confirm  Could not confirm: commands that ran, or may have run, here used a shell given a string to run, which can run commands this reading does not take apart, so this is not a clean result.
-wt.checkout-discard  could-not-confirm  Could not confirm: commands that ran, or may have run, here used a shell given a string to run, which can run commands this reading does not take apart, so this is not a clean result.
-wt.restore-path  could-not-confirm  Could not confirm: commands that ran, or may have run, here used a shell given a string to run, which can run commands this reading does not take apart, so this is not a clean result.
-wt.reset-hard  could-not-confirm  Could not confirm: commands that ran, or may have run, here used a shell given a string to run, which can run commands this reading does not take apart, so this is not a clean result.
-require-approval-rm-rf  could-not-confirm  Could not confirm: commands that ran, or may have run, here used a shell given a string to run, which can run commands this reading does not take apart, so this is not a clean result.
-dd.rm-rf-absolute  could-not-confirm  Could not confirm: commands that ran, or may have run, here used a shell given a string to run, which can run commands this reading does not take apart, so this is not a clean result.
-dd.database-drop  could-not-confirm  Could not confirm: commands that ran, or may have run, here used a shell given a string to run, which can run commands this reading does not take apart, so this is not a clean result.
-block-destructive-sql  could-not-confirm  Could not confirm: commands that ran, or may have run, here used a shell given a string to run, which can run commands this reading does not take apart, so this is not a clean result.
-se.env-print  could-not-confirm  Could not confirm: commands that ran, or may have run, here used a shell given a string to run, which can run commands this reading does not take apart, so this is not a clean result.
-se.token-print  could-not-confirm  Could not confirm: commands that ran, or may have run, here used a shell given a string to run, which can run commands this reading does not take apart, so this is not a clean result.
-se.secret-manager-read  could-not-confirm  Could not confirm: commands that ran, or may have run, here used a shell given a string to run, which can run commands this reading does not take apart, so this is not a clean result.
-se.credential-file  could-not-confirm  Could not confirm: commands that ran, or may have run, here used a shell given a string to run, which can run commands this reading does not take apart, so this is not a clean result.
-block-env-file-read  could-not-confirm  Could not confirm: commands that ran, or may have run, here used a shell given a string to run, which can run commands this reading does not take apart, so this is not a clean result.
-warn-op-read-secret  could-not-confirm  Could not confirm: commands that ran, or may have run, here used a shell given a string to run, which can run commands this reading does not take apart, so this is not a clean result.
-block-hardcoded-secrets  could-not-confirm  Could not confirm: commands that ran, or may have run, here used a shell given a string to run, which can run commands this reading does not take apart, so this is not a clean result.
-ps.iam-grant  could-not-confirm  Could not confirm: commands that ran, or may have run, here used a shell given a string to run, which can run commands this reading does not take apart, so this is not a clean result.
-pi.terraform-auto-approve  could-not-confirm  Could not confirm: commands that ran, or may have run, here used a shell given a string to run, which can run commands this reading does not take apart, so this is not a clean result.
-pi.terraform-state-mutate  could-not-confirm  Could not confirm: commands that ran, or may have run, here used a shell given a string to run, which can run commands this reading does not take apart, so this is not a clean result.
-pi.kubectl-delete  could-not-confirm  Could not confirm: commands that ran, or may have run, here used a shell given a string to run, which can run commands this reading does not take apart, so this is not a clean result.
-pi.prod-namespace  could-not-confirm  Could not confirm: commands that ran, or may have run, here used a shell given a string to run, which can run commands this reading does not take apart, so this is not a clean result.
-pi.helm-release  could-not-confirm  Could not confirm: commands that ran, or may have run, here used a shell given a string to run, which can run commands this reading does not take apart, so this is not a clean result.
-pi.cloud-resource-delete  could-not-confirm  Could not confirm: commands that ran, or may have run, here used a shell given a string to run, which can run commands this reading does not take apart, so this is not a clean result.
-pi.deploy-to-prod  could-not-confirm  Could not confirm: commands that ran, or may have run, here used a shell given a string to run, which can run commands this reading does not take apart, so this is not a clean result.
-block-prod-config-edit  could-not-confirm  Could not confirm: commands that ran, or may have run, here used a shell given a string to run, which can run commands this reading does not take apart, so this is not a clean result.
-ti.test-file-delete  could-not-confirm  Could not confirm: commands that ran, or may have run, here used a shell given a string to run, which can run commands this reading does not take apart, so this is not a clean result.
-ti.test-config-edit  could-not-confirm  Could not confirm: commands that ran, or may have run, here used a shell given a string to run, which can run commands this reading does not take apart, so this is not a clean result.
-ti.coverage-bypass  could-not-confirm  Could not confirm: commands that ran, or may have run, here used a shell given a string to run, which can run commands this reading does not take apart, so this is not a clean result.
-ex.file-upload  could-not-confirm  Could not confirm: commands that ran, or may have run, here used a shell given a string to run, which can run commands this reading does not take apart, so this is not a clean result.
-se.secret-egress  could-not-confirm  Could not confirm: commands that ran, or may have run, here used a shell given a string to run, which can run commands this reading does not take apart, so this is not a clean result.
-ex.paste-service  could-not-confirm  Could not confirm: commands that ran, or may have run, here used a shell given a string to run, which can run commands this reading does not take apart, so this is not a clean result.
-ex.reverse-shell  could-not-confirm  Could not confirm: commands that ran, or may have run, here used a shell given a string to run, which can run commands this reading does not take apart, so this is not a clean result.
-ex.tunnel-expose  could-not-confirm  Could not confirm: commands that ran, or may have run, here used a shell given a string to run, which can run commands this reading does not take apart, so this is not a clean result.
-flag-dependency-install  could-not-confirm  Could not confirm: commands that ran, or may have run, here used a shell given a string to run, which can run commands this reading does not take apart, so this is not a clean result.
-rce.unverified-package  could-not-confirm  Could not confirm: commands that ran, or may have run, here used a shell given a string to run, which can run commands this reading does not take apart, so this is not a clean result.
+gb.git-no-verify  note.could-hide  Could not confirm: commands that ran, or may have run, used a form the checks cannot read, listed under Also checked on this machine.
+gb.hooks-disable  note.could-hide  Could not confirm: commands that ran, or may have run, used a form the checks cannot read, listed under Also checked on this machine.
+wt.branch-force-delete  note.could-hide  Could not confirm: commands that ran, or may have run, used a form the checks cannot read, listed under Also checked on this machine.
+wt.stash-drop  note.could-hide  Could not confirm: commands that ran, or may have run, used a form the checks cannot read, listed under Also checked on this machine.
+wt.checkout-discard  note.could-hide  Could not confirm: commands that ran, or may have run, used a form the checks cannot read, listed under Also checked on this machine.
+wt.restore-path  note.could-hide  Could not confirm: commands that ran, or may have run, used a form the checks cannot read, listed under Also checked on this machine.
+wt.reset-hard  note.could-hide  Could not confirm: commands that ran, or may have run, used a form the checks cannot read, listed under Also checked on this machine.
+require-approval-rm-rf  note.could-hide  Could not confirm: commands that ran, or may have run, used a form the checks cannot read, listed under Also checked on this machine.
+dd.rm-rf-absolute  note.could-hide  Could not confirm: commands that ran, or may have run, used a form the checks cannot read, listed under Also checked on this machine.
+dd.database-drop  note.could-hide  Could not confirm: commands that ran, or may have run, used a form the checks cannot read, listed under Also checked on this machine.
+block-destructive-sql  note.could-hide  Could not confirm: commands that ran, or may have run, used a form the checks cannot read, listed under Also checked on this machine.
+se.env-print  note.could-hide  Could not confirm: commands that ran, or may have run, used a form the checks cannot read, listed under Also checked on this machine.
+se.token-print  note.could-hide  Could not confirm: commands that ran, or may have run, used a form the checks cannot read, listed under Also checked on this machine.
+se.secret-manager-read  note.could-hide  Could not confirm: commands that ran, or may have run, used a form the checks cannot read, listed under Also checked on this machine.
+se.credential-file  note.could-hide  Could not confirm: commands that ran, or may have run, used a form the checks cannot read, listed under Also checked on this machine.
+block-env-file-read  note.could-hide  Could not confirm: commands that ran, or may have run, used a form the checks cannot read, listed under Also checked on this machine.
+warn-op-read-secret  note.could-hide  Could not confirm: commands that ran, or may have run, used a form the checks cannot read, listed under Also checked on this machine.
+block-hardcoded-secrets  note.could-hide  Could not confirm: commands that ran, or may have run, used a form the checks cannot read, listed under Also checked on this machine.
+ps.iam-grant  note.could-hide  Could not confirm: commands that ran, or may have run, used a form the checks cannot read, listed under Also checked on this machine.
+pi.terraform-auto-approve  note.could-hide  Could not confirm: commands that ran, or may have run, used a form the checks cannot read, listed under Also checked on this machine.
+pi.terraform-state-mutate  note.could-hide  Could not confirm: commands that ran, or may have run, used a form the checks cannot read, listed under Also checked on this machine.
+pi.kubectl-delete  note.could-hide  Could not confirm: commands that ran, or may have run, used a form the checks cannot read, listed under Also checked on this machine.
+pi.prod-namespace  note.could-hide  Could not confirm: commands that ran, or may have run, used a form the checks cannot read, listed under Also checked on this machine.
+pi.helm-release  note.could-hide  Could not confirm: commands that ran, or may have run, used a form the checks cannot read, listed under Also checked on this machine.
+pi.cloud-resource-delete  note.could-hide  Could not confirm: commands that ran, or may have run, used a form the checks cannot read, listed under Also checked on this machine.
+pi.deploy-to-prod  note.could-hide  Could not confirm: commands that ran, or may have run, used a form the checks cannot read, listed under Also checked on this machine.
+block-prod-config-edit  note.could-hide  Could not confirm: commands that ran, or may have run, used a form the checks cannot read, listed under Also checked on this machine.
+ti.test-file-delete  note.could-hide  Could not confirm: commands that ran, or may have run, used a form the checks cannot read, listed under Also checked on this machine.
+ti.test-config-edit  note.could-hide  Could not confirm: commands that ran, or may have run, used a form the checks cannot read, listed under Also checked on this machine.
+ti.coverage-bypass  note.could-hide  Could not confirm: commands that ran, or may have run, used a form the checks cannot read, listed under Also checked on this machine.
+ex.file-upload  note.could-hide  Could not confirm: commands that ran, or may have run, used a form the checks cannot read, listed under Also checked on this machine.
+se.secret-egress  note.could-hide  Could not confirm: commands that ran, or may have run, used a form the checks cannot read, listed under Also checked on this machine.
+ex.paste-service  note.could-hide  Could not confirm: commands that ran, or may have run, used a form the checks cannot read, listed under Also checked on this machine.
+ex.reverse-shell  note.could-hide  Could not confirm: commands that ran, or may have run, used a form the checks cannot read, listed under Also checked on this machine.
+ex.tunnel-expose  note.could-hide  Could not confirm: commands that ran, or may have run, used a form the checks cannot read, listed under Also checked on this machine.
+flag-dependency-install  note.could-hide  Could not confirm: commands that ran, or may have run, used a form the checks cannot read, listed under Also checked on this machine.
+rce.unverified-package  note.could-hide  Could not confirm: commands that ran, or may have run, used a form the checks cannot read, listed under Also checked on this machine.

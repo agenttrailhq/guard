@@ -96,6 +96,7 @@ import {
   type CardSentence,
   type CardView,
   cardsFor,
+  HIDING_FORMS_LIST,
   honestStatus,
   isLocalFix,
   isPositiveCount,
@@ -1285,12 +1286,14 @@ function alsoCheckedSection(
   const notes = leadNotes(verification)
     .map((line) => sentenceHtml(line, "note"))
     .join("\n");
+  // The forms the checks cannot read, said once here; each card that met one says so in one line.
+  const forms = sentence(HIDING_FORMS_LIST, cards);
   return `<section class="also-checked" id="also-checked" aria-labelledby="also-checked-heading">
 <h2 id="also-checked-heading">Also checked on this machine</h2>
 ${notes}
 <ul class="check-chips">
 ${chips}
-</ul>
+</ul>${forms === undefined ? "" : `\n${sentenceHtml(forms, "note hiding-forms")}`}
 </section>`;
 }
 
@@ -1349,12 +1352,14 @@ function verifiedCard(
     fields.push(`<div><dt>Fix</dt><dd>\n${parts.join("\n")}\n</dd></div>`);
   }
   const caveat = sentence(CODEX_CAVEAT, card);
+  // Why the card could not confirm everything, after its numbers and its fix.
+  const unconfirmed = card.caveat;
   return `<article class="card verified v-${card.tone}" id="${id}" aria-labelledby="${id}-title" aria-describedby="${id}-tone">
 <div class="card-head"><span class="tone tone-${card.tone}" id="${id}-tone">${escapeHtml(toneLabel(card))}</span>${count === undefined ? "" : `<span class="times" data-template="${escapeHtml(count.template)}">${escapeHtml(count.text)}</span>`}</div>
 <h3 id="${id}-title">${escapeHtml(title)}</h3>
 <dl class="verified-facts">
 ${fields.join("\n")}
-</dl>${caveat === undefined ? "" : `\n${sentenceHtml(caveat, "note codex-caveat")}`}
+</dl>${unconfirmed === undefined ? "" : `\n${sentenceHtml(unconfirmed, "note card-caveat")}`}${caveat === undefined ? "" : `\n${sentenceHtml(caveat, "note codex-caveat")}`}
 </article>`;
 }
 
@@ -2327,6 +2332,8 @@ function verifiedLines(payload: ReportPayload): string[] {
   if (more !== undefined) lines.push(more);
   for (const note of leadNotes(payload.verification)) lines.push(note.text);
   for (const chip of chipsFor(cards, lead)) lines.push(`${chip.title}  ${chip.text}`);
+  const forms = sentence(HIDING_FORMS_LIST, cards);
+  if (forms !== undefined) lines.push(forms.text);
   const tally = sentence(TONE_TALLY, cards);
   if (tally !== undefined) lines.push(tally.text);
   for (const card of cards) {
@@ -2341,6 +2348,7 @@ function verifiedLines(payload: ReportPayload): string[] {
       lines.push(`${title}  ${line.text}`);
     }
     for (const fix of card.fixes) lines.push(`${title}  ${fix.shape}`);
+    if (card.caveat !== undefined) lines.push(`${title}  ${card.caveat.text}`);
     const caveat = sentence(CODEX_CAVEAT, card);
     if (caveat !== undefined) lines.push(`${title}  ${caveat.text}`);
   }

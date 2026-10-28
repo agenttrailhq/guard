@@ -8,8 +8,12 @@
 import { describe, expect, it } from "vitest";
 import { renderReport, reportPayload, reviewStrings, shareText } from "../core/report.js";
 import { reportStyles } from "../core/report-brand.js";
-import { UNCONFIRMED_SENTENCE } from "../core/verify/cards.js";
-import { NOTE_COULD_NOT_CHECK, NOTE_KINDS, type NoteKindName } from "../core/verify/notes.js";
+import {
+  NOTE_COULD_HIDE,
+  NOTE_COULD_NOT_CHECK,
+  NOTE_KINDS,
+  type NoteKindName,
+} from "../core/verify/notes.js";
 import { FACT_KEYS } from "../core/verify/types.js";
 import { decodedSurfaces, decodeEntities } from "./html-text.js";
 import {
@@ -50,7 +54,7 @@ describe("the notes on the page corpus", () => {
       "Likely-real credentials printed by a command: 1.",
     );
     expect(notes.get("wt.stash-drop")?.template).toBe(NOTE_COULD_NOT_CHECK.id);
-    expect(notes.get("ti.test-file-delete")?.template).toBe(UNCONFIRMED_SENTENCE.id);
+    expect(notes.get("ti.test-file-delete")?.template).toBe(NOTE_COULD_HIDE.id);
   });
 
   it("no note for a rule the table leaves out, or for a guardrail the user wrote", () => {

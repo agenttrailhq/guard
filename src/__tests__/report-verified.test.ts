@@ -20,7 +20,7 @@ import {
 import { reportStyles } from "../core/report-brand.js";
 import { REPORT_SCRIPT } from "../core/report-script.js";
 import { CARD_BUILDERS } from "../core/verify/builders.js";
-import { hidingFormLabel, TONE_ORDER, UNCONFIRMED_SENTENCE } from "../core/verify/cards.js";
+import { HIDING_FORMS_LIST, hidingFormLabel, TONE_ORDER } from "../core/verify/cards.js";
 import {
   CATEGORY_TITLES,
   CHIP_CANDIDATES,
@@ -648,15 +648,24 @@ describe("a card never reads clean, or shows a zero, where nothing could be conf
   const chip = (html: string, category: VerifyCategory) =>
     chipsOf(html).find((c) => c.href === `#check-${category}`)?.text;
 
-  it("a clean check whose calls held hiding forms could not confirm, and names them", () => {
+  it("a clean check whose calls held hiding forms could not confirm, and says so once, last", () => {
     const html = renderReport(HIDING_RESULT, VERIFIED_META, OPTIONS);
     const destructive = card(html, "destructive");
     expect(destructive).toContain(
       '<span class="tone tone-could-not-check" id="check-destructive-tone">Could not confirm</span>',
     );
-    expect(destructive).toContain(
-      "Could not confirm: commands that ran, or may have run, here used a shell given a string to run, xargs, which can run commands this reading does not take apart, so this is not a clean result.",
+    // One line, after the card's numbers and its fix, naming no form.
+    expect(destructive).toMatch(
+      /<\/dl>\n<p class="note card-caveat" data-template="could-not-confirm">Could not confirm everything: \d+ commands? that ran, or may have run, used a form the checks cannot read, listed under Also checked on this machine\.<\/p>/,
     );
+    expect(destructive).not.toContain("xargs");
+    // The forms are listed once, under "Also checked on this machine".
+    const also = html.slice(
+      html.indexOf('id="also-checked"'),
+      html.indexOf("</section>", html.indexOf('id="also-checked"')),
+    );
+    expect(also).toContain('data-template="also-checked.hiding-forms"');
+    expect(html.split("a shell given a string to run").length - 1).toBe(1);
     expect(destructive).not.toContain("tone-clean");
     expect(chip(html, "destructive")).toBe("could not confirm");
   });
@@ -667,7 +676,7 @@ describe("a card never reads clean, or shows a zero, where nothing could be conf
     expect(lost).toContain(
       '<span class="tone tone-act" id="check-lost-work-tone">Act on this</span>',
     );
-    expect(lost).toContain("used eval, which can run commands");
+    expect(lost).toContain("used a form the checks cannot read");
     expect(chip(html, "lost-work")).toBe("3 deleted branches and stashes still recoverable");
   });
 
@@ -725,11 +734,14 @@ describe("a card never reads clean, or shows a zero, where nothing could be conf
 
 describe("every hiding form is named, whatever forms there are", () => {
   it("each registered form has words, and a form with no label is named from its id", () => {
+    const cards = [{ unconfirmed: { reason: "hiding-forms", forms: [] } }] as never;
+    const list = HIDING_FORMS_LIST.render(cards) ?? "";
     for (const form of HIDING_FORMS) {
-      const text = UNCONFIRMED_SENTENCE.render({ reason: "hiding-forms", forms: [form] }) ?? "";
-      expect(text, form).toContain(hidingFormLabel(form));
+      expect(list, form).toContain(hidingFormLabel(form));
       expect(hidingFormLabel(form).length).toBeGreaterThan(2);
     }
+    // Only where a card could not confirm because of one.
+    expect(HIDING_FORMS_LIST.render([])).toBeUndefined();
     expect(hidingFormLabel("some-new-form")).toBe("some new form");
   });
 });
@@ -893,7 +905,7 @@ describe("a card that could not confirm never leads", () => {
     const reviewed = reviewStrings(result, TEST_ONLY_BUILDERS).flatMap((g) => g.lines);
     expect(reviewed.some((l) => l.includes(LEAD))).toBe(false);
     // The card itself still says what it found, after saying it could not confirm.
-    expect(card(html, "lost-work")).toContain("used eval");
+    expect(card(html, "lost-work")).toContain("used a form the checks cannot read");
   });
 
   it("negative control: the same card leads when it confirmed what it reports", () => {

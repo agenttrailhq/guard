@@ -289,9 +289,7 @@ describe("what never leads", () => {
     // Its card keeps its tone, and says it could not confirm; the page's headline is the totals.
     const html = page({ [category]: { status: leading(category), claim: 4, forms: ["eval"] } });
     expect(html).toContain(`id="check-${category}"`);
-    expect(html).toContain(
-      "Could not confirm all of it: commands that ran, or may have run, here used eval",
-    );
+    expect(html).toContain('data-template="could-not-confirm">Could not confirm everything: ');
     expect(h1(html)).toEqual({ template: undefined, text: TOTALS });
     expect(h1(page({ [category]: { status: leading(category), claim: 4 } })).template).toBe(
       templateOf(category),

@@ -35,14 +35,7 @@ import {
   type SessionCall,
   simpleCommands,
 } from "./calls.js";
-import {
-  couldHideTemplate,
-  counted,
-  type FullCard,
-  MAX_LOCAL_FIXES,
-  noun,
-  restsOnCodex,
-} from "./card-parts.js";
+import { counted, type FullCard, MAX_LOCAL_FIXES, noun, restsOnCodex } from "./card-parts.js";
 import {
   type CardContext,
   type LocalFix,
@@ -461,7 +454,6 @@ export const UNREVIEWED_FOUND: readonly SentenceTemplate<UnreviewedFacts>[] = [
       return `${counted(n, other ? "more push" : "push", other ? "more pushes" : "pushes")} could not be checked: the output or the repo could not be read.`;
     },
   ),
-  couldHideTemplate("unreviewed.could-hide"),
   when(
     "unreviewed.mentioned",
     (f) => f.mentioned > 0,

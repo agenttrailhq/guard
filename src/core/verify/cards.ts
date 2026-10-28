@@ -196,6 +196,11 @@ export interface CardView {
   readonly read?: CardSentence;
   /** Why the card could not confirm what it reports, when it could not. Set by `cardsFor`. */
   readonly unconfirmed?: Unconfirmed;
+  /**
+   * The one line that says why, shown after the card's numbers and its fix. Set by `cardsFor`
+   * from `unconfirmed`, in the same words on every card.
+   */
+  readonly caveat?: CardSentence;
 }
 
 /**
@@ -209,6 +214,11 @@ export interface CardView {
 export interface Unconfirmed {
   readonly reason: "hiding-forms" | "no-output";
   readonly forms: readonly HidingForm[];
+  /**
+   * For `hiding-forms`: how many calls that ran, or may have run, held one, from the check's
+   * `couldHide` or `hidingCalls` fact. At least one, since a form is named.
+   */
+  readonly calls?: number;
   /**
    * The card still found something (its tone is act or review), so what it could not confirm is
    * whether there is more, not whether it is clean.
@@ -271,15 +281,32 @@ export function hidingFormLabel(form: string): string {
   return HIDING_FORM_LABELS[form] ?? form.replace(/-/g, " ");
 }
 
-/** The first line of a card that could not confirm what it reports. */
+/**
+ * The last line of a card that could not confirm what it reports, after its numbers and its
+ * fix. One wording on every card; only the count differs. The forms themselves are listed once,
+ * under "Also checked on this machine" (`HIDING_FORMS_LIST`).
+ */
 export const UNCONFIRMED_SENTENCE: SentenceTemplate<Unconfirmed> = {
   id: "could-not-confirm",
-  render: (u) =>
-    u.reason === "no-output"
-      ? "Could not confirm: these sessions record no command output, so a count of commands that ran is zero because nothing could be confirmed, not because nothing ran."
-      : u.found === true
-        ? `Could not confirm all of it: commands that ran, or may have run, here used ${u.forms.map(hidingFormLabel).join(", ")}, which can run commands this reading does not take apart, so there may be more than this card shows.`
-        : `Could not confirm: commands that ran, or may have run, here used ${u.forms.map(hidingFormLabel).join(", ")}, which can run commands this reading does not take apart, so this is not a clean result.`,
+  render: (u) => {
+    if (u.reason === "no-output") {
+      return "Could not confirm: these sessions record no command output, so a count of commands that ran is zero because nothing could be confirmed, not because nothing ran.";
+    }
+    const n = Math.max(1, u.calls ?? 0);
+    return `Could not confirm everything: ${n} ${n === 1 ? "command" : "commands"} that ran, or may have run, used a form the checks cannot read, listed under Also checked on this machine.`;
+  },
+};
+
+/**
+ * Every form the checks cannot read inside, in `HIDING_FORMS` order, said once under "Also
+ * checked on this machine" when a card could not confirm because of one.
+ */
+export const HIDING_FORMS_LIST: SentenceTemplate<readonly CardView[]> = {
+  id: "also-checked.hiding-forms",
+  render: (cards) =>
+    cards.some((card) => card.unconfirmed?.reason === "hiding-forms")
+      ? `Forms the checks cannot read inside, so a card where a command that ran, or may have run, used one could not confirm everything: ${HIDING_FORMS.map(hidingFormLabel).join("; ")}.`
+      : undefined,
 };
 
 /** The card for a category with no check yet. */
@@ -344,6 +371,16 @@ function hidingFormsIn(facts: unknown): HidingForm[] {
   return HIDING_FORMS.filter((form) => named.includes(form));
 }
 
+/** How many calls that ran, or may have run, held a hiding form, as a check's facts count them. */
+function hidingCallsIn(facts: unknown): number {
+  if (facts === null || typeof facts !== "object") return 0;
+  const f = facts as { readonly couldHide?: unknown; readonly hidingCalls?: unknown };
+  const counts = [f.couldHide, f.hidingCalls].filter(
+    (n): n is number => typeof n === "number" && Number.isInteger(n) && n > 0,
+  );
+  return counts.length === 0 ? 0 : Math.max(...counts);
+}
+
 /** Categories whose check reads text, not commands that ran: no-output does not touch them. */
 const READS_TEXT: ReadonlySet<VerifyCategory> = new Set(["secrets"]);
 
@@ -360,7 +397,9 @@ export function unconfirmedOf(
   resultsRecorded: boolean,
 ): Unconfirmed | undefined {
   const forms = hidingFormsIn(facts);
-  if (forms.length > 0) return { reason: "hiding-forms", forms };
+  if (forms.length > 0) {
+    return { reason: "hiding-forms", forms, calls: Math.max(1, hidingCallsIn(facts)) };
+  }
   if (!resultsRecorded && !READS_TEXT.has(category) && status === "clean") {
     return { reason: "no-output", forms: [] };
   }
@@ -394,7 +433,8 @@ export function honestStatus(
  * - a check whose facts name hiding forms could not confirm, and never reads clean;
  * - on an app that records no command output, a check of commands that ran that would read
  *   clean could not confirm instead;
- * - a could-not-check card leads with why: could not confirm, or could not be checked.
+ * - a card that could not confirm ends with why (`caveat`), after its numbers and its fix; a
+ *   could-not-check card that could confirm what it read leads with could not be checked.
  */
 function confirmedCard(built: CardView, facts: unknown, verification: Verification): CardView {
   const recorded = verification.resultsRecorded;
@@ -410,11 +450,11 @@ function confirmedCard(built: CardView, facts: unknown, verification: Verificati
         : found;
   const finalTone = honestStatus(built.category, tone, facts, recorded);
   const lead =
-    unconfirmed !== undefined
-      ? sentences([UNCONFIRMED_SENTENCE], unconfirmed)
-      : finalTone === "could-not-check"
-        ? sentences([COULD_NOT_CHECK_SENTENCE], undefined)
-        : [];
+    unconfirmed === undefined && finalTone === "could-not-check"
+      ? sentences([COULD_NOT_CHECK_SENTENCE], undefined)
+      : [];
+  const caveat =
+    unconfirmed === undefined ? undefined : sentence(UNCONFIRMED_SENTENCE, unconfirmed);
   return {
     ...built,
     tone: finalTone,
@@ -423,6 +463,7 @@ function confirmedCard(built: CardView, facts: unknown, verification: Verificati
       ...built.found.filter((line) => line.template !== COULD_NOT_CHECK_SENTENCE.id),
     ],
     ...(unconfirmed === undefined ? {} : { unconfirmed }),
+    ...(caveat === undefined ? {} : { caveat }),
   };
 }
 

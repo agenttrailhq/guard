@@ -38,7 +38,6 @@ import {
   simpleCommands,
 } from "./calls.js";
 import {
-  couldHideTemplate,
   counted,
   type FullCard,
   MAX_LOCAL_FIXES,
@@ -570,7 +569,6 @@ export const CLOUD_FOUND: readonly SentenceTemplate<CloudFacts>[] = [
         ? "No IAM, Auto Scaling, S3 or Terraform change ran."
         : undefined,
   },
-  couldHideTemplate("cloud.could-hide"),
   whenAny(
     "cloud.local-stack",
     (f) => f.localStack,

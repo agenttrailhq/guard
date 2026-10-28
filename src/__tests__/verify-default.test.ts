@@ -183,8 +183,10 @@ describe("the usage", () => {
       "the test configs the sessions edited, inside their repo and each at most\n    1 MB. Only whether coverage thresholds are set to update themselves\n    (autoUpdate) is kept;",
       "the names of the programs running now (ps, or tasklist on Windows), never\n    their arguments.",
       "only the tunnel programs, such as ngrok or\n    cloudflared, are counted;",
-      "Where a command that ran, or may have run, could run others",
-      "they say they could not confirm, never that\nnothing ran.",
+      "Each card shows its numbers and its fix first.",
+      "Where a command\nthat ran, or may have run, could run others the checks do not read",
+      "the card ends with one line saying how many could not be confirmed,\nnever that nothing ran,",
+      'and the forms are listed once under "Also checked on\nthis machine".',
       "A script run by name (bash ./x.sh, source x.sh) is not read.",
       "agenttrail-guard-fixes.txt next to the\nreport, readable only by you (mode 0600), never into the report or --json.",
     ]) {

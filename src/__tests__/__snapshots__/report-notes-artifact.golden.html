@@ -54,6 +54,7 @@
 <li><a class="check-chip v-review" href="#check-prod-infra"><span class="chip-title">Production infrastructure</span><span class="chip-text" data-template="chip.tone">review</span></a></li>
 <li><a class="check-chip v-review" href="#check-destructive"><span class="chip-title">Destructive commands</span><span class="chip-text" data-template="chip.tone">review</span></a></li>
 </ul>
+<p class="note hiding-forms" data-template="also-checked.hiding-forms">Forms the checks cannot read inside, so a card where a command that ran, or may have run, used one could not confirm everything: a shell given a string to run; code run inline by an interpreter; a script piped into a shell or interpreter; find -exec; xargs; process substitution; a command substitution; eval; git with config set on its command line or by an earlier command; git with --exec or an external diff; git after a hook was written; a shell this reading does not parse; a quote left open; a command of its kind behind a program this check does not read.</p>
 </section>
 <section class="stats" aria-label="Summary">
 <div class="stat"><div class="stat-value">1</div><div class="stat-label">session</div></div>
@@ -85,10 +86,9 @@
 <div class="card-head"><span class="tone tone-act" id="check-tests-tone">Act on this</span><span class="times" data-template="card.count">3 matches</span></div>
 <h3 id="check-tests-title">Gaming tests</h3>
 <dl class="verified-facts">
-<div><dt>What checking found</dt><dd>
-<p data-template="could-not-confirm">Could not confirm all of it: commands that ran, or may have run, here used xargs, which can run commands this reading does not take apart, so there may be more than this card shows.</p>
-</dd></div>
+
 </dl>
+<p class="note card-caveat" data-template="could-not-confirm">Could not confirm everything: 1 command that ran, or may have run, used a form the checks cannot read, listed under Also checked on this machine.</p>
 </article>
 <article class="card verified v-review" id="check-cloud" aria-labelledby="check-cloud-title" aria-describedby="check-cloud-tone">
 <div class="card-head"><span class="tone tone-review" id="check-cloud-tone">Review</span><span class="times" data-template="card.count">3 matches</span></div>
@@ -305,7 +305,7 @@
 <div class="finding-meta"><span class="badge sev-high">high</span> <span class="chip act-ask">would ask</span><span class="num" data-label="Matches">1&times;</span></div>
 </div>
 <div class="guardrail-id"><code>ti.test-file-delete</code> &middot; <span class="group">Test integrity</span></div>
-<p class="verified-note v-could-not-check"><span class="verified-note-label">What checking found:</span> <span data-template="could-not-confirm">Could not confirm: commands that ran, or may have run, here used xargs, which can run commands this reading does not take apart, so this is not a clean result.</span></p>
+<p class="verified-note v-could-not-check"><span class="verified-note-label">What checking found:</span> <span data-template="note.could-hide">Could not confirm: commands that ran, or may have run, used a form the checks cannot read, listed under Also checked on this machine.</span></p>
 <details class="commands"><summary>The command shape behind it</summary>
 <ul class="shapes">
 <li><code>rm &lt;path&gt;</code><span class="times">1&times;</span></li>

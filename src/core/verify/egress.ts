@@ -45,13 +45,7 @@ import {
   type SimpleCommand,
   simpleCommands,
 } from "./calls.js";
-import {
-  couldHideTemplate,
-  counted,
-  type FullCard,
-  moreMatches,
-  restsOnCodex,
-} from "./card-parts.js";
+import { counted, type FullCard, moreMatches, restsOnCodex } from "./card-parts.js";
 import {
   type CardContext,
   type ChipReason,
@@ -758,7 +752,6 @@ export const EGRESS_FOUND: readonly SentenceTemplate<EgressFacts>[] = [
     (f) =>
       `${counted(f.localOnly, "match", "matches")} went only to this machine (a local server or LocalStack) and ${f.localOnly === 1 ? "is" : "are"} not counted.`,
   ),
-  couldHideTemplate("egress.could-hide"),
   when(
     "egress.mentioned",
     (f) => f.mentioned > 0,

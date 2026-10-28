@@ -41,12 +41,11 @@ import {
   type NoteSource,
   type SentenceTemplate,
   sentence,
-  UNCONFIRMED_SENTENCE,
   unconfirmedOf,
   type VerifiedNote,
 } from "./cards.js";
 import { CODEX_CAVEAT, countOf } from "./copy.js";
-import { HIDING_FORMS, type HidingForm, type Verification } from "./types.js";
+import { HIDING_FORMS, type Verification } from "./types.js";
 
 // ── Reading counts ────────────────────────────────────────────────────────────
 
@@ -789,11 +788,14 @@ export const NOTE_COULD_NOT_CHECK: SentenceTemplate<unknown> = {
     "Could not confirm: the check behind this could not settle everything it looked for on this machine.",
 };
 
-/** A note on a check whose commands held a form that can hide others, with none named. */
+/**
+ * A note on a check whose commands held a form that can hide others. The forms are listed once,
+ * under "Also checked on this machine".
+ */
 export const NOTE_COULD_HIDE: SentenceTemplate<unknown> = {
   id: "note.could-hide",
   render: () =>
-    "Could not confirm: commands that ran could have run others this reading does not take apart.",
+    "Could not confirm: commands that ran, or may have run, used a form the checks cannot read, listed under Also checked on this machine.",
 };
 
 /** A note that rests on command output, from sessions that record none. */
@@ -807,18 +809,16 @@ export const NOTE_NO_OUTPUT: SentenceTemplate<unknown> = {
  * and left out of the bundles.
  */
 export const UNCONFIRMED_NOTES: readonly string[] = /* @__PURE__ */ (() => [
-  UNCONFIRMED_SENTENCE.id,
   NOTE_COULD_NOT_CHECK.id,
   NOTE_COULD_HIDE.id,
   NOTE_NO_OUTPUT.id,
 ])();
 
-/** The hiding forms a check's facts name, and whether it counted any call holding one. */
-function hidingIn(facts: unknown): { readonly forms: HidingForm[]; readonly any: boolean } {
+/** Do a check's facts name a hiding form, or count a call that held one? */
+function hidingIn(facts: unknown): boolean {
   const named = at(facts, ["hidingForms"]);
   const forms = Array.isArray(named) ? HIDING_FORMS.filter((form) => named.includes(form)) : [];
-  const counted = HIDING_COUNTS.some((path) => (asCount(at(facts, path)) ?? 0) > 0);
-  return { forms, any: forms.length > 0 || counted };
+  return forms.length > 0 || HIDING_COUNTS.some((path) => (asCount(at(facts, path)) ?? 0) > 0);
 }
 
 /** What a note says when its check could not confirm, or `undefined` when it could. */
@@ -832,14 +832,11 @@ function unconfirmedLine(
   if (rule.category !== "dependencies" && status !== undefined) {
     // The same rule the cards and the report's statuses use.
     const unconfirmed = unconfirmedOf(rule.category, status, facts, recorded);
-    if (unconfirmed?.reason === "hiding-forms") return sentence(UNCONFIRMED_SENTENCE, unconfirmed);
+    if (unconfirmed?.reason === "hiding-forms") return sentence(NOTE_COULD_HIDE, undefined);
     if (unconfirmed?.reason === "no-output") return sentence(NOTE_NO_OUTPUT, undefined);
   }
-  const hiding = hidingIn(facts);
-  if (hiding.forms.length > 0) {
-    return sentence(UNCONFIRMED_SENTENCE, { reason: "hiding-forms", forms: hiding.forms });
-  }
-  if (hiding.any) return sentence(NOTE_COULD_HIDE, undefined);
+  // The forms are listed once, under "Also checked on this machine", never in a note.
+  if (hidingIn(facts)) return sentence(NOTE_COULD_HIDE, undefined);
   // Before the could-not-check gate: sessions that record no output are the reason a check
   // that rests on it could not confirm, even when the check itself finished.
   const spec = NOTE_KINDS[rule.kind];

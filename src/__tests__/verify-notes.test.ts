@@ -15,7 +15,7 @@
 
 import { describe, expect, it } from "vitest";
 import { SHIPPED_CATALOG } from "../core/catalog.js";
-import { cardsFor, UNCONFIRMED_SENTENCE } from "../core/verify/cards.js";
+import { cardsFor } from "../core/verify/cards.js";
 import { CODEX_CAVEAT } from "../core/verify/copy.js";
 import {
   NOTE_COULD_HIDE,
@@ -596,10 +596,12 @@ describe("what a note says it is", () => {
         notesVerification({}, { resultsRecorded: false, ranEvidence: "none" }),
       ),
     ];
+    // A named form gives the same note as a count of hiding calls: the forms are listed once,
+    // under "Also checked on this machine", never in a note.
     expect(notes.map((n) => n?.sentence.template)).toEqual([
       NOTE_COULD_NOT_CHECK.id,
       NOTE_COULD_HIDE.id,
-      UNCONFIRMED_SENTENCE.id,
+      NOTE_COULD_HIDE.id,
       NOTE_NO_OUTPUT.id,
     ]);
     for (const note of notes) {
@@ -690,22 +692,23 @@ describe("a check whose commands could hide others never reassures", () => {
       const base = category === "dependencies" ? DEPENDENCY_FACTS : (FACTS[category] as object);
       const facts = { ...base, hidingForms: [form] };
       const note = noteText(ruleOf(kind), withFacts(kind, facts, "clean"));
-      expect(note?.template, kind).toBe(UNCONFIRMED_SENTENCE.id);
+      expect(note?.template, kind).toBe(NOTE_COULD_HIDE.id);
       expect(note?.text, kind).toMatch(/^Could not confirm/);
       expect(note?.text, kind).not.toMatch(REASSURING);
     }
   });
 
-  it("names every form the facts hold, in their order", () => {
-    const note = noteText(
-      "dd.rm-rf-absolute",
-      notesVerification({
-        destructive: checked("clean", { ...DESTRUCTIVE_FACTS, hidingForms: ["xargs", "eval"] }),
-      }),
+  it("names no form: one wording, whatever forms the facts hold", () => {
+    const texts = [["xargs", "eval"], ["eval"], ["shell-string", "unread-match"]].map(
+      (hidingForms) =>
+        noteText(
+          "dd.rm-rf-absolute",
+          notesVerification({
+            destructive: checked("clean", { ...DESTRUCTIVE_FACTS, hidingForms }),
+          }),
+        )?.text,
     );
-    expect(note?.text).toBe(
-      UNCONFIRMED_SENTENCE.render({ reason: "hiding-forms", forms: ["xargs", "eval"] }),
-    );
+    expect(new Set(texts)).toEqual(new Set([NOTE_COULD_HIDE.render(undefined)]));
   });
 
   it("a count of hiding calls with no form named still could not confirm", () => {
@@ -737,7 +740,7 @@ describe("a check whose commands could hide others never reassures", () => {
         "lost-work": checked("act", { ...LOST_WORK_FACTS, hidingForms: ["eval"] }),
       }),
     );
-    expect(note?.template).toBe(UNCONFIRMED_SENTENCE.id);
+    expect(note?.template).toBe(NOTE_COULD_HIDE.id);
   });
 });
 
@@ -875,7 +878,7 @@ describe("a Codex scan gets no reassuring note, and its counts carry their cavea
         codex,
       ),
     );
-    expect(note?.template).toBe(UNCONFIRMED_SENTENCE.id);
+    expect(note?.template).toBe(NOTE_COULD_HIDE.id);
     expect(note?.text).not.toContain(CODEX_TEXT);
   });
 });

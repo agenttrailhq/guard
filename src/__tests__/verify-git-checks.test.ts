@@ -45,7 +45,7 @@ type GitName = keyof typeof GIT_CARD_BUILDERS;
 /** The frame's could-not-confirm line, after a call that ran eval. */
 const CNC = "could-not-confirm";
 const EVAL_LINE =
-  "Could not confirm: commands that ran, or may have run, here used eval, which can run commands this reading does not take apart, so this is not a clean result.";
+  "Could not confirm everything: 1 command that ran, or may have run, used a form the checks cannot read, listed under Also checked on this machine.";
 
 /** A repo, and a session that ran one command of every kind the checks look up. */
 function everything(label: string): { root: string; sessions: GitSession[] } {
@@ -513,10 +513,9 @@ describe("a hiding form in a call that ran keeps every git-backed category from 
       const at = html.indexOf(`id="check-${name}"`);
       expect(at, name).toBeGreaterThan(-1);
       const card = html.slice(html.lastIndexOf("<article", at), html.indexOf("</article>", at));
-      return [...card.matchAll(/<p data-template="([^"]+)">([^<]*)<\/p>/g)].map((m) => [
-        m[1] as string,
-        m[2] as string,
-      ]);
+      return [
+        ...card.matchAll(/<p(?: class="note card-caveat")? data-template="([^"]+)">([^<]*)<\/p>/g),
+      ].map((m) => [m[1] as string, m[2] as string]);
     };
     const LINES: Record<GitName, readonly string[][]> =
       hiding > 0

@@ -12399,12 +12399,6 @@ function restsOnCodex(context) {
   return context.ranEvidence === "output-record";
 }
 var MAX_LOCAL_FIXES = 50;
-function couldHideTemplate(id) {
-  return {
-    id,
-    render: (f) => f.couldHide > 0 ? `${counted(f.couldHide, "command that ran, or may have run,", "commands that ran, or may have run,")} could run other commands this check does not read (code given to a shell or an interpreter, a script piped into one, find -exec, xargs, eval, a substitution, git config, exec or hooks, a quote left open, a command of its kind behind a program this check does not read, or a shell this reading does not parse), so it could not confirm it saw everything.` : void 0
-  };
-}
 
 // src/core/verify/cards.ts
 function sentence(template, facts) {
@@ -12460,7 +12454,17 @@ function hidingFormLabel(form) {
 }
 var UNCONFIRMED_SENTENCE = {
   id: "could-not-confirm",
-  render: (u) => u.reason === "no-output" ? "Could not confirm: these sessions record no command output, so a count of commands that ran is zero because nothing could be confirmed, not because nothing ran." : u.found === true ? `Could not confirm all of it: commands that ran, or may have run, here used ${u.forms.map(hidingFormLabel).join(", ")}, which can run commands this reading does not take apart, so there may be more than this card shows.` : `Could not confirm: commands that ran, or may have run, here used ${u.forms.map(hidingFormLabel).join(", ")}, which can run commands this reading does not take apart, so this is not a clean result.`
+  render: (u) => {
+    if (u.reason === "no-output") {
+      return "Could not confirm: these sessions record no command output, so a count of commands that ran is zero because nothing could be confirmed, not because nothing ran.";
+    }
+    const n2 = Math.max(1, u.calls ?? 0);
+    return `Could not confirm everything: ${n2} ${n2 === 1 ? "command" : "commands"} that ran, or may have run, used a form the checks cannot read, listed under Also checked on this machine.`;
+  }
+};
+var HIDING_FORMS_LIST = {
+  id: "also-checked.hiding-forms",
+  render: (cards) => cards.some((card) => card.unconfirmed?.reason === "hiding-forms") ? `Forms the checks cannot read inside, so a card where a command that ran, or may have run, used one could not confirm everything: ${HIDING_FORMS.map(hidingFormLabel).join("; ")}.` : void 0
 };
 function notCheckedCard(category) {
   return {
@@ -12503,10 +12507,20 @@ function hidingFormsIn(facts) {
   if (!Array.isArray(named)) return [];
   return HIDING_FORMS.filter((form) => named.includes(form));
 }
+function hidingCallsIn(facts) {
+  if (facts === null || typeof facts !== "object") return 0;
+  const f = facts;
+  const counts = [f.couldHide, f.hidingCalls].filter(
+    (n2) => typeof n2 === "number" && Number.isInteger(n2) && n2 > 0
+  );
+  return counts.length === 0 ? 0 : Math.max(...counts);
+}
 var READS_TEXT = /* @__PURE__ */ new Set(["secrets"]);
 function unconfirmedOf(category, status, facts, resultsRecorded) {
   const forms = hidingFormsIn(facts);
-  if (forms.length > 0) return { reason: "hiding-forms", forms };
+  if (forms.length > 0) {
+    return { reason: "hiding-forms", forms, calls: Math.max(1, hidingCallsIn(facts)) };
+  }
   if (!resultsRecorded && !READS_TEXT.has(category) && status === "clean") {
     return { reason: "no-output", forms: [] };
   }
@@ -12522,7 +12536,8 @@ function confirmedCard(built, facts, verification) {
   const found = unconfirmedOf(built.category, tone, facts, recorded);
   const unconfirmed = found === void 0 ? void 0 : tone === "act" || tone === "review" ? { ...found, found: true } : found;
   const finalTone = honestStatus(built.category, tone, facts, recorded);
-  const lead = unconfirmed !== void 0 ? sentences([UNCONFIRMED_SENTENCE], unconfirmed) : finalTone === "could-not-check" ? sentences([COULD_NOT_CHECK_SENTENCE], void 0) : [];
+  const lead = unconfirmed === void 0 && finalTone === "could-not-check" ? sentences([COULD_NOT_CHECK_SENTENCE], void 0) : [];
+  const caveat = unconfirmed === void 0 ? void 0 : sentence(UNCONFIRMED_SENTENCE, unconfirmed);
   return {
     ...built,
     tone: finalTone,
@@ -12530,7 +12545,8 @@ function confirmedCard(built, facts, verification) {
       ...lead,
       ...built.found.filter((line2) => line2.template !== COULD_NOT_CHECK_SENTENCE.id)
     ],
-    ...unconfirmed === void 0 ? {} : { unconfirmed }
+    ...unconfirmed === void 0 ? {} : { unconfirmed },
+    ...caveat === void 0 ? {} : { caveat }
   };
 }
 function cardsFor(verification, builders) {
@@ -13050,7 +13066,6 @@ var CLOUD_FOUND = [
     id: "cloud.nothing",
     render: (f) => changesOf(f) === 0 && f.couldHide === 0 && f.unconfirmed === 0 ? "No IAM, Auto Scaling, S3 or Terraform change ran." : void 0
   },
-  couldHideTemplate("cloud.could-hide"),
   whenAny(
     "cloud.local-stack",
     (f) => f.localStack,
@@ -13606,7 +13621,6 @@ var EGRESS_FOUND = [
     (f) => f.localOnly > 0,
     (f) => `${counted(f.localOnly, "match", "matches")} went only to this machine (a local server or LocalStack) and ${f.localOnly === 1 ? "is" : "are"} not counted.`
   ),
-  couldHideTemplate("egress.could-hide"),
   when(
     "egress.mentioned",
     (f) => f.mentioned > 0,
@@ -13877,7 +13891,6 @@ var PROD_FOUND = [
     // contradicting each other.
     (f) => f.localInfra > 0 ? "No other command or edit that ran matched a production infrastructure guardrail." : "No command or edit that ran matched a production infrastructure guardrail."
   ),
-  couldHideTemplate("prod.could-hide"),
   when2(
     "prod.mentioned",
     (f) => f.mentioned > 0,
@@ -14360,22 +14373,17 @@ var TESTS_FOUND = [
     (f) => f.deletedFailureUnknown,
     (n2) => `For ${n2} of them the test output was not recorded, so whether ${n2 === 1 ? "it" : "they"} failed first is not known.`
   ),
-  // Said whatever the tone: a revert or a rewrite outranks it, and the card still could not
-  // confirm what these commands changed, so there may be more than the card shows.
+  // Said whatever the tone, as a count: a revert or a rewrite outranks it, and what these
+  // commands changed is not known either way.
   whenAny2(
     "tests.unread-edits",
     (f) => f.unreadEdits,
-    (n2, f) => {
-      const found = testsStatus(f);
-      const edits = `${counted(n2, "command that ran", "commands that ran")} changed a test config or CI file through the shell or git, or applied a patch, which this check does not read`;
-      return found === "act" || found === "review" ? `Could not confirm all of it: ${edits}, so there may be more than this card shows.` : `Could not confirm: ${edits}, so what changed is not known.`;
-    }
+    (n2) => `${counted(n2, "command that ran", "commands that ran")} changed a test config or CI file through the shell or git, or applied a patch, which this check does not read, so what changed is not known.`
   ),
   {
     id: "tests.nothing",
     render: (f) => signals(f) === 0 && f.couldHide === 0 && f.unconfirmed === 0 && f.unreadEdits === 0 ? "No edit or command that ran lowered a coverage threshold, added a test exclude, passed with no tests, forced a CI step to pass or deleted a test file." : void 0
   },
-  couldHideTemplate("tests.could-hide"),
   whenAny2(
     "tests.mentioned",
     (f) => f.mentioned,
@@ -14757,7 +14765,6 @@ var UNREVIEWED_FOUND = [
       return `${counted(n2, other ? "more push" : "push", other ? "more pushes" : "pushes")} could not be checked: the output or the repo could not be read.`;
     }
   ),
-  couldHideTemplate("unreviewed.could-hide"),
   when3(
     "unreviewed.mentioned",
     (f) => f.mentioned > 0,
@@ -18170,7 +18177,7 @@ var NOTE_COULD_NOT_CHECK = {
 };
 var NOTE_COULD_HIDE = {
   id: "note.could-hide",
-  render: () => "Could not confirm: commands that ran could have run others this reading does not take apart."
+  render: () => "Could not confirm: commands that ran, or may have run, used a form the checks cannot read, listed under Also checked on this machine."
 };
 var NOTE_NO_OUTPUT = {
   id: "note.no-output",
@@ -18179,21 +18186,16 @@ var NOTE_NO_OUTPUT = {
 function hidingIn(facts) {
   const named = at(facts, ["hidingForms"]);
   const forms = Array.isArray(named) ? HIDING_FORMS.filter((form) => named.includes(form)) : [];
-  const counted5 = HIDING_COUNTS.some((path) => (asCount(at(facts, path)) ?? 0) > 0);
-  return { forms, any: forms.length > 0 || counted5 };
+  return forms.length > 0 || HIDING_COUNTS.some((path) => (asCount(at(facts, path)) ?? 0) > 0);
 }
 function unconfirmedLine(rule, facts, status, verification) {
   const recorded = verification.resultsRecorded;
   if (rule.category !== "dependencies" && status !== void 0) {
     const unconfirmed = unconfirmedOf(rule.category, status, facts, recorded);
-    if (unconfirmed?.reason === "hiding-forms") return sentence(UNCONFIRMED_SENTENCE, unconfirmed);
+    if (unconfirmed?.reason === "hiding-forms") return sentence(NOTE_COULD_HIDE, void 0);
     if (unconfirmed?.reason === "no-output") return sentence(NOTE_NO_OUTPUT, void 0);
   }
-  const hiding = hidingIn(facts);
-  if (hiding.forms.length > 0) {
-    return sentence(UNCONFIRMED_SENTENCE, { reason: "hiding-forms", forms: hiding.forms });
-  }
-  if (hiding.any) return sentence(NOTE_COULD_HIDE, void 0);
+  if (hidingIn(facts)) return sentence(NOTE_COULD_HIDE, void 0);
   const spec = NOTE_KINDS[rule.kind];
   if ((spec.ran || spec.output === true) && !recorded) {
     return sentence(NOTE_NO_OUTPUT, void 0);
@@ -18908,12 +18910,14 @@ function alsoCheckedSection(payload, cards, lead) {
     (chip) => `<li><a class="check-chip v-${chip.tone}" href="#${cardId(chip.category)}"><span class="chip-title">${escapeHtml(chip.title)}</span><span class="chip-text" data-template="${escapeHtml(chip.template)}">${escapeHtml(chip.text)}</span></a></li>`
   ).join("\n");
   const notes = leadNotes(verification).map((line2) => sentenceHtml(line2, "note")).join("\n");
+  const forms = sentence(HIDING_FORMS_LIST, cards);
   return `<section class="also-checked" id="also-checked" aria-labelledby="also-checked-heading">
 <h2 id="also-checked-heading">Also checked on this machine</h2>
 ${notes}
 <ul class="check-chips">
 ${chips}
-</ul>
+</ul>${forms === void 0 ? "" : `
+${sentenceHtml(forms, "note hiding-forms")}`}
 </section>`;
 }
 function verifiedCard(card, variant, localFixes, unsafeListed) {
@@ -18955,12 +18959,14 @@ ${parts.join("\n")}
 </dd></div>`);
   }
   const caveat = sentence(CODEX_CAVEAT, card);
+  const unconfirmed = card.caveat;
   return `<article class="card verified v-${card.tone}" id="${id}" aria-labelledby="${id}-title" aria-describedby="${id}-tone">
 <div class="card-head"><span class="tone tone-${card.tone}" id="${id}-tone">${escapeHtml(toneLabel(card))}</span>${count2 === void 0 ? "" : `<span class="times" data-template="${escapeHtml(count2.template)}">${escapeHtml(count2.text)}</span>`}</div>
 <h3 id="${id}-title">${escapeHtml(title)}</h3>
 <dl class="verified-facts">
 ${fields.join("\n")}
-</dl>${caveat === void 0 ? "" : `
+</dl>${unconfirmed === void 0 ? "" : `
+${sentenceHtml(unconfirmed, "note card-caveat")}`}${caveat === void 0 ? "" : `
 ${sentenceHtml(caveat, "note codex-caveat")}`}
 </article>`;
 }
@@ -19629,6 +19635,8 @@ function verifiedLines(payload) {
   if (more !== void 0) lines2.push(more);
   for (const note of leadNotes(payload.verification)) lines2.push(note.text);
   for (const chip of chipsFor(cards, lead)) lines2.push(`${chip.title}  ${chip.text}`);
+  const forms = sentence(HIDING_FORMS_LIST, cards);
+  if (forms !== void 0) lines2.push(forms.text);
   const tally = sentence(TONE_TALLY, cards);
   if (tally !== void 0) lines2.push(tally.text);
   for (const card of cards) {
@@ -19643,6 +19651,7 @@ function verifiedLines(payload) {
       lines2.push(`${title}  ${line2.text}`);
     }
     for (const fix of card.fixes) lines2.push(`${title}  ${fix.shape}`);
+    if (card.caveat !== void 0) lines2.push(`${title}  ${card.caveat.text}`);
     const caveat = sentence(CODEX_CAVEAT, card);
     if (caveat !== void 0) lines2.push(`${title}  ${caveat.text}`);
   }
@@ -21392,10 +21401,12 @@ check that cannot finish says so, and never reads as clean.
 They say which matched commands ran and which were only mentioned, and check
 what the commands that ran did: credentials, test thresholds and deleted tests,
 cloud and production changes, pushes straight to main, uploads and tunnels, and
-package installs. Where a command that ran, or may have run, could run others the
-checks do not read (bash -c, a script piped into a shell, find -exec, xargs, eval,
-a substitution, git config or hooks), they say they could not confirm, never that
-nothing ran. A script run by name (bash ./x.sh, source x.sh) is not read.
+package installs. Each card shows its numbers and its fix first. Where a command
+that ran, or may have run, could run others the checks do not read (bash -c, a
+script piped into a shell, find -exec, xargs, eval, a substitution, git config
+or hooks), the card ends with one line saying how many could not be confirmed,
+never that nothing ran, and the forms are listed once under "Also checked on
+this machine". A script run by name (bash ./x.sh, source x.sh) is not read.
 Exact fix commands for this machine go to agenttrail-guard-fixes.txt next to the
 report, readable only by you (mode 0600), never into the report or --json.
 ${wrapText(CODEX_UNVERIFIED_TEXT, USAGE_WIDTH)}`;
