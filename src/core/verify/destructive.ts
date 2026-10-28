@@ -58,6 +58,7 @@ import {
 } from "./cards.js";
 import {
   addTallies,
+  callsIn,
   cardExtras,
   codexCaveat,
   codexLimitedTemplate,
@@ -879,10 +880,11 @@ export async function checkDestructive(context: GitCheckContext): Promise<Destru
     ...withUnread(log, unread),
   };
 
-  const calls = new Set([...rmCalls, ...dbCalls].map((j) => j.call.id));
+  // Each reading that counts a call counts it as a match, so the card's tallies (ran, mentioned,
+  // could not be confirmed) add up to its matches, also where two readings count one call.
   const status = destructiveStatus(facts, log.sessions);
   return {
-    result: { status, matches: calls.size, facts },
+    result: { status, matches: callsIn(allCalls(facts)), facts },
     localFixes: fixes.made,
     unsafeFixes: fixes.unsafe,
   };

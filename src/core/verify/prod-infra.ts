@@ -87,7 +87,10 @@ export interface ProdInfraFacts {
   readonly localInfra: number;
   /** Matches that only mentioned one of these, and did not run. */
   readonly mentioned: number;
-  /** Matches that could not be confirmed as run. */
+  /**
+   * Matches that could not be confirmed as run, and database commands that ran whose target
+   * could not be told. Both are among the card's matches.
+   */
   readonly unconfirmed: number;
   /** Calls that ran, or may have run, and could have run other commands this check does not read. */
   readonly couldHide: number;
@@ -281,6 +284,10 @@ export function checkProdInfra(input: ProdInfraInput): ProdInfraCheck {
   }
 
   const supplied = input.databaseTargets;
+  // A database target that could not be placed is a match that ran and could not be confirmed:
+  // it counts among the matches as well as among the unconfirmed, so the second never exceeds
+  // the first.
+  const unresolved = Math.max(0, input.databaseTargetsUnresolved ?? 0);
   const facts: ProdInfraFacts = {
     databaseTargets: {
       local: supplied?.local ?? 0,
@@ -292,13 +299,13 @@ export function checkProdInfra(input: ProdInfraInput): ProdInfraCheck {
     infraKinds: INFRA_KINDS.filter((k) => kinds.has(k)),
     localInfra,
     mentioned,
-    unconfirmed: unconfirmed + Math.max(0, input.databaseTargetsUnresolved ?? 0),
+    unconfirmed: unconfirmed + unresolved,
     couldHide: couldHideCount(input.calls),
     hidingForms: heldHidingForms(input.calls),
   };
   return {
     status: prodInfraStatus(facts),
-    matches: candidates + facts.databaseTargets.other,
+    matches: candidates + facts.databaseTargets.other + unresolved,
     facts,
   };
 }
@@ -401,7 +408,8 @@ export const PROD_FOUND: readonly SentenceTemplate<ProdInfraFacts>[] = [
   when(
     "prod.unconfirmed",
     (f) => f.unconfirmed > 0,
-    (f) => `${counted(f.unconfirmed, "match", "matches")} could not be confirmed as run.`,
+    (f) =>
+      `${counted(f.unconfirmed, "match", "matches")} could not be confirmed as run, or as aimed at this machine.`,
   ),
 ];
 

@@ -13792,6 +13792,7 @@ function checkProdInfra(input) {
     }
   }
   const supplied = input.databaseTargets;
+  const unresolved = Math.max(0, input.databaseTargetsUnresolved ?? 0);
   const facts = {
     databaseTargets: {
       local: supplied?.local ?? 0,
@@ -13803,13 +13804,13 @@ function checkProdInfra(input) {
     infraKinds: INFRA_KINDS.filter((k) => kinds.has(k)),
     localInfra,
     mentioned,
-    unconfirmed: unconfirmed + Math.max(0, input.databaseTargetsUnresolved ?? 0),
+    unconfirmed: unconfirmed + unresolved,
     couldHide: couldHideCount(input.calls),
     hidingForms: heldHidingForms(input.calls)
   };
   return {
     status: prodInfraStatus(facts),
-    matches: candidates + facts.databaseTargets.other,
+    matches: candidates + facts.databaseTargets.other + unresolved,
     facts
   };
 }
@@ -13885,7 +13886,7 @@ var PROD_FOUND = [
   when2(
     "prod.unconfirmed",
     (f) => f.unconfirmed > 0,
-    (f) => `${counted(f.unconfirmed, "match", "matches")} could not be confirmed as run.`
+    (f) => `${counted(f.unconfirmed, "match", "matches")} could not be confirmed as run, or as aimed at this machine.`
   )
 ];
 function anyTarget(f) {
@@ -14997,6 +14998,9 @@ function was(n2) {
 function is(n2) {
   return n2 === 1 ? "is" : "are";
 }
+function callsIn(tally) {
+  return tally.ran + tally.mentioned + tally.unknown;
+}
 function addTallies(...tallies) {
   const sum = { ran: 0, mentioned: 0, unknown: 0 };
   for (const tally of tallies) {
@@ -16095,10 +16099,9 @@ async function checkDestructive(context) {
     unsafeFixes: fixes.unsafe.length,
     ...withUnread(log, unread)
   };
-  const calls = new Set([...rmCalls, ...dbCalls].map((j) => j.call.id));
   const status = destructiveStatus(facts, log.sessions);
   return {
-    result: { status, matches: calls.size, facts },
+    result: { status, matches: callsIn(allCalls(facts)), facts },
     localFixes: fixes.made,
     unsafeFixes: fixes.unsafe
   };
@@ -16674,10 +16677,9 @@ async function checkLostWork(context) {
     unsafeFixes: fixes.unsafe.length,
     ...withUnread(log, behind)
   };
-  const calls = new Set([...branchCalls, ...stashCalls, ...discardCalls].map((j) => j.call.id));
   const status = lostWorkStatus(facts, log.sessions);
   return {
-    result: { status, matches: calls.size, facts },
+    result: { status, matches: callsIn(allCalls2(facts)), facts },
     localFixes: fixes.made,
     unsafeFixes: fixes.unsafe
   };
@@ -17493,14 +17495,9 @@ async function checkSkippedChecks(context) {
     unsafeFixes: fixes.unsafe.length,
     ...withUnread(log, behind)
   };
-  const calls = new Set(
-    [...commitCalls, ...otherCalls, ...huskyCalls, ...oneCommandCalls, ...configCalls].map(
-      (j) => j.call.id
-    )
-  );
   const status = skippedChecksStatus(facts, log.sessions);
   return {
-    result: { status, matches: calls.size, facts },
+    result: { status, matches: callsIn(allCalls3(facts)), facts },
     localFixes: fixes.made,
     unsafeFixes: fixes.unsafe
   };

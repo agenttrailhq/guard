@@ -806,14 +806,11 @@ export async function checkSkippedChecks(context: GitCheckContext): Promise<Skip
     ...withUnread(log, behind),
   };
 
-  const calls = new Set(
-    [...commitCalls, ...otherCalls, ...huskyCalls, ...oneCommandCalls, ...configCalls].map(
-      (j) => j.call.id,
-    ),
-  );
+  // Each reading that counts a call counts it as a match, so the card's tallies (ran, mentioned,
+  // could not be confirmed) add up to its matches, also where two readings count one call.
   const status = skippedChecksStatus(facts, log.sessions);
   return {
-    result: { status, matches: calls.size, facts },
+    result: { status, matches: callsIn(allCalls(facts)), facts },
     localFixes: fixes.made,
     unsafeFixes: fixes.unsafe,
   };
