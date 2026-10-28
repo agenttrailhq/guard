@@ -384,10 +384,15 @@ describe("rm -rf targets, one per class", () => {
     expect(isUnder("/private/tmp/agenttrail-x", TEMP_ROOTS)).toBe(true);
     expect(isUnder("/tmpdata/x", ["/tmp"])).toBe(false);
     expect(isUnder("/tmp", ["/tmp/"])).toBe(true);
-    // Through the check, with no scratch folders given: the defaults apply.
+    // Through the check, with no scratch folders given: the defaults apply. Both targets sit under
+    // temp folders that exist on macOS and on Linux: `/private/tmp` has no Linux counterpart, and
+    // a target with no existing parent but `/` cannot be checked there.
     const home = tempFolder("home");
     const outcome = await checkGitBacked({
-      corpus: corpusOf("claude", ran(home, "rm -rf /tmp/agenttrail-scratch-x /private/tmp/y")),
+      corpus: corpusOf(
+        "claude",
+        ran(home, "rm -rf /tmp/agenttrail-scratch-x /var/tmp/agenttrail-scratch-y"),
+      ),
       io: verifyIO(home),
       home,
     });
