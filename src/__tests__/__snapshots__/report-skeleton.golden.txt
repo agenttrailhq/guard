@@ -247,9 +247,13 @@ body
             dd
               span
       p.vnote
-        span ×3
-        span
-          code
+      details#checks-notes.more-info
+        summary
+        div
+          p
+            span ×3
+            span
+              code
     section#outcomes
       div.section-head
         div

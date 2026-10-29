@@ -176,7 +176,8 @@ html:not(.js) .js-only { display: none !important; }
 .hero-kicker > .sep { white-space: normal; }
 .dot { width: 7px; height: 7px; border-radius: 999px; background: var(--ok-ring); flex: none; }
 .hero h1 { font-size: clamp(2.25rem, 4.4vw, 3.25rem); font-weight: 500; letter-spacing: -0.035em; line-height: 1.08; max-width: 20ch; text-wrap: balance; margin: 16px 0 12px; }
-.hero h1 em { font-style: normal; color: var(--act-block); }
+.hero h1 em { font-style: normal; color: var(--act-block); white-space: nowrap; }
+@media (max-width: 40rem) { .hero h1 em { white-space: normal; } }
 .hero .lead { font-size: 17px; line-height: 1.6; color: var(--muted); max-width: 56ch; text-wrap: balance; }
 .hero .lead + .lead { margin-top: 8px; }
 .hero-cta { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-top: 22px; }

@@ -7237,7 +7237,8 @@ html:not(.js) .js-only { display: none !important; }
 .hero-kicker > .sep { white-space: normal; }
 .dot { width: 7px; height: 7px; border-radius: 999px; background: var(--ok-ring); flex: none; }
 .hero h1 { font-size: clamp(2.25rem, 4.4vw, 3.25rem); font-weight: 500; letter-spacing: -0.035em; line-height: 1.08; max-width: 20ch; text-wrap: balance; margin: 16px 0 12px; }
-.hero h1 em { font-style: normal; color: var(--act-block); }
+.hero h1 em { font-style: normal; color: var(--act-block); white-space: nowrap; }
+@media (max-width: 40rem) { .hero h1 em { white-space: normal; } }
 .hero .lead { font-size: 17px; line-height: 1.6; color: var(--muted); max-width: 56ch; text-wrap: balance; }
 .hero .lead + .lead { margin-top: 8px; }
 .hero-cta { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-top: 22px; }
@@ -19802,7 +19803,7 @@ ${rows}
 <ul class="card lx-grid">
 ${chips}
 </ul>`}${forms === void 0 ? "" : `
-<p class="vnote">${sentenceSpan(forms)}</p>`}
+<details class="more-info" id="hiding-forms"><summary>Forms the checks cannot read inside</summary><div><p>${sentenceSpan(forms)}</p></div></details>`}
 </div>`);
   }
   if (parts.length === 0) return "";
@@ -19893,7 +19894,8 @@ ${sectionHead("What actually happened", "A match only means a guardrail fired. E
 <div class="verified" id="verified-rows">
 ${rows}
 </div>
-<p class="vnote">The checks only read: they changed nothing on this machine.${notes.length === 0 ? "" : ` ${sentencesHtml(notes)}`}${files}</p>
+<p class="vnote">The checks only read: they changed nothing on this machine.</p>${notes.length === 0 && files === "" ? "" : `
+<details class="more-info" id="checks-notes"><summary>What the counts leave out${files === "" ? "" : ", and where the exact commands are"}</summary><div><p>${notes.length === 0 ? "" : sentencesHtml(notes)}${files}</p></div></details>`}
 </section>`;
 }
 var ACTION_MEANING = {

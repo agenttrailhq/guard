@@ -67,7 +67,7 @@
 <li><a class="lx-link" href="#check-prod-infra" data-template="chip.tone">review</a></li>
 <li><a class="lx-link" href="#check-destructive" data-template="chip.tone">review</a></li>
 </ul>
-<p class="vnote"><span data-template="also-checked.hiding-forms">Forms the checks cannot read inside, so a card where a command that ran, or may have run, used one could not confirm everything: a shell given a string to run; code run inline by an interpreter; a script piped into a shell or interpreter; find -exec; xargs; process substitution; a command substitution; eval; git with config set on its command line or by an earlier command; git with --exec or an external diff; git after a hook was written; a shell this reading does not parse; a quote left open; a command of its kind behind a program this check does not read.</span></p>
+<details class="more-info" id="hiding-forms"><summary>Forms the checks cannot read inside</summary><div><p><span data-template="also-checked.hiding-forms">Forms the checks cannot read inside, so a card where a command that ran, or may have run, used one could not confirm everything: a shell given a string to run; code run inline by an interpreter; a script piped into a shell or interpreter; find -exec; xargs; process substitution; a command substitution; eval; git with config set on its command line or by an earlier command; git with --exec or an external diff; git after a hook was written; a shell this reading does not parse; a quote left open; a command of its kind behind a program this check does not read.</span></p></div></details>
 </div>
 </section>
 <div class="stats" id="stats">
@@ -112,7 +112,8 @@
 <dl class="vfacts"><dt>What happened</dt><dd><span data-template="not-checked">Not checked.</span></dd></dl>
 </article>
 </div>
-<p class="vnote">The checks only read: they changed nothing on this machine. <span data-template="lead.ran-basis">Checked against command output: a match counts only when the transcript records that its command ran.</span> <span data-template="lead.mentioned">2 matches only mentioned a command, in a search, a message or a file, and are left out.</span></p>
+<p class="vnote">The checks only read: they changed nothing on this machine.</p>
+<details class="more-info" id="checks-notes"><summary>What the counts leave out</summary><div><p><span data-template="lead.ran-basis">Checked against command output: a match counts only when the transcript records that its command ran.</span> <span data-template="lead.mentioned">2 matches only mentioned a command, in a search, a message or a file, and are left out.</span></p></div></details>
 </section>
 <section id="outcomes">
 <div class="section-head"><div><h2>What AgentTrail Guard would have done</h2><p>If AgentTrail Guard had been running during these sessions, with its default settings.</p></div></div>

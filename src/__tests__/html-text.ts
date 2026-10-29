@@ -29,7 +29,11 @@ export function whatHappenedNote(html: string): string {
   const at = html.indexOf('<section id="what-happened"');
   if (at === -1) return "";
   const section = html.slice(at, html.indexOf("</section>", at));
-  return section.match(/<p class="vnote">[\s\S]*?<\/p>/)?.[0] ?? "";
+  // The note under the cards, with the closed expander that follows it.
+  const note = section.match(/<p class="vnote">[\s\S]*?<\/p>/)?.[0] ?? "";
+  const more =
+    section.match(/<details class="more-info" id="checks-notes">[\s\S]*?<\/details>/)?.[0] ?? "";
+  return `${note}${more}`;
 }
 
 /**
