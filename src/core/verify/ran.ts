@@ -1255,19 +1255,33 @@ const VIEWS_WITH_BODIES = new Map<string, SimpleCommandView[]>();
 const OPAQUE = new Map<string, (readonly string[])[]>();
 
 /** Most entries kept in one of the maps above. */
-const MAX_CACHED_READINGS = 50_000;
+const MAX_CACHED_READINGS = 500_000;
+
+/** Most characters of keys kept in one of the maps above. */
+const MAX_CACHED_CHARS = 32 * 1024 * 1024;
 
 /** Longest command text kept in them; a longer one is read each time. */
 const MAX_CACHED_COMMAND = 16_384;
 
-/** `make()`, remembered under `key` in `cache` when the key is short enough. */
+/** The characters of keys each map above holds. */
+const CACHED_CHARS = new WeakMap<Map<string, unknown>, number>();
+
+/**
+ * `make()`, remembered under `key` in `cache` when the key is short enough. A map that grows past
+ * `MAX_CACHED_READINGS` entries or `MAX_CACHED_CHARS` characters of keys is cleared.
+ */
 function remembered<T>(cache: Map<string, T>, key: string, make: () => T): T {
   if (key.length > MAX_CACHED_COMMAND) return make();
   const hit = cache.get(key);
   if (hit !== undefined) return hit;
   const made = make();
-  if (cache.size >= MAX_CACHED_READINGS) cache.clear();
+  let chars = CACHED_CHARS.get(cache) ?? 0;
+  if (cache.size >= MAX_CACHED_READINGS || chars + key.length > MAX_CACHED_CHARS) {
+    cache.clear();
+    chars = 0;
+  }
   cache.set(key, made);
+  CACHED_CHARS.set(cache, chars + key.length);
   return made;
 }
 

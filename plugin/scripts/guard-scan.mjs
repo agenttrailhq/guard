@@ -12107,15 +12107,22 @@ var TRUSTING_READINGS = /* @__PURE__ */ new Map();
 var VIEWS = /* @__PURE__ */ new Map();
 var VIEWS_WITH_BODIES = /* @__PURE__ */ new Map();
 var OPAQUE = /* @__PURE__ */ new Map();
-var MAX_CACHED_READINGS = 5e4;
+var MAX_CACHED_READINGS = 5e5;
+var MAX_CACHED_CHARS = 32 * 1024 * 1024;
 var MAX_CACHED_COMMAND = 16384;
+var CACHED_CHARS = /* @__PURE__ */ new WeakMap();
 function remembered(cache, key, make) {
   if (key.length > MAX_CACHED_COMMAND) return make();
   const hit = cache.get(key);
   if (hit !== void 0) return hit;
   const made = make();
-  if (cache.size >= MAX_CACHED_READINGS) cache.clear();
+  let chars = CACHED_CHARS.get(cache) ?? 0;
+  if (cache.size >= MAX_CACHED_READINGS || chars + key.length > MAX_CACHED_CHARS) {
+    cache.clear();
+    chars = 0;
+  }
   cache.set(key, made);
+  CACHED_CHARS.set(cache, chars + key.length);
   return made;
 }
 function readCommand(command, trustWrites) {
