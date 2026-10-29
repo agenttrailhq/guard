@@ -404,6 +404,19 @@ fixes file, nothing is sent, and no command from a session is run again. They re
 
 The report and `--json` carry counts only, never these paths.
 
+**A credential counts as likely real only on evidence:** a known token format (an AWS key,
+GitHub, GitLab, Slack, npm, Stripe, OpenAI, Anthropic, Google API, Hugging Face or SendGrid,
+a private key, or a JWT that decodes; one for the `anon` role is public by design and does
+not count), a credential's name with a value shaped like a credential, or a random-looking
+value right after a credential's name, flag or header. A random-looking string alone does
+not count, wherever it appeared; it is counted apart, as set aside. Text Claude Code adds to
+a prompt itself, such as a reminder or a command's output, is told apart from what you typed.
+No value is ever checked with the service that issued it.
+
+The transcripts are read for the secrets check on up to four worker threads in the same
+process while the other checks run. While the scan runs, it shows which phase it is in on
+stderr; `--quiet` turns that off.
+
 **Every claim on a card comes from a check's result.** A matched command counts as ran only
 when the session recorded a result that shows it ran; one with no result either way may have
 run, and is not counted as ran. Where a command that ran, or may have run, uses a form the
