@@ -207,8 +207,8 @@ describe.each([
     const run = await scan(["--agent", agent, "--dir", root, "--verify", "--out", out], work);
     const html = run.written.get(out) ?? "";
     // Nothing leads a Codex scan, whose reading is unverified; every other app leads here.
-    if (agent === "codex") expect(html).not.toContain('data-template="secrets.headline"');
-    else expect(html).toContain('data-template="secrets.headline"');
+    if (agent === "codex") expect(html).not.toContain('data-template="hero.headline.secrets"');
+    else expect(html).toContain('data-template="hero.headline.secrets"');
     for (const part of [
       'id="found"',
       'class="lx-creds"',
