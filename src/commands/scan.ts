@@ -106,6 +106,7 @@ import { VERSION } from "../core/version.js";
 import type { ScanIO } from "../scan-io.js";
 import type { ScrubIO } from "../scrub-io.js";
 import { agentChoiceMessage, chosenAgent } from "./agent-choice.js";
+import { createProgress, NO_PROGRESS, type Progress } from "./scan-progress.js";
 // Type only: the run arrives through `ScanDeps.scrub`, so a bundle without it carries no scrub.
 import type { ScrubRunInput } from "./scan-scrub.js";
 
@@ -238,7 +239,8 @@ Usage:
   --no-open      Do not open the report in your browser. It opens by default, except
                  with --artifact or when CI is set
   --json         Print the result as JSON and write no report file
-  --quiet        Leave out the closing line about AgentTrail OS
+  --quiet        Leave out the closing line about AgentTrail OS, and the progress
+                 shown on stderr while the scan runs
   --review       Print every command and guardrail the report will contain, and ask
                  before writing it. Redaction is thorough but not a guarantee; this
                  is how you check it yourself before the file exists.
@@ -445,6 +447,11 @@ export interface ScanDeps {
    */
   readonly productLine?: boolean;
   /**
+   * `false` keeps progress off stderr whatever else holds. The plugin's skill entry passes it,
+   * since its output is read by an agent.
+   */
+  readonly progress?: boolean;
+  /**
    * Makes the read-only seam `--verify` checks the machine through. The CLI entries pass the
    * real one (`verify-io.ts`); with none, every check that needs the machine reads as
    * could-not-check.
@@ -648,7 +655,9 @@ async function readCorpusFor(
   root: string,
   io: ScanIO,
   collector?: SecretsCollector,
+  progress: Progress = NO_PROGRESS,
 ): Promise<ScanCorpus> {
+  progress.phase("Reading sessions");
   switch (agent) {
     case "cursor":
       return await readCursorCorpus(root, io);
@@ -658,7 +667,7 @@ async function readCorpusFor(
       return {
         agent: "claude",
         capabilities: { tokens: true, skips: false },
-        ...(await readCorpus(io, root, collector)),
+        ...(await readCorpus(io, root, collector, progress)),
       };
     default:
       return unhandledAgent(agent);
@@ -670,6 +679,7 @@ async function readCorpus(
   io: ScanIO,
   root: string,
   collector?: SecretsCollector,
+  progress: Progress = NO_PROGRESS,
 ): Promise<{
   sessions: ParsedSession[];
   quarantined: number;
@@ -690,8 +700,12 @@ async function readCorpus(
   // into them — so the not-read tally below is against what was read, not just the sessions.
   let opened = 0;
 
+  const total = inventory.projects.reduce((n, project) => n + project.sessions.length, 0);
+  let done = 0;
   for (const project of inventory.projects) {
     for (const item of project.sessions) {
+      progress.phase("Reading sessions", done, total);
+      done += 1;
       const read = await readClaudeSession(io, item, collector);
       opened += read.opened;
       for (const path of read.files) files.push(path);
@@ -1174,7 +1188,14 @@ export async function runScan(
     verifying && agent === "claude" && deps.collectSecrets === undefined
       ? createSecretsCollector({ agent, fingerprint: createFingerprinter() })
       : undefined;
-  const corpus: ScanCorpus = await readCorpusFor(agent, readRoot, io, secretsCollector);
+  // Progress on stderr while the scan runs: off with --quiet, in the plugin's scan, and for
+  // --scrub, which says what it does on stdout.
+  const progress =
+    deps.progress === false || flags.quiet || flags.scrub || io.writeStderr === undefined
+      ? NO_PROGRESS
+      : createProgress((text) => io.writeStderr?.(text), io.isStderrTTY?.() === true);
+  const started = Date.now();
+  const corpus: ScanCorpus = await readCorpusFor(agent, readRoot, io, secretsCollector, progress);
   // With worker threads, the secrets check's reading starts now and runs beside the others.
   const secretsCollected =
     verifying && deps.collectSecrets !== undefined
@@ -1212,6 +1233,7 @@ export async function runScan(
         // its own: the others cannot spend the time its search of the repos needs.
         secretsIO: deps.createVerifyIO?.() ?? UNAVAILABLE_VERIFY_IO,
         ...(secretsCollected === undefined ? {} : { secretsCollector: secretsCollected }),
+        onCheck: (step, total, label) => progress.phase(`Checking ${step} of ${total}: ${label}`),
       });
     } catch {
       // The checks promise never to throw. If one does anyway, the scan still writes its page,
@@ -1223,8 +1245,11 @@ export async function runScan(
   }
   // The shipped rule OBJECTS, so a finding is labelled `library` by identity: a user rule
   // that reuses a shipped id is still the user's own rule.
+  progress.phase("Writing the report");
   const result = aggregateScan(corpus, catalog, allowlist, new Set(shipped), outcome?.verification);
   const meta: ReportMeta = { version: VERSION, generatedAt: now };
+  // Done before anything goes to stdout, so the line never mixes with the output.
+  progress.finish(`Scanned in ${Math.max(1, Math.round((Date.now() - started) / 1000))} s`);
 
   if (flags.json) {
     // JSON replaces BOTH outputs: no summary, no file. `scan --json > x.json` has to

@@ -89,6 +89,10 @@ export interface ScanIO {
   readonly env: Readonly<Record<string, string | undefined>>;
   /** Is stdout a terminal? Drives colour and nothing else. */
   isTTY(): boolean;
+  /** Write to stderr: progress only, never a result. A seam without it shows no progress. */
+  writeStderr?(text: string): void;
+  /** Is stderr a terminal? Decides whether progress rewrites one line in place. */
+  isStderrTTY?(): boolean;
 }
 
 /**
@@ -199,6 +203,14 @@ export function createRealScanIO(): ScanIO {
 
     writeStdout(text: string): void {
       process.stdout.write(text);
+    },
+
+    writeStderr(text: string): void {
+      process.stderr.write(text);
+    },
+
+    isStderrTTY(): boolean {
+      return process.stderr.isTTY === true;
     },
 
     readLine(): Promise<string | undefined> {

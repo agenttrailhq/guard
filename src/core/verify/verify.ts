@@ -46,6 +46,8 @@ export interface VerifyInput {
    * since it runs beside the other checks. Without it, the secrets check shares `io`.
    */
   readonly secretsIO?: VerifyIO;
+  /** Called as each check starts: its step, the number of steps, and its name. */
+  readonly onCheck?: (step: number, total: number, label: string) => void;
   /** For tests. Production gets a fresh random key for every run. */
   readonly fingerprint?: Fingerprinter;
   /** The home folder, for `~` in commands. Production uses the user's. */
@@ -120,7 +122,26 @@ export async function verifyScan(input: VerifyInput): Promise<VerifyOutcome> {
       ...(collector === undefined ? {} : { collector }),
     });
   })();
+  const steps = [
+    "which commands ran",
+    "skipped checks, lost work and destructive commands",
+    "what commands and edits did",
+    "cloud and permissions",
+    "production infrastructure",
+    "dependencies",
+    "gaming tests",
+    "unreviewed code",
+    "data leaving the machine",
+    "secrets in transcripts",
+  ];
+  let step = 0;
+  const next = (): void => {
+    step += 1;
+    input.onCheck?.(step, steps.length, steps[step - 1] as string);
+  };
+  next();
   const matched = tallyMatchedCalls(input.corpus, input.catalog, input.allowlist);
+  next();
   const git = await checkGitBacked({
     corpus: input.corpus,
     io: input.io,
@@ -132,8 +153,10 @@ export async function verifyScan(input: VerifyInput): Promise<VerifyOutcome> {
   // The checks that read what commands and edits did share one reading of the calls. That
   // reading and the checks that need nothing else run in-process first.
   const started = Date.now();
+  next();
   const calls = readCalls(input.corpus, input.catalog, input.allowlist);
   const rules = { catalog: input.catalog, allowlist: input.allowlist };
+  next();
   const cloud = checkCloud({ calls, ...rules });
   // Database targets by class (local, scratch, other), from the destructive-commands check. A
   // target it could not resolve is never local: the production check counts it as unconfirmed.
@@ -143,18 +166,24 @@ export async function verifyScan(input: VerifyInput): Promise<VerifyOutcome> {
     classes === undefined
       ? undefined
       : { local: classes.local, scratch: classes.scratch, other: classes.other };
+  next();
   const prodInfra = checkProdInfra({
     calls,
     ...rules,
     databaseTargets,
     databaseTargetsUnresolved: classes?.unresolved ?? 0,
   });
+  next();
   const dependencies = checkDependencies(calls);
   chargeTime(input.io, Date.now() - started);
 
+  next();
   const tests = await checkTests({ calls, io: input.io });
+  next();
   const unreviewed = await checkUnreviewed({ calls, io: input.io, rules });
+  next();
   const egress = await checkEgress({ calls, ...rules, io: input.io });
+  next();
   const secrets = await secretsPending;
 
   const verification: Verification = {

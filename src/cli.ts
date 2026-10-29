@@ -98,6 +98,7 @@ Flags:
   --print                      With init: show what would happen, change nothing
   --clear-history              With status: empty the local decision log
   --quiet                      With init, status or scan: leave out the AgentTrail OS line
+                               (and, with scan, the progress on stderr)
 
 init, status, scan and guardrails add may end with one line about AgentTrail OS, at most
 once a day each, and only in a terminal. --quiet, --json, or "productLine": false in

@@ -935,13 +935,13 @@ var require_parse = __commonJS({
         consume(token.value);
       };
       const negate = () => {
-        let count2 = 1;
+        let count3 = 1;
         while (peek() === "!" && (peek(2) !== "(" || peek(3) === "?")) {
           advance();
           state.start++;
-          count2++;
+          count3++;
         }
-        if (count2 % 2 === 0) {
+        if (count3 % 2 === 0) {
           return false;
         }
         state.negated = true;
@@ -10047,7 +10047,7 @@ function aggregateScan(corpus, catalog, allowlist, shipped = /* @__PURE__ */ new
     const title = redactTitle(entry?.rule.title ?? ruleId);
     const severity = entry?.rule.severity ?? "unknown";
     const action = entry?.action ?? "warn";
-    const examples = [...acc.shapes].map(([text2, count2]) => ({ text: text2, count: count2 })).sort(byCountThenText);
+    const examples = [...acc.shapes].map(([text2, count3]) => ({ text: text2, count: count3 })).sort(byCountThenText);
     const owasp = [...entry?.rule.owasp ?? []];
     const rule = entry?.rule;
     const fromLibrary = rule !== void 0 && shipped.has(rule);
@@ -10101,7 +10101,7 @@ function aggregateScan(corpus, catalog, allowlist, shipped = /* @__PURE__ */ new
     ...verification === void 0 ? {} : { verification }
   };
   if (!capabilities.skips) return result;
-  const unmappedTools = [...unmapped2].map(([name, count2]) => ({ name, count: count2 })).sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+  const unmappedTools = [...unmapped2].map(([name, count3]) => ({ name, count: count3 })).sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
   return {
     ...result,
     skipped: { ...corpus.skipped ?? NO_READER_SKIPS, notActions, unmappedTools }
@@ -11927,26 +11927,26 @@ function readCommandOnce(command, trustWrites) {
   const parsed = parseShell(command);
   const regions = parsed.comments.map((c) => ({ ...c, kind: "doc" }));
   const segments = parsed.segments;
-  const count2 = segments.length;
+  const count3 = segments.length;
   const hooksPaths = [...new Set(hooksPathsNamed(segments))];
   const commands = segments.map(commandOf);
-  const gitRunnableBefore = new Array(count2).fill(false);
+  const gitRunnableBefore = new Array(count3).fill(false);
   let gitRunnable = false;
-  for (let j = 0; j < count2; j++) {
+  for (let j = 0; j < count3; j++) {
     gitRunnableBefore[j] = gitRunnable;
     if (!gitRunnable) {
       gitRunnable = writtenBy(segments[j]).some((path) => gitMayRun(path, hooksPaths));
     }
   }
-  const mayRunAfter = new Array(count2).fill(false);
+  const mayRunAfter = new Array(count3).fill(false);
   if (!trustWrites) {
-    for (let j = count2 - 2; j >= 0; j--) {
+    for (let j = count3 - 2; j >= 0; j--) {
       mayRunAfter[j] = mayRunAfter[j + 1] || !isInert(segments[j + 1], gitRunnableBefore[j + 1]);
     }
   }
   const laterMayRun = (index) => mayRunAfter[index];
-  const consumersFrom = new Array(count2 + 1).fill(true);
-  for (let j = count2 - 1; j >= 0; j--) {
+  const consumersFrom = new Array(count3 + 1).fill(true);
+  for (let j = count3 - 1; j >= 0; j--) {
     const seg = segments[j];
     const command2 = commands[j];
     const consumer = command2 === void 0 || PURE_CONSUMERS.has(command2.name) && !runsAProgramOption(command2) && !(writesAFile(seg) && laterMayRun(j));
@@ -12471,15 +12471,15 @@ var HIDDEN = /* @__PURE__ */ new WeakMap();
 function hidden(corpus) {
   const known = HIDDEN.get(corpus);
   if (known !== void 0) return known;
-  let count2 = 0;
+  let count3 = 0;
   const forms = /* @__PURE__ */ new Set();
   for (const call of corpus.calls) {
     if (call.hidingForms.length === 0) continue;
     if (!ranOrMayHaveRun(corpus.agent, call)) continue;
-    count2 += 1;
+    count3 += 1;
     for (const form of call.hidingForms) forms.add(form);
   }
-  const out = { count: count2, forms: HIDING_FORMS.filter((f) => forms.has(f)) };
+  const out = { count: count3, forms: HIDING_FORMS.filter((f) => forms.has(f)) };
   HIDDEN.set(corpus, out);
   return out;
 }
@@ -12537,14 +12537,14 @@ function isShell(call) {
 }
 
 // src/core/verify/card-parts.ts
-function counted(count2, one, many) {
-  return `${count2} ${count2 === 1 ? one : many}`;
+function counted(count3, one, many) {
+  return `${count3} ${count3 === 1 ? one : many}`;
 }
-function moreMatches(count2, others) {
-  return others ? counted(count2, "more match", "more matches") : counted(count2, "match", "matches");
+function moreMatches(count3, others) {
+  return others ? counted(count3, "more match", "more matches") : counted(count3, "match", "matches");
 }
-function noun(count2, one, many) {
-  return count2 === 1 ? one : many;
+function noun(count3, one, many) {
+  return count3 === 1 ? one : many;
 }
 function restsOnCodex(context) {
   return context.ranEvidence === "output-record";
@@ -12573,8 +12573,8 @@ function confirmedByGitState(card) {
 }
 function chipFor(facts, reasons, fallback) {
   const reason = reasons.find((r) => r.count(facts) > 0) ?? fallback;
-  const count2 = reason.count(facts);
-  return { count: count2, label: { template: reason.id, text: count2 === 1 ? reason.one : reason.many } };
+  const count3 = reason.count(facts);
+  return { count: count3, label: { template: reason.id, text: count3 === 1 ? reason.one : reason.many } };
 }
 var NOT_CHECKED_SENTENCE = {
   id: "not-checked",
@@ -12628,11 +12628,11 @@ function notCheckedCard(category) {
     codexCaveat: false
   };
 }
-function couldNotCheckCard(category, count2) {
+function couldNotCheckCard(category, count3) {
   return {
     category,
     tone: "could-not-check",
-    count: count2,
+    count: count3,
     found: sentences([COULD_NOT_CHECK_SENTENCE], void 0),
     now: [],
     fixes: [],
@@ -13191,8 +13191,8 @@ var SUBJECT_WORDS = {
   credentials: "sign-in credentials",
   other: "other IAM settings"
 };
-function whenAny(id, count2, say) {
-  return { id, render: (f) => count2(f) > 0 ? say(count2(f), f) : void 0 };
+function whenAny(id, count3, say) {
+  return { id, render: (f) => count3(f) > 0 ? say(count3(f), f) : void 0 };
 }
 var CLOUD_FOUND = [
   whenAny(
@@ -14158,11 +14158,11 @@ ${edit.added}`)) {
   return false;
 }
 function excludeEntries(text2) {
-  let count2 = 0;
+  let count3 = 0;
   for (const match of text2.matchAll(EXCLUDE_LIST)) {
-    count2 += [...(match[1] ?? "").matchAll(QUOTED2)].length;
+    count3 += [...(match[1] ?? "").matchAll(QUOTED2)].length;
   }
-  return count2;
+  return count3;
 }
 function addsExclude(edit) {
   return !edit.whole && !edit.deleted && excludeEntries(edit.added) > excludeEntries(edit.removed);
@@ -14474,8 +14474,8 @@ function testsStatus(facts) {
   }
   return quietStatus(facts.unconfirmed + facts.unreadEdits, facts.couldHide);
 }
-function whenAny2(id, count2, say) {
-  return { id, render: (f) => count2(f) > 0 ? say(count2(f), f) : void 0 };
+function whenAny2(id, count3, say) {
+  return { id, render: (f) => count3(f) > 0 ? say(count3(f), f) : void 0 };
 }
 function signals(f) {
   return f.thresholdsLowered + f.autoUpdateReverts + f.configsRewritten + f.excludesAdded + f.passWithNoTests + f.ciStepsForcedTrue + f.testFilesDeleted;
@@ -15163,7 +15163,7 @@ function cardCount(card) {
 }
 var CARD_COUNT = {
   id: "card.count",
-  render: ({ tone, count: count2 }) => tone === "not-checked" || tone === "could-not-check" && count2 === 0 ? void 0 : countOf(count2, "match", "matches")
+  render: ({ tone, count: count3 }) => tone === "not-checked" || tone === "could-not-check" && count3 === 0 ? void 0 : countOf(count3, "match", "matches")
 };
 
 // src/core/verify/git-copy.ts
@@ -18439,9 +18439,9 @@ var SHARE_PHRASES = {
   "lowered-test-floors": ["lowered test floor", "lowered test floors"],
   "unguarded-recursive-deletes": ["unguarded recursive delete", "unguarded recursive deletes"]
 };
-function sharePhrase(basis, count2) {
+function sharePhrase(basis, count3) {
   const [one, many] = SHARE_PHRASES[basis];
-  return `${formatCount(count2)} ${count2 === 1 ? one : many}`;
+  return `${formatCount(count3)} ${count3 === 1 ? one : many}`;
 }
 function shareCounts(cards, context) {
   return leadingCards(cards, context).flatMap(
@@ -18479,12 +18479,12 @@ function matchTally(result) {
     byAction.set(finding.action, (byAction.get(finding.action) ?? 0) + finding.count);
   }
   return {
-    bySeverity: [...bySeverity].map(([severity, count2]) => ({ severity, count: count2 })).sort(
+    bySeverity: [...bySeverity].map(([severity, count3]) => ({ severity, count: count3 })).sort(
       (a, b) => severityRank(a.severity) - severityRank(b.severity) || b.count - a.count || a.severity.localeCompare(b.severity)
     ),
     byAction: ACTION_ORDER.flatMap((action) => {
-      const count2 = byAction.get(action) ?? 0;
-      return count2 > 0 ? [{ action, count: count2 }] : [];
+      const count3 = byAction.get(action) ?? 0;
+      return count3 > 0 ? [{ action, count: count3 }] : [];
     })
   };
 }
@@ -19098,7 +19098,7 @@ ${sentenceHtml(forms, "note hiding-forms")}`}
 function verifiedCard(card, variant, localFixes, unsafeListed) {
   const title = CATEGORY_TITLES[card.category];
   const id = cardId(card.category);
-  const count2 = cardCount(card);
+  const count3 = cardCount(card);
   const block = (lines2) => lines2.map((line2) => sentenceHtml(line2)).join("\n");
   const fields = [];
   if (card.found.length > 0) {
@@ -19136,7 +19136,7 @@ ${parts.join("\n")}
   const caveat = sentence(CODEX_CAVEAT, card);
   const unconfirmed = card.caveat;
   return `<article class="card verified v-${card.tone}" id="${id}" aria-labelledby="${id}-title" aria-describedby="${id}-tone">
-<div class="card-head"><span class="tone tone-${card.tone}" id="${id}-tone">${escapeHtml(toneLabel(card))}</span>${count2 === void 0 ? "" : `<span class="times" data-template="${escapeHtml(count2.template)}">${escapeHtml(count2.text)}</span>`}</div>
+<div class="card-head"><span class="tone tone-${card.tone}" id="${id}-tone">${escapeHtml(toneLabel(card))}</span>${count3 === void 0 ? "" : `<span class="times" data-template="${escapeHtml(count3.template)}">${escapeHtml(count3.text)}</span>`}</div>
 <h3 id="${id}-title">${escapeHtml(title)}</h3>
 <dl class="verified-facts">
 ${fields.join("\n")}
@@ -19242,7 +19242,7 @@ ${commands}
 function wouldHaveDoneSection(result, payload) {
   if (result.findings.length === 0) return "";
   const columns = ACTION_ORDER.map((action) => {
-    const count2 = result.riskyByAction[action];
+    const count3 = result.riskyByAction[action];
     const calls = decidedBy(result.decided, action);
     const top = payload.findings.filter((f) => f.action === action && (calls.get(f.ruleId) ?? 0) > 0).map((f) => ({ f, n: calls.get(f.ruleId) ?? 0 })).sort((a, b) => b.n - a.n || a.f.ruleId.localeCompare(b.f.ruleId)).slice(0, TOP_PER_ACTION).map(
       ({ f, n: n2 }) => `<li><span class="col-title">${inlineTitle(f.title)}</span><span class="times">${escapeHtml(formatCount(n2))}&times;</span></li>`
@@ -19250,7 +19250,7 @@ function wouldHaveDoneSection(result, payload) {
     const label = { block: "Blocked", require_approval: "Asked you first", warn: "Warned" }[action];
     return `<div class="col ${actionClass(action)}-col">
 <p class="col-label">${label}</p>
-<p class="col-count">${escapeHtml(formatCount(count2))}</p>
+<p class="col-count">${escapeHtml(formatCount(count3))}</p>
 <p class="note">${escapeHtml(ACTION_MEANING[action])}</p>${top === "" ? "" : `
 <ul class="col-list">
 ${top}
@@ -19263,8 +19263,8 @@ ${top}
     const key = knownSeverity(s.severity);
     severityCounts.set(key, (severityCounts.get(key) ?? 0) + s.count);
   }
-  const bySeverity = [...severityCounts].map(([severity, count2]) => ({ severity, count: count2 }));
-  const item = (label, count2) => `<li>${label}<span class="tally-count">${escapeHtml(formatCount(count2))}</span></li>`;
+  const bySeverity = [...severityCounts].map(([severity, count3]) => ({ severity, count: count3 }));
+  const item = (label, count3) => `<li>${label}<span class="tally-count">${escapeHtml(formatCount(count3))}</span></li>`;
   const severities = bySeverity.map((s) => item(severityBadge(s.severity), s.count)).join("\n");
   const actions = byAction.map((a) => item(actionChip(a.action), a.count)).join("\n");
   return `<section id="would-do">
@@ -19820,8 +19820,8 @@ function verifiedLines(payload) {
   }
   for (const card of cards) {
     const title = CATEGORY_TITLES[card.category];
-    const count2 = cardCount(card);
-    if (count2 !== void 0) lines2.push(`${title}  ${count2.text}`);
+    const count3 = cardCount(card);
+    if (count3 !== void 0) lines2.push(`${title}  ${count3.text}`);
     for (const line2 of [...card.found, ...card.now, ...card.fixSteps ?? []]) {
       lines2.push(`${title}  ${line2.text}`);
     }
@@ -20894,10 +20894,10 @@ function kindOf(label) {
   return label.startsWith("secret:") ? "other" : void 0;
 }
 function alignValues(text2, literals) {
-  const count2 = literals.length - 1;
-  if (count2 <= 0) return [];
+  const count3 = literals.length - 1;
+  if (count3 <= 0) return [];
   const head = literals[0];
-  const tail = literals[count2];
+  const tail = literals[count3];
   const tailStart = text2.length - tail.length;
   if (!text2.startsWith(head) || !text2.endsWith(tail) || tailStart <= head.length) return void 0;
   const spans = [];
@@ -20905,7 +20905,7 @@ function alignValues(text2, literals) {
   const place2 = (index, start) => {
     steps += 1;
     if (steps > MAX_ALIGN_STEPS) return false;
-    if (index === count2 - 1) {
+    if (index === count3 - 1) {
       if (tailStart <= start) return false;
       spans[index] = [start, tailStart];
       return true;
@@ -21435,9 +21435,9 @@ function mergeCollected(collector2, part) {
   for (const [path, theirs] of part.paths) index.set(theirs, collector2.file(path));
   const mine = (theirs) => index.get(theirs) ?? -1;
   for (const theirs of part.done) collector2.read(mine(theirs));
-  for (const [theirs, count2] of part.unplaced) {
+  for (const [theirs, count3] of part.unplaced) {
     const at2 = mine(theirs);
-    collected.unplaced.set(at2, (collected.unplaced.get(at2) ?? 0) + count2);
+    collected.unplaced.set(at2, (collected.unplaced.get(at2) ?? 0) + count3);
   }
   for (const dir of part.workingDirs) collected.workingDirs.add(dir);
   for (const [key, c] of part.candidates) {
@@ -21493,7 +21493,7 @@ async function classifySecrets(input, keep) {
     }
   }
   let unplaced = 0;
-  for (const [index, count2] of collected.unplaced) if (included.has(index)) unplaced += count2;
+  for (const [index, count3] of collected.unplaced) if (included.has(index)) unplaced += count3;
   const candidates = /* @__PURE__ */ new Map();
   for (const [key, candidate] of collected.candidates) {
     for (const index of candidate.files) if (!included.has(index)) candidate.files.delete(index);
@@ -21761,7 +21761,26 @@ async function verifyScan(input) {
       ...collector2 === void 0 ? {} : { collector: collector2 }
     });
   })();
+  const steps = [
+    "which commands ran",
+    "skipped checks, lost work and destructive commands",
+    "what commands and edits did",
+    "cloud and permissions",
+    "production infrastructure",
+    "dependencies",
+    "gaming tests",
+    "unreviewed code",
+    "data leaving the machine",
+    "secrets in transcripts"
+  ];
+  let step = 0;
+  const next = () => {
+    step += 1;
+    input.onCheck?.(step, steps.length, steps[step - 1]);
+  };
+  next();
   const matched = tallyMatchedCalls(input.corpus, input.catalog, input.allowlist);
+  next();
   const git = await checkGitBacked({
     corpus: input.corpus,
     io: input.io,
@@ -21770,22 +21789,30 @@ async function verifyScan(input) {
     ...input.scratchRoots === void 0 ? {} : { scratchRoots: input.scratchRoots }
   });
   const started = Date.now();
+  next();
   const calls = readCalls(input.corpus, input.catalog, input.allowlist);
   const rules12 = { catalog: input.catalog, allowlist: input.allowlist };
+  next();
   const cloud = checkCloud({ calls, ...rules12 });
   const classes = databaseTargetClasses(git.destructive);
   const databaseTargets2 = classes === void 0 ? void 0 : { local: classes.local, scratch: classes.scratch, other: classes.other };
+  next();
   const prodInfra = checkProdInfra({
     calls,
     ...rules12,
     databaseTargets: databaseTargets2,
     databaseTargetsUnresolved: classes?.unresolved ?? 0
   });
+  next();
   const dependencies = checkDependencies(calls);
   chargeTime(input.io, Date.now() - started);
+  next();
   const tests = await checkTests({ calls, io: input.io });
+  next();
   const unreviewed = await checkUnreviewed({ calls, io: input.io, rules: rules12 });
+  next();
   const egress = await checkEgress({ calls, ...rules12, io: input.io });
+  next();
   const secrets = await secretsPending;
   const verification = {
     matchedCalls: matched.tally,
@@ -21840,6 +21867,52 @@ function agentChoiceMessage(command) {
   return `agenttrail-guard ${command}: choose ${agentList()}.
 
 ${lines2.join("")}`;
+}
+
+// src/commands/scan-progress.ts
+var NO_PROGRESS = {
+  phase: () => {
+  },
+  finish: () => {
+  }
+};
+var REDRAW_MS = 100;
+var PREFIX = "agenttrail-guard: ";
+var CLEAR_LINE = "\r\x1B[K";
+function count2(n2) {
+  return n2.toLocaleString("en-US");
+}
+function progressLine(label, done, total) {
+  const tally = done === void 0 || total === void 0 ? "" : ` \xB7 ${count2(done)} of ${count2(total)}`;
+  return `${PREFIX}${label}${tally}`;
+}
+function createProgress(write, terminal, now = () => Date.now()) {
+  let shownLabel;
+  let lastDrawn = Number.NEGATIVE_INFINITY;
+  let drawn = false;
+  return {
+    phase(label, done, total) {
+      if (!terminal) {
+        if (label !== shownLabel) write(`${progressLine(label)}
+`);
+        shownLabel = label;
+        return;
+      }
+      const t = now();
+      if (label === shownLabel && t - lastDrawn < REDRAW_MS) return;
+      shownLabel = label;
+      lastDrawn = t;
+      drawn = true;
+      write(`${CLEAR_LINE}${progressLine(label, done, total)}`);
+    },
+    finish(line2) {
+      if (terminal && drawn) write(CLEAR_LINE);
+      drawn = false;
+      shownLabel = void 0;
+      if (line2 !== void 0) write(`${PREFIX}${line2}
+`);
+    }
+  };
 }
 
 // src/commands/scan.ts
@@ -21947,7 +22020,8 @@ Usage:
   --no-open      Do not open the report in your browser. It opens by default, except
                  with --artifact or when CI is set
   --json         Print the result as JSON and write no report file
-  --quiet        Leave out the closing line about AgentTrail OS
+  --quiet        Leave out the closing line about AgentTrail OS, and the progress
+                 shown on stderr while the scan runs
   --review       Print every command and guardrail the report will contain, and ask
                  before writing it. Redaction is thorough but not a guarantee; this
                  is how you check it yourself before the file exists.
@@ -22163,7 +22237,8 @@ function sessionRootFor(agent, home) {
       return unhandledAgent(agent);
   }
 }
-async function readCorpusFor(agent, root, io, collector2) {
+async function readCorpusFor(agent, root, io, collector2, progress = NO_PROGRESS) {
+  progress.phase("Reading sessions");
   switch (agent) {
     case "cursor":
       return await readCursorCorpus(root, io);
@@ -22173,13 +22248,13 @@ async function readCorpusFor(agent, root, io, collector2) {
       return {
         agent: "claude",
         capabilities: { tokens: true, skips: false },
-        ...await readCorpus(io, root, collector2)
+        ...await readCorpus(io, root, collector2, progress)
       };
     default:
       return unhandledAgent(agent);
   }
 }
-async function readCorpus(io, root, collector2) {
+async function readCorpus(io, root, collector2, progress = NO_PROGRESS) {
   const inventory = await scanTranscripts(root, void 0, {
     readdir: (p) => io.readdir(p),
     stat: (p) => io.stat(p),
@@ -22189,8 +22264,12 @@ async function readCorpus(io, root, collector2) {
   const files = [];
   let quarantined = 0;
   let opened = 0;
+  const total = inventory.projects.reduce((n2, project) => n2 + project.sessions.length, 0);
+  let done = 0;
   for (const project of inventory.projects) {
     for (const item of project.sessions) {
+      progress.phase("Reading sessions", done, total);
+      done += 1;
       const read = await readClaudeSession(io, item, collector2);
       opened += read.opened;
       for (const path of read.files) files.push(path);
@@ -22280,9 +22359,9 @@ function renderSummary(result, colorsEnabled, reportPath, fixesPath, checksFaile
     for (const finding of shown) {
       const severity = severityTone(finding.severity, finding.severity.padEnd(severityWidth));
       const action = actionTone(finding.action, actionLabel(finding.action).padEnd(11));
-      const count2 = `${formatCount(finding.count)}x`.padStart(countWidth);
+      const count3 = `${formatCount(finding.count)}x`.padStart(countWidth);
       out.push(
-        `  ${severity}  ${action}  ${count2}  ${terminalText(finding.title)}  ${c.dim(finding.ruleId)}`
+        `  ${severity}  ${action}  ${count3}  ${terminalText(finding.title)}  ${c.dim(finding.ruleId)}`
       );
     }
     if (result.findings.length > shown.length) {
@@ -22517,7 +22596,9 @@ ${usage}`);
   const readRoot = flags.scrub ? resolve4(io.cwd(), root) : root;
   const verifying = !flags.scrub && shouldVerify(flags, byDefault);
   const secretsCollector = verifying && agent === "claude" && deps.collectSecrets === void 0 ? createSecretsCollector({ agent, fingerprint: createFingerprinter() }) : void 0;
-  const corpus = await readCorpusFor(agent, readRoot, io, secretsCollector);
+  const progress = deps.progress === false || flags.quiet || flags.scrub || io.writeStderr === void 0 ? NO_PROGRESS : createProgress((text2) => io.writeStderr?.(text2), io.isStderrTTY?.() === true);
+  const started = Date.now();
+  const corpus = await readCorpusFor(agent, readRoot, io, secretsCollector, progress);
   const secretsCollected = verifying && deps.collectSecrets !== void 0 ? deps.collectSecrets(agent, corpus.files ?? []) : secretsCollector;
   if (flags.scrub && deps.scrub !== void 0) {
     const scrubIO = deps.scrub.createIO();
@@ -22547,15 +22628,18 @@ ${usage}`);
         // The secrets check runs beside the others, so it gets a seam, and a time budget, of
         // its own: the others cannot spend the time its search of the repos needs.
         secretsIO: deps.createVerifyIO?.() ?? UNAVAILABLE_VERIFY_IO,
-        ...secretsCollected === void 0 ? {} : { secretsCollector: secretsCollected }
+        ...secretsCollected === void 0 ? {} : { secretsCollector: secretsCollected },
+        onCheck: (step, total, label) => progress.phase(`Checking ${step} of ${total}: ${label}`)
       });
     } catch {
       outcome = void 0;
       checksFailed = true;
     }
   }
+  progress.phase("Writing the report");
   const result = aggregateScan(corpus, catalog, allowlist, new Set(shipped), outcome?.verification);
   const meta = { version: VERSION, generatedAt: now };
+  progress.finish(`Scanned in ${Math.max(1, Math.round((Date.now() - started) / 1e3))} s`);
   if (flags.json) {
     io.writeStdout(renderJson(result, meta));
     return 0;
@@ -22766,6 +22850,12 @@ function createRealScanIO() {
     },
     writeStdout(text2) {
       process.stdout.write(text2);
+    },
+    writeStderr(text2) {
+      process.stderr.write(text2);
+    },
+    isStderrTTY() {
+      return process.stderr.isTTY === true;
     },
     readLine() {
       return new Promise((resolve5) => {
@@ -23205,6 +23295,7 @@ if (isSecretsWorker()) {
 } else {
   const code = await runScan(process.argv.slice(2), createRealScanIO(), {
     productLine: false,
+    progress: false,
     createVerifyIO: () => createRealVerifyIO(),
     collectSecrets: (agent, files) => collectInWorkers(new URL(import.meta.url), agent, files)
   });
