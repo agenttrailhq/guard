@@ -1,3 +1,4 @@
+// cspell:words uroot QRSTUVWXYZ Nlcjpw lnbm cret
 // cspell:words gcloud gsutil mariadb xoxb xoxp
 /**
  * The scrubber's shortcuts give the same result as the full passes.

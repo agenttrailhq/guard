@@ -1,3 +1,4 @@
+// cspell:words onlylettershere lnbm
 // cspell:words Fingerprinter svcacct glpat
 /**
  * Why a credential-shaped value counts as likely real: a known format, a credential's name, or
