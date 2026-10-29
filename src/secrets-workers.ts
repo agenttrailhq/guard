@@ -33,8 +33,11 @@ import { createRealScanIO } from "./scan-io.js";
 /** Marks a worker started by `collectInWorkers`. */
 const ROLE = "agenttrail-guard-secrets";
 
-/** Most worker threads. */
-const MAX_WORKERS = 4;
+/**
+ * Most worker threads. Kept below the cores a laptop runs fastest, so the main thread, which
+ * runs the other checks meanwhile, keeps one.
+ */
+const MAX_WORKERS = 3;
 
 /** Fewest files worth starting a worker thread for. */
 const MIN_FILES_PER_WORKER = 8;
