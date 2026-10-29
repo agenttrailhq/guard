@@ -19,11 +19,11 @@ import { workerCount } from "../secrets-workers.js";
 import { writeCorpus } from "./verify-fixtures.js";
 
 describe("workerCount", () => {
-  it("starts none for a few files or one core, and at most four", () => {
+  it("starts none for a few files or one core, and at most three", () => {
     expect(workerCount(3, 8)).toBe(0);
     expect(workerCount(100, 1)).toBe(0);
     expect(workerCount(16, 8)).toBe(2);
-    expect(workerCount(1000, 8)).toBe(4);
+    expect(workerCount(1000, 8)).toBe(3);
     expect(workerCount(1000, 3)).toBe(2);
   });
 });

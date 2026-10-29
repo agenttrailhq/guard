@@ -413,7 +413,7 @@ not count, wherever it appeared; it is counted apart, as set aside. Text Claude 
 a prompt itself, such as a reminder or a command's output, is told apart from what you typed.
 No value is ever checked with the service that issued it.
 
-The transcripts are read for the secrets check on up to four worker threads in the same
+The transcripts are read for the secrets check on up to three worker threads in the same
 process while the other checks run. While the scan runs, it shows which phase it is in on
 stderr; `--quiet` turns that off.
 

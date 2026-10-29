@@ -22934,7 +22934,7 @@ import { randomBytes as randomBytes3 } from "crypto";
 import { availableParallelism } from "os";
 import { isMainThread, parentPort, Worker, workerData } from "worker_threads";
 var ROLE = "agenttrail-guard-secrets";
-var MAX_WORKERS = 4;
+var MAX_WORKERS = 3;
 var MIN_FILES_PER_WORKER = 8;
 function isSecretsWorker() {
   return !isMainThread && workerData?.role === ROLE;
