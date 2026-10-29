@@ -35,8 +35,11 @@ import {
   type FixShape,
   type LocalFix,
   type SentenceTemplate,
+  type SummaryTemplates,
   sentence,
   sentences,
+  summaryOf,
+  summaryTemplates,
   type ToCard,
   type UnsafeFix,
 } from "./cards.js";
@@ -1071,6 +1074,77 @@ const FIX_STEPS: readonly T[] = [
   },
 ];
 
+/** Commands that ran with hooks turned off some way other than a commit's --no-verify. */
+function otherSkips(f: SkippedChecksFacts): number {
+  return f.otherNoVerify.ran + f.husky.ran + f.oneCommand.ran + f.hooksPath.calls.ran;
+}
+
+/** The card's short rows. The full sentences above stay behind its expander. */
+const SUMMARY: SummaryTemplates<SkippedChecksFacts> = {
+  happened: [
+    {
+      id: "skipped-checks.short.commits",
+      render: (f) =>
+        withHooks(f) > 0
+          ? `${counted(withHooks(f), "commit")} skipped the repo's commit hooks with --no-verify.`
+          : undefined,
+    },
+    {
+      id: "skipped-checks.short.instructions",
+      render: (f) =>
+        f.instructions.sayToSkip > 0
+          ? `${counted(f.instructions.sayToSkip, "instruction or memory file")} ${f.instructions.sayToSkip === 1 ? "tells" : "tell"} the agent to skip checks.`
+          : undefined,
+    },
+    {
+      id: "skipped-checks.short.other",
+      render: (f) =>
+        otherSkips(f) > 0
+          ? `${counted(otherSkips(f), "other command")} ran with hooks turned off.`
+          : undefined,
+    },
+    {
+      id: "skipped-checks.short.not-identified",
+      render: (f) =>
+        f.noVerify.notIdentified > 0
+          ? `${counted(f.noVerify.notIdentified, "commit command")} with --no-verify could not be looked up.`
+          : undefined,
+    },
+    ...FOUND.filter((t) => t.id === "skipped-checks.none"),
+  ],
+  now: [
+    {
+      id: "skipped-checks.short.now.on-main",
+      render: (f) =>
+        f.noVerify.onMain > 0
+          ? `${counted(f.noVerify.onMain, "of those commits", "of those commits")} ${is(f.noVerify.onMain)} on main now.`
+          : undefined,
+    },
+    {
+      id: "skipped-checks.short.now.hooks-off",
+      render: (f) =>
+        f.hooksPath.off > 0
+          ? `Hooks are off now in ${counted(f.hooksPath.off, "repo")} where a check was skipped.`
+          : undefined,
+    },
+    {
+      id: "skipped-checks.short.now.instructions",
+      render: (f) =>
+        f.instructions.agentWroteStill > 0
+          ? `${counted(f.instructions.agentWroteStill, "file")} still ${f.instructions.agentWroteStill === 1 ? "holds" : "hold"} the instruction the agent wrote.`
+          : undefined,
+    },
+    {
+      id: "skipped-checks.short.now.off-main",
+      render: (f) =>
+        f.noVerify.offMain > 0
+          ? `${counted(f.noVerify.offMain, "commit")} ${is(f.noVerify.offMain)} not on main.`
+          : undefined,
+    },
+  ],
+  fix: FIX_STEPS,
+};
+
 /** The redacted fix shapes for what was found. */
 function fixShapes(f: SkippedChecksFacts): FixShape[] {
   const out: FixShape[] = [];
@@ -1096,6 +1170,7 @@ export const skippedChecksCard: ToCard<"skipped-checks"> = (
     found: [...sentences(FOUND, f), ...codexLines(CODEX, context, f)],
     now: sentences(NOW, f),
     fixes: fixShapes(f),
+    summary: summaryOf(SUMMARY, f),
     codexCaveat: codexCaveat(context, allCalls(f).ran),
     ...(headline === undefined
       ? {}
@@ -1123,6 +1198,7 @@ export const SKIPPED_CHECKS_TEMPLATES: readonly T[] = /* @__PURE__ */ (() => [
   CODEX,
   ...NOW,
   ...FIX_STEPS,
+  ...summaryTemplates(SUMMARY),
 ])();
 
 /** How many calls a card counts. Exported for the tests. */

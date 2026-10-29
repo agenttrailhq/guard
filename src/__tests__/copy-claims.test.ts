@@ -28,6 +28,7 @@ import {
   NOT_CHECKED_SENTENCE,
   type SentenceTemplate,
   sentences,
+  summaryTemplates,
   UNCONFIRMED_SENTENCE,
 } from "../core/verify/cards.js";
 import {
@@ -49,6 +50,7 @@ import {
   SECRETS_HEADLINE,
   SECRETS_NOW,
   SECRETS_READ,
+  SECRETS_SUMMARY,
 } from "../core/verify/secrets-card.js";
 import type { SecretsFacts, Verification } from "../core/verify/types.js";
 import { decodeEntities } from "./html-text.js";
@@ -361,9 +363,14 @@ describe("every verified line comes from a template whose facts are present", ()
 
   /** Every shipped template, with every set of facts the page may have used it on. */
   const SHIPPED: readonly [SentenceTemplate<never>, readonly unknown[]][] = [
-    ...[...SECRETS_FOUND, ...SECRETS_NOW, ...SECRETS_FIX, SECRETS_HEADLINE, SECRETS_CHIP].map(
-      (t) => [t, [secrets]] as [SentenceTemplate<never>, readonly unknown[]],
-    ),
+    ...[
+      ...SECRETS_FOUND,
+      ...SECRETS_NOW,
+      ...SECRETS_FIX,
+      ...summaryTemplates(SECRETS_SUMMARY),
+      SECRETS_HEADLINE,
+      SECRETS_CHIP,
+    ].map((t) => [t, [secrets]] as [SentenceTemplate<never>, readonly unknown[]]),
     ...LEAD_NOTES.map((t) => [t, [verification]] as [SentenceTemplate<never>, readonly unknown[]]),
     [SECRETS_READ, [secrets]],
     [MORE_EVIDENCE, [{ more: secrets.moreItems }]],

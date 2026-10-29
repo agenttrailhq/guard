@@ -53,7 +53,9 @@ import {
   type LocalFix,
   localFixCommand,
   type SentenceTemplate,
+  type SummaryTemplates,
   sentences,
+  summaryOf,
   type ToCard,
   type UnsafeFix,
 } from "./cards.js";
@@ -824,6 +826,28 @@ const EGRESS_CHIP_REASONS: readonly ChipReason<EgressFacts>[] = [
   },
 ];
 
+/** The card's short rows. The full sentences above stay behind its expander. */
+export const EGRESS_SUMMARY: SummaryTemplates<EgressFacts> = {
+  happened: [
+    when(
+      "egress.short.uploads",
+      (f) => f.uploads > 0,
+      (f) => `${counted(f.uploads, "upload", "uploads")} that ran sent data off this machine.`,
+    ),
+    ...EGRESS_FOUND.filter((t) => ["egress.tunnels-started", "egress.none"].includes(t.id)),
+  ],
+  now: [
+    when(
+      "egress.short.now.running",
+      (f) => f.tunnelsRunning > 0,
+      (f) =>
+        `${counted(f.tunnelsRunning, "tunnel or relay program is", "tunnel or relay programs are")} running now.`,
+    ),
+    ...EGRESS_NOW.filter((t) => t.id !== "egress.running"),
+  ],
+  fix: EGRESS_FIX_STEPS,
+};
+
 /** The card for the egress check. */
 export const egressCard: ToCard<"egress"> = (result, context: CardContext) => {
   const f = result.facts;
@@ -833,6 +857,7 @@ export const egressCard: ToCard<"egress"> = (result, context: CardContext) => {
     count: result.matches,
     found: sentences(EGRESS_FOUND, f),
     now: sentences(EGRESS_NOW, f),
+    summary: summaryOf(EGRESS_SUMMARY, f),
     fixes: f.tunnelsRunning > 0 ? [{ shape: "pgrep -lx <program>" }] : [],
     fixSteps: sentences(EGRESS_FIX_STEPS, f),
     chip: chipFor(f, EGRESS_CHIP_REASONS, EGRESS_CHIP),

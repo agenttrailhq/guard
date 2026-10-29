@@ -39,7 +39,9 @@ import {
   type ChipReason,
   chipFor,
   type SentenceTemplate,
+  type SummaryTemplates,
   sentences,
+  summaryOf,
   type ToCard,
 } from "./cards.js";
 import { DATABASE_CHECKS, INFRA_KINDS } from "./command-facts.js";
@@ -448,6 +450,29 @@ const PROD_CHIP_REASONS: readonly ChipReason<ProdInfraFacts>[] = [
   },
 ];
 
+/** The card's short rows. The full sentences above stay behind its expander. */
+export const PROD_SUMMARY: SummaryTemplates<ProdInfraFacts> = {
+  happened: [
+    when(
+      "prod.short.databases",
+      (f) => f.databaseCheck === "checked" && f.databaseTargets.other > 0,
+      (f) =>
+        `${counted(f.databaseTargets.other, "database command", "database commands")} that ran targeted a database beyond this machine.`,
+    ),
+    when(
+      "prod.short.infra",
+      (f) => f.infraMatches > 0,
+      (f) =>
+        `${counted(f.infraMatches, "command or edit", "commands or edits")} that ran matched a production infrastructure guardrail.`,
+    ),
+    ...PROD_FOUND.filter((t) =>
+      ["prod.databases-unavailable", "prod.databases-none", "prod.infra-none"].includes(t.id),
+    ),
+  ],
+  now: PROD_NOW,
+  fix: PROD_FIX_STEPS,
+};
+
 /** The card for the production infrastructure check. */
 export const prodInfraCard: ToCard<"prod-infra"> = (result, context: CardContext) => {
   const f = result.facts;
@@ -457,6 +482,7 @@ export const prodInfraCard: ToCard<"prod-infra"> = (result, context: CardContext
     count: result.matches,
     found: sentences(PROD_FOUND, f),
     now: sentences(PROD_NOW, f),
+    summary: summaryOf(PROD_SUMMARY, f),
     fixes: [],
     fixSteps: sentences(PROD_FIX_STEPS, f),
     chip: chipFor(f, PROD_CHIP_REASONS, PROD_CHIP),

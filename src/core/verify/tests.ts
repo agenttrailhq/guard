@@ -53,8 +53,10 @@ import {
   type LocalFix,
   localFixCommand,
   type SentenceTemplate,
+  type SummaryTemplates,
   sentence,
   sentences,
+  summaryOf,
   type ToCard,
   type UnsafeFix,
 } from "./cards.js";
@@ -903,6 +905,66 @@ const TESTS_CHIP_REASONS: readonly ChipReason<TestsFacts>[] = [
   },
 ];
 
+/** The card's short rows. The full sentences above stay behind its expander. */
+export const TESTS_SUMMARY: SummaryTemplates<TestsFacts> = {
+  happened: [
+    ...TESTS_FOUND.filter((t) =>
+      ["tests.thresholds-lowered", "tests.ci-forced-true", "tests.pass-with-no-tests"].includes(
+        t.id,
+      ),
+    ),
+    whenAny(
+      "tests.short.deleted-after-failing",
+      (f) => f.deletedAfterFailing,
+      (n) =>
+        `${counted(n, "test was", "tests were")} deleted after a run reported ${n === 1 ? "it" : "them"} failing.`,
+    ),
+    ...TESTS_FOUND.filter((t) => ["tests.deleted", "tests.excludes-added"].includes(t.id)),
+    whenAny(
+      "tests.short.reverts",
+      (f) => f.autoUpdateReverts,
+      (n) =>
+        `${counted(n, "edit", "edits")} set a threshold back after a coverage run with autoUpdate on.`,
+    ),
+    whenAny(
+      "tests.short.rewritten",
+      (f) => f.configsRewritten,
+      (n) =>
+        `${counted(n, "test config or CI file was", "test configs or CI files were")} rewritten whole, so the change is not known.`,
+    ),
+    whenAny(
+      "tests.short.unread",
+      (f) => f.unreadEdits,
+      (n) =>
+        `${counted(n, "command", "commands")} changed a test config or CI file in a way this check does not read.`,
+    ),
+    {
+      id: "tests.short.nothing",
+      render: (f) =>
+        signals(f) === 0 && f.couldHide === 0 && f.unconfirmed === 0 && f.unreadEdits === 0
+          ? "Nothing that ran weakened a coverage threshold, a test exclude, a CI step or a test file."
+          : undefined,
+    },
+  ],
+  now: [
+    {
+      id: "tests.short.now.auto-update",
+      render: ({ autoUpdateNow: a }) => {
+        const read = a.on + a.off;
+        return read > 0
+          ? `Coverage autoUpdate is on in ${a.on} of the ${counted(read, "test config", "test configs")} that could be read.`
+          : undefined;
+      },
+    },
+    whenAny(
+      "tests.short.now.unread",
+      (f) => f.autoUpdateNow.unread,
+      (n) => `${counted(n, "test config", "test configs")} could not be read now.`,
+    ),
+  ],
+  fix: TESTS_FIX_STEPS,
+};
+
 /** The card for the test check. */
 export const testsCard: ToCard<"tests"> = (result, context: CardContext) => {
   const f = result.facts;
@@ -914,6 +976,7 @@ export const testsCard: ToCard<"tests"> = (result, context: CardContext) => {
     count: result.matches,
     found: sentences(TESTS_FOUND, f),
     now: sentences(TESTS_NOW, f),
+    summary: summaryOf(TESTS_SUMMARY, f),
     fixes: [
       ...(f.thresholdsLowered > 0 ? [{ shape: "git log -p -- <test config>" }] : []),
       ...(f.testFilesDeleted > 0

@@ -12,8 +12,8 @@
  */
 
 import { formatCount } from "../tokens.js";
-import type { CardView, SentenceTemplate, ToCard } from "./cards.js";
-import { sentence, sentences } from "./cards.js";
+import type { CardView, SentenceTemplate, SummaryTemplates, ToCard } from "./cards.js";
+import { sentence, sentences, summaryOf } from "./cards.js";
 import { countOf } from "./copy.js";
 import type { SecretsFacts } from "./types.js";
 
@@ -241,6 +241,89 @@ const FIX_FIXTURES: SentenceTemplate<SecretsFacts> = {
 /** "Fix", in words, in order. */
 export const SECRETS_FIX: readonly SentenceTemplate<SecretsFacts>[] = [FIX_ROTATE, FIX_FIXTURES];
 
+/** Values not counted as likely real, as a list of counted parts. */
+function notCounted(f: SecretsFacts): string[] {
+  const parts: string[] = [];
+  const fixtures = f.classes["committed-fixture"];
+  const placeholders = f.classes.placeholder;
+  const local = f.classes["local-dev"];
+  if (fixtures > 0) parts.push(countOf(fixtures, "committed fixture"));
+  if (placeholders > 0) parts.push(countOf(placeholders, "false positive"));
+  if (local > 0) parts.push(countOf(local, "local dev value"));
+  return parts;
+}
+
+/** Join counted parts as prose. */
+function andJoined(parts: readonly string[]): string {
+  return parts.length <= 1
+    ? parts.join("")
+    : `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}`;
+}
+
+/** The card's short rows. The full sentences above stay behind its expander. */
+export const SECRETS_SUMMARY: SummaryTemplates<SecretsFacts> = {
+  happened: [
+    {
+      id: "secrets.short.likely-real",
+      render: (f) => {
+        const n = f.classes["likely-real"];
+        return n > 0
+          ? `${likelyReal(n)} in ${countOf(f.filesRead, "transcript file")}.`
+          : undefined;
+      },
+    },
+    {
+      id: "secrets.short.none",
+      render: (f) =>
+        f.classes["likely-real"] === 0 && f.filesRead > 0
+          ? `No likely-real credential in ${countOf(f.filesRead, "transcript file")}.`
+          : undefined,
+    },
+    {
+      id: "secrets.short.not-counted",
+      render: (f) => {
+        const parts = notCounted(f);
+        return parts.length > 0 ? `Not counted: ${andJoined(parts)}.` : undefined;
+      },
+    },
+    {
+      id: "secrets.short.unread",
+      render: (f) =>
+        f.filesNotRead > 0
+          ? `${countOf(f.filesNotRead, "transcript file")} could not be read.`
+          : undefined,
+    },
+  ],
+  now: [
+    {
+      id: "secrets.short.now.still-there",
+      render: (f) => {
+        const n = f.classes["likely-real"];
+        if (n === 0) return undefined;
+        return n === 1
+          ? "Still in the transcript files, in plain text."
+          : `All ${formatCount(n)} are still in the transcript files, in plain text.`;
+      },
+    },
+    {
+      id: "secrets.short.now.fixtures",
+      render: (f) =>
+        f.classes["committed-fixture"] > 0
+          ? "The committed fixtures are in git-tracked files, and so in the repos' history."
+          : undefined,
+    },
+  ],
+  fix: [
+    {
+      id: "secrets.short.fix.rotate",
+      render: (f) =>
+        f.classes["likely-real"] > 0
+          ? "Rotate each one with the service that issued it, then scrub the transcripts."
+          : undefined,
+    },
+  ],
+};
+
 /** The headline this card offers. */
 export const SECRETS_HEADLINE: SentenceTemplate<SecretsFacts> = {
   id: "secrets.headline",
@@ -300,6 +383,7 @@ export const secretsCard: ToCard<"secrets"> = (result): CardView => {
     found: sentences(SECRETS_FOUND, facts),
     now: sentences(SECRETS_NOW, facts),
     fixSteps: sentences(SECRETS_FIX, facts),
+    summary: summaryOf(SECRETS_SUMMARY, facts),
     fixes: [],
     codexCaveat: false,
     ...(headline === undefined
