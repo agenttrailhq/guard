@@ -94,19 +94,19 @@
 <div class="section-head"><div><h2>Mapped to OWASP</h2><p>The OWASP Top 10 risks for agentic applications (ASI) and LLM applications that these findings fall under. <span class="screen-only">Select a risk to filter the findings below.</span></p></div></div>
 <div class="owasp-grid" id="owasp-grid">
 <label class="card risk" for="ff-risk-ASI02" data-risk="ASI02">
-<span class="risk-top"><span class="risk-id">ASI02</span><span class="risk-count"><span class="risk-n">4</span> <span class="risk-unit">calls</span></span></span>
+<span class="risk-top"><span class="risk-id">ASI02</span><span class="risk-count"><span class="risk-n">4</span> <span class="risk-unit">matches</span></span></span>
 <span class="risk-title">Tool Misuse and Exploitation</span>
 <span class="risk-sub">2 guardrails</span>
 <span class="risk-meter" aria-hidden="true"><span style="width: 100.0%"></span></span>
 </label>
 <label class="card risk" for="ff-risk-LLM03" data-risk="LLM03">
-<span class="risk-top"><span class="risk-id">LLM03</span><span class="risk-count"><span class="risk-n">3</span> <span class="risk-unit">calls</span></span></span>
+<span class="risk-top"><span class="risk-id">LLM03</span><span class="risk-count"><span class="risk-n">3</span> <span class="risk-unit">matches</span></span></span>
 <span class="risk-title">Excessive Agency</span>
 <span class="risk-sub">1 guardrail</span>
 <span class="risk-meter" aria-hidden="true"><span style="width: 75.0%"></span></span>
 </label>
 <label class="card risk" for="ff-risk-LLM02" data-risk="LLM02">
-<span class="risk-top"><span class="risk-id">LLM02</span><span class="risk-count"><span class="risk-n">2</span> <span class="risk-unit">calls</span></span></span>
+<span class="risk-top"><span class="risk-id">LLM02</span><span class="risk-count"><span class="risk-n">2</span> <span class="risk-unit">matches</span></span></span>
 <span class="risk-title">Sensitive Information Disclosure</span>
 <span class="risk-sub">1 guardrail</span>
 <span class="risk-meter" aria-hidden="true"><span style="width: 50.0%"></span></span>
@@ -280,8 +280,8 @@
 <div>
 <p class="eyebrow">AgentTrail OS</p>
 <h2>AgentTrail Guard stops the mistake.<br class="br-md"> AgentTrail OS remembers it and turns it into a rule.</h2>
-<p>This report is one look at the transcripts on one machine. AgentTrail OS watches every agent session, turns each repeated mistake into a guardrail, and proves the fix on your own history. It is a separate product, and nothing in this report was sent to it.</p>
-<ol class="os-steps"><li><b>Connect your projects</b><span>Every agent session on the team is recorded in one place, with the guardrails that matched.</span></li><li><b>Backtest a guardrail</b><span>See which past commands it would have caught before it applies to anyone&#39;s work.</span></li><li><b>Approve before it runs</b><span>A matching command waits for a teammate to allow it, and the decision is kept.</span></li></ol>
+<p>AgentTrail OS applies the same guardrail library to every agent on your team, decides each call on the server so nobody can switch it off locally, and keeps the record. It is free for one developer. Nothing in this report was sent to it.</p>
+<ol class="os-steps"><li><b>Connect each project</b><span>Run npx -y @agenttrail/cli@latest login --agent claude. Recent sessions are imported, so the team view starts with history.</span></li><li><b>Backtest before you enforce</b><span>Pick a guardrail, such as secrets read into a transcript, and see which of last month&#39;s calls it would have caught across everyone before it touches anyone&#39;s work.</span></li><li><b>Hold, then approve</b><span>A matching call waits in the approval queue for a teammate&#39;s yes, and the decision stays in the audit trail.</span></li></ol>
 </div>
 <div class="product-ctas"><a class="btn btn-primary" href="https://www.agenttrail.sh/signup?utm_source=guard&amp;utm_medium=scan-report&amp;utm_campaign=claude&amp;utm_content=os-signup" target="_blank" rel="noopener noreferrer">Start free with AgentTrail OS</a><a class="btn btn-secondary" href="https://www.agenttrail.sh/agenttrail-os?utm_source=guard&amp;utm_medium=scan-report&amp;utm_campaign=claude&amp;utm_content=os-demo" target="_blank" rel="noopener noreferrer">Book a team demo</a><a class="btn btn-secondary" href="https://www.agenttrail.sh/guard-vs-os?utm_source=guard&amp;utm_medium=scan-report&amp;utm_campaign=claude&amp;utm_content=os-compare" target="_blank" rel="noopener noreferrer">Guard vs OS</a></div>
 </aside>

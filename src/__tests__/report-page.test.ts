@@ -1140,20 +1140,20 @@ describe("the OWASP section", () => {
     expect(html).not.toContain('<span class="otag">');
   });
 
-  it("lists each risk touched by name, with its tool calls and guardrails", () => {
+  it("lists each risk touched by name, with its guardrail matches and guardrails", () => {
     const card = (id: string): string => between(section, `data-risk="${id}">`, "</label>");
     expect(card("ASI02")).toContain('<span class="risk-id">ASI02</span>');
     expect(card("ASI02")).toContain(
       `<span class="risk-title">${escapeHtml(owaspTitle("ASI02"))}</span>`,
     );
     expect(card("ASI02")).toContain(
-      '<span class="risk-n">4</span> <span class="risk-unit">calls</span>',
+      '<span class="risk-n">5</span> <span class="risk-unit">matches</span>',
     );
     expect(card("ASI02")).toContain('<span class="risk-sub">2 guardrails</span>');
     expect(card("LLM03")).toContain(
       `<span class="risk-title">${escapeHtml(owaspTitle("LLM03"))}</span>`,
     );
-    expect(card("LLM03")).toContain('<span class="risk-n">3</span>');
+    expect(card("LLM03")).toContain('<span class="risk-n">4</span>');
     expect(card("LLM03")).toContain('<span class="risk-sub">1 guardrail</span>');
     expect(section.split('<label class="card risk"').length - 1).toBe(2);
   });
@@ -1259,7 +1259,7 @@ describe("the OWASP section", () => {
     expect(payload.findings.length).toBe(MAX_ROWS);
     expect(payload.owasp).toEqual([tally("LLM02", MAX_ROWS + 3, MAX_ROWS + 3)]);
     const page = renderReport(result, META);
-    expect(page).toContain(`<span class="risk-n">${MAX_ROWS + 3}</span>`);
+    expect(page).toContain(`<span class="risk-n">${MAX_ROWS + 4}</span>`);
     expect(page).toContain(`<span class="risk-sub">${MAX_ROWS + 3} guardrails</span>`);
   });
 
