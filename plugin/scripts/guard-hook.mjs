@@ -5616,7 +5616,180 @@ var RULES = PACKS.flatMap((pack) => RULES_BY_PACK[pack]);
 var SHIPPED_CATALOG = RULES;
 
 // src/core/evaluate.ts
+var import_picomatch2 = __toESM(require_picomatch2(), 1);
+
+// src/engine/matchers.ts
 var import_picomatch = __toESM(require_picomatch2(), 1);
+var DETAIL_ATTR = "detail";
+var FILE_PATH_ATTR = "file_path";
+var FILE_GLOB_OPTIONS = { dot: true, nocase: true };
+var LABEL_GLOB_OPTIONS = { dot: true, nocase: true };
+function matchKind(conditionKind, span) {
+  const matched = span.kind.toLowerCase() === conditionKind.toLowerCase();
+  return {
+    matched,
+    reason: matched ? `kind: "${conditionKind}" matched` : `kind: expected "${conditionKind}", got "${span.kind}"`
+  };
+}
+function matchLabel(conditionLabel, span) {
+  const matched = createCompiledLabelMatcher(conditionLabel)(span.label);
+  return {
+    matched,
+    reason: matched ? `label: "${conditionLabel}" matched` : `label: expected "${conditionLabel}", got "${span.label}"`
+  };
+}
+function matchDetailContains(requiredSubstrings, span) {
+  const detail = span.attributes[DETAIL_ATTR];
+  if (detail === void 0) {
+    return { matched: false, reason: "detail_contains: detail attribute missing" };
+  }
+  const missing = [];
+  for (const substring of requiredSubstrings) {
+    if (!detail.includes(substring)) {
+      missing.push(substring);
+    }
+  }
+  if (missing.length > 0) {
+    return {
+      matched: false,
+      reason: `detail_contains: missing substrings: ${JSON.stringify(missing)}`
+    };
+  }
+  return {
+    matched: true,
+    reason: `detail_contains: all ${requiredSubstrings.length} substring(s) found`
+  };
+}
+function matchDetailMatches(patterns, span) {
+  const detail = span.attributes[DETAIL_ATTR];
+  if (detail === void 0) {
+    return { matched: false, reason: "detail_matches: detail attribute missing" };
+  }
+  for (const pattern of patterns) {
+    if (createCompiledDetailMatcher(pattern)(detail)) {
+      return { matched: true, reason: `detail_matches: "${pattern}" matched` };
+    }
+  }
+  return {
+    matched: false,
+    reason: `detail_matches: no pattern of ${patterns.length} matched`
+  };
+}
+function matchFileGlob(pattern, span) {
+  const filePath = span.attributes[FILE_PATH_ATTR];
+  if (filePath === void 0) {
+    return { matched: false, reason: "file_glob: file_path attribute missing" };
+  }
+  try {
+    const isMatch = (0, import_picomatch.default)(pattern, FILE_GLOB_OPTIONS);
+    const matched = isMatch(filePath);
+    return {
+      matched,
+      reason: matched ? `file_glob: "${pattern}" matched "${filePath}"` : `file_glob: "${pattern}" did not match "${filePath}"`
+    };
+  } catch {
+    return {
+      matched: false,
+      reason: `file_glob: invalid pattern: "${pattern}"`
+    };
+  }
+}
+function resolveNumericField(field, span) {
+  switch (field) {
+    case "tokens":
+      return span.tokens;
+    case "cached_tokens":
+      return span.cachedTokens;
+    case "duration_ms":
+      return span.durationMs;
+    default: {
+      const _exhaustive = field;
+      throw new Error(`unmapped numeric field: ${String(_exhaustive)}`);
+    }
+  }
+}
+function matchNumeric(comparison, span) {
+  const actual = resolveNumericField(comparison.field, span);
+  const { op, value, field } = comparison;
+  let matched;
+  switch (op) {
+    case "gt":
+      matched = actual > value;
+      break;
+    case "gte":
+      matched = actual >= value;
+      break;
+    case "lt":
+      matched = actual < value;
+      break;
+    case "lte":
+      matched = actual <= value;
+      break;
+    default: {
+      const _exhaustive = op;
+      throw new Error(`unmapped numeric op: ${String(_exhaustive)}`);
+    }
+  }
+  return {
+    matched,
+    reason: matched ? `numeric: ${field} (${actual}) ${op} ${value} matched` : `numeric: ${field} (${actual}) not ${op} ${value}`
+  };
+}
+var compiledGlobCache = /* @__PURE__ */ new Map();
+var compiledLabelCache = /* @__PURE__ */ new Map();
+var compiledDetailCache = /* @__PURE__ */ new Map();
+function createCompiledLabelMatcher(pattern) {
+  let matcher = compiledLabelCache.get(pattern);
+  if (matcher === void 0) {
+    try {
+      matcher = (0, import_picomatch.default)(pattern, LABEL_GLOB_OPTIONS);
+    } catch {
+      matcher = () => false;
+    }
+    compiledLabelCache.set(pattern, matcher);
+  }
+  const cached = matcher;
+  return (label) => cached(label);
+}
+function createCompiledDetailMatcher(pattern) {
+  let compiled = compiledDetailCache.get(pattern);
+  if (compiled === void 0) {
+    try {
+      compiled = new RegExp(pattern, "i");
+    } catch {
+      compiled = null;
+    }
+    compiledDetailCache.set(pattern, compiled);
+  }
+  const cached = compiled;
+  return cached === null ? () => false : (detail) => cached.test(detail);
+}
+function createCompiledFileGlobMatcher(pattern) {
+  let matcher = compiledGlobCache.get(pattern);
+  if (!matcher) {
+    try {
+      matcher = (0, import_picomatch.default)(pattern, FILE_GLOB_OPTIONS);
+      compiledGlobCache.set(pattern, matcher);
+    } catch {
+      return (_span) => ({
+        matched: false,
+        reason: `file_glob: invalid pattern: "${pattern}"`
+      });
+    }
+  }
+  const cachedMatcher = matcher;
+  return (span) => {
+    const filePath = span.attributes[FILE_PATH_ATTR];
+    if (filePath === void 0) {
+      return { matched: false, reason: "file_glob: file_path attribute missing" };
+    }
+    const matched = cachedMatcher(filePath);
+    return {
+      matched,
+      reason: matched ? `file_glob: "${pattern}" matched "${filePath}"` : `file_glob: "${pattern}" did not match "${filePath}"`
+    };
+  };
+}
 
 // src/engine/verdict.ts
 function strongestVerdict(matches) {
@@ -5647,7 +5820,7 @@ function compileAllowlist(entries) {
   const compiled = [];
   for (const entry of entries) {
     try {
-      compiled.push({ rule: entry.guardrail, isMatch: (0, import_picomatch.default)(entry.pattern, { dot: true }) });
+      compiled.push({ rule: entry.guardrail, isMatch: (0, import_picomatch2.default)(entry.pattern, { dot: true }) });
     } catch {
     }
   }
@@ -5664,9 +5837,42 @@ function isAllowlisted(ruleId, mapped, allowlist) {
   return false;
 }
 function evaluateCall(catalog, context, mapped, allowlist) {
+  return evaluateRules(rulesForTool(catalog, mapped.tool), context, mapped, allowlist);
+}
+var RULES_BY_TOOL = /* @__PURE__ */ new WeakMap();
+function rulesForTool(catalog, tool) {
+  let byTool = RULES_BY_TOOL.get(catalog);
+  if (byTool === void 0) {
+    byTool = /* @__PURE__ */ new Map();
+    RULES_BY_TOOL.set(catalog, byTool);
+  }
+  let rules12 = byTool.get(tool);
+  if (rules12 === void 0) {
+    rules12 = catalog.filter((entry) => mayMatchTool(entry, tool));
+    byTool.set(tool, rules12);
+  }
+  return rules12;
+}
+function mayMatchTool(entry, tool) {
+  try {
+    const { all_of: allOf, any_of: anyOf } = entry.rule.match;
+    for (const condition of allOf ?? []) {
+      if (condition.label !== void 0 && !createCompiledLabelMatcher(condition.label)(tool)) {
+        return false;
+      }
+    }
+    if (anyOf !== void 0 && anyOf.length > 0 && anyOf.every((condition) => condition.label !== void 0) && !anyOf.some((condition) => createCompiledLabelMatcher(condition.label)(tool))) {
+      return false;
+    }
+    return true;
+  } catch {
+    return true;
+  }
+}
+function evaluateRules(rules12, context, mapped, allowlist) {
   const matches = [];
   const titles = /* @__PURE__ */ new Map();
-  for (const entry of catalog) {
+  for (const entry of rules12) {
     if (isAllowlisted(entry.rule.id, mapped, allowlist)) continue;
     let matched = false;
     try {
@@ -7534,179 +7740,6 @@ function envBlock(text) {
     out[key] = typeof value === "string" ? value : typeof value === "number" || typeof value === "boolean" ? String(value) : JSON.stringify(value);
   }
   return out;
-}
-
-// src/engine/matchers.ts
-var import_picomatch2 = __toESM(require_picomatch2(), 1);
-var DETAIL_ATTR = "detail";
-var FILE_PATH_ATTR = "file_path";
-var FILE_GLOB_OPTIONS = { dot: true, nocase: true };
-var LABEL_GLOB_OPTIONS = { dot: true, nocase: true };
-function matchKind(conditionKind, span) {
-  const matched = span.kind.toLowerCase() === conditionKind.toLowerCase();
-  return {
-    matched,
-    reason: matched ? `kind: "${conditionKind}" matched` : `kind: expected "${conditionKind}", got "${span.kind}"`
-  };
-}
-function matchLabel(conditionLabel, span) {
-  const matched = createCompiledLabelMatcher(conditionLabel)(span.label);
-  return {
-    matched,
-    reason: matched ? `label: "${conditionLabel}" matched` : `label: expected "${conditionLabel}", got "${span.label}"`
-  };
-}
-function matchDetailContains(requiredSubstrings, span) {
-  const detail = span.attributes[DETAIL_ATTR];
-  if (detail === void 0) {
-    return { matched: false, reason: "detail_contains: detail attribute missing" };
-  }
-  const missing = [];
-  for (const substring of requiredSubstrings) {
-    if (!detail.includes(substring)) {
-      missing.push(substring);
-    }
-  }
-  if (missing.length > 0) {
-    return {
-      matched: false,
-      reason: `detail_contains: missing substrings: ${JSON.stringify(missing)}`
-    };
-  }
-  return {
-    matched: true,
-    reason: `detail_contains: all ${requiredSubstrings.length} substring(s) found`
-  };
-}
-function matchDetailMatches(patterns, span) {
-  const detail = span.attributes[DETAIL_ATTR];
-  if (detail === void 0) {
-    return { matched: false, reason: "detail_matches: detail attribute missing" };
-  }
-  for (const pattern of patterns) {
-    if (createCompiledDetailMatcher(pattern)(detail)) {
-      return { matched: true, reason: `detail_matches: "${pattern}" matched` };
-    }
-  }
-  return {
-    matched: false,
-    reason: `detail_matches: no pattern of ${patterns.length} matched`
-  };
-}
-function matchFileGlob(pattern, span) {
-  const filePath = span.attributes[FILE_PATH_ATTR];
-  if (filePath === void 0) {
-    return { matched: false, reason: "file_glob: file_path attribute missing" };
-  }
-  try {
-    const isMatch = (0, import_picomatch2.default)(pattern, FILE_GLOB_OPTIONS);
-    const matched = isMatch(filePath);
-    return {
-      matched,
-      reason: matched ? `file_glob: "${pattern}" matched "${filePath}"` : `file_glob: "${pattern}" did not match "${filePath}"`
-    };
-  } catch {
-    return {
-      matched: false,
-      reason: `file_glob: invalid pattern: "${pattern}"`
-    };
-  }
-}
-function resolveNumericField(field, span) {
-  switch (field) {
-    case "tokens":
-      return span.tokens;
-    case "cached_tokens":
-      return span.cachedTokens;
-    case "duration_ms":
-      return span.durationMs;
-    default: {
-      const _exhaustive = field;
-      throw new Error(`unmapped numeric field: ${String(_exhaustive)}`);
-    }
-  }
-}
-function matchNumeric(comparison, span) {
-  const actual = resolveNumericField(comparison.field, span);
-  const { op, value, field } = comparison;
-  let matched;
-  switch (op) {
-    case "gt":
-      matched = actual > value;
-      break;
-    case "gte":
-      matched = actual >= value;
-      break;
-    case "lt":
-      matched = actual < value;
-      break;
-    case "lte":
-      matched = actual <= value;
-      break;
-    default: {
-      const _exhaustive = op;
-      throw new Error(`unmapped numeric op: ${String(_exhaustive)}`);
-    }
-  }
-  return {
-    matched,
-    reason: matched ? `numeric: ${field} (${actual}) ${op} ${value} matched` : `numeric: ${field} (${actual}) not ${op} ${value}`
-  };
-}
-var compiledGlobCache = /* @__PURE__ */ new Map();
-var compiledLabelCache = /* @__PURE__ */ new Map();
-var compiledDetailCache = /* @__PURE__ */ new Map();
-function createCompiledLabelMatcher(pattern) {
-  let matcher = compiledLabelCache.get(pattern);
-  if (matcher === void 0) {
-    try {
-      matcher = (0, import_picomatch2.default)(pattern, LABEL_GLOB_OPTIONS);
-    } catch {
-      matcher = () => false;
-    }
-    compiledLabelCache.set(pattern, matcher);
-  }
-  const cached = matcher;
-  return (label) => cached(label);
-}
-function createCompiledDetailMatcher(pattern) {
-  let compiled = compiledDetailCache.get(pattern);
-  if (compiled === void 0) {
-    try {
-      compiled = new RegExp(pattern, "i");
-    } catch {
-      compiled = null;
-    }
-    compiledDetailCache.set(pattern, compiled);
-  }
-  const cached = compiled;
-  return cached === null ? () => false : (detail) => cached.test(detail);
-}
-function createCompiledFileGlobMatcher(pattern) {
-  let matcher = compiledGlobCache.get(pattern);
-  if (!matcher) {
-    try {
-      matcher = (0, import_picomatch2.default)(pattern, FILE_GLOB_OPTIONS);
-      compiledGlobCache.set(pattern, matcher);
-    } catch {
-      return (_span) => ({
-        matched: false,
-        reason: `file_glob: invalid pattern: "${pattern}"`
-      });
-    }
-  }
-  const cachedMatcher = matcher;
-  return (span) => {
-    const filePath = span.attributes[FILE_PATH_ATTR];
-    if (filePath === void 0) {
-      return { matched: false, reason: "file_glob: file_path attribute missing" };
-    }
-    const matched = cachedMatcher(filePath);
-    return {
-      matched,
-      reason: matched ? `file_glob: "${pattern}" matched "${filePath}"` : `file_glob: "${pattern}" did not match "${filePath}"`
-    };
-  };
 }
 
 // src/engine/scope.ts

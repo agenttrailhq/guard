@@ -109,19 +109,6 @@ function chargeTime(io: VerifyIO, ms: number): void {
 /** Run every check there is. Never throws. */
 export async function verifyScan(input: VerifyInput): Promise<VerifyOutcome> {
   const agent = input.corpus.agent ?? "claude";
-  // The secrets check starts first and, while its reading runs on worker threads, the other
-  // checks run here. It never throws.
-  const secretsPending = (async () => {
-    const collector = await input.secretsCollector;
-    return await checkSecrets({
-      agent,
-      files: input.corpus.files ?? [],
-      readLines: input.readLines,
-      io: input.secretsIO ?? input.io,
-      fingerprint: input.fingerprint ?? createFingerprinter(),
-      ...(collector === undefined ? {} : { collector }),
-    });
-  })();
   const steps = [
     "which commands ran",
     "skipped checks, lost work and destructive commands",
@@ -183,8 +170,18 @@ export async function verifyScan(input: VerifyInput): Promise<VerifyOutcome> {
   const unreviewed = await checkUnreviewed({ calls, io: input.io, rules });
   next();
   const egress = await checkEgress({ calls, ...rules, io: input.io });
+  // The secrets check last: its reading may have run on worker threads all along. Its search of
+  // the repos runs here, after the others, so no other check's work is timed against its budget.
   next();
-  const secrets = await secretsPending;
+  const collector = await input.secretsCollector;
+  const secrets = await checkSecrets({
+    agent,
+    files: input.corpus.files ?? [],
+    readLines: input.readLines,
+    io: input.secretsIO ?? input.io,
+    fingerprint: input.fingerprint ?? createFingerprinter(),
+    ...(collector === undefined ? {} : { collector }),
+  });
 
   const verification: Verification = {
     matchedCalls: matched.tally,

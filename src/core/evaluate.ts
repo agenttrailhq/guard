@@ -25,6 +25,7 @@
 
 import picomatch from "picomatch";
 import type { SpanContext } from "../engine/evaluator.js";
+import { createCompiledLabelMatcher } from "../engine/matchers.js";
 import { strongestVerdict } from "../engine/verdict.js";
 import type { CompiledRule } from "./rules.js";
 import type { AllowlistEntry, GuardDecision, MappedCall, RuleMatch } from "./types.js";
@@ -103,12 +104,81 @@ export function evaluateCall(
   mapped: MappedCall,
   allowlist: CompiledAllowlist,
 ): GuardDecision {
+  return evaluateRules(rulesForTool(catalog, mapped.tool), context, mapped, allowlist);
+}
+
+/**
+ * `evaluateCall` over every rule in the catalog, with no rule left out by its tool. For the test
+ * that holds `rulesForTool` to giving the same decisions.
+ */
+export function evaluateEveryRule(
+  catalog: readonly CompiledRule[],
+  context: SpanContext,
+  mapped: MappedCall,
+  allowlist: CompiledAllowlist,
+): GuardDecision {
+  return evaluateRules(catalog, context, mapped, allowlist);
+}
+
+/**
+ * The rules of a catalog that can match a call to `tool`, in catalog order, kept per catalog and
+ * tool. A rule is left out only when its predicate needs a label `tool` does not match: a label
+ * on an `all_of` condition, or one on every `any_of` condition. Every other rule stays, so this
+ * changes no decision, only how many rules are tried.
+ */
+const RULES_BY_TOOL = new WeakMap<readonly CompiledRule[], Map<string, readonly CompiledRule[]>>();
+
+/** See `RULES_BY_TOOL`. */
+function rulesForTool(catalog: readonly CompiledRule[], tool: string): readonly CompiledRule[] {
+  let byTool = RULES_BY_TOOL.get(catalog);
+  if (byTool === undefined) {
+    byTool = new Map();
+    RULES_BY_TOOL.set(catalog, byTool);
+  }
+  let rules = byTool.get(tool);
+  if (rules === undefined) {
+    rules = catalog.filter((entry) => mayMatchTool(entry, tool));
+    byTool.set(tool, rules);
+  }
+  return rules;
+}
+
+/** Could `entry` match a call to `tool`? `true` whenever its predicate cannot say. */
+function mayMatchTool(entry: CompiledRule, tool: string): boolean {
+  try {
+    const { all_of: allOf, any_of: anyOf } = entry.rule.match;
+    for (const condition of allOf ?? []) {
+      if (condition.label !== undefined && !createCompiledLabelMatcher(condition.label)(tool)) {
+        return false;
+      }
+    }
+    if (
+      anyOf !== undefined &&
+      anyOf.length > 0 &&
+      anyOf.every((condition) => condition.label !== undefined) &&
+      !anyOf.some((condition) => createCompiledLabelMatcher(condition.label as string)(tool))
+    ) {
+      return false;
+    }
+    return true;
+  } catch {
+    return true;
+  }
+}
+
+/** The evaluate loop over `rules`. */
+function evaluateRules(
+  rules: readonly CompiledRule[],
+  context: SpanContext,
+  mapped: MappedCall,
+  allowlist: CompiledAllowlist,
+): GuardDecision {
   const matches: RuleMatch[] = [];
   // The titles of the rules that matched, kept here rather than on `RuleMatch`: the title
   // is wanted only for the message, and the decision log records ids.
   const titles = new Map<string, string>();
 
-  for (const entry of catalog) {
+  for (const entry of rules) {
     if (isAllowlisted(entry.rule.id, mapped, allowlist)) continue;
     let matched = false;
     try {
