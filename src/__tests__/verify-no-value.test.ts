@@ -211,9 +211,9 @@ describe.each([
     else expect(html).toContain('data-template="secrets.headline"');
     for (const part of [
       'id="found"',
-      'class="evidence-kind"',
+      'class="lx-creds"',
       'id="also-checked"',
-      'class="check-chip',
+      'class="lx-link"',
       'id="what-happened"',
       'id="check-secrets"',
     ]) {

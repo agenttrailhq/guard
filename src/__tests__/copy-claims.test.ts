@@ -411,6 +411,8 @@ describe("every verified line comes from a template whose facts are present", ()
     "What checking found, and how to fix it",
     "A match means a guardrail fired on a command. Each card says what checking that on this machine found, how things stand now, and how to fix it. The checks only read: they changed nothing on this machine.",
     "What the checks read on this machine:",
+    "A match only means a guardrail fired. Each card says what checking it on this machine found, how things stand now, and how to fix it.",
+    "The checks only read: they changed nothing on this machine.",
   ];
 
   /** The three verified sections of a page. */
@@ -434,8 +436,15 @@ describe("every verified line comes from a template whose facts are present", ()
       ),
     ]
       .filter((m) => m[1] === "p" || /class="chip-text"/.test(m[2] ?? ""))
-      .map((m) => decodeEntities((m[3] ?? "").replace(/<[^>]+>/g, "")).trim())
-      .filter((text) => !FIXED_NOTES.includes(text));
+      .map((m) =>
+        decodeEntities(
+          (m[3] ?? "")
+            // A sentence that names its template is accounted for; only what is left is read.
+            .replace(/<span[^>]*data-template=[^>]*>(?:[^<]|<code>[^<]*<\/code>)*<\/span>/g, "")
+            .replace(/<[^>]+>/g, ""),
+        ).trim(),
+      )
+      .filter((text) => text !== "" && !FIXED_NOTES.includes(text));
 
   it("shipped template ids are unique", () => {
     expect(byId.size).toBe(SHIPPED.length);

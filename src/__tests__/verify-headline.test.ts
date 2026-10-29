@@ -142,10 +142,13 @@ function verificationOf(
   };
 }
 
-/** The `<h1>` of a page: its template, or `undefined` for the totals headline, and its text. */
+/**
+ * The `<h1>` of a page: its template, or `undefined` for the totals headline, and its text with
+ * the emphasis around its counted phrase taken out.
+ */
 function h1(html: string): { template: string | undefined; text: string } {
-  const m = html.match(/<h1(?: data-template="([^"]+)")?>([^<]*)<\/h1>/);
-  return { template: m?.[1], text: m?.[2] ?? "" };
+  const m = html.match(/<h1 id="headline"(?: data-template="([^"]+)")?>(.*?)<\/h1>/);
+  return { template: m?.[1], text: (m?.[2] ?? "").replace(/<\/?em>/g, "") };
 }
 
 function page(entries: Partial<Record<VerifyCategory, Entry>>, result?: ScanResult): string {
@@ -170,8 +173,9 @@ describe("the headline picks the strongest verified finding", () => {
   it.each(HEADLINE_ORDER)("%s leads on its own", (category) => {
     const html = page({ [category]: { status: leading(category), claim: 2 } });
     expect(h1(html).template).toBe(templateOf(category));
-    // The totals headline moves to the line under it.
-    expect(html).toContain(`<p class="lead totals">${TOTALS}.</p>`);
+    // The totals are not the headline: they are the counts of "What Guard would have done".
+    expect(html).not.toContain(TOTALS);
+    expect(html).toContain('id="outcomes"');
   });
 
   it.each(

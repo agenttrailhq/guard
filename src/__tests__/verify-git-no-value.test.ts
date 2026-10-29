@@ -28,7 +28,7 @@ import { verifyScan } from "../core/verify/verify.js";
 import { createRealScanIO, type ScanIO } from "../scan-io.js";
 import { createRealVerifyIO } from "../verify-io.js";
 import { corpusOf, git, makeRepo, rev, setRemoteBranch } from "./git-check-fixtures.js";
-import { decodedSurfaces, stringLeaves } from "./html-text.js";
+import { decodedSurfaces, stringLeaves, whatHappenedNote } from "./html-text.js";
 
 const MARKER = "canary";
 
@@ -405,7 +405,10 @@ describe("fixes the checks could not make safe reach the fixes file, and --revie
     const report =
       [...written.entries()].find(([path]) => !path.endsWith(FIXES_FILENAME))?.[1] ?? "";
     const at = report.indexOf('id="check-lost-work"');
-    const card = report.slice(report.lastIndexOf("<article", at), report.indexOf("</article>", at));
+    // The card, and the note under the cards that names the fixes file for all of them.
+    const card =
+      report.slice(report.lastIndexOf("<article", at), report.indexOf("</article>", at)) +
+      whatHappenedNote(report);
     return { fixes: fixesPath === undefined ? undefined : written.get(fixesPath), card };
   }
 
@@ -530,8 +533,7 @@ describe("a card whose every fix could not be made safe says nothing of a comman
   }
 
   /** The note naming the file for fixes that could not be made safe, which the file does hold. */
-  const UNSAFE_NOTE =
-    /<p class="note fixes-file" data-template="card\.fixes-file-unsafe">[\s\S]*?<\/p>/;
+  const UNSAFE_NOTE = /<span data-template="card\.fixes-file-unsafe">[\s\S]*?<\/span>/;
 
   it.each([
     ["lost-work", "Recover each one by its commit id"],
@@ -549,10 +551,11 @@ describe("a card whose every fix could not be made safe says nothing of a comman
     // The card has a fix step to say, and every one of its fixes could not be made safe.
     expect(card).toContain(step);
     expect(card).toContain("Could not make a safe command for");
-    expect(card).not.toContain('data-template="card.fixes-file"');
-    // Only the note says where those fixes are listed; nothing else on the card names the file.
-    expect(card).toMatch(UNSAFE_NOTE);
-    const rest = card.replace(UNSAFE_NOTE, "");
+    const note = whatHappenedNote(report);
+    expect(note).not.toContain('data-template="card.fixes-file"');
+    // Only the note under the cards says where those fixes are listed; no card names the file.
+    expect(note).toMatch(UNSAFE_NOTE);
+    const rest = card + note.replace(UNSAFE_NOTE, "");
     expect(rest).not.toMatch(/fixes file/i);
     expect(rest).not.toContain(FIXES_FILENAME);
   });

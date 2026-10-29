@@ -177,6 +177,21 @@ function utmFor(agent: string): Record<string, string> {
 
 const X_INTENT = "https://x.com/intent/post?text=";
 
+/** The site footer's links off the site: AgentTrail's own accounts, and its security address. */
+const FOOTER_ACCOUNTS: readonly string[] = [
+  "https://github.com/agenttrailhq",
+  "https://x.com/agenttrailhq",
+  "https://www.linkedin.com/company/agenttrail",
+  "https://www.npmjs.com/org/agenttrail",
+];
+const SECURITY_MAIL = "mailto:security@agenttrail.sh";
+
+/** The app a page was made from, as its hero names it. */
+function agentOf(html: string): string {
+  const name = html.match(/<span class="sr-only">, <\/span><span>([^<]+)<\/span>/)?.[1];
+  return name === "Cursor" ? "cursor" : name === "Codex CLI" ? "codex" : "claude";
+}
+
 /** The only links off the site: where OWASP publishes its two lists. They carry no tags. */
 const OWASP_LISTS: readonly string[] = [OWASP_SOURCES.agentic, OWASP_SOURCES.llm];
 
@@ -197,18 +212,20 @@ describe("the report is self-contained — nothing outside the file is loaded", 
     });
 
     it("links only within the page, to the site with tags, to an X post, or to an OWASP list", () => {
-      const agent = html.includes("Agent: Cursor")
-        ? "cursor"
-        : html.includes("Agent: Codex CLI")
-          ? "codex"
-          : "claude";
+      const agent = agentOf(html);
       const ids = new Set([...html.matchAll(/\sid="([^"]+)"/g)].map((m) => m[1]));
       for (const raw of hrefs(html)) {
         const href = raw.replace(/&amp;/g, "&");
         if (href.startsWith("#")) {
           expect(ids.has(href.slice(1)), `${href} has no target`).toBe(true);
-        } else if (OWASP_LISTS.includes(href)) {
+        } else if (
+          OWASP_LISTS.includes(href) ||
+          FOOTER_ACCOUNTS.includes(href) ||
+          href === REPOSITORY_URL
+        ) {
           expect(new URL(href).search).toBe("");
+        } else if (href === SECURITY_MAIL) {
+          expect(html).toContain(`>${SECURITY_MAIL.slice("mailto:".length)}</a>`);
         } else if (href.startsWith(X_INTENT)) {
           const url = new URL(href);
           expect(url.searchParams.get("hashtags")).toBe("agenttrail");
@@ -261,12 +278,20 @@ describe("the report is self-contained — nothing outside the file is loaded", 
         ),
       ].sort();
     const common = [
+      "/ footer-home",
+      "/about footer-about",
       "/agenttrail-guard footer-guard",
+      "/agenttrail-os footer-os",
+      "/blog footer-blog",
       "/get-started/guard next-agents",
       "/get-started/guard next-commands",
+      "/guard-vs-os footer-compare",
       "/guardrails footer-library",
       "/guardrails next-library",
+      "/pricing footer-pricing",
       "/security footer-security",
+      "/security/owasp footer-owasp",
+      "/subprocessors footer-subprocessors",
     ];
     expect(pages(CURSOR_HTML)).toEqual(common);
     expect(pages(CODEX_HTML)).toEqual(common);
@@ -277,6 +302,7 @@ describe("the report is self-contained — nothing outside the file is loaded", 
         ...common,
         "/agenttrail-os os-demo",
         "/guard-vs-os os-compare",
+        "/signup os-signup",
         "/security/owasp owasp",
         "/security/owasp owasp-risk",
       ].sort(),
@@ -297,6 +323,8 @@ describe("the report is self-contained — nothing outside the file is loaded", 
         url.startsWith(`${SITE_URL}/`) ||
         url.startsWith(X_INTENT) ||
         url === REPOSITORY_URL ||
+        url === SITE_URL ||
+        FOOTER_ACCOUNTS.includes(url) ||
         OWASP_LISTS.includes(url);
       expect(ok, url).toBe(true);
     }
@@ -330,23 +358,24 @@ describe("the artifact variant is page content, for a host that supplies the ske
     const body = (html: string): string =>
       html
         .slice(html.indexOf("<main"), html.indexOf("</main>"))
-        .replace(/<p class="provenance">[\s\S]*?<\/p>/, "")
-        .replace(/<p class="origin">[\s\S]*?<\/p>/, "")
+        .replace(/<span class="provenance">[\s\S]*?<\/span><\/span><\/li>/, "")
+        .replace(/<span class="hero-pill">[\s\S]*?<\/span>/, "")
+        .replace(
+          /<strong>(?:Made on this machine|Published by the person who ran it)\.<\/strong>/,
+          "",
+        )
         .replace(/<p class="warning">[\s\S]*?<\/p>/, "")
         // The post: editable here, read-only there, and the note says which.
-        .replace(/<p class="note share-note">[\s\S]*?<\/p>/, "")
-        .replace(
-          '<textarea id="share-text" rows="4" readonly>',
-          '<textarea id="share-text" rows="4">',
-        )
-        .replace(/\n<p class="note artifact-note">[\s\S]*?<\/p>/, "");
+        .replace(/<h2>Share your result<\/h2><p>[\s\S]*?<\/p>/, "")
+        .replace(/(<textarea class="post-text" id="share-text" rows="\d+") readonly>/, "$1>")
+        .replace(/ Search and export are in the report file itself[\s\S]*?<\/code>\.<\/p>/, "</p>");
     expect(body(ARTIFACT)).toBe(body(HTML));
     expect(body(ARTIFACT).length).toBeGreaterThan(2000);
   });
 
   it("says where it came from, instead of claiming nothing was uploaded", () => {
     const provenance = (html: string): string =>
-      html.match(/<p class="provenance">([\s\S]*?)<\/p>/)?.[1] ?? "";
+      html.match(/<span class="provenance">([\s\S]*?)<\/span><\/span><\/li>/)?.[1] ?? "";
     expect(provenance(ARTIFACT)).toContain("published to claude.ai by the person who ran it");
     expect(provenance(ARTIFACT)).toContain("crash reporting is the one exception");
     expect(provenance(ARTIFACT)).toContain("Claude Code transcripts");
@@ -460,8 +489,7 @@ describe("the logo is drawn inline and references nothing", () => {
     withoutScripts(html)
       .replace(/<style>[\s\S]*?<\/style>/, "")
       .replace(/<code[^>]*>[\s\S]*?<\/code>/g, "")
-      .replace('<span class="product-tag">Guard</span>', "")
-      .replace(`>${PRODUCT_NOTE.secondary.label}<`, "><")
+      .replaceAll(`>${PRODUCT_NOTE.secondary.label}<`, "><")
       .replace(/<[^>]+>/g, " ");
   const BARE = /(?<!AgentTrail )\b(Guard|OS)\b/;
 
@@ -476,9 +504,15 @@ describe("the logo is drawn inline and references nothing", () => {
     expect(prose("<p>AgentTrail OS remembers it</p>")).not.toMatch(BARE);
   });
 
-  it.each(RENDERINGS)("%s shows the lockup once, named for assistive technology", (_n, html) => {
-    expect(html.split('class="lockup"').length - 1).toBe(1);
-    expect(html).toContain('<div class="brand" role="img" aria-label="AgentTrail">');
+  it.each(RENDERINGS)("%s names each lockup for assistive technology", (_n, html) => {
+    // The top bar, the print header and the site footer.
+    expect(html.split('class="lockup"').length - 1).toBe(3);
+    expect(html).toContain(
+      `<a class="home-link" href="#main" aria-label="AgentTrail: back to the top of the report">${LOGO_LOCKUP_SVG}</a>`,
+    );
+    expect(
+      html.split(`<span role="img" aria-label="AgentTrail">${LOGO_LOCKUP_SVG}</span>`).length - 1,
+    ).toBe(2);
   });
 });
 
@@ -585,9 +619,9 @@ describe("no currency, in any spelling", () => {
 
 describe("what the report says", () => {
   it("leads with the counts, and they are the aggregator's", () => {
-    expect(HTML).toContain(">5<"); // tool calls
-    expect(HTML).toContain("risky actions");
-    expect(HTML).toContain("repeated command shape<");
+    expect(HTML).toContain(" of 5</b> tool calls matched no guardrail");
+    expect(HTML).toContain(">Risky actions<");
+    expect(HTML).toContain(">Repeated command shape<");
   });
 
   it("names each matched guardrail, its severity and what it would have done", () => {
@@ -600,7 +634,7 @@ describe("what the report says", () => {
 
   it("shows a repeat as one shape with its count, not as two rows", () => {
     // The two `rm -rf` calls differ only by path, so redaction makes them one shape.
-    expect(HTML).toContain("rm -rf &lt;path&gt;");
+    expect(HTML.replace(/<span[^>]*>|<\/span>/g, "")).toContain("rm -rf &lt;path&gt;");
     expect(HTML).toContain("Repeat offenders");
   });
 
@@ -688,7 +722,9 @@ describe("what the report says", () => {
     // The row stays. Its severity is shown as `unknown`: a severity is free text on a rule a
     // user wrote, so the file never shows it.
     expect(html).toContain("A severity the renderer has never seen");
-    expect(html).toContain('<span class="badge sev-unknown">unknown</span>');
+    expect(html).toContain(
+      '<span class="badge sev-unknown"><span class="sr-only">Severity: </span>Unknown</span>',
+    );
     expect(html).not.toContain("informational");
     expect(html).toContain("would warn");
   });
@@ -740,7 +776,9 @@ describe("what the report says", () => {
       ],
     };
     const html = renderReport(info, META);
-    expect(html).toContain('<span class="badge sev-info">info</span>');
+    expect(html).toContain(
+      '<span class="badge sev-info"><span class="sr-only">Severity: </span>Info</span>',
+    );
     expect(html).not.toContain('class="badge sev-unknown"');
   });
 
@@ -750,13 +788,13 @@ describe("what the report says", () => {
 });
 
 describe("the AgentTrail OS block", () => {
-  const notes = (html: string): number => html.split('class="product-note"').length - 1;
+  const notes = (html: string): number => html.split('class="card product"').length - 1;
 
   it("appears exactly once in a Claude Code report, before the footer, in both variants", () => {
     for (const html of [HTML, ARTIFACT]) {
       expect(notes(html)).toBe(1);
-      expect(html.indexOf('class="product-note"')).toBeLessThan(html.indexOf("<footer"));
-      expect(html).toContain(escapeHtml(PRODUCT_NOTE.heading));
+      expect(html.indexOf('class="card product"')).toBeLessThan(html.indexOf("<footer"));
+      expect(html.replace('<br class="br-md"> ', " ")).toContain(escapeHtml(PRODUCT_NOTE.heading));
       expect(html).toContain(PRODUCT_NOTE.primary.label);
       expect(html).toContain(PRODUCT_NOTE.secondary.label);
     }
@@ -771,7 +809,7 @@ describe("the AgentTrail OS block", () => {
   });
 
   it("negative control — the counter does count a note", () => {
-    expect(notes('<aside class="product-note">x</aside>')).toBe(1);
+    expect(notes('<aside class="card product">x</aside>')).toBe(1);
   });
 
   it.each(RENDERINGS)("%s has no sign-up, trial, upgrade or prize wording", (_n, html) => {
@@ -812,8 +850,8 @@ describe("a backticked span in a guardrail title renders as code", () => {
   it("wraps the span in code, in the findings and in the repeats", () => {
     const html = renderReport(titled("Hold `rm -rf` for approval"), META);
     const row = html.slice(
-      html.indexOf('id="finding-0"'),
-      html.indexOf("</li>", html.indexOf('id="finding-0"')),
+      html.indexOf('id="finding-t-titled"'),
+      html.indexOf("</details>", html.indexOf('id="finding-t-titled"')),
     );
     const repeats = html.slice(
       html.indexOf('id="repeats"'),
@@ -893,9 +931,9 @@ describe("the match tally", () => {
   });
 
   it("renders above the findings, and not at all when nothing matched", () => {
-    expect(HTML.indexOf('class="tally"')).toBeGreaterThan(0);
-    expect(HTML.indexOf('class="tally"')).toBeLessThan(HTML.indexOf("<h2>All findings</h2>"));
-    expect(renderReport(resultOf(), META)).not.toContain('class="tally"');
+    expect(HTML.indexOf('class="sevbar"')).toBeGreaterThan(0);
+    expect(HTML.indexOf('class="sevbar"')).toBeLessThan(HTML.indexOf("<h2>All findings</h2>"));
+    expect(renderReport(resultOf(), META)).not.toContain('class="sevbar"');
   });
 });
 
@@ -935,13 +973,13 @@ describe("the empty state is a report, not an error", () => {
 
   it("renders a whole document that says nothing was scanned", () => {
     expect(html.startsWith("<!doctype html>")).toBe(true);
-    expect(html).toContain("<h1>No sessions found to scan</h1>");
+    expect(html).toContain('<h1 id="headline">No sessions found to scan</h1>');
     expect(html).toContain("This is not a clean result");
   });
 
   it("says nothing matched when calls were scanned and none matched", () => {
     const clean = renderReport(resultOf(ONE_CALL), META);
-    expect(clean).toContain("<h1>Nothing in these sessions matched a guardrail</h1>");
+    expect(clean).toContain('<h1 id="headline">Nothing in these sessions matched a guardrail</h1>');
     expect(clean).toContain("No guardrail matched anything in these sessions.");
     expect(clean).toContain("Nothing matched more than once.");
   });
@@ -1004,25 +1042,28 @@ describe("the JSON payload", () => {
 describe("the report names the app whose sessions it read", () => {
   it("a Claude Code report says so, and its review hint names --agent claude", () => {
     expect(POPULATED.agent).toBe("claude");
-    expect(HTML).toContain('<p class="agent">Agent: Claude Code</p>');
+    expect(agentOf(HTML)).toBe("claude");
+    expect(HTML).toContain('<span class="sr-only">, </span><span>Claude Code</span>');
     expect(HTML).toContain("<code>agenttrail-guard scan --agent claude --review</code>");
   });
 
   it("a Claude Code report keeps its token section and lists nothing as unevaluated", () => {
-    expect(HTML).toContain("<h2>Tokens</h2>");
+    expect(HTML).toContain("<summary>Token usage for these sessions</summary>");
     expect(HTML).not.toContain("What was not evaluated");
     expect(POPULATED).not.toHaveProperty("skipped");
   });
 
   it("a Cursor report says so, and its review hint names --agent cursor", () => {
     expect(CURSOR.agent).toBe("cursor");
-    expect(CURSOR_HTML).toContain('<p class="agent">Agent: Cursor</p>');
+    expect(agentOf(CURSOR_HTML)).toBe("cursor");
+    expect(CURSOR_HTML).toContain('<span class="sr-only">, </span><span>Cursor</span>');
     expect(CURSOR_HTML).toContain("<code>agenttrail-guard scan --agent cursor --review</code>");
   });
 
   it("a Codex report says so, and its review hint names --agent codex", () => {
     expect(CODEX.agent).toBe("codex");
-    expect(CODEX_HTML).toContain('<p class="agent">Agent: Codex CLI</p>');
+    expect(agentOf(CODEX_HTML)).toBe("codex");
+    expect(CODEX_HTML).toContain('<span class="sr-only">, </span><span>Codex CLI</span>');
     expect(CODEX_HTML).toContain("<code>agenttrail-guard scan --agent codex --review</code>");
   });
 
@@ -1030,13 +1071,13 @@ describe("the report names the app whose sessions it read", () => {
     // Both readers count what they could not use, so both list it; only Cursor's records
     // lack token counts, so only Cursor's report withholds the token section.
     for (const html of [CURSOR_HTML, CODEX_HTML]) {
-      expect(html).toContain("<h2>What was not evaluated</h2>");
+      expect(html).toContain("<summary>What was not evaluated</summary>");
     }
     expect(CURSOR.tokens).toBeNull();
-    expect(CURSOR_HTML).not.toContain("<h2>Tokens</h2>");
+    expect(CURSOR_HTML).not.toContain("<summary>Token usage for these sessions</summary>");
     expect(CURSOR_HTML).toContain("Cursor&#39;s session files record no token counts");
     expect(CODEX.tokens).not.toBeNull();
-    expect(CODEX_HTML).toContain("<h2>Tokens</h2>");
+    expect(CODEX_HTML).toContain("<summary>Token usage for these sessions</summary>");
     expect(CODEX_HTML).not.toContain("record no token counts");
   });
 
@@ -1097,7 +1138,8 @@ describe("the pre-flight review lists exactly what the file carries", () => {
     reviewStrings(result).flatMap((g) => g.lines.flatMap((l) => l.split("  ").filter(Boolean)));
 
   it("every string it shows really is in the file", () => {
-    const html = renderReport(OVERSIZED, META);
+    // A command's words are each in a span, so the file is read without span tags.
+    const html = renderReport(OVERSIZED, META).replace(/<\/?span[^>]*>/g, "");
     for (const value of flat(OVERSIZED)) {
       expect(html, `"${value}" was reviewed but is not in the file`).toContain(escapeHtml(value));
     }
@@ -1107,7 +1149,7 @@ describe("the pre-flight review lists exactly what the file carries", () => {
     // Under-reporting is the dangerous half: a review that quietly omitted one shape
     // would let exactly the string nobody looked at ship. Checked over the FIXTURE's
     // own strings, each looked for in the HTML and then in the review.
-    const html = renderReport(OVERSIZED, META);
+    const html = renderReport(OVERSIZED, META).replace(/<\/?span[^>]*>/g, "");
     const reviewed = new Set(flat(OVERSIZED));
     const candidates = [
       ...OVERSIZED.findings.flatMap((f) => [f.ruleId, f.title, ...f.examples.map((e) => e.text)]),

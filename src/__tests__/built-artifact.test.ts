@@ -46,8 +46,8 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { NOT_CHECKED_MESSAGE } from "../commands/hook.js";
 import { silenceCommand } from "../commands/status.js";
 import { RELAY_INSTRUCTION } from "../core/cursor-emit.js";
-import { PRODUCT_NOTE } from "../core/report.js";
-import { decodedSurfaces } from "./html-text.js";
+import { PRODUCT_NOTE, REPOSITORY_URL, SECURITY_EMAIL, SOCIAL_LINKS } from "../core/report.js";
+import { decodedSurfaces, joinCommandWords } from "./html-text.js";
 import { writeCorpus } from "./verify-fixtures.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -1048,6 +1048,9 @@ describe("scan, against the built binary", () => {
         link.startsWith("#") ||
           link.startsWith("https://www.agenttrail.sh/") ||
           link.startsWith("https://x.com/intent/post?text=") ||
+          link === REPOSITORY_URL ||
+          link === `mailto:${SECURITY_EMAIL}` ||
+          (Object.values(SOCIAL_LINKS) as string[]).includes(link) ||
           link === OWASP_SOURCES.agentic ||
           link === OWASP_SOURCES.llm,
         link,
@@ -1488,7 +1491,7 @@ describe("scan, against the built binary", () => {
           // The exact review command, quoted part by part with the real user name, is for the
           // local fixes file only. The page shows its redacted shape, with <user> in its place.
           expect(report).not.toContain("'list-access-keys'");
-          expect(report).toContain("list-access-keys --user-name &lt;user&gt;");
+          expect(joinCommandWords(report)).toContain("list-access-keys --user-name &lt;user&gt;");
         }
       }
     }

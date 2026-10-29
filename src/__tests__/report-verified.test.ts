@@ -9,6 +9,7 @@
 
 import { describe, expect, it } from "vitest";
 import {
+  EVIDENCE_ROWS,
   escapeHtml,
   FIXES_FILENAME,
   MAX_ROWS,
@@ -75,9 +76,15 @@ function section(html: string, id: string): string {
   return html.slice(start, html.indexOf("</section>", at) + "</section>".length);
 }
 
+/** The note under the cards of What actually happened. */
+function sectionNote(html: string): string {
+  const body = section(html, "what-happened");
+  return body.match(/<p class="vnote">[\s\S]*?<\/p>/)?.[0] ?? "";
+}
+
 /** The cards of a page, in page order: category and tone. */
 function cardsOf(html: string): { category: string; tone: string }[] {
-  return [...html.matchAll(/<article class="card verified v-([a-z-]+)" id="check-([a-z-]+)"/g)].map(
+  return [...html.matchAll(/<article class="card vrow v-([a-z-]+)" id="check-([a-z-]+)"/g)].map(
     (m) => ({ tone: m[1] ?? "", category: m[2] ?? "" }),
   );
 }
@@ -88,14 +95,24 @@ function card(html: string, category: VerifyCategory): string {
   return html.slice(html.lastIndexOf("<article", at), html.indexOf("</article>", at));
 }
 
-/** The chips of a page: target, title and text. */
+/** The chips of a page: target, its card's title, and its count and label as one text. */
 function chipsOf(html: string): { href: string; title: string; text: string }[] {
   return [
     ...section(html, "also-checked").matchAll(
-      /<a class="check-chip v-[a-z-]+" href="([^"]+)"><span class="chip-title">([^<]*)<\/span><span class="chip-text"[^>]*>([^<]*)<\/span><\/a>/g,
+      /<li><a class="lx-link" href="#check-([^"]+)"[^>]*>([^<]*)<\/a>(?:<b>([^<]*)<\/b>)?<\/li>/g,
     ),
-  ].map((m) => ({ href: m[1] ?? "", title: m[2] ?? "", text: m[3] ?? "" }));
+  ].map((m) => ({
+    href: `#check-${m[1] ?? ""}`,
+    title: CATEGORY_TITLES[(m[1] ?? "") as VerifyCategory] ?? "",
+    text: m[3] === undefined ? (m[2] ?? "") : `${m[3]} ${m[2] ?? ""}`,
+  }));
 }
+
+/** A page without the headline's emphasis, so its claim reads as one run of text. */
+const unemphasised = (html: string): string => html.replace(/<\/?em>/g, "");
+
+/** A page's text with every span tag taken out, so a command's words read as one string. */
+const unspanned = (html: string): string => unemphasised(html).replace(/<\/?span[^>]*>/g, "");
 
 /** Every id in a page. */
 const idsOf = (html: string): Set<string> =>
@@ -104,36 +121,37 @@ const idsOf = (html: string): Set<string> =>
 describe("the verified sections sit where the lead belongs", () => {
   it("hero, never-the-values, chips, numbers, cards, then what the guardrails would have done", () => {
     const order = [
-      'id="overview"',
+      '<section class="hero"',
       'id="found"',
       'id="also-checked"',
       'class="stats"',
       'id="what-happened"',
-      'id="would-do"',
-      'id="fix-first"',
+      'id="outcomes"',
+      'id="findings"',
     ].map((part) => HTML.indexOf(part));
     expect(order.every((at) => at > 0)).toBe(true);
     expect([...order].sort((a, b) => a - b)).toEqual(order);
   });
 
   it("the top bar links to the cards", () => {
-    expect(HTML).toContain('<li><a href="#what-happened">What happened</a></li>');
+    expect(HTML).toContain('<a href="#what-happened">What happened</a>');
   });
 });
 
 describe("What it found, never the values", () => {
   const found = section(HTML, "found");
 
-  it("lists each likely-real credential by kind, how it got there and in how many files", () => {
+  it("lists each likely-real credential by kind, the strongest way it got there, and in how many files", () => {
     const rows = [
       ...found.matchAll(
-        /<li><span class="evidence-kind">([^<]*)<\/span><span class="evidence-how">([^<]*)<\/span><span class="times">([^<]*)<\/span><\/li>/g,
+        /<li><b>([^<]*)<\/b><span>([^<]*)<\/span><span class="lx-times">([^<]*)<\/span><\/li>/g,
       ),
     ].map((m) => [m[1], m[2], m[3]]);
     expect(rows).toEqual([
-      ["GitHub token", "you pasted it into a prompt", "in 4 transcript files"],
-      ["AWS access key ID", "printed by a command", "in 2 transcript files"],
-      ["A named secret", "typed into a command, in an agent reply", "in 1 transcript file"],
+      ["GitHub token", "you pasted it into a prompt", "4 files"],
+      ["AWS access key ID", "printed by a command", "2 files"],
+      // Typed into a command and in an agent reply: the row shows the first of the two.
+      ["A named secret", "typed into a command", "1 file"],
     ]);
   });
 
@@ -161,9 +179,11 @@ describe("What it found, never the values", () => {
       secrets: { status: "act", matches: 60, facts: many },
     });
     const html = renderReport(baseResult(v), VERIFIED_META, OPTIONS);
-    const rows = section(html, "found").split('<span class="evidence-kind">').length - 1;
-    expect(rows).toBe(MAX_ROWS);
-    expect(section(html, "found")).toContain("And 6 more likely-real credentials.");
+    const rows = section(html, "found").split("<li><b>").length - 1;
+    expect(rows).toBe(EVIDENCE_ROWS);
+    // The payload carries MAX_ROWS; the page lists EVIDENCE_ROWS of them and counts the rest.
+    const more = MAX_ROWS - EVIDENCE_ROWS + 4 + 2;
+    expect(section(html, "found")).toContain(`And ${more} more likely-real credentials.`);
   });
 
   it("is left out when nothing is likely real", () => {
@@ -184,7 +204,16 @@ describe("What it found, never the values", () => {
   });
 
   it("links to the secrets card", () => {
-    expect(found).toContain('<a href="#check-secrets">');
+    const many = {
+      ...SECRETS_ACT,
+      items: Array.from({ length: EVIDENCE_ROWS + 1 }, () => SECRETS_ACT.items[0]!),
+    };
+    const v = verification({
+      ...verifiedCategories(),
+      secrets: { status: "act", matches: 12, facts: many },
+    });
+    const html = renderReport(baseResult(v), VERIFIED_META, OPTIONS);
+    expect(section(html, "found")).toContain('<a href="#check-secrets">');
   });
 });
 
@@ -229,7 +258,7 @@ describe("Also checked on this machine", () => {
   });
 
   it("says what a count counts: commands that ran, with mentions and unconfirmed calls left out", () => {
-    const notes = section(HTML, "also-checked");
+    const notes = sectionNote(HTML);
     expect(notes).toContain("Checked against command output");
     expect(notes).toContain("4 matches only mentioned a command");
     expect(notes).toContain("1 matched call had no recorded output");
@@ -243,7 +272,7 @@ describe("Also checked on this machine", () => {
       ),
       agent: "cursor" as const,
     };
-    const notes = section(renderReport(cursor, VERIFIED_META, OPTIONS), "also-checked");
+    const notes = sectionNote(renderReport(cursor, VERIFIED_META, OPTIONS));
     expect(notes).toContain("These sessions record no command output");
     expect(notes).toContain("not because nothing ran");
     expect(notes).not.toContain("Checked against command output");
@@ -254,10 +283,10 @@ describe("Also checked on this machine", () => {
       ...baseResult(verification(verifiedCategories(), { ranEvidence: "output-record" })),
       agent: "codex" as const,
     };
-    expect(section(renderReport(codex, VERIFIED_META, OPTIONS), "also-checked")).toContain(
+    expect(sectionNote(renderReport(codex, VERIFIED_META, OPTIONS))).toContain(
       "A Codex call counted as ran may be one a hook blocked",
     );
-    expect(section(HTML, "also-checked")).not.toContain("hook blocked");
+    expect(sectionNote(HTML)).not.toContain("hook blocked");
   });
 });
 
@@ -282,30 +311,32 @@ describe("What actually happened", () => {
 
   it("each card has its tone, title and the three fields, named for assistive technology", () => {
     const secrets = card(HTML, "secrets");
-    expect(secrets).toContain(
-      `<span class="tone tone-act" id="check-secrets-tone">${TONE_LABELS.act}</span>`,
-    );
+    expect(secrets).toContain('<span class="vtone" id="check-secrets-tone">Fix now</span>');
     // Secrets counts distinct credential-shaped values, not guardrail matches.
     expect(secrets).toContain(
-      '<span class="times" data-template="secrets.count">11 credential-shaped values</span>',
+      '<span class="vmatched" data-template="secrets.count">11 credential-shaped values</span>',
     );
     expect(card(HTML, "lost-work")).toContain(
-      '<span class="times" data-template="card.count">3 matches</span>',
+      '<span class="vmatched" data-template="card.count">3 matches</span>',
     );
     expect(secrets).toContain('aria-labelledby="check-secrets-title"');
+    expect(secrets).toContain('aria-describedby="check-secrets-tone"');
     expect(secrets).toContain('<h3 id="check-secrets-title">Secrets in transcripts</h3>');
-    for (const field of ["What checking found", "Now", "Fix"]) {
+    for (const field of ["What happened", "Now", "Fix"]) {
       expect(secrets).toContain(`<dt>${field}</dt>`);
     }
+    // The full check is behind the card's expander.
+    expect(secrets).toContain("<summary>How this was checked</summary>");
+    expect(secrets).toContain("<h4>What checking found</h4>");
   });
 
   it("a category with no check says Not checked, with no count and no claim", () => {
     const unreviewed = card(HTML, "unreviewed");
     expect(unreviewed).toContain(
-      `<span class="tone tone-not-checked" id="check-unreviewed-tone">Not checked</span>`,
+      `<span class="vtone" id="check-unreviewed-tone">${TONE_LABELS["not-checked"]}</span>`,
     );
     expect(unreviewed).toContain("Not checked.");
-    expect(unreviewed).not.toContain('class="times"');
+    expect(unreviewed).not.toContain('class="vmatched"');
     expect(unreviewed).not.toContain("<dt>Now</dt>");
     expect(unreviewed).not.toContain("<dt>Fix</dt>");
   });
@@ -314,7 +345,7 @@ describe("What actually happened", () => {
     const tests = card(HTML, "tests");
     expect(tests).toContain("Could not check</span>");
     expect(tests).toContain("not a clean result");
-    expect(tests).not.toContain("tone-clean");
+    expect(tests).not.toContain("v-clean");
   });
 
   it("in this build only the secrets card has a check; every other category reads Not checked", () => {
@@ -332,13 +363,13 @@ describe("What actually happened", () => {
     expect(section(html, "what-happened").split("Not checked.").length - 1).toBe(8);
   });
 
-  it("fix commands are redacted shapes with copy buttons that name their card", () => {
+  it("fix commands are redacted shapes in one panel, with no copy buttons", () => {
     const lost = card(HTML, "lost-work");
-    expect(lost).toContain(
-      '<code id="fix-lost-work-1">git branch recovered/&lt;name&gt; &lt;sha&gt;</code>',
+    const panel = lost.slice(lost.indexOf('<div class="vcmds">'), lost.indexOf("</div>\n</div>"));
+    expect(decodeEntities(panel.replace(/<[^>]+>/g, ""))).toContain(
+      "git branch recovered/<name> <sha>",
     );
-    expect(lost).toContain('aria-label="Copy fix command 1 for lost work"');
-    expect(lost).toContain('aria-label="Copy fix command 2 for lost work"');
+    expect(lost).not.toContain("data-copy");
     const ids = idsOf(HTML);
     for (const m of HTML.matchAll(/\sdata-copy="([^"]+)"/g)) expect(ids.has(m[1] ?? "")).toBe(true);
     // Accessible names are distinct across the page.
@@ -346,25 +377,28 @@ describe("What actually happened", () => {
     expect(new Set(names).size).toBe(names.length);
   });
 
-  it("names the local fixes file only on cards whose exact commands are in it", () => {
+  it("names the local fixes file once, under the cards, and on no card", () => {
     for (const category of VERIFY_CATEGORIES) {
-      const named = card(HTML, category).includes(FIXES_FILENAME);
-      expect(named, category).toBe(LOCAL_FIX_CATEGORIES.includes(category));
+      expect(card(HTML, category), category).not.toContain(FIXES_FILENAME);
     }
-    expect(card(HTML, "lost-work")).toContain("next to this report");
-    expect(card(ARTIFACT, "lost-work")).toContain("was not published with this page");
+    expect(sectionNote(HTML).split(FIXES_FILENAME).length - 1).toBeGreaterThan(0);
+    expect(sectionNote(HTML)).toContain("next to this report");
+    expect(sectionNote(ARTIFACT)).toContain("was not published with this page");
     const none = renderReport(VERIFIED_RESULT, VERIFIED_META, { cardBuilders: TEST_ONLY_BUILDERS });
     expect(none).not.toContain(FIXES_FILENAME);
   });
 
   it("a category with no check never names the fixes file, whatever the file holds", () => {
-    const html = renderReport(VERIFIED_RESULT, VERIFIED_META, {
-      cardBuilders: TEST_ONLY_BUILDERS,
-      localFixCategories: ["unreviewed", "tests"],
-    });
-    expect(card(html, "unreviewed")).not.toContain(FIXES_FILENAME);
+    const named = (categories: VerifyCategory[]): boolean =>
+      sectionNote(
+        renderReport(VERIFIED_RESULT, VERIFIED_META, {
+          cardBuilders: TEST_ONLY_BUILDERS,
+          localFixCategories: categories,
+        }),
+      ).includes(FIXES_FILENAME);
+    expect(named(["unreviewed"])).toBe(false);
     // A check that could not finish may still have made some commands.
-    expect(card(html, "tests")).toContain(FIXES_FILENAME);
+    expect(named(["unreviewed", "tests"])).toBe(true);
   });
 
   it("a card whose counts rest on Codex output records says they may include blocked calls", () => {
@@ -378,18 +412,18 @@ describe("What actually happened", () => {
     } as unknown as Verification["categories"]);
     const html = renderReport(baseResult(v), VERIFIED_META, OPTIONS);
     expect(card(html, "skipped-checks")).toContain('class="note codex-caveat"');
+    expect(card(html, "skipped-checks")).toContain("<summary>How this was checked</summary>");
     expect(card(html, "lost-work")).not.toContain("codex-caveat");
   });
 
-  it("states the tones in the section's heading line", () => {
-    expect(section(HTML, "what-happened")).toContain(
-      "3 to act on · 1 to review · 3 clean · 1 could not check · 1 not checked",
-    );
+  it("carries no tone tally: each card's pill says its tone", () => {
+    expect(section(HTML, "what-happened")).not.toContain("to act on");
+    expect(HTML).not.toContain('data-template="cards.tally"');
   });
 
   it("says what each check read, from that check's own counts", () => {
-    expect(section(HTML, "what-happened")).toContain(
-      '<li><span class="read-title">Secrets in transcripts:</span> <span data-template="secrets.read">Read 18 transcript files again and searched the git-tracked files of 2 repos the sessions ran in, with read-only git.</span></li>',
+    expect(card(HTML, "secrets")).toContain(
+      '<h4>What it read</h4><p><span data-template="secrets.read">Read 18 transcript files again and searched the git-tracked files of 2 repos the sessions ran in, with read-only git.</span></p>',
     );
   });
 
@@ -415,7 +449,10 @@ describe("the two variants carry the same verified body", () => {
     const body = (html: string): string =>
       section(html, "found") +
       section(html, "also-checked") +
-      section(html, "what-happened").replace(/<p class="note fixes-file"[^>]*>[\s\S]*?<\/p>/g, "");
+      section(html, "what-happened").replace(
+        /<span data-template="card\.fixes-file[^"]*">[\s\S]*?<\/span>/g,
+        "",
+      );
     expect(body(ARTIFACT)).toBe(body(HTML));
     expect(body(HTML).length).toBeGreaterThan(4000);
   });
@@ -470,35 +507,39 @@ describe("scan --review lists every line the verified sections write", () => {
   it("every piece it shows is in the file", () => {
     expect(pieces.length).toBeGreaterThan(40);
     for (const piece of pieces) {
-      expect(HTML, `"${piece}" was reviewed but is not in the file`).toContain(escapeHtml(piece));
+      expect(unspanned(HTML), `"${piece}" was reviewed but is not in the file`).toContain(
+        escapeHtml(piece),
+      );
     }
   });
 
   it("every templated line in the file is in it: the direction that matters", () => {
+    const page = unemphasised(HTML);
     const verified = [
-      HTML.match(/<h1[^>]*>[^<]*<\/h1>/)?.[0] ?? "",
-      section(HTML, "found"),
-      section(HTML, "also-checked"),
-      section(HTML, "what-happened"),
+      page.match(/<h1[^>]*>[^<]*<\/h1>/)?.[0] ?? "",
+      page.match(/<p class="lead" id="lead">[\s\S]*?<\/p>/)?.[0] ?? "",
+      section(page, "found"),
+      section(page, "also-checked"),
+      section(page, "what-happened"),
     ].join("\n");
-    // Every line made from a template, bar the fixes-file note, which names a fixed file.
+    // Every line made from a template, bar the fixes-file notes, which name a fixed file.
     const lines = [...verified.matchAll(/data-template="([^"]+)"[^>]*>([^<]*)</g)]
-      .filter((m) => m[1] !== "card.fixes-file")
+      .filter((m) => m[1] !== "card.fixes-file" && m[1] !== "card.unsafe-fixes-file")
       .map((m) => decodeEntities(m[2] ?? ""));
     expect(lines.length).toBeGreaterThan(30);
     const reviewed = new Set(pieces);
     expect(lines.filter((line) => !reviewed.has(line))).toEqual([]);
     // And the fix shapes, which are code rather than sentences.
-    for (const m of section(HTML, "what-happened").matchAll(/<code id="fix-[^"]+">([^<]*)</g)) {
-      expect(reviewed.has(decodeEntities(m[1] ?? ""))).toBe(true);
+    for (const m of section(HTML, "what-happened").matchAll(
+      /<div class="vcmd">[\s\S]*?<code>([\s\S]*?)<\/code>/g,
+    )) {
+      expect(reviewed.has(decodeEntities((m[1] ?? "").replace(/<[^>]+>/g, "")))).toBe(true);
     }
   });
 
   it("lists the evidence rows and the chips", () => {
-    expect(group?.lines).toContain(
-      "GitHub token  you pasted it into a prompt  in 4 transcript files",
-    );
-    expect(group?.lines).toContain("Production infrastructure  0 production databases touched");
+    expect(group?.lines).toContain("GitHub token  you pasted it into a prompt  4 files");
+    expect(group?.lines).toContain("production databases touched");
   });
 
   it("is absent without verification, and with no tool calls read", () => {
@@ -521,47 +562,36 @@ describe("the verified sections print", () => {
   const where = (pattern: RegExp): string[] =>
     rules.filter((r) => pattern.test(r.body)).flatMap((r) => r.selectors);
 
-  it("a long card breaks between its fields, never inside one, and keeps its head with its title", () => {
+  it("keeps a card whole, and lets the list of cards break between them", () => {
     expect(where(/break-inside: auto/)).toContain(".verified");
-    expect(where(/break-inside: avoid/)).toEqual(
-      expect.arrayContaining([".verified-facts > div", ".check-chip", ".evidence-list li"]),
-    );
-    expect(where(/break-after: avoid/)).toEqual(
-      expect.arrayContaining([".verified .card-head", ".verified-facts dt"]),
-    );
+    expect(where(/break-inside: avoid/)).toEqual(expect.arrayContaining([".vrow", ".card"]));
+    expect(where(/break-after: avoid/)).toEqual(expect.arrayContaining(["h3", "summary"]));
   });
 
-  it("keeps the tones' colors on paper", () => {
-    expect(where(/print-color-adjust: exact/)).toEqual(
-      expect.arrayContaining([".tone", ".verified", ".check-chip"]),
-    );
+  it("keeps every colour on paper", () => {
+    expect(where(/print-color-adjust: exact/)).toEqual(expect.arrayContaining(["html"]));
   });
 
-  it("defines every tone for both themes", () => {
-    for (const tone of ["act", "review", "clean", "none"]) {
-      for (const part of ["fg", "bg", "bd"]) {
-        expect(REPORT_STYLES).toContain(`--tone-${tone}-${part}:`);
-      }
+  it("gives every tone its own pill colour", () => {
+    for (const tone of ["act", "review", "clean"]) {
+      expect(REPORT_STYLES).toContain(`.v-${tone} .vtone {`);
     }
-    for (const tone of TONE_ORDER) {
-      expect(REPORT_STYLES).toContain(`.tone-${tone} {`);
-      expect(REPORT_STYLES).toContain(`.v-${tone} {`);
-    }
+    expect(REPORT_STYLES).toContain(".v-not-checked .vtone {");
+    for (const tone of TONE_ORDER)
+      expect(["act", "review", "clean", "could-not-check", "not-checked"]).toContain(tone);
   });
 });
 
 describe("the verified sections' styles are on a page only when it shows them", () => {
   /** What only the verified sections' styles hold. */
   const VERIFIED_ONLY = [
-    "--tone-",
-    ".evidence-list",
-    ".check-chip",
-    ".verified-cards",
-    ".verified-facts",
-    ".verified-note",
-    ".lead.totals",
-    ".codex-caveat",
-    ".read-list",
+    ".lead-extra",
+    ".lx-creds",
+    ".lx-grid",
+    ".vrow",
+    ".vfacts",
+    ".vcmds",
+    "details.vmore",
   ];
   const styleOf = (html: string): string =>
     html.slice(html.indexOf("<style>"), html.indexOf("</style>"));
@@ -569,7 +599,7 @@ describe("the verified sections' styles are on a page only when it shows them", 
   it("a verified page carries them, in both variants", () => {
     for (const page of [HTML, ARTIFACT]) {
       for (const text of VERIFIED_ONLY) expect(styleOf(page), text).toContain(text);
-      expect(styleOf(page)).toBe(`<style>${reportStyles(true)}`);
+      expect(styleOf(page).startsWith(`<style>${reportStyles(true)}`)).toBe(true);
     }
   });
 
@@ -580,21 +610,16 @@ describe("the verified sections' styles are on a page only when it shows them", 
     for (const variant of ["document", "artifact"] as const) {
       const page = renderReport(result, VERIFIED_META, { ...OPTIONS, variant });
       for (const text of VERIFIED_ONLY) expect(styleOf(page), text).not.toContain(text);
-      expect(styleOf(page)).toBe(`<style>${reportStyles(false)}`);
+      expect(styleOf(page).startsWith(`<style>${reportStyles(false)}`)).toBe(true);
     }
   });
 
   it("the stylesheet without them is the one with them, less only their rules", () => {
     const without = reportStyles(false);
     const lines = new Set(reportStyles(true).split("\n"));
-    // Every line of the plain stylesheet is in the verified one, but the one print line the
-    // verified one extends with its own selector.
-    const extended =
-      "  h1, h2, h3, .section-head, summary, h2 + .note, h2 + .lead { break-after: avoid; }";
-    for (const line of without.split("\n")) {
-      if (line !== extended) expect(lines.has(line), line).toBe(true);
-    }
-    expect(without).toContain(extended);
+    // Every line of the plain stylesheet is in the verified one.
+    for (const line of without.split("\n")) expect(lines.has(line), line).toBe(true);
+    expect(reportStyles(true).length).toBeGreaterThan(without.length);
   });
 });
 
@@ -619,16 +644,16 @@ describe("every Codex page whose checks ran says their reading is limited and un
     expect(CODEX_UNVERIFIED_TEXT).toBe(NOTE);
   });
 
-  it("a verified Codex scan where no matched call ran still says so, once, above the chips", () => {
+  it("a verified Codex scan where no matched call ran still says so, once, under the cards", () => {
     const html = codexPage(0);
-    expect(notesIn(html, "also-checked")).toBe(1);
+    expect(notesIn(html, "what-happened")).toBe(1);
     expect(notesIn(html, "scanned")).toBe(1);
   });
 
   it("and with calls that ran, says the same once, with no second wording", () => {
     const html = codexPage(5);
-    expect(notesIn(html, "also-checked")).toBe(1);
-    expect(section(html, "also-checked")).not.toContain("recorded an output for it");
+    expect(notesIn(html, "what-happened")).toBe(1);
+    expect(section(html, "what-happened")).not.toContain("recorded an output for it");
   });
 
   it("a Codex scan without the checks makes no claim about them, as a scan before the checks", () => {
@@ -655,11 +680,11 @@ describe("a card never reads clean, or shows a zero, where nothing could be conf
     const html = renderReport(HIDING_RESULT, VERIFIED_META, OPTIONS);
     const destructive = card(html, "destructive");
     expect(destructive).toContain(
-      '<span class="tone tone-could-not-check" id="check-destructive-tone">Could not confirm</span>',
+      '<span class="vtone" id="check-destructive-tone">Could not confirm</span>',
     );
     // One line, after the card's numbers and its fix, naming no form.
     expect(destructive).toMatch(
-      /<\/dl>\n<p class="note card-caveat" data-template="could-not-confirm">Could not confirm everything: \d+ commands? that ran, or may have run, used a form the checks cannot read, listed under Also checked on this machine\.<\/p>/,
+      /<p class="note card-caveat"><span data-template="could-not-confirm">Could not confirm everything: \d+ commands? that ran, or may have run, used a form the checks cannot read, listed under Also checked on this machine\.<\/span><\/p>/,
     );
     expect(destructive).not.toContain("xargs");
     // The forms are listed once, under "Also checked on this machine".
@@ -669,16 +694,14 @@ describe("a card never reads clean, or shows a zero, where nothing could be conf
     );
     expect(also).toContain('data-template="also-checked.hiding-forms"');
     expect(html.split("a shell given a string to run").length - 1).toBe(1);
-    expect(destructive).not.toContain("tone-clean");
+    expect(destructive).not.toContain("v-clean");
     expect(chip(html, "destructive")).toBe("could not confirm");
   });
 
   it("a check that found something keeps its tone and count, and still says it", () => {
     const html = renderReport(HIDING_RESULT, VERIFIED_META, OPTIONS);
     const lost = card(html, "lost-work");
-    expect(lost).toContain(
-      '<span class="tone tone-act" id="check-lost-work-tone">Act on this</span>',
-    );
+    expect(lost).toContain('<span class="vtone" id="check-lost-work-tone">Fix now</span>');
     expect(lost).toContain("used a form the checks cannot read");
     expect(chip(html, "lost-work")).toBe("3 deleted branches and stashes still recoverable");
   });
@@ -693,8 +716,8 @@ describe("a card never reads clean, or shows a zero, where nothing could be conf
     expect(html).not.toContain("0 production databases touched");
     expect(html).not.toContain("0 files sent off this machine");
     // The secrets check reads text, and the checks that found something keep their tone.
-    expect(card(html, "secrets")).toContain("tone-act");
-    expect(card(html, "cloud")).toContain("tone-review");
+    expect(card(html, "secrets")).toContain("v-act");
+    expect(card(html, "cloud")).toContain("v-review");
     // The same corpus with output recorded keeps its clean zeros.
     expect(chip(HTML, "prod-infra")).toBe("0 production databases touched");
   });
@@ -710,7 +733,7 @@ describe("a card never reads clean, or shows a zero, where nothing could be conf
       }),
     } as unknown as typeof TEST_ONLY_BUILDERS;
     const html = renderReport(VERIFIED_RESULT, VERIFIED_META, { cardBuilders: builders });
-    expect(card(html, "egress")).toContain("tone-could-not-check");
+    expect(card(html, "egress")).toContain("v-could-not-check");
     expect(html).not.toContain("onclick");
   });
 
@@ -767,7 +790,7 @@ describe("the review and the page agree on every corpus page", () => {
 
   it("Codex: the review leads with nothing, as the page does", () => {
     const LEAD = "likely-real credentials";
-    const html = renderReport(CODEX_ACT, VERIFIED_META, OPTIONS);
+    const html = unemphasised(renderReport(CODEX_ACT, VERIFIED_META, OPTIONS));
     expect(html.match(/<h1[^>]*>[^<]*<\/h1>/)?.[0]).not.toContain(LEAD);
     expect(firstReviewed(CODEX_ACT)).not.toContain(LEAD);
     // Negative control: the same scan on Claude Code leads with the credentials, in both.
@@ -792,21 +815,22 @@ describe("the review and the page agree on every corpus page", () => {
   it.each(
     PAGES,
   )("%s: every reviewed piece is in the page, and every templated line is reviewed", (_n, result) => {
-    const html = renderReport(result, VERIFIED_META, OPTIONS);
+    const html = unemphasised(renderReport(result, VERIFIED_META, OPTIONS));
     const group = reviewStrings(result, TEST_ONLY_BUILDERS).find((g) =>
       g.label.startsWith("What the checks found on this machine"),
     );
     const pieces = (group?.lines ?? []).flatMap((line) => line.split("  ").filter(Boolean));
-    for (const piece of pieces) expect(html, piece).toContain(escapeHtml(piece));
+    for (const piece of pieces) expect(unspanned(html), piece).toContain(escapeHtml(piece));
     const verified = [
       html.match(/<h1[^>]*>[^<]*<\/h1>/)?.[0] ?? "",
+      html.match(/<p class="lead" id="lead">[\s\S]*?<\/p>/)?.[0] ?? "",
       section(html, "found"),
       section(html, "also-checked"),
       section(html, "what-happened"),
     ].join("\n");
     const reviewed = new Set(pieces.map((p) => p.replace(/:$/, "")));
     const lines = [...verified.matchAll(/data-template="([^"]+)"[^>]*>([^<]*)</g)]
-      .filter((m) => m[1] !== "card.fixes-file")
+      .filter((m) => m[1] !== "card.fixes-file" && m[1] !== "card.unsafe-fixes-file")
       .map((m) => decodeEntities(m[2] ?? ""));
     expect(lines.length).toBeGreaterThan(10);
     expect(lines.filter((line) => !reviewed.has(line))).toEqual([]);
@@ -901,7 +925,7 @@ describe("a card that could not confirm never leads", () => {
 
   it("the page and --review fall through to the next card that may lead", () => {
     const result = unconfirmedLead(["eval"]);
-    const html = renderReport(result, VERIFIED_META, OPTIONS);
+    const html = unemphasised(renderReport(result, VERIFIED_META, OPTIONS));
     expect(html.match(/<h1[^>]*>[^<]*<\/h1>/)?.[0]).not.toContain(LEAD);
     // The cloud card, from review, is the next that may lead.
     expect(html.match(/<h1[^>]*>[^<]*<\/h1>/)?.[0]).toContain("IAM change");
@@ -912,7 +936,7 @@ describe("a card that could not confirm never leads", () => {
   });
 
   it("negative control: the same card leads when it confirmed what it reports", () => {
-    const html = renderReport(unconfirmedLead(undefined), VERIFIED_META, OPTIONS);
+    const html = unemphasised(renderReport(unconfirmedLead(undefined), VERIFIED_META, OPTIONS));
     expect(html.match(/<h1[^>]*>[^<]*<\/h1>/)?.[0]).toContain(LEAD);
   });
 });
@@ -1050,7 +1074,7 @@ describe("--json and an empty scan's data block", () => {
 
 describe("small fences", () => {
   it("a Cursor page does not also say a call had no recorded output", () => {
-    const notes = section(renderReport(CURSOR_RESULT, VERIFIED_META, OPTIONS), "also-checked");
+    const notes = sectionNote(renderReport(CURSOR_RESULT, VERIFIED_META, OPTIONS));
     expect(notes).toContain("These sessions record no command output");
     expect(notes).not.toContain("had no recorded output");
   });
@@ -1094,8 +1118,8 @@ describe("small accessibility and label fences", () => {
   it("each card is described by its tone, and the section is named by its heading", () => {
     expect(card(HTML, "secrets")).toContain('aria-describedby="check-secrets-tone"');
     expect(card(HTML, "secrets")).toContain('id="check-secrets-tone"');
-    expect(HTML).toContain('aria-labelledby="what-happened-heading"');
-    expect(HTML).toContain('<h2 id="what-happened-heading">What actually happened</h2>');
+    expect(HTML).toContain('<section id="what-happened" aria-labelledby="h-verified">');
+    expect(HTML).toContain('<h2 id="h-verified">What actually happened</h2>');
   });
 
   it("an evidence row of a kind this build does not know says other, never its raw id", () => {
@@ -1110,10 +1134,8 @@ describe("small accessibility and label fences", () => {
       VERIFIED_META,
       OPTIONS,
     );
-    expect(section(html, "found")).toContain('<span class="evidence-kind">Other credential</span>');
-    expect(section(html, "found")).toContain(
-      '<span class="evidence-how">you pasted it into a prompt</span>',
-    );
+    expect(section(html, "found")).toContain("<li><b>Other credential</b>");
+    expect(section(html, "found")).toContain("<span>you pasted it into a prompt</span>");
     expect(html).not.toContain("undefined");
   });
 });

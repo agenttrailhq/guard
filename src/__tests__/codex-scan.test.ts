@@ -825,21 +825,21 @@ describe("a Codex report", () => {
 
   it("names Codex CLI, and its review hint names --agent codex", async () => {
     const html = renderReport(await codexResult(), META);
-    expect(html).toContain('<p class="agent">Agent: Codex CLI</p>');
+    expect(html).toContain('<span class="sr-only">, </span><span>Codex CLI</span>');
     expect(html).toContain("<code>agenttrail-guard scan --agent codex --review</code>");
   });
 
   it("keeps its token section, because Codex's files record token counts", async () => {
     const html = renderReport(await codexResult(), META);
-    expect(html).toContain("<h2>Tokens</h2>");
+    expect(html).toContain("<summary>Token usage for these sessions</summary>");
     expect(html).not.toContain("record no token counts");
   });
 
   it("lists what was not evaluated, by kind and by tool name", async () => {
     const html = renderReport(await codexResult(), META);
-    expect(html).toContain("<h2>What was not evaluated</h2>");
+    expect(html).toContain("<summary>What was not evaluated</summary>");
     expect(html).toContain("<li>1 file whose last line was cut off</li>");
-    expect(html).toContain("<code>unknown_tool</code>");
+    expect(html).toContain('<code class="cmd">unknown_tool</code>');
   });
 
   it("states its own coverage limit, naming the folders Codex files sessions in", async () => {

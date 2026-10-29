@@ -24,6 +24,7 @@ import { ARTIFACT_FILENAME, escapeHtml, REPORT_FILENAME } from "../core/report.j
 import type { ScanResult } from "../core/scan-report.js";
 import type { GuardAction } from "../core/types.js";
 import type { ScanIO, ScanStat } from "../scan-io.js";
+import { joinCommandWords } from "./html-text.js";
 import { assistantLine, bash, TEST_CATALOG, toolUse, userLine } from "./scan-fixtures.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -275,7 +276,9 @@ describe("--review", () => {
       // Escaped, because that is the form the file carries — the review shows the
       // string, the renderer escapes it. Comparing the raw form would fail on every
       // `<path>` and prove nothing about whether the two sets agree.
-      expect(html, `"${value}" was reviewed but is not in the file`).toContain(escapeHtml(value));
+      expect(joinCommandWords(html), `"${value}" was reviewed but is not in the file`).toContain(
+        escapeHtml(value),
+      );
     }
   });
 
@@ -1201,9 +1204,9 @@ describe("--agent is required, and names whose sessions are read", () => {
     expect(await runScan(["--agent", "cursor"], io, DEPS)).toBe(0);
 
     const html = recorded.written.get(join("/work", REPORT_FILENAME)) ?? "";
-    expect(html).toContain("Agent: Cursor");
+    expect(html).toContain('<span class="sr-only">, </span><span>Cursor</span>');
     expect(html).toContain("agenttrail-guard scan --agent cursor --review");
-    expect(html).not.toContain("<h2>Tokens</h2>");
+    expect(html).not.toContain("<summary>Token usage for these sessions</summary>");
     expect(html).toContain("What was not evaluated");
 
     const summary = recorded.stdout.join("");
@@ -1224,7 +1227,7 @@ describe("--agent is required, and names whose sessions are read", () => {
     expect(review).toContain("Tool names in the report");
     expect(review).toContain("  FutureTool");
     const html = recorded.written.get(join("/work", REPORT_FILENAME)) ?? "";
-    expect(html).toContain("<code>FutureTool</code>");
+    expect(html).toContain('<code class="cmd">FutureTool</code>');
   });
 
   it("--agent cursor --review --json is refused, as it is for Claude Code", async () => {
@@ -1315,7 +1318,8 @@ describe("a guardrail the user wrote that reuses a library id", () => {
   }
 
   const post = (html: string): string =>
-    html.match(/<textarea id="share-text"[^>]*>([\s\S]*?)<\/textarea>/)?.[1] ?? "";
+    html.match(/<textarea class="post-text" id="share-text"[^>]*>([\s\S]*?)<\/textarea>/)?.[1] ??
+    "";
 
   it("negative control — without it, the library guardrail is linked and named in the post", async () => {
     const html = await reportWith(undefined);
@@ -1328,7 +1332,7 @@ describe("a guardrail the user wrote that reuses a library id", () => {
     expect(html).toContain("Block rm in the billing repo");
     expect(html).not.toContain("/guardrails/destructive-data/t-rm-rf");
     expect(html).not.toContain("/guardrails/team/");
-    const rows = html.split('<li class="finding"');
+    const rows = html.split('<details class="frow"').slice(1);
     const row = rows.find((r) => r.includes("Block rm in the billing repo")) ?? "";
     expect(row).toContain("t.rm-rf");
     expect(row).not.toContain("How this guardrail decides");

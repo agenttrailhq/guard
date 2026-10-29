@@ -30,7 +30,7 @@ import { type ReportMeta, renderJson, renderReport } from "../core/report.js";
 import { compileCatalog } from "../core/rules.js";
 import { aggregateScan, type ScanCorpus } from "../core/scan-report.js";
 import type { GuardRule } from "../core/types.js";
-import { decodedSurfaces } from "./html-text.js";
+import { decodedSurfaces, joinCommandWords } from "./html-text.js";
 import { RULE_ENV_FILE, session, toolUse, turn } from "./scan-fixtures.js";
 
 const META: ReportMeta = { version: "0.1.0", generatedAt: new Date("2026-09-08T09:00:00.000Z") };
@@ -284,18 +284,21 @@ describe("corpus health — a non-firing corpus cannot produce a false all-clear
 describe("zero survivors — no planted token reaches either surface", () => {
   it.each(ALL_TOKENS)("%s reaches neither the HTML nor the JSON", (token) => {
     expect(HTML).not.toContain(token);
+    // A command's words are spans on the page: read with them joined, too.
+    expect(joinCommandWords(HTML)).not.toContain(token);
     expect(JSON_TEXT).not.toContain(token);
   });
 
   it("the report still reads as commands — structure survived the redaction", () => {
     // Over-redaction to a wall of placeholders would also pass "zero survivors" while
     // making the report useless, so a few shapes are pinned as still-legible.
-    expect(HTML).toContain("kubectl -n &lt;name&gt; get pods &lt;name&gt;");
-    expect(HTML).toContain("docker exec &lt;name&gt; psql -U &lt;user&gt;");
-    expect(HTML).toContain("ssh &lt;user&gt;@&lt;host&gt;");
+    const text = joinCommandWords(HTML);
+    expect(text).toContain("kubectl -n &lt;name&gt; get pods &lt;name&gt;");
+    expect(text).toContain("docker exec &lt;name&gt; psql -U &lt;user&gt;");
+    expect(text).toContain("ssh &lt;user&gt;@&lt;host&gt;");
     // The MCP payload keeps its keys and shape while every value is gone.
-    expect(HTML).toContain("&quot;team&quot;:&quot;&lt;value&gt;&quot;");
-    expect(HTML).toContain("git push origin main #&lt;comment&gt;");
+    expect(text).toContain("&quot;team&quot;:&quot;&lt;value&gt;&quot;");
+    expect(text).toContain("git push origin main #&lt;comment&gt;");
   });
 });
 

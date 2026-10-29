@@ -1,6 +1,7 @@
 // cspell:words goldens
 /**
- * `scan --no-checks` writes and prints exactly what guard 0.4.13 did, before the checks existed.
+ * `scan --no-checks` prints exactly what guard 0.4.13 did, before the checks existed, and writes
+ * a page with no verified section.
  *
  * The golden files in `__snapshots__/no-checks-0.4.13/` are 0.4.13's own output: its
  * `plugin/scripts/guard-scan.mjs`, run over the synthetic corpora in `fixtures/no-checks/`
@@ -8,9 +9,11 @@
  * written as `<work>`. Nothing else in them was changed.
  *
  * This file runs the scan the plugin runs (no scrub, no AgentTrail OS line), with `--no-checks`,
- * the same flags and the same clock, and compares the page, the artifact, `--json` and what
- * each printed, byte for byte, for Claude Code, Cursor and Codex. The only text replaced is
- * this package's own version, which the goldens carry as 0.4.13.
+ * the same flags and the same clock, and compares `--json` and what each mode printed, byte for
+ * byte, for Claude Code, Cursor and Codex. The only text replaced is this package's own
+ * version, which the goldens carry as 0.4.13. The page and the artifact were redesigned after
+ * 0.4.13, so they are pinned to this build's own output in `__snapshots__/no-checks/`
+ * (`vitest -u` rewrites them), and checked to carry no verified section.
  *
  * The goldens were made with guardrail library 0.2.6, which 0.4.13 bundles. With another
  * library the guardrails that match differ, so the first test says so rather than reporting
@@ -31,6 +34,7 @@ import { filesUnder, LEAKS, scanned } from "./fixture-hygiene.js";
 const HERE = dirname(fileURLToPath(import.meta.url));
 const FIXTURES = join(HERE, "fixtures", "no-checks");
 const GOLDENS = join(HERE, "__snapshots__", "no-checks-0.4.13");
+const PAGES = join(HERE, "__snapshots__", "no-checks");
 
 /** The clock the goldens were made at. */
 const FIXED = new Date("2026-10-25T12:00:00.000Z");
@@ -119,13 +123,13 @@ describe("scan --no-checks is 0.4.13's scan, byte for byte", () => {
   });
 
   it("there is a golden for every app and mode, and nothing else", () => {
-    const expected = AGENTS.flatMap((agent) =>
-      (Object.keys(MODES) as Mode[]).flatMap((mode) => [
-        `${agent}-${mode}.stdout.txt`,
-        ...(MODES[mode].file === undefined ? [] : [`${agent}-${mode}.html`]),
-      ]),
+    const modes = Object.keys(MODES) as Mode[];
+    const printed = AGENTS.flatMap((agent) => modes.map((mode) => `${agent}-${mode}.stdout.txt`));
+    expect(readdirSync(GOLDENS).sort()).toEqual(printed.sort());
+    const pages = AGENTS.flatMap((agent) =>
+      modes.filter((mode) => MODES[mode].file !== undefined).map((mode) => `${agent}-${mode}.html`),
     );
-    expect(readdirSync(GOLDENS).sort()).toEqual(expected.sort());
+    expect(readdirSync(PAGES).sort()).toEqual(pages.sort());
   });
 
   it.each(
@@ -140,15 +144,20 @@ describe("scan --no-checks is 0.4.13's scan, byte for byte", () => {
       expect(run.written.size, "--json writes no file").toBe(0);
     } else {
       expect([...run.written.keys()]).toEqual([`<work>/${file}`]);
-      expect(run.written.get(`<work>/${file}`)).toBe(golden(`${agent}-${mode}.html`));
+      const page = run.written.get(`<work>/${file}`) ?? "";
+      // No verified section, and none of its styles.
+      expect(page).not.toContain('id="what-happened"');
+      expect(page).not.toContain(".vrow {");
+      await expect(page).toMatchFileSnapshot(join(PAGES, `${agent}-${mode}.html`));
     }
   });
 
   it("negative control: the comparison sees one changed byte of a page", async () => {
     const run = await scanNoChecks("codex", "document");
     const page = run.written.get(`<work>/${MODES.document.file}`) ?? "";
-    expect(page).toBe(golden("codex-document.html"));
-    expect(page.replace("</style>", " </style>")).not.toBe(golden("codex-document.html"));
+    const pinned = readFileSync(join(PAGES, "codex-document.html"), "utf8");
+    expect(page).toBe(pinned);
+    expect(page.replace("</style>", " </style>")).not.toBe(pinned);
   });
 });
 
@@ -156,6 +165,7 @@ describe("the corpora and goldens are synthetic and carry nothing they should no
   const files = [
     ...filesUnder(FIXTURES).map((f) => join(FIXTURES, f)),
     ...filesUnder(GOLDENS).map((f) => join(GOLDENS, f)),
+    ...filesUnder(PAGES).map((f) => join(PAGES, f)),
   ];
 
   it.each(LEAKS.map((leak) => [leak.name, leak] as const))("no %s", (_name, leak) => {
@@ -175,6 +185,9 @@ describe("the corpora and goldens are synthetic and carry nothing they should no
     for (const name of readdirSync(GOLDENS)) {
       expect(golden(name), name).not.toContain(planted);
     }
-    expect(golden("claude-document.html")).toContain("[REDACTED:");
+    for (const name of readdirSync(PAGES)) {
+      expect(readFileSync(join(PAGES, name), "utf8"), name).not.toContain(planted);
+    }
+    expect(readFileSync(join(PAGES, "claude-document.html"), "utf8")).toContain("[REDACTED:");
   });
 });

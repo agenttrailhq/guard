@@ -35,6 +35,7 @@ import {
 import type { VerifyCategory } from "../core/verify/types.js";
 import { type VerifyInput, verifyScan } from "../core/verify/verify.js";
 import { createRealScanIO, type ScanIO } from "../scan-io.js";
+import { whatHappenedNote } from "./html-text.js";
 import { RULE_RM_RF } from "./scan-fixtures.js";
 import { fakeIO } from "./verify-command-fixtures.js";
 import { writeCorpus } from "./verify-fixtures.js";
@@ -399,16 +400,11 @@ describe("a fix that could not be made safe", () => {
     expect(run.stdout).toContain(
       "0 exact fix commands for this machine, with real names and paths, and 1 fix it could not make a safe command for",
     );
-    // No card says the file holds a command it does not. The card the note is under says the
-    // file lists its fix that could not be made safe, which the file does.
+    // The page never says the file holds a command it does not. The note under the cards says
+    // the file lists the fix that could not be made safe, which the file does.
     const report = readFileSync(join(run.work, REPORT_FILENAME), "utf8");
     expect(report).not.toContain('data-template="card.fixes-file"');
-    expect(report).toContain('data-template="card.fixes-file-unsafe"');
-    const unreviewed = report.slice(
-      report.indexOf('id="check-unreviewed"'),
-      report.indexOf("</article>", report.indexOf('id="check-unreviewed"')),
-    );
-    expect(unreviewed).toContain('data-template="card.fixes-file-unsafe"');
+    expect(whatHappenedNote(report)).toContain('data-template="card.fixes-file-unsafe"');
   });
 });
 
@@ -476,9 +472,8 @@ describe("a tunnel running now, through runScan", () => {
     // cspell:disable-next-line
     expect(text).toContain(["Data leaving the machine", "'pgrep' '-lx' 'ngrok'"].join("\n"));
     const report = readFileSync(join(work, REPORT_FILENAME), "utf8");
-    const at = report.indexOf('id="check-egress"');
-    const card = report.slice(report.lastIndexOf("<article", at), report.indexOf("</article>", at));
-    expect(card).toContain('data-template="card.fixes-file"');
+    expect(report).toContain('id="check-egress"');
+    expect(whatHappenedNote(report)).toContain('data-template="card.fixes-file"');
   });
 });
 
