@@ -19249,7 +19249,8 @@ var PROVENANCE_PRIORITY = [
   "pasted-into-prompt",
   "typed-into-command",
   "printed-by-command",
-  "in-agent-reply"
+  "in-agent-reply",
+  "added-by-app"
 ];
 function primaryWay(via) {
   return PROVENANCE_PRIORITY.find((way) => via.includes(way));
@@ -19258,14 +19259,16 @@ var ARRIVED_IN = {
   "pasted-into-prompt": "in a prompt you wrote",
   "typed-into-command": "in a command the agent typed",
   "printed-by-command": "in a command's output",
-  "in-agent-reply": "in an agent reply"
+  "in-agent-reply": "in an agent reply",
+  "added-by-app": "in text the app added to a prompt"
 };
 var GENERIC_KIND_START = /^(?:Password|Private|Random-looking|Other|Named|Authorization|Bearer|Database|URL)\b/;
 function pluralKind(label, first) {
   let text2 = label.replace(/^(?:A|An) /, "");
   if (!first && GENERIC_KIND_START.test(text2)) text2 = text2.charAt(0).toLowerCase() + text2.slice(1);
-  if (first) text2 = text2.charAt(0).toUpperCase() + text2.slice(1);
-  const cut = text2.indexOf(" with ");
+  if (first && !/^npm\b/.test(text2)) text2 = text2.charAt(0).toUpperCase() + text2.slice(1);
+  const cuts = [text2.indexOf(" with "), text2.indexOf(" (")].filter((at2) => at2 !== -1);
+  const cut = cuts.length === 0 ? -1 : Math.min(...cuts);
   const head = cut === -1 ? text2 : text2.slice(0, cut);
   const tail = cut === -1 ? "" : text2.slice(cut);
   return `${/s$/.test(head) ? head : `${head}s`}${tail}`;
