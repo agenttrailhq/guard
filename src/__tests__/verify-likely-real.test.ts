@@ -71,7 +71,7 @@ describe("findLikelyReal", () => {
     expect(found.values).toEqual([
       { value: GITHUB, kind: "github-token", files: [file] },
       { value: AWS_ID, kind: "aws-access-key", files: [file] },
-      { value: DEPLOY, kind: "named-secret", files: [file] },
+      { value: DEPLOY, kind: "named-token", files: [file] },
     ]);
     expect(found.notHeld).toBe(0);
   });

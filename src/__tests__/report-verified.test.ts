@@ -132,18 +132,21 @@ describe("What it found, never the values", () => {
     ].map((m) => [m[1], m[2], m[3]]);
     expect(rows).toEqual([
       ["GitHub token", "you pasted it into a prompt", "in 4 transcript files"],
-      ["AWS access key", "printed by a command", "in 2 transcript files"],
+      ["AWS access key ID", "printed by a command", "in 2 transcript files"],
       ["A named secret", "typed into a command, in an agent reply", "in 1 transcript file"],
     ]);
   });
 
-  it("every kind and every way in has a label, and there are exactly four ways in", () => {
-    for (const kind of SECRET_KINDS) expect(KIND_LABELS[kind]).toMatch(/^[A-Z][A-Za-z -]+$/);
+  it("every kind and every way in has a label, and there are exactly five ways in", () => {
+    for (const kind of SECRET_KINDS) {
+      expect(KIND_LABELS[kind]).toMatch(/^[A-Za-z][A-Za-z ().:-]+$/);
+    }
     expect(Object.values(PROVENANCE_PHRASES)).toEqual([
       "you pasted it into a prompt",
       "typed into a command",
       "printed by a command",
       "in an agent reply",
+      "in text the app added to a prompt",
     ]);
   });
 
@@ -172,7 +175,7 @@ describe("What it found, never the values", () => {
 
   it("the secrets card says how many placeholders were set aside, and why, as part of them", () => {
     expect(card(HTML, "secrets")).toContain(
-      "Of the placeholders or false positives, 3 were set aside by a rule that can miss a real credential: 2 unnamed and seen only in output or replies, and 1 named but not shaped like a credential.",
+      "Of the placeholders or false positives, 3 were set aside by a rule that can miss a real credential: 2 random-looking with nothing marking a credential, and 1 under a name or format that does not mark a credential, or not shaped like one.",
     );
     // The boundary copy keeps the typed counts, so the page is built from them.
     const facts = reportPayload(VERIFIED_RESULT, VERIFIED_META, TEST_ONLY_BUILDERS).verification

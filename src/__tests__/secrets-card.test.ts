@@ -96,7 +96,7 @@ describe("what checking found", () => {
       expect.arrayContaining([
         "Found no likely-real credential in the 3 transcript files it read.",
         "Not counted as likely real: 5 placeholders or false positives.",
-        "Of the placeholders or false positives, 3 were set aside by a rule that can miss a real credential: 2 unnamed and seen only in output or replies, and 1 named but not shaped like a credential.",
+        "Of the placeholders or false positives, 3 were set aside by a rule that can miss a real credential: 2 random-looking with nothing marking a credential, and 1 under a name or format that does not mark a credential, or not shaped like one.",
       ]),
     );
     // A part of the 5, so no line adds them to it.
@@ -112,7 +112,7 @@ describe("what checking found", () => {
         ),
       ),
     ).toContain(
-      "Of the placeholders or false positives, 1 was set aside by a rule that can miss a real credential: 1 named but not shaped like a credential.",
+      "Of the placeholders or false positives, 1 was set aside by a rule that can miss a real credential: 1 under a name or format that does not mark a credential, or not shaped like one.",
     );
     expect(
       found(
@@ -121,7 +121,7 @@ describe("what checking found", () => {
           { placeholder: 1 },
         ),
       ).join(" "),
-    ).not.toContain("named but not shaped");
+    ).not.toContain("does not mark a credential");
   });
 
   it("says nothing of it when nothing was set aside", () => {

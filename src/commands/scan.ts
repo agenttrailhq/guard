@@ -922,10 +922,14 @@ export function verificationSummary(verification: Verification): string {
     if (unnamedOutputOnly + namedNotCredentialShaped > 0) {
       const why: string[] = [];
       if (unnamedOutputOnly > 0) {
-        why.push(`${formatCount(unnamedOutputOnly)} unnamed and seen only in output or replies`);
+        why.push(
+          `${formatCount(unnamedOutputOnly)} random-looking with nothing marking a credential`,
+        );
       }
       if (namedNotCredentialShaped > 0) {
-        why.push(`${formatCount(namedNotCredentialShaped)} named but not shaped like a credential`);
+        why.push(
+          `${formatCount(namedNotCredentialShaped)} under a name or format that does not mark a credential, or not shaped like one`,
+        );
       }
       parts.push(
         `${counted(unnamedOutputOnly + namedNotCredentialShaped, "value")} not counted as likely real: ${why.join(", ")}`,

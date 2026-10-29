@@ -101,10 +101,14 @@ const FOUND_SET_ASIDE: SentenceTemplate<SecretsFacts> = {
     if (n === 0) return undefined;
     const why: string[] = [];
     if (unnamedOutputOnly > 0) {
-      why.push(`${formatCount(unnamedOutputOnly)} unnamed and seen only in output or replies`);
+      why.push(
+        `${formatCount(unnamedOutputOnly)} random-looking with nothing marking a credential`,
+      );
     }
     if (namedNotCredentialShaped > 0) {
-      why.push(`${formatCount(namedNotCredentialShaped)} named but not shaped like a credential`);
+      why.push(
+        `${formatCount(namedNotCredentialShaped)} under a name or format that does not mark a credential, or not shaped like one`,
+      );
     }
     return `Of the placeholders or false positives, ${formatCount(n)} ${n === 1 ? "was" : "were"} set aside by a rule that can miss a real credential: ${why.join(", and ")}.`;
   },
