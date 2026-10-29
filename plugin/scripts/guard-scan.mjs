@@ -19174,13 +19174,23 @@ function headlineParts(text2) {
       return { before: "", emphasis: text2.slice(0, verb.index), after: text2.slice(verb.index) };
     }
   }
-  const counted5 = /\d[\d,]*\s+[^\s,.]+/.exec(text2);
+  const counted5 = /\d[\d,]*\s+likely-real\s+credentials?|\d[\d,]*\s+[^\s,.]+/.exec(text2);
   if (counted5 === null) return { before: text2, emphasis: "", after: "" };
   return {
     before: text2.slice(0, counted5.index),
     emphasis: counted5[0],
     after: text2.slice(counted5.index + counted5[0].length)
   };
+}
+var HERO_SECRETS_HEADLINE = {
+  id: "hero.headline.secrets",
+  render: ({ agent, count: count3 }) => count3 > 0 ? `${agentName(agent)} left ${formatCount(count3)} likely-real ${count3 === 1 ? "credential" : "credentials"} in its transcripts.` : void 0
+};
+function heroHeadline(claim, agent) {
+  if (claim.basis === "likely-real-credentials") {
+    return sentence(HERO_SECRETS_HEADLINE, { agent, count: claim.count }) ?? claim.sentence;
+  }
+  return claim.sentence;
 }
 function headlineHtml(text2, template) {
   const parts = headlineParts(text2);
@@ -19331,7 +19341,8 @@ ${copyable("cmd-scan-hero", `agenttrail-guard scan --agent ${result.agent}`, "Co
 </section>`;
   }
   const claim = lead?.headline;
-  const h1 = claim === void 0 ? headlineHtml(headline(result)) : headlineHtml(claim.sentence.text, claim.sentence.template);
+  const pageClaim = claim === void 0 ? void 0 : heroHeadline(claim, result.agent);
+  const h1 = pageClaim === void 0 ? headlineHtml(headline(result)) : headlineHtml(pageClaim.text, pageClaim.template);
   const leads = lead === void 0 ? [] : leadSentences(lead, payload);
   const leadHtml = claim === void 0 ? `<p class="lead" id="lead">What your coding agent actually did, and which guardrails would have fired.</p>` : leads.length === 0 ? "" : `<p class="lead" id="lead">${sentencesHtml(leads)}</p>`;
   const fixTarget = payload.cards !== void 0 ? "what-happened" : "findings";
@@ -20276,7 +20287,7 @@ function verifiedLines(payload) {
   const lines2 = [];
   const lead = pickHeadline(cards, { ranEvidence: payload.verification.ranEvidence });
   if (lead?.headline !== void 0) {
-    lines2.push(lead.headline.sentence.text);
+    lines2.push(heroHeadline(lead.headline, payload.agent).text);
     for (const line2 of leadSentences(lead, payload)) lines2.push(line2.text);
   }
   const facts = payload.verification.categories.secrets.facts;

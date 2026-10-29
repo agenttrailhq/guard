@@ -96,6 +96,7 @@ import {
   type CardSentence,
   type CardView,
   cardsFor,
+  type HeadlineClaim,
   HIDING_FORMS_LIST,
   honestStatus,
   isLocalFix,
@@ -1146,13 +1147,36 @@ export function headlineParts(text: string): HeadlineParts {
       return { before: "", emphasis: text.slice(0, verb.index), after: text.slice(verb.index) };
     }
   }
-  const counted = /\d[\d,]*\s+[^\s,.]+/.exec(text);
+  const counted = /\d[\d,]*\s+likely-real\s+credentials?|\d[\d,]*\s+[^\s,.]+/.exec(text);
   if (counted === null) return { before: text, emphasis: "", after: "" };
   return {
     before: text.slice(0, counted.index),
     emphasis: counted[0],
     after: text.slice(counted.index + counted[0].length),
   };
+}
+
+/**
+ * The page's headline for likely-real credentials: who left them, and where. The claim and its
+ * count are the secrets card's; only the sentence is the page's own.
+ */
+export const HERO_SECRETS_HEADLINE: SentenceTemplate<{
+  readonly agent: AgentSource;
+  readonly count: number;
+}> = {
+  id: "hero.headline.secrets",
+  render: ({ agent, count }) =>
+    count > 0
+      ? `${agentName(agent)} left ${formatCount(count)} likely-real ${count === 1 ? "credential" : "credentials"} in its transcripts.`
+      : undefined,
+};
+
+/** The verified headline as the page states it. */
+function heroHeadline(claim: HeadlineClaim, agent: AgentSource): CardSentence {
+  if (claim.basis === "likely-real-credentials") {
+    return sentence(HERO_SECRETS_HEADLINE, { agent, count: claim.count }) ?? claim.sentence;
+  }
+  return claim.sentence;
 }
 
 /** The headline as a heading, its counted phrase in the alert colour. */
@@ -1367,10 +1391,11 @@ ${copyable("cmd-scan-hero", `agenttrail-guard scan --agent ${result.agent}`, "Co
 </section>`;
   }
   const claim = lead?.headline;
+  const pageClaim = claim === undefined ? undefined : heroHeadline(claim, result.agent);
   const h1 =
-    claim === undefined
+    pageClaim === undefined
       ? headlineHtml(headline(result))
-      : headlineHtml(claim.sentence.text, claim.sentence.template);
+      : headlineHtml(pageClaim.text, pageClaim.template);
   const leads = lead === undefined ? [] : leadSentences(lead, payload);
   const leadHtml =
     claim === undefined
@@ -2749,7 +2774,7 @@ function verifiedLines(payload: ReportPayload): string[] {
   const lines: string[] = [];
   const lead = pickHeadline(cards, { ranEvidence: payload.verification.ranEvidence });
   if (lead?.headline !== undefined) {
-    lines.push(lead.headline.sentence.text);
+    lines.push(heroHeadline(lead.headline, payload.agent).text);
     for (const line of leadSentences(lead, payload)) lines.push(line.text);
   }
   const facts = payload.verification.categories.secrets.facts;

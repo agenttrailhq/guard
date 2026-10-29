@@ -218,7 +218,7 @@ describe("the golden verified report", () => {
     expect(VERIFIED_META.generatedAt).toEqual(META.generatedAt);
     const html = verified("document");
     for (const part of [
-      'data-template="secrets.headline"',
+      'data-template="hero.headline.secrets"',
       'data-template="hero.lead.kinds"',
       'id="found"',
       'id="also-checked"',

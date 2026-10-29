@@ -159,7 +159,7 @@ function page(entries: Partial<Record<VerifyCategory, Entry>>, result?: ScanResu
 
 /** The template a category's claim is rendered from. */
 const templateOf = (category: VerifyCategory): string =>
-  category === "secrets" ? "secrets.headline" : `test-only.headline.${category}`;
+  category === "secrets" ? "hero.headline.secrets" : `test-only.headline.${category}`;
 
 /** The tone a category leads from: cloud changes are always review. */
 const leading = (category: VerifyCategory): VerifyStatus =>
@@ -404,14 +404,14 @@ describe("the secrets card's own headline", () => {
 
   it("states the likely-real count, and never a value or a name", () => {
     expect(h1(secretsPage(SECRETS_ACT))).toEqual({
-      template: "secrets.headline",
-      text: "3 likely-real credentials are still in the agent&#39;s transcripts",
+      template: "hero.headline.secrets",
+      text: "Claude Code left 3 likely-real credentials in its transcripts.",
     });
   });
 
   it("uses the singular for one", () => {
     expect(h1(secretsPage(secretsFacts(1))).text).toBe(
-      "1 likely-real credential is still in the agent&#39;s transcripts",
+      "Claude Code left 1 likely-real credential in its transcripts.",
     );
   });
 
