@@ -6897,6 +6897,7 @@ var ENV_SECRET_ASSIGNMENT = (() => {
     "gi"
   );
 })();
+var ENV_SECRET_KEY_WORD = /PASSWORD|PASSWD|SECRET|TOKEN|API[_-]?KEY|APIKEY|ACCESS[_-]?KEY|PRIVATE[_-]?KEY|CREDENTIAL/i;
 var SLOT2 = String.fromCharCode(57344);
 var KEY_NAME_ASSIGNMENT2 = new RegExp(
   `${NAME_LEAD}${NOT_IN_PLACEHOLDER}([A-Z0-9]+(?:_[A-Z0-9]+)*_KEY(?==|["']\\s*:)|(?![Ii]dempotency-)[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*-[Kk][Ee][Yy](?=["']?\\s*:))(["']?\\s*[=:]\\s*)${NOT_A_PLACEHOLDER}(?!["']?[~.]{0,2}/)(?:(")([^"${SLOT2}]{4,})"|(')([^'${SLOT2}]{4,})'|([^\\s"',;${SLOT2}]{4,}))`,
@@ -6916,15 +6917,15 @@ var MYSQL_PASSWORD_FLAG = new RegExp(
   `(\\s-p)(?<=${MYSQL_WORD}(?:\\\\\\n|[^\\n]){0,200}\\s-p)${NOT_A_PLACEHOLDER}(?:${MYSQL_QUOTED}${MYSQL_UNQUOTED_RUN}|${MYSQL_UNQUOTED_RUN1})|([[,]\\s{0,8}\\\\?"-p)(?<=${MYSQL_WORD}[^\\n]{0,200}"-p)${NOT_A_PLACEHOLDER}[^"\\\\\\n${SLOT2}]+(?=\\\\?")`,
   "g"
 );
-var CLOUD_ACCOUNT_ID = new RegExp(
-  [
-    `${NAME_LEAD}([A-Za-z0-9_]*(?:ACCOUNT[_-]?ID|CF_ACCOUNT|CLOUDFLARE_ACCOUNT|AWS_ACCOUNT|GOOGLE_CLOUD_PROJECT|GCLOUD_PROJECT|GCP_PROJECT|CORE_PROJECT))(["']?\\s*[=:]\\s*)(["']?)([^\\s"',;<[${SLOT2}][^\\s"',;${SLOT2}]*)\\3`,
-    `(--(?:account-id|account|owner-id|account-number))(=|\\s+)(["']?)(\\d{12}|[0-9a-f]{32})\\7(?![A-Za-z0-9])`,
-    `(?<=\\barn:aws[a-z-]*:[a-z0-9-]*:[a-z0-9-]*:)\\d{12}(?![A-Za-z0-9])`,
-    `(?<=\\b(?:gcloud|gsutil|bq|firebase)\\b[^\\n;|&${SLOT2}]{0,200}?)(--project(?:_id|-id)?)(=|\\s+)(["']?)([a-z][a-z0-9-]{4,28}[a-z0-9])\\11(?![A-Za-z0-9-])`
-  ].join("|"),
-  "gi"
-);
+var CLOUD_ACCOUNT_ID_PARTS = [
+  `${NAME_LEAD}([A-Za-z0-9_]*(?:ACCOUNT[_-]?ID|CF_ACCOUNT|CLOUDFLARE_ACCOUNT|AWS_ACCOUNT|GOOGLE_CLOUD_PROJECT|GCLOUD_PROJECT|GCP_PROJECT|CORE_PROJECT))(["']?\\s*[=:]\\s*)(["']?)([^\\s"',;<[${SLOT2}][^\\s"',;${SLOT2}]*)\\3`,
+  `(--(?:account-id|account|owner-id|account-number))(=|\\s+)(["']?)(\\d{12}|[0-9a-f]{32})\\7(?![A-Za-z0-9])`,
+  `(?<=\\barn:aws[a-z-]*:[a-z0-9-]*:[a-z0-9-]*:)\\d{12}(?![A-Za-z0-9])`,
+  `(?<=\\b(?:gcloud|gsutil|bq|firebase)\\b[^\\n;|&${SLOT2}]{0,200}?)(--project(?:_id|-id)?)(=|\\s+)(["']?)([a-z][a-z0-9-]{4,28}[a-z0-9])\\11(?![A-Za-z0-9-])`
+];
+var CLOUD_ACCOUNT_ID = new RegExp(CLOUD_ACCOUNT_ID_PARTS.join("|"), "gi");
+var CLOUD_ACCOUNT_ID_WITHOUT_GCP = new RegExp(CLOUD_ACCOUNT_ID_PARTS.slice(0, 3).join("|"), "gi");
+var GCP_TOOL = /\b(?:gcloud|gsutil|bq|firebase)\b/i;
 var GENERIC_SECRET_CANDIDATE = new RegExp(
   `(?:(?<![A-Za-z0-9_+/.%-])|${ESCAPE_BOUNDARY})(?<!==)(?<!sha(?:1|224|256|384|512)[-:])(?<!base64,)[A-Za-z0-9_-]{${FALLBACK_MIN_LENGTH},}(?![A-Za-z0-9_+/=.%-])`,
   "g"
@@ -6941,6 +6942,7 @@ var PATTERNS = [
   {
     id: "aws-access-key-id",
     regex: AWS_ACCESS_KEY_ID,
+    prefilter: /AKIA|ABIA|ACCA|AGPA|AIDA|AIPA|ANPA|ANVA|AROA|ASCA|ASIA/,
     // No hint: the last-4 of the id fingerprints the key, so nothing of it is disclosed.
     placeholder: () => redacted("secret:aws")
   },
@@ -6952,26 +6954,31 @@ var PATTERNS = [
   {
     id: "jwt",
     regex: JWT,
+    prefilter: /eyJ/,
     placeholder: () => redacted("secret:jwt", "claims-not-stored")
   },
   {
     id: "github-token",
     regex: GITHUB_TOKEN,
+    prefilter: /gh[pousr]_|github_pat_/,
     placeholder: () => redacted("secret:github")
   },
   {
     id: "slack-token",
     regex: SLACK_TOKEN,
+    prefilter: /xox[baprs]-/,
     placeholder: () => redacted("secret:slack")
   },
   {
     id: "openai-key",
     regex: OPENAI_KEY,
+    prefilter: /sk-/,
     placeholder: () => redacted("secret:api-key")
   },
   {
     id: "connection-string",
     regex: CONNECTION_STRING,
+    prefilter: /:\/\//,
     // No hint: the host is captured (group 2) only to anchor the password class to the
     // last `@`; it is a real hostname and is not echoed into the placeholder.
     placeholder: () => redacted("secret:connection-string")
@@ -6979,17 +6986,20 @@ var PATTERNS = [
   {
     id: "basic-auth-url",
     regex: BASIC_AUTH_URL,
+    prefilter: /:\/\//,
     // Keep the scheme so the URL stays recognizable; redact user:pass@.
     placeholder: (g) => `${g[1].toLowerCase()}://${redacted("secret:basic-auth")}@`
   },
   {
     id: "bearer-token",
     regex: BEARER_TOKEN,
+    prefilter: /bearer/i,
     placeholder: () => `Bearer ${redacted("secret:bearer")}`
   },
   {
     id: "aws-secret-access-key",
     regex: AWS_SECRET_ACCESS_KEY,
+    prefilter: /secret[_-]?access[_-]?key/i,
     // Preserve the key name (g1) + the original separator (g2, incl. the value's
     // opening quote); redact only the 40-char value. Re-emitting g2 rather than a
     // hard-coded `=` keeps `key: "val"` from becoming `key="val` (dangling quote).
@@ -6998,6 +7008,7 @@ var PATTERNS = [
   {
     id: "env-secret",
     regex: ENV_SECRET_ASSIGNMENT,
+    prefilter: ENV_SECRET_KEY_WORD,
     // Preserve the key name (g1) and the original separator (g2); redact only the value
     // (g4/g6/g7), putting back its quotes (g3/g5), so quoted JSON stays valid.
     placeholder: (g) => {
@@ -7028,6 +7039,7 @@ var PATTERNS = [
     id: "cloud-account-id",
     regex: CLOUD_ACCOUNT_ID,
     prefilter: /account|project|owner-id|arn:aws/i,
+    lighter: { needs: GCP_TOOL, regex: CLOUD_ACCOUNT_ID_WITHOUT_GCP },
     placeholder: (g) => {
       const label = redacted("pii:account");
       if (g[1] !== void 0) return aroundValue(g[1], g[2] ?? "", g[3], label);
@@ -7046,16 +7058,19 @@ var PATTERNS = [
   {
     id: "email",
     regex: EMAIL,
+    prefilter: /@/,
     placeholder: () => redacted("pii:email")
   },
   {
     id: "ssn",
     regex: SSN,
+    prefilter: /\d{3}[- ]\d{2}[- ]\d{4}/,
     placeholder: () => redacted("pii:ssn")
   },
   {
     id: "credit-card",
     regex: CREDIT_CARD,
+    prefilter: /\d{13}|\d{3}[ -]\d{3}/,
     placeholder: () => redacted("pii:credit-card")
   }
 ];
@@ -7082,10 +7097,11 @@ var SENTINEL_RE = new RegExp(`${SENTINEL_CHAR}(\\d+)${SENTINEL_CHAR}`, "g");
 function sentinel(index) {
   return `${SENTINEL_CHAR}${index}${SENTINEL_CHAR}`;
 }
-function applyPattern(text, pattern, tally, slots) {
-  if (pattern.prefilter && !pattern.prefilter.test(text)) return text;
+function applyPattern(text, pattern, tally, slots, shortcuts) {
+  if (shortcuts && pattern.prefilter && !pattern.prefilter.test(text)) return text;
   const needsLuhn = LUHN_VALIDATED_IDS.has(pattern.id);
-  return text.replace(pattern.regex, (...args2) => {
+  const regex = shortcuts && pattern.lighter !== void 0 && !pattern.lighter.needs.test(text) ? pattern.lighter.regex : pattern.regex;
+  return text.replace(regex, (...args2) => {
     const match = args2[0];
     if (needsLuhn && !passesLuhn(match)) return match;
     if (pattern.accept && !pattern.accept(match, args2[args2.length - 2], args2[args2.length - 1])) {
@@ -7099,6 +7115,9 @@ function applyPattern(text, pattern, tally, slots) {
   });
 }
 function scrubText(text) {
+  return scrub(text, true);
+}
+function scrub(text, shortcuts) {
   if (text.length === 0) {
     return { text, redactions: {}, total: 0 };
   }
@@ -7106,7 +7125,7 @@ function scrubText(text) {
   const slots = [];
   let out = text.includes(SENTINEL_CHAR) ? text.split(SENTINEL_CHAR).join("") : text;
   for (const pattern of PATTERNS) {
-    out = applyPattern(out, pattern, tally, slots);
+    out = applyPattern(out, pattern, tally, slots, shortcuts);
   }
   if (slots.length === 0) {
     return { text, redactions: {}, total: 0 };

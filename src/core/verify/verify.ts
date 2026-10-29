@@ -28,7 +28,7 @@ import { createFingerprinter, type Fingerprinter } from "./fingerprint.js";
 import { checkGitBacked } from "./git-checks.js";
 import { checkProdInfra, type DatabaseTargetCounts } from "./prod-infra.js";
 import { tallyMatchedCalls } from "./ran.js";
-import { checkSecrets } from "./secrets.js";
+import { checkSecrets, type SecretsCollector } from "./secrets.js";
 import { checkTests } from "./tests.js";
 import type { Verification, VerifyIO } from "./types.js";
 import { checkUnreviewed } from "./unreviewed.js";
@@ -45,6 +45,11 @@ export interface VerifyInput {
   readonly fingerprint?: Fingerprinter;
   /** The home folder, for `~` in commands. Production uses the user's. */
   readonly home?: string;
+  /**
+   * What `scan` already collected for the secrets check while it read the transcripts. Files it
+   * holds are not read again.
+   */
+  readonly secretsCollector?: SecretsCollector;
   /** For tests: folders whose contents are scratch. Production uses `TEMP_ROOTS`. */
   readonly scratchRoots?: readonly string[];
 }
@@ -104,6 +109,7 @@ export async function verifyScan(input: VerifyInput): Promise<VerifyOutcome> {
     readLines: input.readLines,
     io: input.io,
     fingerprint: input.fingerprint ?? createFingerprinter(),
+    ...(input.secretsCollector === undefined ? {} : { collector: input.secretsCollector }),
   });
   const git = await checkGitBacked({
     corpus: input.corpus,

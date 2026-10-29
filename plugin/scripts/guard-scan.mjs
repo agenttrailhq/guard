@@ -9607,6 +9607,7 @@ var ENV_SECRET_ASSIGNMENT = (() => {
     "gi"
   );
 })();
+var ENV_SECRET_KEY_WORD = /PASSWORD|PASSWD|SECRET|TOKEN|API[_-]?KEY|APIKEY|ACCESS[_-]?KEY|PRIVATE[_-]?KEY|CREDENTIAL/i;
 var SLOT2 = String.fromCharCode(57344);
 var KEY_NAME_ASSIGNMENT2 = new RegExp(
   `${NAME_LEAD}${NOT_IN_PLACEHOLDER}([A-Z0-9]+(?:_[A-Z0-9]+)*_KEY(?==|["']\\s*:)|(?![Ii]dempotency-)[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*-[Kk][Ee][Yy](?=["']?\\s*:))(["']?\\s*[=:]\\s*)${NOT_A_PLACEHOLDER}(?!["']?[~.]{0,2}/)(?:(")([^"${SLOT2}]{4,})"|(')([^'${SLOT2}]{4,})'|([^\\s"',;${SLOT2}]{4,}))`,
@@ -9626,15 +9627,15 @@ var MYSQL_PASSWORD_FLAG = new RegExp(
   `(\\s-p)(?<=${MYSQL_WORD}(?:\\\\\\n|[^\\n]){0,200}\\s-p)${NOT_A_PLACEHOLDER}(?:${MYSQL_QUOTED}${MYSQL_UNQUOTED_RUN}|${MYSQL_UNQUOTED_RUN1})|([[,]\\s{0,8}\\\\?"-p)(?<=${MYSQL_WORD}[^\\n]{0,200}"-p)${NOT_A_PLACEHOLDER}[^"\\\\\\n${SLOT2}]+(?=\\\\?")`,
   "g"
 );
-var CLOUD_ACCOUNT_ID = new RegExp(
-  [
-    `${NAME_LEAD}([A-Za-z0-9_]*(?:ACCOUNT[_-]?ID|CF_ACCOUNT|CLOUDFLARE_ACCOUNT|AWS_ACCOUNT|GOOGLE_CLOUD_PROJECT|GCLOUD_PROJECT|GCP_PROJECT|CORE_PROJECT))(["']?\\s*[=:]\\s*)(["']?)([^\\s"',;<[${SLOT2}][^\\s"',;${SLOT2}]*)\\3`,
-    `(--(?:account-id|account|owner-id|account-number))(=|\\s+)(["']?)(\\d{12}|[0-9a-f]{32})\\7(?![A-Za-z0-9])`,
-    `(?<=\\barn:aws[a-z-]*:[a-z0-9-]*:[a-z0-9-]*:)\\d{12}(?![A-Za-z0-9])`,
-    `(?<=\\b(?:gcloud|gsutil|bq|firebase)\\b[^\\n;|&${SLOT2}]{0,200}?)(--project(?:_id|-id)?)(=|\\s+)(["']?)([a-z][a-z0-9-]{4,28}[a-z0-9])\\11(?![A-Za-z0-9-])`
-  ].join("|"),
-  "gi"
-);
+var CLOUD_ACCOUNT_ID_PARTS = [
+  `${NAME_LEAD}([A-Za-z0-9_]*(?:ACCOUNT[_-]?ID|CF_ACCOUNT|CLOUDFLARE_ACCOUNT|AWS_ACCOUNT|GOOGLE_CLOUD_PROJECT|GCLOUD_PROJECT|GCP_PROJECT|CORE_PROJECT))(["']?\\s*[=:]\\s*)(["']?)([^\\s"',;<[${SLOT2}][^\\s"',;${SLOT2}]*)\\3`,
+  `(--(?:account-id|account|owner-id|account-number))(=|\\s+)(["']?)(\\d{12}|[0-9a-f]{32})\\7(?![A-Za-z0-9])`,
+  `(?<=\\barn:aws[a-z-]*:[a-z0-9-]*:[a-z0-9-]*:)\\d{12}(?![A-Za-z0-9])`,
+  `(?<=\\b(?:gcloud|gsutil|bq|firebase)\\b[^\\n;|&${SLOT2}]{0,200}?)(--project(?:_id|-id)?)(=|\\s+)(["']?)([a-z][a-z0-9-]{4,28}[a-z0-9])\\11(?![A-Za-z0-9-])`
+];
+var CLOUD_ACCOUNT_ID = new RegExp(CLOUD_ACCOUNT_ID_PARTS.join("|"), "gi");
+var CLOUD_ACCOUNT_ID_WITHOUT_GCP = new RegExp(CLOUD_ACCOUNT_ID_PARTS.slice(0, 3).join("|"), "gi");
+var GCP_TOOL = /\b(?:gcloud|gsutil|bq|firebase)\b/i;
 var GENERIC_SECRET_CANDIDATE = new RegExp(
   `(?:(?<![A-Za-z0-9_+/.%-])|${ESCAPE_BOUNDARY})(?<!==)(?<!sha(?:1|224|256|384|512)[-:])(?<!base64,)[A-Za-z0-9_-]{${FALLBACK_MIN_LENGTH},}(?![A-Za-z0-9_+/=.%-])`,
   "g"
@@ -9651,6 +9652,7 @@ var PATTERNS = [
   {
     id: "aws-access-key-id",
     regex: AWS_ACCESS_KEY_ID,
+    prefilter: /AKIA|ABIA|ACCA|AGPA|AIDA|AIPA|ANPA|ANVA|AROA|ASCA|ASIA/,
     // No hint: the last-4 of the id fingerprints the key, so nothing of it is disclosed.
     placeholder: () => redacted("secret:aws")
   },
@@ -9662,26 +9664,31 @@ var PATTERNS = [
   {
     id: "jwt",
     regex: JWT,
+    prefilter: /eyJ/,
     placeholder: () => redacted("secret:jwt", "claims-not-stored")
   },
   {
     id: "github-token",
     regex: GITHUB_TOKEN,
+    prefilter: /gh[pousr]_|github_pat_/,
     placeholder: () => redacted("secret:github")
   },
   {
     id: "slack-token",
     regex: SLACK_TOKEN,
+    prefilter: /xox[baprs]-/,
     placeholder: () => redacted("secret:slack")
   },
   {
     id: "openai-key",
     regex: OPENAI_KEY,
+    prefilter: /sk-/,
     placeholder: () => redacted("secret:api-key")
   },
   {
     id: "connection-string",
     regex: CONNECTION_STRING,
+    prefilter: /:\/\//,
     // No hint: the host is captured (group 2) only to anchor the password class to the
     // last `@`; it is a real hostname and is not echoed into the placeholder.
     placeholder: () => redacted("secret:connection-string")
@@ -9689,17 +9696,20 @@ var PATTERNS = [
   {
     id: "basic-auth-url",
     regex: BASIC_AUTH_URL,
+    prefilter: /:\/\//,
     // Keep the scheme so the URL stays recognizable; redact user:pass@.
     placeholder: (g) => `${g[1].toLowerCase()}://${redacted("secret:basic-auth")}@`
   },
   {
     id: "bearer-token",
     regex: BEARER_TOKEN,
+    prefilter: /bearer/i,
     placeholder: () => `Bearer ${redacted("secret:bearer")}`
   },
   {
     id: "aws-secret-access-key",
     regex: AWS_SECRET_ACCESS_KEY,
+    prefilter: /secret[_-]?access[_-]?key/i,
     // Preserve the key name (g1) + the original separator (g2, incl. the value's
     // opening quote); redact only the 40-char value. Re-emitting g2 rather than a
     // hard-coded `=` keeps `key: "val"` from becoming `key="val` (dangling quote).
@@ -9708,6 +9718,7 @@ var PATTERNS = [
   {
     id: "env-secret",
     regex: ENV_SECRET_ASSIGNMENT,
+    prefilter: ENV_SECRET_KEY_WORD,
     // Preserve the key name (g1) and the original separator (g2); redact only the value
     // (g4/g6/g7), putting back its quotes (g3/g5), so quoted JSON stays valid.
     placeholder: (g) => {
@@ -9738,6 +9749,7 @@ var PATTERNS = [
     id: "cloud-account-id",
     regex: CLOUD_ACCOUNT_ID,
     prefilter: /account|project|owner-id|arn:aws/i,
+    lighter: { needs: GCP_TOOL, regex: CLOUD_ACCOUNT_ID_WITHOUT_GCP },
     placeholder: (g) => {
       const label = redacted("pii:account");
       if (g[1] !== void 0) return aroundValue(g[1], g[2] ?? "", g[3], label);
@@ -9756,16 +9768,19 @@ var PATTERNS = [
   {
     id: "email",
     regex: EMAIL,
+    prefilter: /@/,
     placeholder: () => redacted("pii:email")
   },
   {
     id: "ssn",
     regex: SSN,
+    prefilter: /\d{3}[- ]\d{2}[- ]\d{4}/,
     placeholder: () => redacted("pii:ssn")
   },
   {
     id: "credit-card",
     regex: CREDIT_CARD,
+    prefilter: /\d{13}|\d{3}[ -]\d{3}/,
     placeholder: () => redacted("pii:credit-card")
   }
 ];
@@ -9792,10 +9807,11 @@ var SENTINEL_RE = new RegExp(`${SENTINEL_CHAR}(\\d+)${SENTINEL_CHAR}`, "g");
 function sentinel(index) {
   return `${SENTINEL_CHAR}${index}${SENTINEL_CHAR}`;
 }
-function applyPattern(text2, pattern, tally, slots) {
-  if (pattern.prefilter && !pattern.prefilter.test(text2)) return text2;
+function applyPattern(text2, pattern, tally, slots, shortcuts) {
+  if (shortcuts && pattern.prefilter && !pattern.prefilter.test(text2)) return text2;
   const needsLuhn = LUHN_VALIDATED_IDS.has(pattern.id);
-  return text2.replace(pattern.regex, (...args2) => {
+  const regex = shortcuts && pattern.lighter !== void 0 && !pattern.lighter.needs.test(text2) ? pattern.lighter.regex : pattern.regex;
+  return text2.replace(regex, (...args2) => {
     const match = args2[0];
     if (needsLuhn && !passesLuhn(match)) return match;
     if (pattern.accept && !pattern.accept(match, args2[args2.length - 2], args2[args2.length - 1])) {
@@ -9809,6 +9825,9 @@ function applyPattern(text2, pattern, tally, slots) {
   });
 }
 function scrubText(text2) {
+  return scrub(text2, true);
+}
+function scrub(text2, shortcuts) {
   if (text2.length === 0) {
     return { text: text2, redactions: {}, total: 0 };
   }
@@ -9816,7 +9835,7 @@ function scrubText(text2) {
   const slots = [];
   let out = text2.includes(SENTINEL_CHAR) ? text2.split(SENTINEL_CHAR).join("") : text2;
   for (const pattern of PATTERNS) {
-    out = applyPattern(out, pattern, tally, slots);
+    out = applyPattern(out, pattern, tally, slots, shortcuts);
   }
   if (slots.length === 0) {
     return { text: text2, redactions: {}, total: 0 };
@@ -20344,7 +20363,7 @@ function resultToString(content) {
   }
   return content === void 0 || content === null ? "" : JSON.stringify(content);
 }
-async function parseSession(path, fallbackSessionId, source = fileLineSource) {
+async function parseSession(path, fallbackSessionId, source = fileLineSource, onRecord) {
   let sessionId = null;
   let version = null;
   let gitBranch = null;
@@ -20370,6 +20389,7 @@ async function parseSession(path, fallbackSessionId, source = fileLineSource) {
       skippedLines++;
       continue;
     }
+    onRecord?.(obj);
     sessionId ??= str(obj.sessionId);
     version ??= str(obj.version);
     gitBranch ??= str(obj.gitBranch);
@@ -20594,126 +20614,6 @@ function parseUserRulesData(text2) {
   return out;
 }
 
-// src/core/verify/verify.ts
-import { homedir as homedir2 } from "os";
-
-// src/core/verify/deps.ts
-function operandsOf(args2) {
-  return args2.filter((a) => !a.startsWith("-"));
-}
-function readJs(manager, args2) {
-  const words2 = operandsOf(args2);
-  const sub = words2[0];
-  const packages = words2.slice(1);
-  if (manager === "yarn" && sub === void 0) return { manager, restore: true };
-  if (sub === "ci") return manager === "npm" ? { manager, restore: true } : void 0;
-  if (sub === "install" || sub === "i") return { manager, restore: packages.length === 0 };
-  if (sub === "add" || sub === "update" || sub === "up" || sub === "upgrade") {
-    return { manager, restore: false };
-  }
-  return void 0;
-}
-function readPip(args2) {
-  if (args2[0] !== "install") return void 0;
-  const rest = args2.slice(1);
-  const fromFile = rest.some((a) => a === "-r" || a.startsWith("--requirement") || a === "-c");
-  const packages = rest.filter(
-    (a, k) => !a.startsWith("-") && !["-r", "-c", "-e"].includes(rest[k - 1] ?? "")
-  );
-  const project = rest.some((a) => a === "-e" || a === ".");
-  return { manager: "pip", restore: fromFile || project && packages.every((p) => p === ".") };
-}
-function readSimple2(simple) {
-  const { program, args: args2 } = programAndArgs(simple);
-  switch (program) {
-    case "npm":
-    case "pnpm":
-    case "yarn":
-    case "bun":
-      return readJs(program, args2);
-    case "pip":
-    case "pip3":
-      return readPip(args2);
-    case "python":
-    case "python3":
-      return args2[0] === "-m" && (args2[1] === "pip" || args2[1] === "pip3") ? readPip(args2.slice(2)) : void 0;
-    case "uv": {
-      if (args2[0] === "sync") return { manager: "uv", restore: true };
-      if (args2[0] === "add") return { manager: "uv", restore: false };
-      if (args2[0] === "pip" && args2[1] === "sync") return { manager: "uv", restore: true };
-      if (args2[0] === "pip") {
-        const pip = readPip(args2.slice(1));
-        return pip === void 0 ? void 0 : { manager: "uv", restore: pip.restore };
-      }
-      return void 0;
-    }
-    case "poetry":
-      if (args2[0] === "install") return { manager: "poetry", restore: true };
-      return args2[0] === "add" || args2[0] === "update" ? { manager: "poetry", restore: false } : void 0;
-    case "pipenv": {
-      if (args2[0] === "sync") return { manager: "pipenv", restore: true };
-      if (args2[0] !== "install") return void 0;
-      return { manager: "pipenv", restore: operandsOf(args2.slice(1)).length === 0 };
-    }
-    case "cargo":
-      return args2[0] === "add" || args2[0] === "install" ? { manager: "cargo", restore: false } : void 0;
-    case "go":
-      if (args2[0] === "get" || args2[0] === "install") return { manager: "go", restore: false };
-      return args2[0] === "mod" && args2[1] === "download" ? { manager: "go", restore: true } : void 0;
-    case "gem":
-      return args2[0] === "install" ? { manager: "gem", restore: false } : void 0;
-    case "bundle":
-    case "bundler":
-      if (args2[0] === "install") return { manager: "bundler", restore: true };
-      return args2[0] === "add" ? { manager: "bundler", restore: false } : void 0;
-    case "composer":
-      if (args2[0] === "install") return { manager: "composer", restore: true };
-      return args2[0] === "require" || args2[0] === "update" ? { manager: "composer", restore: false } : void 0;
-    default:
-      return void 0;
-  }
-}
-function readInstalls(command) {
-  const out = [];
-  for (const simple of simpleCommands(command)) {
-    const reading = readSimple2(simple);
-    if (reading !== void 0) out.push(reading);
-  }
-  return out;
-}
-function checkDependencies(calls) {
-  const managers = /* @__PURE__ */ new Set();
-  let installs = 0;
-  let lockfileRestores = 0;
-  let mentioned = 0;
-  let unconfirmed = 0;
-  for (const call of calls.calls) {
-    if (!isShell(call) || readInstalls(call.command).length === 0) continue;
-    const state = runStateOf(calls.agent, call, (command) => readInstalls(command).length > 0);
-    if (state === "mentioned") mentioned += 1;
-    else if (state === "unknown") unconfirmed += 1;
-    else {
-      for (const reading of readInstalls(executedText(call.command))) {
-        if (reading.restore) lockfileRestores += 1;
-        else {
-          installs += 1;
-          managers.add(reading.manager);
-        }
-      }
-    }
-  }
-  return {
-    installs,
-    lockfileRestores,
-    managers: PACKAGE_MANAGERS.filter((m) => managers.has(m)),
-    packageAge: PACKAGE_AGE_NOT_CHECKED,
-    mentioned,
-    unconfirmed,
-    couldHide: couldHideCount(calls),
-    hidingForms: heldHidingForms(calls)
-  };
-}
-
 // src/core/verify/fingerprint.ts
 import { createHmac, randomBytes } from "crypto";
 var FINGERPRINT_HEX = 32;
@@ -20721,45 +20621,6 @@ var KEY_BYTES = 32;
 function createFingerprinter(key = randomBytes(KEY_BYTES)) {
   const own = Buffer.from(key);
   return (value) => createHmac("sha256", own).update(value, "utf8").digest("hex").slice(0, FINGERPRINT_HEX);
-}
-
-// src/core/verify/git-checks.ts
-var FAILED = { status: "could-not-check", matches: 0 };
-async function guarded2(run) {
-  try {
-    return await run();
-  } catch {
-    return { result: FAILED, localFixes: [], unsafeFixes: [] };
-  }
-}
-async function checkGitBacked(input) {
-  let context;
-  try {
-    context = {
-      log: readCalls2(input.corpus, input.home),
-      probe: new RepoProbe(input.io),
-      scratchRoots: input.scratchRoots ?? TEMP_ROOTS,
-      ...input.rules === void 0 ? {} : { rules: input.rules }
-    };
-  } catch {
-    return {
-      "skipped-checks": FAILED,
-      "lost-work": FAILED,
-      destructive: FAILED,
-      localFixes: [],
-      unsafeFixes: []
-    };
-  }
-  const skipped = await guarded2(() => checkSkippedChecks(context));
-  const lost = await guarded2(() => checkLostWork(context));
-  const destructive = await guarded2(() => checkDestructive(context));
-  return {
-    "skipped-checks": skipped.result,
-    "lost-work": lost.result,
-    destructive: destructive.result,
-    localFixes: [...skipped.localFixes, ...lost.localFixes, ...destructive.localFixes],
-    unsafeFixes: [...skipped.unsafeFixes, ...lost.unsafeFixes, ...destructive.unsafeFixes]
-  };
 }
 
 // src/core/verify/paths.ts
@@ -20921,6 +20782,9 @@ function lineText(agent, line2) {
   } catch {
     return EMPTY;
   }
+  return recordText(agent, record);
+}
+function recordText(agent, record) {
   if (!isRecord5(record)) return EMPTY;
   switch (agent) {
     case "claude":
@@ -20990,8 +20854,15 @@ function alignValues(text2, literals) {
   };
   return place2(0, head.length) ? spans : void 0;
 }
+var SECRET_ANCHOR_CASED = /AKIA|ABIA|ACCA|AGPA|AIDA|AIPA|ANPA|ANVA|AROA|ASCA|ASIA|-----BEGIN|eyJ|gh[pousr]_|github_pat_|xox[baprs]-|sk-/;
+var SECRET_ANCHOR_ANY_CASE = /:\/\/|bearer|authori[sz]ation|mysql|mariadb|passw|secret|token|api[_-]?key|apikey|access[_-]?key|private[_-]?key|credential|[_-]key/i;
+var LONG_RUN = new RegExp(`[A-Za-z0-9_-]{${FALLBACK_MIN_LENGTH}}`);
+function mayHoldSecret(text2) {
+  return SECRET_ANCHOR_CASED.test(text2) || SECRET_ANCHOR_ANY_CASE.test(text2) || LONG_RUN.test(text2);
+}
 function findValues(text2) {
   const clean = text2.includes(SCRUB_SENTINEL) ? text2.split(SCRUB_SENTINEL).join("") : text2;
+  if (!mayHoldSecret(clean)) return { values: [], unaligned: false };
   const redacted2 = redactSecrets(scrubText(clean).text);
   if (redacted2 === clean) return { values: [], unaligned: false };
   const literals = [];
@@ -21242,60 +21113,136 @@ function secretsStatus(facts) {
   if (facts.filesNotRead > 0 || facts.unplaced > 0) return "could-not-check";
   return "clean";
 }
+var NOTHING = { values: [], unaligned: false };
+var MAX_REMEMBERED_VALUES = 2e4;
+var COLLECTED = /* @__PURE__ */ new WeakMap();
+function createSecretsCollector(options) {
+  const collected = {
+    candidates: /* @__PURE__ */ new Map(),
+    workingDirs: /* @__PURE__ */ new Set(),
+    paths: /* @__PURE__ */ new Map(),
+    done: /* @__PURE__ */ new Set(),
+    unplaced: /* @__PURE__ */ new Map()
+  };
+  let held = 0;
+  let rememberedValues = 0;
+  const remembered2 = /* @__PURE__ */ new Map();
+  const take = (index, text2) => {
+    for (const cwd of text2.workingDirs) collected.workingDirs.add(cwd);
+    for (const piece of text2.pieces) {
+      const remember = piece.text.length >= MIN_REMEMBERED_TEXT;
+      const textKey = remember ? options.fingerprint(piece.text) : "";
+      let result = remember ? remembered2.get(textKey) : void 0;
+      if (result === void 0) {
+        result = findValues(piece.text);
+        if (remember && !result.unaligned) {
+          if (result.values.length === 0) {
+            if (remembered2.size < MAX_EMPTY_TEXTS) remembered2.set(textKey, NOTHING);
+          } else if (rememberedValues < MAX_REMEMBERED_VALUES) {
+            remembered2.set(textKey, result);
+            rememberedValues += 1;
+          }
+        }
+      }
+      if (result.unaligned) {
+        collected.unplaced.set(index, (collected.unplaced.get(index) ?? 0) + 1);
+      }
+      for (const found of result.values) {
+        const key = options.fingerprint(found.value);
+        let candidate = collected.candidates.get(key);
+        if (candidate === void 0) {
+          const reason = placeholderReason(found);
+          const decided = reason !== void 0 ? "placeholder" : isLocalDev(found) ? "local-dev" : void 0;
+          const keep = decided === void 0 && held < (options.maxHeldValues ?? MAX_HELD_VALUES);
+          if (keep) held += 1;
+          candidate = {
+            kind: found.kind,
+            via: /* @__PURE__ */ new Set(),
+            files: /* @__PURE__ */ new Set(),
+            decided,
+            // Past the cap a value is not held, so it cannot be searched for in the repos.
+            value: keep ? found.value : void 0,
+            setAside: reason === "named-not-credential-shaped" ? reason : void 0
+          };
+          collected.candidates.set(key, candidate);
+        }
+        candidate.via.add(piece.via);
+        candidate.files.add(index);
+      }
+    }
+  };
+  const collector2 = {
+    agent: options.agent,
+    file(path) {
+      let index = collected.paths.get(path);
+      if (index === void 0) {
+        index = collected.paths.size;
+        collected.paths.set(path, index);
+      }
+      return index;
+    },
+    line(index, line2) {
+      take(index, lineText(options.agent, line2));
+    },
+    record(index, record) {
+      take(index, recordText(options.agent, record));
+    },
+    read(index) {
+      collected.done.add(index);
+    }
+  };
+  COLLECTED.set(collector2, collected);
+  return collector2;
+}
+async function collectFile(collector2, path, readLines) {
+  const index = collector2.file(path);
+  try {
+    for await (const line2 of readLines(path)) collector2.line(index, line2);
+    collector2.read(index);
+    return true;
+  } catch {
+    return false;
+  }
+}
 async function checkSecrets(input) {
   return (await classifySecrets(input, false)).check;
 }
 async function classifySecrets(input, keep) {
-  const candidates = /* @__PURE__ */ new Map();
-  const workingDirs = /* @__PURE__ */ new Set();
+  const collector2 = input.collector ?? createSecretsCollector({
+    agent: input.agent,
+    fingerprint: input.fingerprint,
+    ...input.maxHeldValues === void 0 ? {} : { maxHeldValues: input.maxHeldValues }
+  });
+  const collected = COLLECTED.get(collector2);
+  const included = /* @__PURE__ */ new Set();
   let filesRead = 0;
   let filesNotRead = 0;
-  let unplaced = 0;
-  let held = 0;
-  const empty = /* @__PURE__ */ new Set();
-  for (const [index, path] of input.files.entries()) {
-    try {
-      for await (const line2 of input.readLines(path)) {
-        const { pieces, workingDirs: named } = lineText(input.agent, line2);
-        for (const cwd of named) workingDirs.add(cwd);
-        for (const piece of pieces) {
-          const remember = piece.text.length >= MIN_REMEMBERED_TEXT;
-          const textKey = remember ? input.fingerprint(piece.text) : "";
-          if (remember && empty.has(textKey)) continue;
-          const result = findValues(piece.text);
-          if (result.unaligned) unplaced += 1;
-          if (remember && result.values.length === 0 && !result.unaligned && empty.size < MAX_EMPTY_TEXTS) {
-            empty.add(textKey);
-          }
-          for (const found of result.values) {
-            const key = input.fingerprint(found.value);
-            let candidate = candidates.get(key);
-            if (candidate === void 0) {
-              const reason = placeholderReason(found);
-              const decided = reason !== void 0 ? "placeholder" : isLocalDev(found) ? "local-dev" : void 0;
-              const keep2 = decided === void 0 && held < (input.maxHeldValues ?? MAX_HELD_VALUES);
-              if (keep2) held += 1;
-              candidate = {
-                kind: found.kind,
-                via: /* @__PURE__ */ new Set(),
-                files: /* @__PURE__ */ new Set(),
-                decided,
-                // Past the cap a value is not held, so it cannot be searched for in the repos.
-                value: keep2 ? found.value : void 0,
-                setAside: reason === "named-not-credential-shaped" ? reason : void 0
-              };
-              candidates.set(key, candidate);
-            }
-            candidate.via.add(piece.via);
-            candidate.files.add(index);
-          }
-        }
-      }
+  for (const path of input.files) {
+    const known = collected.paths.get(path);
+    if (known !== void 0 && collected.done.has(known)) {
+      included.add(known);
       filesRead += 1;
-    } catch {
+      continue;
+    }
+    if (await collectFile(collector2, path, input.readLines)) {
+      included.add(collector2.file(path));
+      filesRead += 1;
+    } else {
       filesNotRead += 1;
     }
   }
+  let unplaced = 0;
+  for (const [index, count2] of collected.unplaced) if (included.has(index)) unplaced += count2;
+  const candidates = /* @__PURE__ */ new Map();
+  for (const [key, candidate] of collected.candidates) {
+    for (const index of candidate.files) if (!included.has(index)) candidate.files.delete(index);
+    if (candidate.files.size > 0) candidates.set(key, candidate);
+  }
+  const fileOrder = /* @__PURE__ */ new Map();
+  input.files.forEach((path, order) => {
+    const index = collected.paths.get(path);
+    if (index !== void 0) fileOrder.set(index, order);
+  });
   for (const candidate of candidates.values()) {
     if (candidate.kind === "random-string" && candidate.decided === void 0 && !randomStringIsCredential(candidate.via)) {
       candidate.decided = "placeholder";
@@ -21312,7 +21259,7 @@ async function classifySecrets(input, keep) {
   }
   const searched = await searchFixtures(
     input.io,
-    workingDirs,
+    collected.workingDirs,
     pending,
     input.now ?? (() => Date.now())
   );
@@ -21330,7 +21277,7 @@ async function classifySecrets(input, keep) {
         kept.push({
           value: candidate.value,
           kind: candidate.kind,
-          files: [...candidate.files].sort((a, b) => a - b).map((i) => input.files[i])
+          files: [...candidate.files].map((index) => fileOrder.get(index) ?? Number.MAX_SAFE_INTEGER).sort((a, b) => a - b).map((order) => input.files[order])
         });
       }
     }
@@ -21372,6 +21319,165 @@ async function classifySecrets(input, keep) {
 }
 
 // src/core/verify/verify.ts
+import { homedir as homedir2 } from "os";
+
+// src/core/verify/deps.ts
+function operandsOf(args2) {
+  return args2.filter((a) => !a.startsWith("-"));
+}
+function readJs(manager, args2) {
+  const words2 = operandsOf(args2);
+  const sub = words2[0];
+  const packages = words2.slice(1);
+  if (manager === "yarn" && sub === void 0) return { manager, restore: true };
+  if (sub === "ci") return manager === "npm" ? { manager, restore: true } : void 0;
+  if (sub === "install" || sub === "i") return { manager, restore: packages.length === 0 };
+  if (sub === "add" || sub === "update" || sub === "up" || sub === "upgrade") {
+    return { manager, restore: false };
+  }
+  return void 0;
+}
+function readPip(args2) {
+  if (args2[0] !== "install") return void 0;
+  const rest = args2.slice(1);
+  const fromFile = rest.some((a) => a === "-r" || a.startsWith("--requirement") || a === "-c");
+  const packages = rest.filter(
+    (a, k) => !a.startsWith("-") && !["-r", "-c", "-e"].includes(rest[k - 1] ?? "")
+  );
+  const project = rest.some((a) => a === "-e" || a === ".");
+  return { manager: "pip", restore: fromFile || project && packages.every((p) => p === ".") };
+}
+function readSimple2(simple) {
+  const { program, args: args2 } = programAndArgs(simple);
+  switch (program) {
+    case "npm":
+    case "pnpm":
+    case "yarn":
+    case "bun":
+      return readJs(program, args2);
+    case "pip":
+    case "pip3":
+      return readPip(args2);
+    case "python":
+    case "python3":
+      return args2[0] === "-m" && (args2[1] === "pip" || args2[1] === "pip3") ? readPip(args2.slice(2)) : void 0;
+    case "uv": {
+      if (args2[0] === "sync") return { manager: "uv", restore: true };
+      if (args2[0] === "add") return { manager: "uv", restore: false };
+      if (args2[0] === "pip" && args2[1] === "sync") return { manager: "uv", restore: true };
+      if (args2[0] === "pip") {
+        const pip = readPip(args2.slice(1));
+        return pip === void 0 ? void 0 : { manager: "uv", restore: pip.restore };
+      }
+      return void 0;
+    }
+    case "poetry":
+      if (args2[0] === "install") return { manager: "poetry", restore: true };
+      return args2[0] === "add" || args2[0] === "update" ? { manager: "poetry", restore: false } : void 0;
+    case "pipenv": {
+      if (args2[0] === "sync") return { manager: "pipenv", restore: true };
+      if (args2[0] !== "install") return void 0;
+      return { manager: "pipenv", restore: operandsOf(args2.slice(1)).length === 0 };
+    }
+    case "cargo":
+      return args2[0] === "add" || args2[0] === "install" ? { manager: "cargo", restore: false } : void 0;
+    case "go":
+      if (args2[0] === "get" || args2[0] === "install") return { manager: "go", restore: false };
+      return args2[0] === "mod" && args2[1] === "download" ? { manager: "go", restore: true } : void 0;
+    case "gem":
+      return args2[0] === "install" ? { manager: "gem", restore: false } : void 0;
+    case "bundle":
+    case "bundler":
+      if (args2[0] === "install") return { manager: "bundler", restore: true };
+      return args2[0] === "add" ? { manager: "bundler", restore: false } : void 0;
+    case "composer":
+      if (args2[0] === "install") return { manager: "composer", restore: true };
+      return args2[0] === "require" || args2[0] === "update" ? { manager: "composer", restore: false } : void 0;
+    default:
+      return void 0;
+  }
+}
+function readInstalls(command) {
+  const out = [];
+  for (const simple of simpleCommands(command)) {
+    const reading = readSimple2(simple);
+    if (reading !== void 0) out.push(reading);
+  }
+  return out;
+}
+function checkDependencies(calls) {
+  const managers = /* @__PURE__ */ new Set();
+  let installs = 0;
+  let lockfileRestores = 0;
+  let mentioned = 0;
+  let unconfirmed = 0;
+  for (const call of calls.calls) {
+    if (!isShell(call) || readInstalls(call.command).length === 0) continue;
+    const state = runStateOf(calls.agent, call, (command) => readInstalls(command).length > 0);
+    if (state === "mentioned") mentioned += 1;
+    else if (state === "unknown") unconfirmed += 1;
+    else {
+      for (const reading of readInstalls(executedText(call.command))) {
+        if (reading.restore) lockfileRestores += 1;
+        else {
+          installs += 1;
+          managers.add(reading.manager);
+        }
+      }
+    }
+  }
+  return {
+    installs,
+    lockfileRestores,
+    managers: PACKAGE_MANAGERS.filter((m) => managers.has(m)),
+    packageAge: PACKAGE_AGE_NOT_CHECKED,
+    mentioned,
+    unconfirmed,
+    couldHide: couldHideCount(calls),
+    hidingForms: heldHidingForms(calls)
+  };
+}
+
+// src/core/verify/git-checks.ts
+var FAILED = { status: "could-not-check", matches: 0 };
+async function guarded2(run) {
+  try {
+    return await run();
+  } catch {
+    return { result: FAILED, localFixes: [], unsafeFixes: [] };
+  }
+}
+async function checkGitBacked(input) {
+  let context;
+  try {
+    context = {
+      log: readCalls2(input.corpus, input.home),
+      probe: new RepoProbe(input.io),
+      scratchRoots: input.scratchRoots ?? TEMP_ROOTS,
+      ...input.rules === void 0 ? {} : { rules: input.rules }
+    };
+  } catch {
+    return {
+      "skipped-checks": FAILED,
+      "lost-work": FAILED,
+      destructive: FAILED,
+      localFixes: [],
+      unsafeFixes: []
+    };
+  }
+  const skipped = await guarded2(() => checkSkippedChecks(context));
+  const lost = await guarded2(() => checkLostWork(context));
+  const destructive = await guarded2(() => checkDestructive(context));
+  return {
+    "skipped-checks": skipped.result,
+    "lost-work": lost.result,
+    destructive: destructive.result,
+    localFixes: [...skipped.localFixes, ...lost.localFixes, ...destructive.localFixes],
+    unsafeFixes: [...skipped.unsafeFixes, ...lost.unsafeFixes, ...destructive.unsafeFixes]
+  };
+}
+
+// src/core/verify/verify.ts
 var VERIFY_BY_DEFAULT = true;
 var UNAVAILABLE_VERIFY_IO = {
   git: () => Promise.resolve({ ok: false, reason: "missing" }),
@@ -21390,7 +21496,8 @@ async function verifyScan(input) {
     files: input.corpus.files ?? [],
     readLines: input.readLines,
     io: input.io,
-    fingerprint: input.fingerprint ?? createFingerprinter()
+    fingerprint: input.fingerprint ?? createFingerprinter(),
+    ...input.secretsCollector === void 0 ? {} : { collector: input.secretsCollector }
   });
   const git = await checkGitBacked({
     corpus: input.corpus,
@@ -21554,9 +21661,9 @@ ${wrapText(`Rotate each credential first, then scrub. For Codex this is ${CODEX_
                  one step, leaving any file that changed since it was read.`
   };
 }
-function scanUsage(byDefault, scrub = true) {
+function scanUsage(byDefault, scrub2 = true) {
   const checks = checksUsage(byDefault);
-  const scrubbing = scrub ? scrubUsage() : { line: "", flags: "" };
+  const scrubbing = scrub2 ? scrubUsage() : { line: "", flags: "" };
   return `agenttrail-guard scan \u2014 what your agent has been doing
 
 Usage:
@@ -21607,7 +21714,7 @@ function parseScanFlags(argv) {
   let help = false;
   let review2 = false;
   let verify = false;
-  let scrub = false;
+  let scrub2 = false;
   let apply = false;
   let noChecks = false;
   let unknown;
@@ -21632,7 +21739,7 @@ function parseScanFlags(argv) {
     else if (arg === "--artifact") artifact = true;
     else if (arg === "--review") review2 = true;
     else if (arg === "--verify") verify = true;
-    else if (arg === "--scrub") scrub = true;
+    else if (arg === "--scrub") scrub2 = true;
     else if (arg === "--apply") apply = true;
     else if (arg === "--no-checks") noChecks = true;
     else if (arg === "--out") {
@@ -21669,7 +21776,7 @@ function parseScanFlags(argv) {
     help,
     review: review2,
     verify,
-    scrub,
+    scrub: scrub2,
     apply,
     noChecks,
     unknown
@@ -21708,11 +21815,23 @@ function countTranscriptFiles(io, dir, depth = 0) {
   }
   return total;
 }
-async function readClaudeSession(io, item) {
+async function readClaudeSession(io, item, collector2) {
   const source = { readLines: (p) => io.readLines(p) };
+  const parse = async (path, id) => {
+    if (collector2 === void 0) return await parseSession(path, id, source);
+    const index = collector2.file(path);
+    const parsed = await parseSession(
+      path,
+      id,
+      source,
+      (record) => collector2.record(index, record)
+    );
+    collector2.read(index);
+    return parsed;
+  };
   let session;
   try {
-    session = await parseSession(item.file, item.sessionId, source);
+    session = await parse(item.file, item.sessionId);
   } catch {
     return { opened: 1, files: [] };
   }
@@ -21742,7 +21861,7 @@ async function readClaudeSession(io, item) {
     opened += 1;
     let sub;
     try {
-      sub = await parseSession(subPath, name, source);
+      sub = await parse(subPath, name);
     } catch {
       continue;
     }
@@ -21780,7 +21899,7 @@ function sessionRootFor(agent, home) {
       return unhandledAgent(agent);
   }
 }
-async function readCorpusFor(agent, root, io) {
+async function readCorpusFor(agent, root, io, collector2) {
   switch (agent) {
     case "cursor":
       return await readCursorCorpus(root, io);
@@ -21790,13 +21909,13 @@ async function readCorpusFor(agent, root, io) {
       return {
         agent: "claude",
         capabilities: { tokens: true, skips: false },
-        ...await readCorpus(io, root)
+        ...await readCorpus(io, root, collector2)
       };
     default:
       return unhandledAgent(agent);
   }
 }
-async function readCorpus(io, root) {
+async function readCorpus(io, root, collector2) {
   const inventory = await scanTranscripts(root, void 0, {
     readdir: (p) => io.readdir(p),
     stat: (p) => io.stat(p),
@@ -21808,7 +21927,7 @@ async function readCorpus(io, root) {
   let opened = 0;
   for (const project of inventory.projects) {
     for (const item of project.sessions) {
-      const read = await readClaudeSession(io, item);
+      const read = await readClaudeSession(io, item, collector2);
       opened += read.opened;
       for (const path of read.files) files.push(path);
       if (read.session !== void 0) sessions.push(read.session);
@@ -22128,7 +22247,9 @@ ${usage}`);
   const catalog = compileCatalog([...shipped, ...userRules], config);
   const allowlist = compileAllowlist(config.allowlist);
   const readRoot = flags.scrub ? resolve4(io.cwd(), root) : root;
-  const corpus = await readCorpusFor(agent, readRoot, io);
+  const verifying = !flags.scrub && shouldVerify(flags, byDefault);
+  const secretsCollector = verifying && agent === "claude" ? createSecretsCollector({ agent, fingerprint: createFingerprinter() }) : void 0;
+  const corpus = await readCorpusFor(agent, readRoot, io, secretsCollector);
   if (flags.scrub && deps.scrub !== void 0) {
     const scrubIO = deps.scrub.createIO();
     return await deps.scrub.run({
@@ -22153,7 +22274,8 @@ ${usage}`);
         catalog,
         allowlist,
         readLines: (path) => io.readLines(path),
-        io: deps.createVerifyIO?.() ?? UNAVAILABLE_VERIFY_IO
+        io: deps.createVerifyIO?.() ?? UNAVAILABLE_VERIFY_IO,
+        ...secretsCollector === void 0 ? {} : { secretsCollector }
       });
     } catch {
       outcome = void 0;
