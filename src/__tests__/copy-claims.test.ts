@@ -21,6 +21,46 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { runRules } from "../commands/rules.js";
+import { renderReport, reportPayload } from "../core/report.js";
+import {
+  COULD_NOT_CHECK_SENTENCE,
+  cardsFor,
+  NOT_CHECKED_SENTENCE,
+  type SentenceTemplate,
+  sentences,
+  UNCONFIRMED_SENTENCE,
+} from "../core/verify/cards.js";
+import {
+  CARD_COUNT,
+  CHIP_TONE,
+  CHIP_UNCONFIRMED,
+  CODEX_CAVEAT,
+  FIXES_FILE_NOTE,
+  LEAD_NOTES,
+  MORE_EVIDENCE,
+  TONE_TALLY,
+  UNSAFE_FIXES_FILE_NOTE,
+} from "../core/verify/copy.js";
+import {
+  SECRETS_CHIP,
+  SECRETS_COUNT,
+  SECRETS_FIX,
+  SECRETS_FOUND,
+  SECRETS_HEADLINE,
+  SECRETS_NOW,
+  SECRETS_READ,
+} from "../core/verify/secrets-card.js";
+import type { SecretsFacts, Verification } from "../core/verify/types.js";
+import { decodeEntities } from "./html-text.js";
+import {
+  CODEX_ONLY_RESULT,
+  CURSOR_RESULT,
+  HIDING_RESULT,
+  LOCAL_FIX_CATEGORIES,
+  TEST_ONLY_BUILDERS,
+  VERIFIED_META,
+  VERIFIED_RESULT,
+} from "./verified-corpus.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PKG_ROOT = join(HERE, "..", "..");
@@ -53,6 +93,11 @@ const QUALIFY_IF_CLAIMED = [
   join(PKG_ROOT, "src", "cli.ts"),
   join(PKG_ROOT, "src", "commands", "scan.ts"),
   join(PKG_ROOT, "src", "core", "report.ts"),
+  // The words of the verified sections and the local fixes file, which the report carries.
+  join(PKG_ROOT, "src", "core", "verify", "copy.ts"),
+  join(PKG_ROOT, "src", "core", "verify", "secrets-card.ts"),
+  join(PKG_ROOT, "src", "core", "verify", "notes.ts"),
+  join(PKG_ROOT, "src", "core", "fixes-file.ts"),
 ];
 
 /** A claim about not touching the network. */
@@ -291,5 +336,194 @@ describe("the README's usage table is the one the CLI prints", () => {
 
     const readme = readFileSync(join(PKG_ROOT, "README.md"), "utf8");
     expect(readme).toContain(`\n\`\`\`\n${rows.join("\n")}\n\`\`\`\n`);
+  });
+});
+
+/**
+ * Every line of the verified sections comes from a template, and states what its facts say.
+ *
+ * Each templated line on the page names its template (`data-template`). Rendered from the
+ * synthetic verified corpus, every such line must belong to a known template, and its text must
+ * be what that template makes from the facts the page was built from. A line in a card with no
+ * template is refused outright, so no card can carry a hand-written claim. The test-only cards
+ * of `verified-corpus.ts` are recognised by their `test-only.` ids and are not shipped.
+ */
+describe("every verified line comes from a template whose facts are present", () => {
+  const html = renderReport(VERIFIED_RESULT, VERIFIED_META, {
+    cardBuilders: TEST_ONLY_BUILDERS,
+    localFixCategories: LOCAL_FIX_CATEGORIES,
+    unsafeFixCategories: LOCAL_FIX_CATEGORIES,
+  });
+  const verification = reportPayload(VERIFIED_RESULT, VERIFIED_META, TEST_ONLY_BUILDERS)
+    .verification as Verification;
+  const cards = cardsFor(verification, TEST_ONLY_BUILDERS);
+  const secrets = verification.categories.secrets.facts;
+
+  /** Every shipped template, with every set of facts the page may have used it on. */
+  const SHIPPED: readonly [SentenceTemplate<never>, readonly unknown[]][] = [
+    ...[...SECRETS_FOUND, ...SECRETS_NOW, ...SECRETS_FIX, SECRETS_HEADLINE, SECRETS_CHIP].map(
+      (t) => [t, [secrets]] as [SentenceTemplate<never>, readonly unknown[]],
+    ),
+    ...LEAD_NOTES.map((t) => [t, [verification]] as [SentenceTemplate<never>, readonly unknown[]]),
+    [SECRETS_READ, [secrets]],
+    [MORE_EVIDENCE, [{ more: secrets.moreItems }]],
+    [TONE_TALLY, [cards]],
+    [FIXES_FILE_NOTE, [{ variant: "document" }]],
+    [UNSAFE_FIXES_FILE_NOTE, [{ variant: "document" }]],
+    [SECRETS_COUNT, [{ matches: verification.categories.secrets.matches }]],
+    [
+      UNCONFIRMED_SENTENCE,
+      cards.flatMap((c) => (c.unconfirmed === undefined ? [] : [c.unconfirmed])),
+    ],
+    ...[
+      CARD_COUNT,
+      CHIP_TONE,
+      CHIP_UNCONFIRMED,
+      CODEX_CAVEAT,
+      NOT_CHECKED_SENTENCE,
+      COULD_NOT_CHECK_SENTENCE,
+    ].map((t) => [t, cards] as [SentenceTemplate<never>, readonly unknown[]]),
+  ];
+  const byId = new Map(SHIPPED.map(([t, facts]) => [t.id, { t, facts }]));
+
+  /** The verified parts of a page: the headline and the three sections. */
+  const verifiedParts = (page: string): string => {
+    const part = (id: string): string => {
+      const at = page.indexOf(`id="${id}"`);
+      if (at === -1) return "";
+      const start = page.lastIndexOf("<section", at);
+      return page.slice(start, page.indexOf("</section>", at));
+    };
+    return [
+      page.match(/<h1[^>]*>[^<]*<\/h1>/)?.[0] ?? "",
+      part("found"),
+      part("also-checked"),
+      part("what-happened"),
+    ].join("\n");
+  };
+
+  /**
+   * The fixed notes the verified sections carry: explanations that hold no count and no data.
+   * Every other line in those sections must name its template.
+   */
+  const FIXED_NOTES: readonly string[] = [
+    "Each credential that looks real, by its kind and how it got into the transcripts. Never the value, and never the name it was given.",
+    "What checking found, and how to fix it",
+    "A match means a guardrail fired on a command. Each card says what checking that on this machine found, how things stand now, and how to fix it. The checks only read: they changed nothing on this machine.",
+    "What the checks read on this machine:",
+  ];
+
+  /** The three verified sections of a page. */
+  const sectionsOf = (page: string): string =>
+    ["found", "also-checked", "what-happened"]
+      .map((id) => {
+        const at = page.indexOf(`id="${id}"`);
+        if (at === -1) return "";
+        return page.slice(page.lastIndexOf("<section", at), page.indexOf("</section>", at));
+      })
+      .join("\n");
+
+  /**
+   * Lines in the verified sections that name no template and are not a fixed note: every `<p>`
+   * and every chip's text, read with its markup stripped.
+   */
+  const withoutTemplate = (page: string): string[] =>
+    [
+      ...sectionsOf(page).matchAll(
+        /<(p|span)(?![^>]*data-template=)((?:\s[^>]*)?)>([\s\S]*?)<\/\1>/g,
+      ),
+    ]
+      .filter((m) => m[1] === "p" || /class="chip-text"/.test(m[2] ?? ""))
+      .map((m) => decodeEntities((m[3] ?? "").replace(/<[^>]+>/g, "")).trim())
+      .filter((text) => !FIXED_NOTES.includes(text));
+
+  it("shipped template ids are unique", () => {
+    expect(byId.size).toBe(SHIPPED.length);
+  });
+
+  it("every templated line is a known template's output on the page's own facts", () => {
+    const lines = [...verifiedParts(html).matchAll(/data-template="([^"]+)"[^>]*>([^<]*)</g)];
+    expect(lines.length).toBeGreaterThan(30);
+    const shipped = lines.filter((m) => !(m[1] ?? "").startsWith("test-only."));
+    expect(shipped.length).toBeGreaterThan(15);
+    for (const [, id, raw] of shipped) {
+      const entry = byId.get(id ?? "");
+      expect(entry, `no template ${id}`).toBeDefined();
+      const made = (entry?.facts ?? []).map((facts) =>
+        (entry?.t as SentenceTemplate<unknown>).render(facts),
+      );
+      const text = decodeEntities(raw ?? "");
+      if (id === FIXES_FILE_NOTE.id || id === UNSAFE_FIXES_FILE_NOTE.id) {
+        // It wraps the file name in code, so the text read here stops there.
+        expect(
+          made.some((m) => text.length > 20 && m?.startsWith(text)),
+          text,
+        ).toBe(true);
+      } else {
+        expect(made, `${id}: "${text}"`).toContain(text);
+      }
+    }
+  });
+
+  it.each([
+    ["the secrets lead", VERIFIED_RESULT],
+    ["hiding forms", HIDING_RESULT],
+    ["Cursor", CURSOR_RESULT],
+    ["Codex", CODEX_ONLY_RESULT],
+  ] as const)("%s: no line in the verified sections is without a template, but the fixed notes", (_n, result) => {
+    const page = renderReport(result, VERIFIED_META, {
+      cardBuilders: TEST_ONLY_BUILDERS,
+      localFixCategories: LOCAL_FIX_CATEGORIES,
+      unsafeFixCategories: LOCAL_FIX_CATEGORIES,
+    });
+    expect(sectionsOf(page)).toContain("<dd>");
+    expect(withoutTemplate(page)).toEqual([]);
+  });
+
+  it("the fixed notes hold no count and no data", () => {
+    for (const note of FIXED_NOTES) expect(note).not.toMatch(/\d/);
+  });
+
+  it("negative control: a hand-written line anywhere in the sections is caught", () => {
+    const section = (body: string) => `<section class="x" id="what-happened">${body}</section>`;
+    expect(withoutTemplate(section("<dd>\n<p>No Terraform runs.</p>\n</dd>"))).toEqual([
+      "No Terraform runs.",
+    ]);
+    expect(withoutTemplate(section('<p class="note">0 uploads ran.</p>'))).toEqual([
+      "0 uploads ran.",
+    ]);
+    expect(
+      withoutTemplate(section('<span class="chip-text">0 files sent off this machine</span>')),
+    ).toEqual(["0 files sent off this machine"]);
+  });
+
+  it("a template whose facts are absent says nothing", () => {
+    const none: SecretsFacts = {
+      ...secrets,
+      classes: { "likely-real": 0, "committed-fixture": 0, placeholder: 0, "local-dev": 0 },
+      items: [],
+      setAside: { unnamedOutputOnly: 0, namedNotCredentialShaped: 0 },
+      filesRead: 0,
+      reposChecked: 0,
+    };
+    expect(sentences([...SECRETS_FOUND, ...SECRETS_NOW, ...SECRETS_FIX], none)).toEqual([]);
+    expect(SECRETS_HEADLINE.render(none)).toBeUndefined();
+    expect(SECRETS_READ.render(none)).toBeUndefined();
+    expect(MORE_EVIDENCE.render({ more: 0 })).toBeUndefined();
+    const quiet = {
+      matchedCalls: { ran: 3, mentioned: 0, unknown: 0 },
+      resultsRecorded: true,
+      ranEvidence: "tool-result" as const,
+    };
+    expect(sentences(LEAD_NOTES, quiet).map((s) => s.template)).toEqual(["lead.ran-basis"]);
+  });
+
+  it("a committed fixture is never called safe or harmless", () => {
+    const text = sentences([...SECRETS_FOUND, ...SECRETS_NOW, ...SECRETS_FIX], secrets)
+      .map((s) => s.text)
+      .join(" ");
+    expect(text).toContain("committed fixture");
+    expect(text).toContain("a real secret that was committed");
+    expect(text).not.toMatch(/\b(safe|harmless|fine|nothing to worry)\b/i);
   });
 });

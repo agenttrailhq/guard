@@ -219,8 +219,8 @@ var require_constants = __commonJS({
       /**
        * Create GLOB_CHARS
        */
-      globChars(win32) {
-        return win32 === true ? WINDOWS_CHARS : POSIX_CHARS;
+      globChars(win322) {
+        return win322 === true ? WINDOWS_CHARS : POSIX_CHARS;
       }
     };
   }
@@ -584,9 +584,9 @@ var require_scan = __commonJS({
       if (opts.parts === true || opts.tokens === true) {
         let prevIndex;
         for (let idx = 0; idx < slashes.length; idx++) {
-          const n = prevIndex ? prevIndex + 1 : start;
+          const n2 = prevIndex ? prevIndex + 1 : start;
           const i = slashes[idx];
-          const value = input.slice(n, i);
+          const value = input.slice(n2, i);
           if (opts.tokens) {
             if (idx === 0 && start !== 0) {
               tokens[idx].isPrefix = true;
@@ -624,7 +624,7 @@ var require_scan = __commonJS({
 var require_parse = __commonJS({
   "node_modules/picomatch/lib/parse.js"(exports, module) {
     "use strict";
-    var constants = require_constants();
+    var constants3 = require_constants();
     var utils = require_utils();
     var {
       MAX_LENGTH,
@@ -632,7 +632,7 @@ var require_parse = __commonJS({
       REGEX_NON_SPECIAL_CHARS,
       REGEX_SPECIAL_CHARS_BACKREF,
       REPLACEMENTS
-    } = constants;
+    } = constants3;
     var expandRange = (args2, options) => {
       if (typeof options.expandRange === "function") {
         return options.expandRange(...args2, options);
@@ -838,7 +838,7 @@ var require_parse = __commonJS({
       if (options.maxExtglobRecursion === false) {
         return { risky: false };
       }
-      const max = typeof options.maxExtglobRecursion === "number" ? options.maxExtglobRecursion : constants.DEFAULT_MAX_EXTGLOB_RECURSION;
+      const max = typeof options.maxExtglobRecursion === "number" ? options.maxExtglobRecursion : constants3.DEFAULT_MAX_EXTGLOB_RECURSION;
       const branches = splitTopLevel(body).map((branch) => branch.trim());
       if (branches.length > 1) {
         if (branches.some((branch) => branch === "") || branches.some((branch) => /^[*?]+$/.test(branch)) || hasRepeatedCharPrefixOverlap(branches)) {
@@ -870,8 +870,8 @@ var require_parse = __commonJS({
       const bos = { type: "bos", value: "", output: opts.prepend || "" };
       const tokens = [bos];
       const capture = opts.capture ? "" : "?:";
-      const PLATFORM_CHARS = constants.globChars(opts.windows);
-      const EXTGLOB_CHARS = constants.extglobChars(PLATFORM_CHARS);
+      const PLATFORM_CHARS = constants3.globChars(opts.windows);
+      const EXTGLOB_CHARS = constants3.extglobChars(PLATFORM_CHARS);
       const {
         DOT_LITERAL,
         PLUS_LITERAL,
@@ -923,7 +923,7 @@ var require_parse = __commonJS({
       let prev = bos;
       let value;
       const eos = () => state.index === len - 1;
-      const peek = state.peek = (n = 1) => input[state.index + n];
+      const peek = state.peek = (n2 = 1) => input[state.index + n2];
       const advance = state.advance = () => input[++state.index] || "";
       const remaining = () => input.slice(state.index + 1);
       const consume = (value2 = "", num = 0) => {
@@ -1125,9 +1125,9 @@ var require_parse = __commonJS({
                 const idx = prev.value.lastIndexOf("[");
                 const pre = prev.value.slice(0, idx);
                 const rest2 = prev.value.slice(idx + 2);
-                const posix = POSIX_REGEX_SOURCE[rest2];
-                if (posix) {
-                  prev.value = pre + posix;
+                const posix2 = POSIX_REGEX_SOURCE[rest2];
+                if (posix2) {
+                  prev.value = pre + posix2;
                   state.backtrack = true;
                   advance();
                   if (!bos.output && tokens.indexOf(prev) === 1) {
@@ -1566,7 +1566,7 @@ var require_parse = __commonJS({
         NO_DOTS_SLASH,
         STAR,
         START_ANCHOR
-      } = constants.globChars(opts.windows);
+      } = constants3.globChars(opts.windows);
       const nodot = opts.dot ? NO_DOTS : NO_DOT;
       const slashDot = opts.dot ? NO_DOTS_SLASH : NO_DOT;
       const capture = opts.capture ? "" : "?:";
@@ -1624,7 +1624,7 @@ var require_picomatch = __commonJS({
     var scan = require_scan();
     var parse = require_parse();
     var utils = require_utils();
-    var constants = require_constants();
+    var constants3 = require_constants();
     var isObject = (val) => val && typeof val === "object" && !Array.isArray(val);
     var picomatch3 = (glob, options, returnState = false) => {
       if (Array.isArray(glob)) {
@@ -1643,7 +1643,7 @@ var require_picomatch = __commonJS({
         throw new TypeError("Expected pattern to be a non-empty string");
       }
       const opts = options || {};
-      const posix = opts.windows;
+      const posix2 = opts.windows;
       const regex = isState ? picomatch3.compileRe(glob, options) : picomatch3.makeRe(glob, options, false, true);
       const state = regex.state;
       delete regex.state;
@@ -1653,8 +1653,8 @@ var require_picomatch = __commonJS({
         isIgnored = picomatch3(opts.ignore, ignoreOpts, returnState);
       }
       const matcher = (input, returnObject = false) => {
-        const { isMatch, match, output } = picomatch3.test(input, regex, options, { glob, posix });
-        const result = { glob, state, regex, posix, input, output, match, isMatch };
+        const { isMatch, match, output } = picomatch3.test(input, regex, options, { glob, posix: posix2 });
+        const result = { glob, state, regex, posix: posix2, input, output, match, isMatch };
         if (typeof opts.onResult === "function") {
           opts.onResult(result);
         }
@@ -1679,7 +1679,7 @@ var require_picomatch = __commonJS({
       }
       return matcher;
     };
-    picomatch3.test = (input, regex, options, { glob, posix } = {}) => {
+    picomatch3.test = (input, regex, options, { glob, posix: posix2 } = {}) => {
       if (typeof input !== "string") {
         throw new TypeError("Expected input to be a string");
       }
@@ -1687,7 +1687,7 @@ var require_picomatch = __commonJS({
         return { isMatch: false, output: "" };
       }
       const opts = options || {};
-      const format = opts.format || (posix ? utils.toPosixSlashes : null);
+      const format = opts.format || (posix2 ? utils.toPosixSlashes : null);
       let match = input === glob;
       let output = match && format ? format(input) : input;
       if (match === false) {
@@ -1696,7 +1696,7 @@ var require_picomatch = __commonJS({
       }
       if (match === false || opts.capture === true) {
         if (opts.matchBase === true || opts.basename === true) {
-          match = picomatch3.matchBase(input, regex, options, posix);
+          match = picomatch3.matchBase(input, regex, options, posix2);
         } else {
           match = regex.exec(output);
         }
@@ -1752,7 +1752,7 @@ var require_picomatch = __commonJS({
         return /$^/;
       }
     };
-    picomatch3.constants = constants;
+    picomatch3.constants = constants3;
     module.exports = picomatch3;
   }
 });
@@ -1775,7 +1775,7 @@ var require_picomatch2 = __commonJS({
 });
 
 // src/commands/scan.ts
-import { basename as basename3, dirname, join as join5, resolve } from "path";
+import { basename as basename3, dirname as dirname5, join as join9, resolve as resolve4 } from "path";
 import { pathToFileURL } from "url";
 
 // src/core/types.ts
@@ -1851,23 +1851,23 @@ function file(filePath, tool = "Edit") {
 function mcp(input, tool = "mcp__server__run") {
   return { tool, command: JSON.stringify(input) };
 }
-function quoted(text) {
-  return /["$`]/.test(text) ? `'${text}'` : `"${text}"`;
+function quoted(text2) {
+  return /["$`]/.test(text2) ? `'${text2}'` : `"${text2}"`;
 }
-function mentionInCommit(text) {
-  return bash(`git commit -m ${quoted(`docs: explain ${text}`)}`);
+function mentionInCommit(text2) {
+  return bash(`git commit -m ${quoted(`docs: explain ${text2}`)}`);
 }
-function mentionInSearch(text) {
-  return bash(`grep -rn ${quoted(text)} docs/`);
+function mentionInSearch(text2) {
+  return bash(`grep -rn ${quoted(text2)} docs/`);
 }
-function mentionInEcho(text) {
-  return bash(`echo ${quoted(`never run ${text}`)}`);
+function mentionInEcho(text2) {
+  return bash(`echo ${quoted(`never run ${text2}`)}`);
 }
-function mentionInPost(text) {
-  return bash(`curl --data ${quoted(`we ran ${text}`)} https://api.example.com/comments`);
+function mentionInPost(text2) {
+  return bash(`curl --data ${quoted(`we ran ${text2}`)} https://api.example.com/comments`);
 }
-function mentions(text) {
-  return [mentionInCommit(text), mentionInSearch(text), mentionInEcho(text), mentionInPost(text)];
+function mentions(text2) {
+  return [mentionInCommit(text2), mentionInSearch(text2), mentionInEcho(text2), mentionInPost(text2)];
 }
 var AT_COMMAND = "(?:^|[\\s;&|(/])";
 var ARGS = `\\s(?:[^|;&"']*\\s)?`;
@@ -5705,10 +5705,10 @@ var PATCH_MARKERS = [
 ];
 function patchCandidates(patch) {
   const candidates = [];
-  for (const line of patch.split("\n")) {
+  for (const line2 of patch.split("\n")) {
     for (const { marker, tool } of PATCH_MARKERS) {
-      if (!line.startsWith(marker)) continue;
-      const filePath = line.slice(marker.length).trim();
+      if (!line2.startsWith(marker)) continue;
+      const filePath = line2.slice(marker.length).trim();
       if (filePath !== "") candidates.push({ tool, args: { file_path: filePath } });
       break;
     }
@@ -5779,6 +5779,8 @@ async function readCodexFile(path, source, options) {
   let lineNumber = 0;
   let pending = [];
   let pendingStamp = "";
+  const callIds = /* @__PURE__ */ new Map();
+  const toolResults = /* @__PURE__ */ new Map();
   const closeTurn = (timestamp, usage) => {
     turns.push({
       messageUuid: "",
@@ -5794,15 +5796,15 @@ async function readCodexFile(path, source, options) {
   };
   for await (const raw of source.readLines(path)) {
     lineNumber++;
-    const line = raw.trim();
-    if (line.length === 0) continue;
+    const line2 = raw.trim();
+    if (line2.length === 0) continue;
     if (pendingUnparseable) {
       unparseableLines++;
       pendingUnparseable = false;
     }
     let record;
     try {
-      record = JSON.parse(line);
+      record = JSON.parse(line2);
     } catch {
       pendingUnparseable = true;
       continue;
@@ -5836,8 +5838,11 @@ async function readCodexFile(path, source, options) {
     }
     if (payload.type === "custom_tool_call") {
       pendingStamp = timestamp;
+      const toolUseId = `${options.idPrefix}:${lineNumber}`;
+      const callId = nonEmptyString(payload.call_id);
+      if (callId !== void 0) callIds.set(callId, toolUseId);
       pending.push({
-        toolUseId: `${options.idPrefix}:${lineNumber}`,
+        toolUseId,
         // A call with no name is kept under `""`, so `scan` counts it as unrecognized
         // rather than dropping it.
         name: typeof payload.name === "string" ? payload.name : "",
@@ -5845,6 +5850,13 @@ async function readCodexFile(path, source, options) {
         // from it; nothing here interprets it.
         input: { input: payload.input }
       });
+      continue;
+    }
+    if (payload.type === "custom_tool_call_output") {
+      const toolUseId = callIds.get(nonEmptyString(payload.call_id) ?? "");
+      if (toolUseId !== void 0) {
+        toolResults.set(toolUseId, { toolUseId, isError: false, content: "", timestamp });
+      }
       continue;
     }
     if (payload.type === "message" && payload.role === "user") {
@@ -5867,6 +5879,7 @@ async function readCodexFile(path, source, options) {
     lastTimestamp,
     turns,
     userPrompts,
+    toolResults,
     counts: {
       unparseableLines,
       truncatedLastLines: pendingUnparseable ? 1 : 0,
@@ -5884,6 +5897,7 @@ var CODEX_SHIM_TOOL = "exec";
 var EXEC_COMMAND = "exec_command";
 var APPLY_PATCH = "apply_patch";
 var CMD_KEY = "cmd";
+var WORKDIR_KEY = "workdir";
 var TOOLS_PREFIX = "tools.";
 var MAX_SHIM_SOURCE = 128 * 1024;
 var MAX_WALK_DEPTH = 8;
@@ -5894,48 +5908,48 @@ function isIdentPart(code2) {
 function isIdentStart(code2) {
   return code2 >= 65 && code2 <= 90 || code2 >= 97 && code2 <= 122 || code2 === 95 || code2 === 36;
 }
-function readEscape(source, at) {
-  const ch = source[at + 1];
+function readEscape(source, at2) {
+  const ch = source[at2 + 1];
   if (ch === void 0) return void 0;
   switch (ch) {
     case "n":
-      return { text: "\n", end: at + 2 };
+      return { text: "\n", end: at2 + 2 };
     case "t":
-      return { text: "	", end: at + 2 };
+      return { text: "	", end: at2 + 2 };
     case "r":
-      return { text: "\r", end: at + 2 };
+      return { text: "\r", end: at2 + 2 };
     case "b":
-      return { text: "\b", end: at + 2 };
+      return { text: "\b", end: at2 + 2 };
     case "f":
-      return { text: "\f", end: at + 2 };
+      return { text: "\f", end: at2 + 2 };
     case "v":
-      return { text: "\v", end: at + 2 };
+      return { text: "\v", end: at2 + 2 };
     case "0":
-      return { text: "\0", end: at + 2 };
+      return { text: "\0", end: at2 + 2 };
     case "x": {
-      const hex = source.slice(at + 2, at + 4);
+      const hex = source.slice(at2 + 2, at2 + 4);
       if (!/^[0-9a-fA-F]{2}$/.test(hex)) return void 0;
-      return { text: String.fromCharCode(Number.parseInt(hex, 16)), end: at + 4 };
+      return { text: String.fromCharCode(Number.parseInt(hex, 16)), end: at2 + 4 };
     }
     case "u":
-      return readUnicodeEscape(source, at);
+      return readUnicodeEscape(source, at2);
     default:
-      return { text: ch, end: at + 2 };
+      return { text: ch, end: at2 + 2 };
   }
 }
-function readUnicodeEscape(source, at) {
-  if (source[at + 2] === "{") {
-    const close = source.indexOf("}", at + 3);
+function readUnicodeEscape(source, at2) {
+  if (source[at2 + 2] === "{") {
+    const close = source.indexOf("}", at2 + 3);
     if (close === -1) return void 0;
-    const digits = source.slice(at + 3, close);
+    const digits = source.slice(at2 + 3, close);
     if (!/^[0-9a-fA-F]{1,6}$/.test(digits)) return void 0;
     const code2 = Number.parseInt(digits, 16);
     if (code2 > 1114111) return void 0;
     return { text: String.fromCodePoint(code2), end: close + 1 };
   }
-  const hex = source.slice(at + 2, at + 6);
+  const hex = source.slice(at2 + 2, at2 + 6);
   if (!/^[0-9a-fA-F]{4}$/.test(hex)) return void 0;
-  return { text: String.fromCharCode(Number.parseInt(hex, 16)), end: at + 6 };
+  return { text: String.fromCharCode(Number.parseInt(hex, 16)), end: at2 + 6 };
 }
 function readQuoted(source, open) {
   const quote = source[open];
@@ -5957,8 +5971,8 @@ function readQuoted(source, open) {
   }
   return void 0;
 }
-function skipTrivia(source, at) {
-  let i = at;
+function skipTrivia(source, at2) {
+  let i = at2;
   while (i < source.length) {
     const ch = source[i];
     if (ch === " " || ch === "	" || ch === "\n" || ch === "\r") {
@@ -5979,9 +5993,9 @@ function skipTrivia(source, at) {
   }
   return i;
 }
-function skipValue(source, at) {
+function skipValue(source, at2) {
   let depth = 0;
-  let i = at;
+  let i = at2;
   while (i < source.length) {
     const ch = source[i];
     if (ch === '"' || ch === "'") {
@@ -6007,17 +6021,17 @@ function skipValue(source, at) {
   }
   return void 0;
 }
-function readKey(source, at) {
-  const ch = source[at];
+function readKey(source, at2) {
+  const ch = source[at2];
   if (ch === '"' || ch === "'") {
-    const quoted2 = readQuoted(source, at);
+    const quoted2 = readQuoted(source, at2);
     if (quoted2 === void 0) return void 0;
     return { name: quoted2.value, end: quoted2.end };
   }
-  if (!isIdentStart(source.charCodeAt(at))) return void 0;
-  let i = at + 1;
+  if (!isIdentStart(source.charCodeAt(at2))) return void 0;
+  let i = at2 + 1;
   while (i < source.length && isIdentPart(source.charCodeAt(i))) i += 1;
-  return { name: source.slice(at, i), end: i };
+  return { name: source.slice(at2, i), end: i };
 }
 function readObjectLiteral(source, open, key) {
   if (source[open] !== "{") return void 0;
@@ -6055,8 +6069,8 @@ function readObjectLiteral(source, open, key) {
     return void 0;
   }
 }
-function readShimCall(source, at) {
-  const nameStart = at + TOOLS_PREFIX.length;
+function readShimCall(source, at2, withWorkdir = false) {
+  const nameStart = at2 + TOOLS_PREFIX.length;
   if (!isIdentStart(source.charCodeAt(nameStart))) return { end: nameStart };
   let i = nameStart + 1;
   while (i < source.length && isIdentPart(source.charCodeAt(i))) i += 1;
@@ -6068,7 +6082,12 @@ function readShimCall(source, at) {
   if (ch === "{") {
     const object = readObjectLiteral(source, argument, CMD_KEY);
     if (object === void 0) return void 0;
-    const call = object.value === void 0 ? { fn } : { fn, cmd: object.value };
+    const workdir = withWorkdir ? readObjectLiteral(source, argument, WORKDIR_KEY)?.value : void 0;
+    const call = {
+      fn,
+      ...object.value === void 0 ? {} : { cmd: object.value },
+      ...workdir === void 0 ? {} : { workdir }
+    };
     return { call, end: object.end };
   }
   if (ch === '"' || ch === "'") {
@@ -6080,6 +6099,12 @@ function readShimCall(source, at) {
   return void 0;
 }
 function readShimCalls(source) {
+  return scanShim(source, false);
+}
+function readShimWorkdirs(source) {
+  return scanShim(source, true)?.map((call) => call.workdir);
+}
+function scanShim(source, withWorkdir) {
   if (source.length > MAX_SHIM_SOURCE) return void 0;
   const calls = [];
   let i = 0;
@@ -6104,7 +6129,7 @@ function readShimCalls(source) {
       continue;
     }
     if (ch === "t" && source.startsWith(TOOLS_PREFIX, i) && (i === 0 || !isIdentPart(source.charCodeAt(i - 1)) && source[i - 1] !== ".")) {
-      const read = readShimCall(source, i);
+      const read = readShimCall(source, i, withWorkdir);
       if (read === void 0) return void 0;
       if (read.call !== void 0) calls.push(read.call);
       i = read.end;
@@ -6216,7 +6241,7 @@ function toSession(file2, records) {
     cwd: records.cwd,
     turns,
     userPrompts,
-    toolResults: /* @__PURE__ */ new Map(),
+    toolResults: records.toolResults,
     firstTimestamp: records.firstTimestamp === "" ? stamp : records.firstTimestamp,
     lastTimestamp: records.lastTimestamp === "" ? stamp : records.lastTimestamp,
     skippedLines: records.counts.unparseableLines + records.counts.truncatedLastLines
@@ -6224,6 +6249,7 @@ function toSession(file2, records) {
 }
 async function readCodexCorpus(root, io) {
   const sessions = [];
+  const files = [];
   const workingDirectories = /* @__PURE__ */ new Set();
   let quarantined = 0;
   let counts = NO_LINE_COUNTS;
@@ -6241,6 +6267,7 @@ async function readCodexCorpus(root, io) {
       continue;
     }
     counts = addLineCounts(counts, records.counts);
+    files.push(file2.path);
     const session = toSession(file2, records);
     if (session === void 0) {
       quarantined++;
@@ -6258,7 +6285,8 @@ async function readCodexCorpus(root, io) {
     quarantined,
     notRead,
     projects: workingDirectories.size,
-    skipped
+    skipped,
+    files
   };
 }
 
@@ -6279,8 +6307,8 @@ function shouldUseColor({ env, isTTY }) {
   if (env.TERM === "dumb") return false;
   return isTTY;
 }
-function style(enabled, name, text) {
-  return enabled ? `${CODES[name]}${text}${CODES.reset}` : text;
+function style(enabled, name, text2) {
+  return enabled ? `${CODES[name]}${text2}${CODES.reset}` : text2;
 }
 function createColors(enabled) {
   return {
@@ -6295,8 +6323,8 @@ function createColors(enabled) {
   };
 }
 var NO_COLORS = createColors(false);
-function hyperlink(enabled, url, text) {
-  return enabled ? `\x1B]8;;${url}\x1B\\${text}\x1B]8;;\x1B\\` : text;
+function hyperlink(enabled, url, text2) {
+  return enabled ? `\x1B]8;;${url}\x1B\\${text2}\x1B]8;;\x1B\\` : text2;
 }
 
 // src/core/config.ts
@@ -6339,11 +6367,11 @@ function parseOverrides(raw) {
   }
   return out;
 }
-function parseConfig(text) {
-  if (text === void 0) return DEFAULT_CONFIG;
+function parseConfig(text2) {
+  if (text2 === void 0) return DEFAULT_CONFIG;
   let raw;
   try {
-    raw = JSON.parse(text);
+    raw = JSON.parse(text2);
   } catch {
     return DEFAULT_CONFIG;
   }
@@ -6416,15 +6444,15 @@ async function readCursorFile(path, source, options) {
   let lineNumber = 0;
   for await (const raw of source.readLines(path)) {
     lineNumber++;
-    const line = raw.trim();
-    if (line.length === 0) continue;
+    const line2 = raw.trim();
+    if (line2.length === 0) continue;
     if (pendingUnparseable) {
       unparseableLines++;
       pendingUnparseable = false;
     }
     let record;
     try {
-      record = JSON.parse(line);
+      record = JSON.parse(line2);
     } catch {
       pendingUnparseable = true;
       continue;
@@ -6636,6 +6664,7 @@ async function readSession(io, found) {
   const turns = [];
   const userPrompts = [];
   const times = [];
+  const files = [];
   let counts = NO_LINE_COUNTS2;
   let unreadableFiles = 0;
   for (const [index, file2] of found.files.entries()) {
@@ -6649,13 +6678,14 @@ async function readSession(io, found) {
       for (const prompt of records.userPrompts) userPrompts.push(prompt);
       counts = addLineCounts2(counts, records.counts);
       times.push(file2.mtimeMs);
+      files.push(file2.path);
     } catch {
       unreadableFiles++;
     }
   }
   const readable = times.length > 0;
   if (!readable || turns.length === 0 && userPrompts.length === 0) {
-    return { session: void 0, readable, unreadableFiles, counts };
+    return { session: void 0, readable, unreadableFiles, counts, files };
   }
   return {
     session: {
@@ -6672,11 +6702,13 @@ async function readSession(io, found) {
     },
     readable,
     unreadableFiles,
-    counts
+    counts,
+    files
   };
 }
 async function readCursorCorpus(root, io) {
   const sessions = [];
+  const files = [];
   let quarantined = 0;
   let projects = 0;
   let notRead = 0;
@@ -6696,6 +6728,7 @@ async function readCursorCorpus(root, io) {
       counts = addLineCounts2(counts, result.counts);
       if (result.session !== void 0) {
         sessions.push(result.session);
+        for (const path of result.files) files.push(path);
         read++;
       } else if (result.readable) {
         quarantined++;
@@ -6714,7 +6747,8 @@ async function readCursorCorpus(root, io) {
     quarantined,
     notRead,
     projects,
-    skipped
+    skipped,
+    files
   };
 }
 
@@ -6746,9 +6780,9 @@ function describeRule(ruleId, titles) {
   const title = (titles.get(ruleId) ?? "").replace(/\s+/g, " ").trim();
   return title === "" ? `guardrail ${ruleId}` : `${title} (guardrail ${ruleId})`;
 }
-function compileAllowlist(entries) {
+function compileAllowlist(entries2) {
   const compiled = [];
-  for (const entry of entries) {
+  for (const entry of entries2) {
     try {
       compiled.push({ rule: entry.guardrail, isMatch: (0, import_picomatch.default)(entry.pattern, { dot: true }) });
     } catch {
@@ -6782,13 +6816,13 @@ function evaluateCall(catalog, context, mapped, allowlist) {
       titles.set(entry.rule.id, entry.rule.title);
     }
   }
-  const { verdict, policyId } = strongestVerdict(
+  const { verdict: verdict2, policyId } = strongestVerdict(
     matches.map((m) => ({ policyId: m.ruleId, action: m.action }))
   );
-  if (verdict === "deny") {
+  if (verdict2 === "deny") {
     return { decision: "deny", reason: `${BLOCK_LEAD}${describeRule(policyId, titles)}`, matches };
   }
-  if (verdict === "require_approval") {
+  if (verdict2 === "require_approval") {
     return {
       decision: "ask",
       reason: `${APPROVAL_LEAD}${describeRule(policyId, titles)}`,
@@ -6801,151 +6835,6 @@ function evaluateCall(catalog, context, mapped, allowlist) {
     reason: warned ? `${WARN_LEAD}${describeRule(matches[0]?.ruleId, titles)}` : "",
     matches
   };
-}
-
-// src/core/paths.ts
-import { join as join3 } from "path";
-function guardDir(homedir3) {
-  return join3(homedir3, ".agenttrail", "guard");
-}
-function configPath(homedir3) {
-  return join3(guardDir(homedir3), "config.json");
-}
-function userRulesPath(homedir3) {
-  return join3(guardDir(homedir3), "guardrails.json");
-}
-function productLineStatePath(homedir3) {
-  return join3(guardDir(homedir3), ".product-line");
-}
-
-// src/core/tokens.ts
-function tok(n) {
-  return typeof n === "number" && Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
-}
-var EMPTY_TOKEN_TOTALS = {
-  input: 0,
-  output: 0,
-  cacheRead: 0,
-  cacheCreation: 0,
-  cacheCreation5m: 0,
-  cacheCreation1h: 0,
-  turnsWithSplit: 0,
-  turns: 0
-};
-function addUsage(totals, usage) {
-  const u = usage ?? {};
-  const hasSplit = u.cache_creation !== void 0;
-  return {
-    input: totals.input + tok(u.input_tokens),
-    output: totals.output + tok(u.output_tokens),
-    cacheRead: totals.cacheRead + tok(u.cache_read_input_tokens),
-    cacheCreation: totals.cacheCreation + tok(u.cache_creation_input_tokens),
-    cacheCreation5m: totals.cacheCreation5m + (hasSplit ? tok(u.cache_creation?.ephemeral_5m_input_tokens) : 0),
-    cacheCreation1h: totals.cacheCreation1h + (hasSplit ? tok(u.cache_creation?.ephemeral_1h_input_tokens) : 0),
-    turnsWithSplit: totals.turnsWithSplit + (hasSplit ? 1 : 0),
-    turns: totals.turns + 1
-  };
-}
-function totalTokens(t) {
-  return t.input + t.output + t.cacheRead + t.cacheCreation;
-}
-function formatTokens(n) {
-  if (!Number.isFinite(n) || n < 0) return "0";
-  if (n >= 1e9) return `${(n / 1e9).toFixed(1)}B`;
-  if (n >= 1e6) return `${(n / 1e6).toFixed(1)}M`;
-  if (n >= 1e3) return `${(n / 1e3).toFixed(1)}K`;
-  return String(Math.floor(n));
-}
-function formatCount(n) {
-  if (!Number.isFinite(n) || n < 0) return "0";
-  return Math.floor(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
-}
-
-// src/core/product-line.ts
-var SUPPORTED_AGENTS = /* @__PURE__ */ new Set(["claude", "cursor"]);
-var plural = (n, one, many) => `${formatCount(n)} ${n === 1 ? one : many}`;
-var PRODUCT_LINE = {
-  destination: "https://agenttrail.sh/agenttrail-os",
-  utm: "utm_source=guard&utm_medium=cli",
-  /** `config.json` key. Only `false` turns the line off. */
-  configKey: "productLine",
-  /** At most one showing per command in this many hours. */
-  intervalHours: 24,
-  /** How far back `status` counts decisions. */
-  statusWindowDays: 7,
-  text: {
-    init: (url) => `Want a teammate to approve risky actions, and every session on record? AgentTrail OS (Team plan): ${url}`,
-    statusAsks: (asks, url) => `This week guard asked about ${plural(asks, "action", "actions")}. In AgentTrail OS a teammate approves them from the app (Team plan): ${url}`,
-    statusBlocks: (blocks, url) => `Guard blocked ${plural(blocks, "action", "actions")} this week. AgentTrail OS finds the failures agents repeat and suggests the guardrail that stops them: ${url}`,
-    scanAsks: (asks, url) => `${formatCount(asks)} of these would have waited for a teammate's approval in AgentTrail OS (Team plan), not a prompt: ${url}`,
-    scanMatches: (url) => `AgentTrail OS finds the failures agents repeat and suggests the guardrail that stops them: ${url}`,
-    add: (id, url) => `Share it: with everyone, run agenttrail-guard guardrails export ${id}; with your team, AgentTrail OS syncs guardrails to every teammate (Team plan): ${url}`
-  }
-};
-function productLineUrl(surface) {
-  return `${PRODUCT_LINE.destination}?${PRODUCT_LINE.utm}&utm_content=${surface}`;
-}
-function productLineText(facts) {
-  const url = productLineUrl(facts.surface);
-  const t = PRODUCT_LINE.text;
-  switch (facts.surface) {
-    case "init":
-      return SUPPORTED_AGENTS.has(facts.agent) ? t.init(url) : void 0;
-    case "status":
-      if (facts.asks > 0) return t.statusAsks(facts.asks, url);
-      if (facts.blocks > 0) return t.statusBlocks(facts.blocks, url);
-      return void 0;
-    case "scan":
-      if (!SUPPORTED_AGENTS.has(facts.agent) || facts.matches === 0) return void 0;
-      return facts.asks > 0 ? t.scanAsks(facts.asks, url) : t.scanMatches(url);
-    case "add":
-      return t.add(facts.guardrailId, url);
-    default:
-      return void 0;
-  }
-}
-function productLineEnabled(configText) {
-  if (configText === void 0) return true;
-  try {
-    const raw = JSON.parse(configText);
-    if (raw === null || typeof raw !== "object" || Array.isArray(raw)) return true;
-    return raw[PRODUCT_LINE.configKey] !== false;
-  } catch {
-    return true;
-  }
-}
-function readState(text) {
-  if (text === void 0) return {};
-  try {
-    const raw = JSON.parse(text);
-    return raw !== null && typeof raw === "object" && !Array.isArray(raw) ? { ...raw } : {};
-  } catch {
-    return {};
-  }
-}
-function productLineDue(stateText, surface, now) {
-  const last = readState(stateText)[surface];
-  if (typeof last !== "string") return true;
-  const at = Date.parse(last);
-  if (Number.isNaN(at) || at > now.getTime()) return true;
-  return now.getTime() - at >= PRODUCT_LINE.intervalHours * 36e5;
-}
-function recordProductLine(stateText, surface, now) {
-  const state = readState(stateText);
-  state[surface] = now.toISOString();
-  return `${JSON.stringify(state, null, 2)}
-`;
-}
-function takeProductLine(ctx, facts) {
-  if (!ctx.interactive || !productLineEnabled(ctx.configText)) return void 0;
-  const text = productLineText(facts);
-  if (text === void 0) return void 0;
-  const state = ctx.readFile(ctx.statePath);
-  if (!productLineDue(state, facts.surface, ctx.now)) return void 0;
-  if (!ctx.writeFile(ctx.statePath, recordProductLine(state, facts.surface, ctx.now))) {
-    return void 0;
-  }
-  return text;
 }
 
 // src/core/report.ts
@@ -7040,7 +6929,19 @@ var LIGHT_TOKENS = {
   "act-ask-fg": "#b45309",
   "act-ask-bd": "#fbd391",
   "act-warn-fg": "#52525b",
-  "act-warn-bd": "#bfbfc3"
+  "act-warn-bd": "#bfbfc3",
+  "tone-act-fg": "#b91c1c",
+  "tone-act-bg": "#fdecec",
+  "tone-act-bd": "#f9bebe",
+  "tone-review-fg": "#b45309",
+  "tone-review-bg": "#fef5e7",
+  "tone-review-bd": "#fcddaa",
+  "tone-clean-fg": "#15803d",
+  "tone-clean-bg": "#ecfdf3",
+  "tone-clean-bd": "#a6e5bd",
+  "tone-none-fg": "#52525b",
+  "tone-none-bg": "#f1f1f2",
+  "tone-none-bd": "#cdcdd0"
 };
 var DARK_TOKENS = {
   bg: "#0b0f1e",
@@ -7083,10 +6984,22 @@ var DARK_TOKENS = {
   "act-ask-fg": "#fbbf24",
   "act-ask-bd": "#835a1a",
   "act-warn-fg": "#a1a1aa",
-  "act-warn-bd": "#414452"
+  "act-warn-bd": "#414452",
+  "tone-act-fg": "#f87171",
+  "tone-act-bg": "#351d2d",
+  "tone-act-bd": "#6a2834",
+  "tone-review-fg": "#fbbf24",
+  "tone-review-bg": "#352c24",
+  "tone-review-bd": "#6c4c1d",
+  "tone-clean-fg": "#4ade80",
+  "tone-clean-bg": "#12301f",
+  "tone-clean-bd": "#1f5a37",
+  "tone-none-fg": "#a1a1aa",
+  "tone-none-bg": "#202536",
+  "tone-none-bd": "#373a49"
 };
-function vars(tokens) {
-  return Object.entries(tokens).map(([key, value]) => `  --${key}: ${value};`).join("\n");
+function vars(tokens, verified) {
+  return Object.entries(tokens).filter(([key]) => verified || !key.startsWith("tone-")).map(([key, value]) => `  --${key}: ${value};`).join("\n");
 }
 var FONT_SANS = `"Inter", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif`;
 var FONT_MONO = `ui-monospace, SFMono-Regular, "SF Mono", Menlo, Monaco, Consolas, "Liberation Mono", monospace`;
@@ -7098,22 +7011,121 @@ var severityRules = SEVERITIES.map(
 var actionRules = ACTIONS.map(
   (a) => `.act-${a} { color: var(--act-${a}-fg); border-color: var(--act-${a}-bd); }`
 ).join("\n");
-var REPORT_STYLES = `
+var TONES = [
+  ["act", "act"],
+  ["review", "review"],
+  ["clean", "clean"],
+  ["could-not-check", "none"],
+  ["not-checked", "none"]
+];
+var toneRules = TONES.map(
+  ([tone, palette]) => `.tone-${tone} { color: var(--tone-${palette}-fg); background: var(--tone-${palette}-bg); border-color: var(--tone-${palette}-bd); }
+.v-${tone} { border-left-color: var(--tone-${palette}-fg); }`
+).join("\n");
+var VERIFIED_RULES = `.lead.totals { color: var(--muted-fg); }
+.evidence, .also-checked { margin-top: 28px; }
+.evidence-list {
+  list-style: none;
+  margin: 10px 0 12px;
+  padding: 0;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--tone-act-fg);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+}
+.evidence-list li {
+  display: grid;
+  grid-template-columns: minmax(10rem, 14rem) 1fr auto;
+  align-items: baseline;
+  gap: 4px 16px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--divider);
+  font-size: 14px;
+}
+.evidence-list li:last-child { border-bottom: 0; }
+.evidence-kind { font-weight: 600; }
+.evidence-how { color: var(--muted-fg); }
+.check-chips {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+  gap: 10px;
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+}
+.check-chip {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  height: 100%;
+  padding: 10px 14px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--border);
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+  color: var(--fg);
+  text-decoration: none;
+}
+.check-chip:hover { border-color: var(--brand-text); }
+.chip-title { font-size: 12px; color: var(--muted-fg); }
+.chip-text { font-size: 14px; font-weight: 600; }
+.verified-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr)); gap: 12px; margin-top: 12px; }
+.verified { border-left: 4px solid var(--border); }
+.verified:target { border-color: var(--brand-text); }
+.verified h3 { font-size: 16px; margin: 8px 0 6px; }
+.verified-note { margin: 8px 0 0; padding: 2px 0 2px 10px; border-left: 3px solid var(--tone-none-fg); font-size: 14px; }
+.verified-note-label { font-weight: 600; color: var(--muted-fg); }
+.tone {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid;
+  border-radius: 999px;
+  padding: 0 9px;
+  font-size: 11.5px;
+  font-weight: 650;
+  line-height: 1.8;
+  white-space: nowrap;
+}
+${toneRules}
+.tone-not-checked { border-style: dashed; }
+.verified-facts { margin: 0; }
+.verified-facts dt { margin: 10px 0 2px; font-size: 12px; font-weight: 600; color: var(--muted-fg); }
+.verified-facts dd { margin: 0; font-size: 14px; }
+.verified-facts dd p { margin: 0 0 6px; }
+.verified-facts .command { margin: 6px 0; }
+.codex-caveat { margin: 10px 0 0; font-size: 13px; }
+.read-list { list-style: none; margin: 0 0 12px; padding: 0; display: flex; flex-direction: column; gap: 4px; font-size: 14px; color: var(--muted-fg); }
+.read-title { font-weight: 600; color: var(--fg); }
+`;
+var VERIFIED_NARROW_RULES = `  .evidence-list li { grid-template-columns: 1fr; gap: 2px; }
+  .verified-cards { grid-template-columns: 1fr; }
+`;
+var VERIFIED_PRINT_BREAKS = `  .evidence-list li, .check-chip, .verified-facts > div, .verified-note { break-inside: avoid; }
+  .verified { break-inside: auto; }
+  .verified .card-head { break-after: avoid; }
+`;
+var VERIFIED_PRINT_COLORS = `  .tone, .verified, .check-chip, .evidence-list, .verified-note { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+`;
+function reportStyles(verified) {
+  const only = (rules12) => verified ? rules12 : "";
+  return `
 :root {
   --font-sans: ${FONT_SANS};
   --font-mono: ${FONT_MONO};
   color-scheme: light;
-${vars(LIGHT_TOKENS)}
+${vars(LIGHT_TOKENS, verified)}
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
   color-scheme: dark;
-${vars(DARK_TOKENS)}
+${vars(DARK_TOKENS, verified)}
   }
 }
 :root[data-theme="dark"] {
   color-scheme: dark;
-${vars(DARK_TOKENS)}
+${vars(DARK_TOKENS, verified)}
 }
 *, *::before, *::after { box-sizing: border-box; }
 [hidden] { display: none !important; }
@@ -7391,7 +7403,7 @@ td.num { font-weight: 600; }
 .card-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .card-meta { font-size: 13px; color: var(--muted-fg); margin: 6px 0; }
 .example { margin: 6px 0; }
-.controls { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
+${only(VERIFIED_RULES)}.controls { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
 .filters { display: flex; flex-wrap: wrap; gap: 6px; }
 .sort { font-size: 13px; color: var(--muted-fg); }
 .sort select { font: inherit; font-size: 13px; color: var(--fg); background: var(--card); border: 1px solid var(--border); border-radius: 6px; padding: 3px 6px; }
@@ -7529,23 +7541,24 @@ footer p { margin: 0 0 6px; max-width: none; }
   .recurring td.num { text-align: left; }
   .legend { grid-template-columns: 1fr; gap: 2px; }
   .legend dd { margin-bottom: 8px; }
-}
+${only(VERIFIED_NARROW_RULES)}}
 @media print {
   html:root:not([data-theme="print"]) {
   color-scheme: light;
-${vars(LIGHT_TOKENS)}
+${vars(LIGHT_TOKENS, verified)}
   }
   body { background: #ffffff; }
   .sections, .toolbar, .js-only, .actions, .controls, .copy, .share { display: none; }
   .button, .button.secondary { display: inline; background: none; color: var(--brand-text); border: 0; padding: 0; }
   .stat, .tally, .product-note, tr, .card, .col, .risk, .finding-head, .shapes li { break-inside: avoid; }
-  h1, h2, h3, .section-head, summary, h2 + .note, h2 + .lead { break-after: avoid; }
+${only(VERIFIED_PRINT_BREAKS)}  h1, h2, h3, .section-head, summary, h2 + .note, h2 + .lead${only(", .verified-facts dt")} { break-after: avoid; }
   .chip::before { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
-  .owasp-ids a[href^="http"]::after, .risk-name a[href^="http"]::after { content: none; }
+${only(VERIFIED_PRINT_COLORS)}  .owasp-ids a[href^="http"]::after, .risk-name a[href^="http"]::after { content: none; }
   .how a[href^="http"]::after, .card a[href^="http"]::after { content: none; }
   a[href^="http"]::after { content: " (" attr(href) ")"; font-size: 11px; color: var(--muted-fg); overflow-wrap: anywhere; }
 }
 `;
+}
 var MARK_PATHS = `<path d="m49 68.207v-8.207c0-6.6289 5.3711-12 12-12s12 5.3711 12 12v9.2422l13 14.734v-31.977c0-19.883-16.117-36-36-36s-36 16.117-36 36v32.785z"/>
 <path d="m18.672 87h64.66l-13.234-15h-19.758z"/>`;
 var WORDMARK_PATH = `M5.28 0.22L5.28 0.22Q3.96 0.22 2.95-0.25Q1.94-0.72 1.37-1.56Q0.79-2.40 0.79-3.50L0.79-3.50Q0.79-5.23 2.11-6.23Q3.43-7.22 5.74-7.22L5.74-7.22Q7.54-7.22 9.07-6.53L9.07-6.53L9.07-7.82Q9.07-9.12 8.32-9.78Q7.56-10.44 6.10-10.44L6.10-10.44Q5.26-10.44 4.34-10.19Q3.43-9.94 2.30-9.38L2.30-9.38L1.42-11.21Q2.81-11.86 4.01-12.16Q5.21-12.46 6.43-12.46L6.43-12.46Q8.81-12.46 10.12-11.33Q11.42-10.20 11.42-8.11L11.42-8.11L11.42 0L9.07 0L9.07-1.06Q8.26-0.41 7.32-0.10Q6.38 0.22 5.28 0.22Z
@@ -7953,1384 +7966,47 @@ ${REPORT_SCRIPT_GLUE.trim()}
 })();
 `;
 
-// src/core/report.ts
-var REPOSITORY_URL = "https://github.com/agenttrailhq/guard";
-var SITE_URL = "https://www.agenttrail.sh";
-var REPORT_FILENAME = "agenttrail-guard-report.html";
-var ARTIFACT_FILENAME = "agenttrail-guard-artifact.html";
-var PRODUCT_NOTE = {
-  eyebrow: "AgentTrail OS",
-  heading: "AgentTrail Guard stops the mistake. AgentTrail OS remembers it and turns it into a rule.",
-  body: "This report is one look at the transcripts on one machine. AgentTrail OS watches every agent session, turns each repeated mistake into a guardrail, and proves the fix on your own history. It is a separate product, and nothing in this report was sent to it.",
-  primary: { label: "Book a team demo", path: "/agenttrail-os", content: "os-demo" },
-  secondary: { label: "Guard vs OS", path: "/guard-vs-os", content: "os-compare" }
+// src/core/tokens.ts
+function tok(n2) {
+  return typeof n2 === "number" && Number.isFinite(n2) && n2 > 0 ? Math.floor(n2) : 0;
+}
+var EMPTY_TOKEN_TOTALS = {
+  input: 0,
+  output: 0,
+  cacheRead: 0,
+  cacheCreation: 0,
+  cacheCreation5m: 0,
+  cacheCreation1h: 0,
+  turnsWithSplit: 0,
+  turns: 0
 };
-var SEVERITY_ORDER = ["critical", "high", "medium", "low", "info"];
-function knownSeverity(severity) {
-  return SEVERITY_ORDER.includes(severity) ? severity : "unknown";
-}
-function severityRank(severity) {
-  const index = SEVERITY_ORDER.indexOf(severity);
-  return index === -1 ? SEVERITY_ORDER.length : index;
-}
-var ACTION_ORDER = ["block", "require_approval", "warn"];
-function matchTally(result) {
-  const bySeverity = /* @__PURE__ */ new Map();
-  const byAction = /* @__PURE__ */ new Map();
-  for (const finding of result.findings) {
-    bySeverity.set(finding.severity, (bySeverity.get(finding.severity) ?? 0) + finding.count);
-    byAction.set(finding.action, (byAction.get(finding.action) ?? 0) + finding.count);
-  }
+function addUsage(totals, usage) {
+  const u = usage ?? {};
+  const hasSplit = u.cache_creation !== void 0;
   return {
-    bySeverity: [...bySeverity].map(([severity, count2]) => ({ severity, count: count2 })).sort(
-      (a, b) => severityRank(a.severity) - severityRank(b.severity) || b.count - a.count || a.severity.localeCompare(b.severity)
-    ),
-    byAction: ACTION_ORDER.flatMap((action) => {
-      const count2 = byAction.get(action) ?? 0;
-      return count2 > 0 ? [{ action, count: count2 }] : [];
-    })
+    input: totals.input + tok(u.input_tokens),
+    output: totals.output + tok(u.output_tokens),
+    cacheRead: totals.cacheRead + tok(u.cache_read_input_tokens),
+    cacheCreation: totals.cacheCreation + tok(u.cache_creation_input_tokens),
+    cacheCreation5m: totals.cacheCreation5m + (hasSplit ? tok(u.cache_creation?.ephemeral_5m_input_tokens) : 0),
+    cacheCreation1h: totals.cacheCreation1h + (hasSplit ? tok(u.cache_creation?.ephemeral_1h_input_tokens) : 0),
+    turnsWithSplit: totals.turnsWithSplit + (hasSplit ? 1 : 0),
+    turns: totals.turns + 1
   };
 }
-function bySeverityThenCount(findings) {
-  return [...findings].sort(
-    (a, b) => severityRank(a.severity) - severityRank(b.severity) || b.count - a.count || a.ruleId.localeCompare(b.ruleId)
-  );
-}
-var MAX_ROWS = 50;
-var MAX_EXAMPLES = 3;
-var FIX_FIRST_MAX = 6;
-var TOP_PER_ACTION = 3;
-var DESCRIPTION_LINE = 160;
-var TUNING_MAX_GUARDRAILS = 3;
-var TUNING_MIN_SHARE = 0.6;
-var TUNING_MIN_ASKS = 5;
-function escapeHtml(value) {
-  return String(value).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
-}
-function agentName(agent) {
-  return agentDisplayName(agent);
-}
-function counted(n, one, many) {
-  return `${formatCount(n)} ${n === 1 ? one : many}`;
-}
-function ruleSlug(id) {
-  return id.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
-}
-function siteLink(path, agent, content) {
-  const tags = `utm_source=guard&utm_medium=scan-report&utm_campaign=${agent}&utm_content=${content}`;
-  const hash = path.indexOf("#");
-  const base = hash === -1 ? path : path.slice(0, hash);
-  const fragment = hash === -1 ? "" : path.slice(hash);
-  return `${SITE_URL}${base}${base.includes("?") ? "&" : "?"}${tags}${fragment}`;
-}
-function sitePath(url) {
-  if (!url.startsWith(`${SITE_URL}/`)) throw new Error(`Not a page on the site: ${url}`);
-  return url.slice(SITE_URL.length);
-}
-function owaspRiskLink(id, agent) {
-  return siteLink(sitePath(owaspAnchorUrl(id)), agent, "owasp-risk");
-}
-function libraryLink(category, ruleId, agent) {
-  return siteLink(
-    `/guardrails/${encodeURIComponent(category)}/${encodeURIComponent(ruleSlug(ruleId))}`,
-    agent,
-    "guardrail"
-  );
-}
-var PACK_LABELS = {
-  "working-tree": "Working tree",
-  "destructive-data": "Destructive data",
-  "prod-infra": "Production infrastructure",
-  "secret-exposure": "Secret exposure",
-  "rce-supply-chain": "Remote code and supply chain",
-  "safety-bypass": "Safety bypass",
-  "privilege-supply-chain": "Privileges and supply chain",
-  "file-scope": "File scope",
-  "agent-context": "Agent context",
-  "test-integrity": "Test integrity",
-  exfiltration: "Data leaving the machine"
-};
-var YOUR_GUARDRAILS = "Your guardrails";
-var OWN_CARD_HEADING = "A guardrail you added";
-function packLabel(category) {
-  return PACK_LABELS[category] ?? category;
-}
-function wrapLines(text, width) {
-  const lines = [];
-  let line = "";
-  for (const word of text.split(/\s+/).filter(Boolean)) {
-    if (line === "") line = word;
-    else if (line.length + 1 + word.length <= width) line = `${line} ${word}`;
-    else {
-      lines.push(line);
-      line = word;
-    }
-  }
-  if (line !== "") lines.push(line);
-  return lines;
-}
-function tokenCopy(t) {
-  return {
-    input: t.input,
-    output: t.output,
-    cacheRead: t.cacheRead,
-    cacheCreation: t.cacheCreation,
-    cacheCreation5m: t.cacheCreation5m,
-    cacheCreation1h: t.cacheCreation1h,
-    turnsWithSplit: t.turnsWithSplit,
-    turns: t.turns
-  };
-}
-function payloadFinding(finding) {
-  const base = {
-    ruleId: finding.ruleId,
-    title: finding.title,
-    severity: knownSeverity(finding.severity),
-    action: finding.action,
-    count: finding.count,
-    examples: finding.examples.slice(0, MAX_EXAMPLES).map((e) => ({ text: e.text, count: e.count })),
-    moreShapes: Math.max(0, finding.examples.length - MAX_EXAMPLES),
-    owasp: finding.owasp.filter((id) => isOwaspId(id))
-  };
-  if (finding.source !== "library") return { ...base, source: "yours" };
-  return {
-    ...base,
-    source: "library",
-    ...finding.category === void 0 ? {} : { category: finding.category },
-    ...finding.description === void 0 ? {} : { descriptionLines: wrapLines(finding.description, DESCRIPTION_LINE) }
-  };
-}
-function reportPayload(result, meta) {
-  const ordered = bySeverityThenCount(result.findings);
-  const payload = {
-    tool: "agenttrail-guard",
-    version: meta.version,
-    generatedAt: meta.generatedAt.toISOString(),
-    catalog: formatCatalogStamp(catalogStamp(), meta.generatedAt),
-    agent: result.agent,
-    sessions: result.sessions,
-    projects: result.projects,
-    quarantined: result.quarantined,
-    notRead: result.notRead,
-    skippedLines: result.skippedLines,
-    toolCalls: result.toolCalls,
-    riskyActions: result.riskyActions,
-    riskyByAction: {
-      block: result.riskyByAction.block,
-      require_approval: result.riskyByAction.require_approval,
-      warn: result.riskyByAction.warn
-    },
-    findings: ordered.slice(0, MAX_ROWS).map(payloadFinding),
-    moreFindings: Math.max(0, result.findings.length - MAX_ROWS),
-    recurring: result.recurring.slice(0, MAX_ROWS).map((r) => ({
-      text: r.text,
-      count: r.count,
-      calls: r.calls,
-      ruleId: r.ruleId,
-      title: r.title
-    })),
-    moreRecurring: Math.max(0, result.recurring.length - MAX_ROWS),
-    tokens: result.tokens === null ? null : tokenCopy(result.tokens),
-    shareText: shareText(result),
-    owasp: result.owasp.filter((t) => isOwaspId(t.id)).map((t) => ({
-      id: t.id,
-      callCount: t.callCount,
-      ruleMatches: t.ruleMatches,
-      guardrailCount: t.guardrailCount
-    }))
-  };
-  const skipped = result.skipped;
-  if (skipped === void 0) return payload;
-  return {
-    ...payload,
-    skipped: {
-      unreadableFiles: skipped.unreadableFiles,
-      truncatedLastLines: skipped.truncatedLastLines,
-      unparseableLines: skipped.unparseableLines,
-      unknownRecords: skipped.unknownRecords,
-      turnsEndedWithError: skipped.turnsEndedWithError,
-      notActions: skipped.notActions,
-      unmappedTools: skipped.unmappedTools.map((t) => ({ name: t.name, count: t.count }))
-    }
-  };
-}
-function postLength(text) {
-  let n = 0;
-  for (const ch of text) {
-    const code2 = ch.codePointAt(0) ?? 0;
-    const light = code2 <= 4351 || code2 >= 8192 && code2 <= 8205 || code2 >= 8208 && code2 <= 8223 || code2 >= 8242 && code2 <= 8247;
-    n += light ? 1 : 2;
-  }
-  return n + 1 + 23 + 1 + "#agenttrail".length;
-}
-function topLibraryBlocker(result) {
-  return result.findings.filter((f) => f.action === "block" && f.source === "library").sort(
-    (a, b) => b.count - a.count || severityRank(a.severity) - severityRank(b.severity) || a.ruleId.localeCompare(b.ruleId)
-  )[0];
-}
-function shareText(result) {
-  const { block, require_approval: ask, warn } = result.riskyByAction;
-  const calls = counted(result.toolCalls, "tool call", "tool calls");
-  const head = `I scanned ${calls} from ${agentName(result.agent)} with AgentTrail Guard`;
-  const tail = ". Checked locally, nothing uploaded.";
-  const top = topLibraryBlocker(result);
-  const compose = (withTitle) => {
-    const parts = [];
-    if (block > 0) {
-      const detail = withTitle && top !== void 0 ? ` (${formatCount(top.count)} of those: ${top.title.replace(/`/g, "")})` : "";
-      parts.push(`${formatCount(block)} would block${detail}`);
-    }
-    if (ask > 0) parts.push(`${formatCount(ask)} would ask`);
-    if (warn > 0) parts.push(`${formatCount(warn)} would warn`);
-    const body = parts.length === 0 ? ": nothing matched a guardrail" : `: ${parts.join(" \xB7 ")}`;
-    return `${head}${body}${tail}`;
-  };
-  const full = compose(true);
-  return postLength(full) <= POST_LIMIT ? full : compose(false);
-}
-function shareLink(text, agent) {
-  const url = siteLink("/agenttrail-guard", agent, "share");
-  return `https://x.com/intent/post?text=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}&hashtags=agenttrail`;
-}
-function skippedPhrases(skipped) {
-  const unrecognized = skipped.unmappedTools.reduce((sum, tool) => sum + tool.count, 0);
-  const kinds = [
-    [skipped.unreadableFiles, "file that could not be read", "files that could not be read"],
-    [
-      skipped.truncatedLastLines,
-      "file whose last line was cut off",
-      "files whose last line was cut off"
-    ],
-    [skipped.unparseableLines, "line that is not JSON", "lines that are not JSON"],
-    [
-      skipped.unknownRecords,
-      "record of a kind this reader does not know",
-      "records of a kind this reader does not know"
-    ],
-    [
-      unrecognized,
-      "tool call of a kind this reader does not recognize",
-      "tool calls of a kind this reader does not recognize"
-    ]
-  ];
-  return kinds.filter(([n]) => n > 0).map(([n, one, many]) => counted(n, one, many));
-}
-function severityClass(severity) {
-  switch (severity) {
-    case "critical":
-      return "sev-critical";
-    case "high":
-      return "sev-high";
-    case "medium":
-      return "sev-medium";
-    case "low":
-      return "sev-low";
-    case "info":
-      return "sev-info";
-    default:
-      return "sev-unknown";
-  }
-}
-function actionLabel(action) {
-  switch (action) {
-    case "block":
-      return "would block";
-    case "require_approval":
-      return "would ask";
-    default:
-      return "would warn";
-  }
-}
-function actionClass(action) {
-  switch (action) {
-    case "block":
-      return "act-block";
-    case "require_approval":
-      return "act-ask";
-    default:
-      return "act-warn";
-  }
-}
-function severityBadge(severity) {
-  return `<span class="badge ${severityClass(severity)}">${escapeHtml(severity)}</span>`;
-}
-function actionChip(action) {
-  return `<span class="chip ${actionClass(action)}">${escapeHtml(actionLabel(action))}</span>`;
-}
-function inlineTitle(title) {
-  return escapeHtml(title).replace(/`([^`\n]+)`/g, "<code>$1</code>");
-}
-function outLink(url, text, className) {
-  const cls = className === void 0 ? "" : ` class="${className}"`;
-  return `<a${cls} href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${text}</a>`;
-}
-function copyable(id, command, name) {
-  return `<div class="command"><code id="${escapeHtml(id)}">${escapeHtml(command)}</code><button type="button" class="copy js-only" data-copy="${escapeHtml(id)}" data-label="Copy" aria-label="${escapeHtml(name)}" hidden>Copy</button></div>`;
-}
-function stat(value, label, note) {
-  const noteHtml = note === void 0 ? "" : `<div class="stat-note">${escapeHtml(note)}</div>`;
-  return `<div class="stat"><div class="stat-value">${escapeHtml(value)}</div><div class="stat-label">${escapeHtml(label)}</div>${noteHtml}</div>`;
-}
-function firstSentence(lines) {
-  const text = lines.join(" ");
-  const end = text.search(/\.(\s|$)/);
-  return end === -1 ? text : text.slice(0, end + 1);
-}
-function libraryText(text, className = "library-text") {
-  const html = wrapLines(inlineTitle(text), DESCRIPTION_LINE).join("\n");
-  return `<p class="${className}">${html}</p>`;
-}
-var MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-function readableTime(at) {
-  const two = (n) => String(n).padStart(2, "0");
-  return `${at.getUTCDate()} ${MONTHS[at.getUTCMonth()]} ${at.getUTCFullYear()}, ${two(at.getUTCHours())}:${two(at.getUTCMinutes())} UTC`;
-}
-function headline(result) {
-  if (result.toolCalls === 0) {
-    return result.sessions === 0 ? "No sessions found to scan" : "No tool calls found to scan";
-  }
-  const { block, require_approval: ask, warn } = result.riskyByAction;
-  const actions = (n) => counted(n, "action", "actions");
-  if (block > 0 && ask > 0) {
-    return `AgentTrail Guard would have stopped ${actions(block)} and asked you about ${formatCount(ask)} more`;
-  }
-  if (block > 0) return `AgentTrail Guard would have stopped ${actions(block)}`;
-  if (ask > 0) return `AgentTrail Guard would have asked you about ${actions(ask)}`;
-  if (warn > 0) return `AgentTrail Guard would have warned you about ${actions(warn)}`;
-  return "Nothing in these sessions matched a guardrail";
-}
-function topBar(payload) {
-  const scanned = payload.toolCalls > 0;
-  const links = [
-    ["overview", "Overview"],
-    ...scanned ? [["fix-first", "Fix first"]] : [],
-    ...payload.owasp.length > 0 ? [["owasp", "OWASP"]] : [],
-    ...scanned ? [["findings", "All findings"]] : [],
-    ["next-steps", "Next steps"],
-    ...scanned ? [["share", "Share"]] : [],
-    ["privacy", "Privacy"]
-  ];
-  const nav = links.map(([id, label]) => `<li><a href="#${id}">${label}</a></li>`).join("\n");
-  const controls = `<div class="toolbar">
-<button type="button" id="print-button" class="tool js-only" hidden>PDF</button>
-<button type="button" id="export-button" class="tool js-only" hidden>JSON</button>
-<button type="button" id="theme-toggle" class="tool js-only" hidden>Theme</button>
-</div>`;
-  return `<header class="masthead">
-<div class="brand" role="img" aria-label="AgentTrail">${LOGO_LOCKUP_SVG}</div>
-<span class="product-tag">Guard</span>
-<nav class="sections" aria-label="Report sections"><ul>
-${nav}
-</ul></nav>
-${controls}
-</header>`;
-}
-function provenance(result, meta, variant) {
-  const iso = meta.generatedAt.toISOString();
-  const stamp = `Generated <time datetime="${escapeHtml(iso)}">${escapeHtml(readableTime(meta.generatedAt))}</time> by agenttrail-guard ${escapeHtml(meta.version)}`;
-  if (variant === "artifact") {
-    return `${stamp} on the publisher&#39;s own machine, from their own ${escapeHtml(agentName(result.agent))} transcripts. The scan itself made no network call &mdash; crash reporting is the one exception anywhere in this tool, off unless turned on, and a scan never uses it. This copy was published to claude.ai by the person who ran it, through Claude Code.`;
-  }
-  return `${stamp}. Produced entirely on this machine from transcripts already on disk &mdash; no account, nothing uploaded, and no network call: the one exception anywhere in this tool is crash reporting, which is off unless you turn it on and which a scan never uses.`;
-}
-function mostSerious(payload) {
-  if (payload.findings.length === 0) return void 0;
-  const library = payload.findings.find((f) => f.source === "library");
-  if (library === void 0) {
-    return `<p class="top-match">Most serious match: a guardrail you added</p>`;
-  }
-  return `<p class="top-match">Most serious match: ${severityBadge(library.severity)} <span class="top-title">${inlineTitle(library.title)}</span></p>`;
-}
-function emptyLead(result) {
-  const read = result.sessions === 0 ? `The scan found no ${agentName(result.agent)} sessions to read` : `The scan read ${counted(result.sessions, "session", "sessions")} with no tool calls in them`;
-  return `${read}, so nothing was checked. This is not a clean result: check that the folder and the agent are the ones you meant, then scan again.`;
-}
-function heroSection(result, payload, meta, variant) {
-  const origin = variant === "artifact" ? "Scanned locally &middot; published by the person who ran it" : "Scanned locally &middot; nothing uploaded";
-  const t = result.tokens;
-  const repeatedShapes = new Set(result.recurring.map((r) => r.text)).size;
-  const cells = [
-    stat(formatCount(result.sessions), result.sessions === 1 ? "session" : "sessions"),
-    stat(formatCount(result.toolCalls), "tool calls"),
-    stat(formatCount(result.riskyActions), "risky actions"),
-    stat(
-      formatCount(repeatedShapes),
-      repeatedShapes === 1 ? "repeated command shape" : "repeated command shapes"
-    )
-  ];
-  if (result.toolCalls > 0) {
-    const clean = Math.floor((result.toolCalls - result.riskyActions) / result.toolCalls * 100);
-    cells.push(stat(`${clean}%`, "matched no guardrail"));
-  }
-  if (t !== null && result.toolCalls > 0) {
-    cells.push(
-      stat(
-        formatTokens(totalTokens(t)),
-        "tokens",
-        `${formatTokens(t.cacheRead)} cache reads (cumulative)`
-      )
-    );
-  }
-  const fixTarget = payload.findings.some((f) => f.action === "block") ? "fix-first" : "findings";
-  const top = mostSerious(payload);
-  const next = result.toolCalls === 0 ? `<p class="lead">${escapeHtml(emptyLead(result))}</p>
-<p class="provenance">${provenance(result, meta, variant)}</p>
-${copyable("cmd-scan-hero", `agenttrail-guard scan --agent ${result.agent}`, "Copy the scan command")}
-<p class="note">This reads the folder ${escapeHtml(agentName(result.agent))} uses by default. To read another folder, add <code>--dir</code> and its path.</p>` : `<p class="lead">What your coding agent actually did, and which guardrails would have fired.</p>
-<p class="provenance">${provenance(result, meta, variant)}</p>${top === void 0 ? "" : `
-${top}`}
-<div class="actions">${payload.findings.length > 0 ? `
-<a class="button" href="#${fixTarget}">See what to fix first</a>` : ""}
-${outLink(shareLink(payload.shareText, result.agent), "Share on X", "button secondary")}
-</div>
-${copyable("cmd-init-hero", `agenttrail-guard init --agent ${result.agent}`, "Copy the init command")}`;
-  return `<section class="intro" id="overview">
-<p class="origin">${origin}</p>
-<p class="agent">Agent: ${escapeHtml(agentName(result.agent))}</p>
-<h1>${escapeHtml(headline(result))}</h1>
-${next}
-</section>
-<section class="stats" aria-label="Summary">
-${cells.join("\n")}
-</section>`;
-}
-var ACTION_MEANING = {
-  block: "The command does not run, and the agent is told which guardrail stopped it.",
-  require_approval: "The command waits until you allow or deny it.",
-  warn: "The command runs, and the agent is shown which guardrail it matched."
-};
-function askOnCodexNote(result, byAction) {
-  if (result.agent !== "codex") return "";
-  if (!byAction.some((a) => a.action === "require_approval")) return "";
-  return `
-<p class="note"><strong>On Codex, &ldquo;would ask&rdquo; means the action would have been stopped.</strong> Codex gives a guardrail no way to ask you, so AgentTrail Guard sends those as a block. The label above is the guardrail&#39;s own decision, kept the same across apps so one guardrail reads the same way everywhere.</p>`;
-}
-function decidedBy(decided, action) {
-  const out = /* @__PURE__ */ new Map();
-  for (const group of decided) {
-    if (group.action !== action) continue;
-    for (const id of group.ruleIds) out.set(id, (out.get(id) ?? 0) + group.calls);
-  }
-  return out;
-}
-function tuningHint(decided, carried2) {
-  const asks = decided.filter((group) => group.action === "require_approval");
-  const total = asks.reduce((sum, group) => sum + group.calls, 0);
-  if (total < TUNING_MIN_ASKS) return void 0;
-  const askers = new Set(
-    carried2.filter((f) => f.action === "require_approval").map((f) => f.ruleId)
-  );
-  const own = new Map([...decidedBy(asks, "require_approval")].filter(([id]) => askers.has(id)));
-  const removed = (ids) => asks.reduce((sum, g) => g.ruleIds.every((id) => ids.has(id)) ? sum + g.calls : sum, 0);
-  const chosen = /* @__PURE__ */ new Set();
-  while (chosen.size < TUNING_MAX_GUARDRAILS && removed(chosen) / total < TUNING_MIN_SHARE) {
-    let best;
-    for (const [id, calls] of own) {
-      if (chosen.has(id)) continue;
-      const gain = removed(/* @__PURE__ */ new Set([...chosen, id]));
-      if (best === void 0 || gain > best.gain || gain === best.gain && (calls > best.calls || calls === best.calls && id < best.id)) {
-        best = { id, gain, calls };
-      }
-    }
-    if (best === void 0) break;
-    chosen.add(best.id);
-  }
-  const drop = removed(chosen);
-  if (drop / total < TUNING_MIN_SHARE) return void 0;
-  return {
-    ids: [...chosen].sort((a, b) => (own.get(b) ?? 0) - (own.get(a) ?? 0) || a.localeCompare(b)),
-    share: drop / total,
-    asks: total,
-    remaining: total - drop
-  };
-}
-var SHELL_SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
-function tuningSection(result, payload) {
-  const hint = tuningHint(result.decided, payload.findings);
-  if (hint === void 0) return "";
-  const n = hint.ids.length;
-  const pct = Math.round(hint.share * 100);
-  const commands = hint.ids.map(
-    (id, i) => SHELL_SAFE_ID.test(id) ? copyable(
-      `cmd-tune-${i}`,
-      `agenttrail-guard guardrails set-action ${id} warn`,
-      `Copy set-action command ${i + 1}`
-    ) : `<p class="note">Set <code>${escapeHtml(id)}</code> to warn with <code>agenttrail-guard guardrails set-action</code>. Its id has characters a shell would read, so no command is offered to copy.</p>`
-  ).join("\n");
-  return `<div class="hint">
-<p><strong>${escapeHtml(counted(n, "guardrail accounts", "guardrails account"))} for ${pct}% of the asks.</strong> Setting ${n === 1 ? "it" : "them"} to warn would take the tool calls you are asked about from ${escapeHtml(formatCount(hint.asks))} to ${escapeHtml(formatCount(hint.remaining))}, and the agent would be shown a warning on those calls instead.</p>
-${commands}
-</div>`;
-}
-function wouldHaveDoneSection(result, payload) {
-  if (result.findings.length === 0) return "";
-  const columns = ACTION_ORDER.map((action) => {
-    const count2 = result.riskyByAction[action];
-    const calls = decidedBy(result.decided, action);
-    const top = payload.findings.filter((f) => f.action === action && (calls.get(f.ruleId) ?? 0) > 0).map((f) => ({ f, n: calls.get(f.ruleId) ?? 0 })).sort((a, b) => b.n - a.n || a.f.ruleId.localeCompare(b.f.ruleId)).slice(0, TOP_PER_ACTION).map(
-      ({ f, n }) => `<li><span class="col-title">${inlineTitle(f.title)}</span><span class="times">${escapeHtml(formatCount(n))}&times;</span></li>`
-    ).join("\n");
-    const label = { block: "Blocked", require_approval: "Asked you first", warn: "Warned" }[action];
-    return `<div class="col ${actionClass(action)}-col">
-<p class="col-label">${label}</p>
-<p class="col-count">${escapeHtml(formatCount(count2))}</p>
-<p class="note">${escapeHtml(ACTION_MEANING[action])}</p>${top === "" ? "" : `
-<ul class="col-list">
-${top}
-</ul>`}
-</div>`;
-  }).join("\n");
-  const { byAction } = matchTally(result);
-  const severityCounts = /* @__PURE__ */ new Map();
-  for (const s of matchTally(result).bySeverity) {
-    const key = knownSeverity(s.severity);
-    severityCounts.set(key, (severityCounts.get(key) ?? 0) + s.count);
-  }
-  const bySeverity = [...severityCounts].map(([severity, count2]) => ({ severity, count: count2 }));
-  const item = (label, count2) => `<li>${label}<span class="tally-count">${escapeHtml(formatCount(count2))}</span></li>`;
-  const severities = bySeverity.map((s) => item(severityBadge(s.severity), s.count)).join("\n");
-  const actions = byAction.map((a) => item(actionChip(a.action), a.count)).join("\n");
-  return `<section id="would-do">
-<h2>What AgentTrail Guard would have done</h2>
-<p class="note">Tool calls, each counted once under the strictest guardrail it matched.</p>
-<div class="columns">
-${columns}
-</div>${askOnCodexNote(result, byAction)}
-${tuningSection(result, payload)}
-<div class="tally" role="group" aria-label="Guardrail matches">
-<div class="tally-group"><p class="tally-label">Matches by severity</p><ul class="pills">
-${severities}
-</ul></div>
-<div class="tally-group"><p class="tally-label">Matches by action</p><ul class="pills">
-${actions}
-</ul></div>
-<p class="note">Each guardrail counts its own matches, so a tool call that matched two guardrails is counted under both, and these totals can be larger than the number of risky actions.</p>
-</div>
-</section>`;
-}
-function fixFirstSection(payload) {
-  const blocking = payload.findings.filter((f) => f.action === "block").slice(0, FIX_FIRST_MAX);
-  if (blocking.length === 0) {
-    return `<section id="fix-first"><h2>Fix these first</h2><p class="empty">No guardrail would have blocked anything in these sessions.</p></section>`;
-  }
-  const cards = blocking.map((f) => {
-    const index = payload.findings.indexOf(f);
-    const yours = f.source !== "library";
-    const heading = yours ? OWN_CARD_HEADING : inlineTitle(f.title);
-    const why = yours ? `
-<p class="own-title">${inlineTitle(f.title)}</p>` : f.descriptionLines === void 0 ? "" : `
-${libraryText(firstSentence(f.descriptionLines), "library-text note")}`;
-    const example = f.examples[0];
-    const exampleHtml = example === void 0 ? "" : `
-<p class="example"><code>${escapeHtml(example.text)}</code></p>`;
-    const group = f.category === void 0 ? YOUR_GUARDRAILS : packLabel(f.category);
-    const link = f.category === void 0 ? "" : `
-<p>${outLink(libraryLink(f.category, f.ruleId, payload.agent), "How this guardrail works")}</p>`;
-    return `<article class="card">
-<div class="card-head">${severityBadge(f.severity)} ${actionChip(f.action)}<span class="times">${escapeHtml(formatCount(f.count))}&times;</span></div>
-<h3><a href="#finding-${index}">${heading}</a></h3>${why}${exampleHtml}
-<p class="card-meta">${escapeHtml(group)} &middot; <code>${escapeHtml(f.ruleId)}</code></p>${link}
-</article>`;
-  }).join("\n");
-  return `<section id="fix-first">
-<h2>Fix these first</h2>
-<p class="note">The guardrails that would have stopped a command outright, most serious first.</p>
-<div class="cards">
-${cards}
-</div>
-</section>`;
-}
-var OWASP_EDITION = "2026 edition";
-function riskLabel(id) {
-  return `<span class="risk-id">${escapeHtml(id)}</span> ${escapeHtml(owaspTitle(id))}`;
-}
-function owaspSection(payload) {
-  if (payload.owasp.length === 0) return "";
-  const touched = (list) => payload.owasp.filter((t) => list.some((risk) => risk.id === t.id)).length;
-  const summary = `These matches touched ${touched(OWASP_AGENTIC)} of ${OWASP_AGENTIC.length} agentic and ${touched(OWASP_LLM)} of ${OWASP_LLM.length} LLM risks, in the ${OWASP_EDITION} lists.`;
-  const risks = payload.owasp.map(
-    (t) => `<li class="risk" id="risk-${escapeHtml(t.id.toLowerCase())}">
-<p class="risk-name">${outLink(owaspRiskLink(t.id, payload.agent), riskLabel(t.id))}</p>
-<p class="risk-counts">${escapeHtml(counted(t.callCount, "tool call", "tool calls"))} &middot; ${escapeHtml(counted(t.guardrailCount, "guardrail", "guardrails"))}</p>
-<button type="button" class="tool js-only" data-risk="${escapeHtml(t.id)}" aria-label="Show its findings: ${escapeHtml(t.id)}" hidden>Show its findings</button>
-</li>`
-  ).join("\n");
-  return `<section id="owasp">
-<h2>OWASP risks</h2>
-<p class="lead">${escapeHtml(summary)}</p>
-<ul class="risks">
-${risks}
-</ul>
-<p class="note">A guardrail can name more than one risk, and a tool call can match more than one guardrail, so one tool call can count under several risks. These counts can add up to more than the totals above.</p>
-<p class="note">Covers coding-agent actions only, not full OWASP coverage. Each id names a risk where it becomes a command or a file change, and is never a claim that a guardrail covers the whole risk.</p>
-<p class="risk-sources">${outLink(siteLink(sitePath(OWASP_PAGE_URL), payload.agent, "owasp"), "How the guardrails map to OWASP")} &middot; ${outLink(OWASP_SOURCES.agentic, `OWASP Top 10 for Agentic Applications (${OWASP_EDITION})`)} &middot; ${outLink(OWASP_SOURCES.llm, `OWASP Top 10 for LLM Applications (${OWASP_EDITION})`)}</p>
-</section>`;
-}
-function ranks(findings) {
-  const yours = (f) => f.category === void 0 ? 1 : 0;
-  const pack = (f) => f.category === void 0 ? YOUR_GUARDRAILS : packLabel(f.category);
-  const rankBy = (cmp) => new Map([...findings].sort(cmp).map((f, i) => [f, i]));
-  return {
-    category: rankBy(
-      (a, b) => yours(a) - yours(b) || pack(a).localeCompare(pack(b), "en") || findings.indexOf(a) - findings.indexOf(b)
-    ),
-    count: rankBy((a, b) => b.count - a.count || findings.indexOf(a) - findings.indexOf(b)),
-    name: rankBy(
-      (a, b) => a.title.localeCompare(b.title, "en") || a.ruleId.localeCompare(b.ruleId, "en")
-    )
-  };
-}
-function findingRow(f, index, r, agent) {
-  const group = f.category === void 0 ? YOUR_GUARDRAILS : packLabel(f.category);
-  const examples = f.examples.map(
-    (example) => `<li><code>${escapeHtml(example.text)}</code><span class="times">${escapeHtml(formatCount(example.count))}&times;</span></li>`
-  ).join("\n");
-  const more = f.moreShapes > 0 ? `
-<li class="more">and ${escapeHtml(formatCount(f.moreShapes))} more shapes</li>` : "";
-  const shapeCount = f.examples.length + f.moreShapes;
-  const shapes = shapeCount === 1 ? "command shape" : `${formatCount(shapeCount)} command shapes`;
-  const how = f.descriptionLines === void 0 ? "" : `
-<details class="how"><summary>How this guardrail decides, and what it misses</summary>
-${libraryText(f.descriptionLines.join(" "))}
-<p>${outLink(libraryLink(f.category ?? "", f.ruleId, agent), "Open it in the guardrail library")}</p>
-</details>`;
-  const risks = f.owasp.length === 0 ? "" : `
-<ul class="owasp-ids" aria-label="OWASP risks">
-${f.owasp.map((id) => `<li>${outLink(owaspRiskLink(id, agent), riskLabel(id))}</li>`).join("\n")}
-</ul>`;
-  const riskData = f.owasp.length === 0 ? "" : ` data-owasp="${escapeHtml(f.owasp.join(" "))}"`;
-  return `<li class="finding" id="finding-${index}" data-action="${escapeHtml(f.action)}"${riskData} data-rank-serious="${index}" data-rank-category="${r.category.get(f) ?? index}" data-rank-count="${r.count.get(f) ?? index}" data-rank-name="${r.name.get(f) ?? index}">
-<div class="finding-head">
-<div class="guardrail-title">${inlineTitle(f.title)}</div>
-<div class="finding-meta">${severityBadge(f.severity)} ${actionChip(f.action)}<span class="num" data-label="Matches">${escapeHtml(formatCount(f.count))}&times;</span></div>
-</div>
-<div class="guardrail-id"><code>${escapeHtml(f.ruleId)}</code> &middot; <span class="group">${escapeHtml(group)}</span></div>${risks}
-<details class="commands"><summary>The ${escapeHtml(shapes)} behind it</summary>
-<ul class="shapes">
-${examples}${more}
-</ul>
-</details>${how}
-</li>`;
-}
-function riskFilter(payload) {
-  if (payload.owasp.length === 0) return "";
-  const options = payload.owasp.map(
-    (t) => `<option value="${escapeHtml(t.id)}">${escapeHtml(`${t.id} ${owaspTitle(t.id)}`)}</option>`
-  ).join("\n");
-  return `
-<label class="sort">OWASP risk <select id="risk-filter">
-<option value="">Any risk</option>
-${options}
-</select></label>`;
-}
-function findingsSection(payload, variant) {
-  if (payload.findings.length === 0) {
-    return `<section id="findings"><h2>All findings</h2><p class="empty">No guardrail matched anything in these sessions.</p></section>`;
-  }
-  const r = ranks(payload.findings);
-  const rows = payload.findings.map((f, i) => findingRow(f, i, r, payload.agent)).join("\n");
-  const truncated = payload.moreFindings > 0 ? `
-<p class="note">${escapeHtml(formatCount(payload.moreFindings))} further guardrails matched and are not listed here.</p>` : "";
-  const filters = [
-    ["all", "All"],
-    ["block", "Would block"],
-    ["require_approval", "Would ask"],
-    ["warn", "Would warn"]
-  ].map(
-    ([value, label]) => `<button type="button" class="filter" data-filter="${value}" aria-pressed="${value === "all" ? "true" : "false"}">${label}</button>`
-  ).join("\n");
-  const matched = counted(
-    payload.findings.length + payload.moreFindings,
-    "guardrail matched",
-    "guardrails matched"
-  );
-  return `<section id="findings" class="findings-section">
-<div class="section-head"><h2>All findings</h2><p class="section-meta" id="findings-count">${escapeHtml(matched)}</p></div>${variant === "artifact" ? `
-<p class="note artifact-note">Filters, sort and export are in the report file itself, <code>${REPORT_FILENAME}</code>. To make one from your own sessions, run <code>agenttrail-guard scan</code>.</p>` : ""}
-<div class="controls js-only" hidden>
-<div class="filters" role="group" aria-label="Show findings">
-${filters}
-</div>
-<label class="sort">Sort <select id="sort">
-<option value="serious">Most serious</option>
-<option value="category">Category</option>
-<option value="count">Most matches</option>
-<option value="name">Name</option>
-</select></label>${riskFilter(payload)}
-</div>
-<p id="findings-status" class="sr-only" role="status" aria-live="polite"></p>
-<ol class="finding-list">
-${rows}
-</ol>
-<div class="filter-empty" id="findings-empty" hidden><p>No findings match these filters.</p><button type="button" class="tool" id="clear-filters">Show all findings</button></div>${truncated}
-</section>`;
-}
-function recurringSection(payload) {
-  if (payload.recurring.length === 0) {
-    return `<section id="repeats"><h2>Repeat offenders</h2><p class="empty">Nothing matched more than once.</p></section>`;
-  }
-  const byShape = /* @__PURE__ */ new Map();
-  for (const item of payload.recurring) {
-    byShape.set(item.text, [...byShape.get(item.text) ?? [], item]);
-  }
-  const rows = [...byShape].map(([text, items]) => {
-    const times = Math.max(...items.map((item) => item.calls));
-    const names = items.map((item) => {
-      const index = payload.findings.findIndex((f) => f.ruleId === item.ruleId);
-      const title = inlineTitle(item.title);
-      const named = index === -1 ? title : `<a href="#finding-${index}">${title}</a>`;
-      return item.count === times ? named : `${named} (${escapeHtml(formatCount(item.count))}&times;)`;
-    }).join("<br>");
-    return `<tr role="row"><td class="shape" role="cell"><code>${escapeHtml(text)}</code></td><td class="num" role="cell">${escapeHtml(formatCount(times))}&times;</td><td class="rule-name" role="cell">${names}</td></tr>`;
-  }).join("\n");
-  return `<section id="repeats"><h2>Repeat offenders</h2>
-<p class="note">The same shape, seen more than once. Paths are redacted before counting, so many different paths under one command become one repeat.</p>
-<div class="table-wrap"><table class="recurring" role="table">
-<thead role="rowgroup"><tr role="row"><th scope="col" role="columnheader">Command shape</th><th scope="col" class="num" role="columnheader">Times</th><th scope="col" role="columnheader">Guardrail</th></tr></thead>
-<tbody role="rowgroup">
-${rows}
-</tbody>
-</table></div>${payload.moreRecurring > 0 ? `
-<p class="note">${escapeHtml(counted(payload.moreRecurring, "further repeat is", "further repeats are"))} not listed here.</p>` : ""}
-</section>`;
-}
-var OTHER_AGENTS = {
-  claude: "Cursor or Codex",
-  cursor: "Claude Code or Codex",
-  codex: "Claude Code or Cursor"
-};
-function nextStepsSection(result) {
-  const a = result.agent;
-  return `<section id="next-steps">
-<h2>Next steps</h2>
-<ol class="steps">
-<li><p><strong>Turn on AgentTrail Guard</strong> so these guardrails run before each command.</p>
-${copyable("cmd-init", `agenttrail-guard init --agent ${a}`, "Copy the step 1 command")}</li>
-<li><p><strong>See what it is doing</strong>: whether it is on, and what it decided recently.</p>
-${copyable("cmd-status", "agenttrail-guard status", "Copy the step 2 command")}</li>
-<li><p><strong>Scan again next week</strong>, and read every line before the report is written.</p>
-${copyable("cmd-scan-again", `agenttrail-guard scan --agent ${a} --review`, "Copy the step 3 command")}</li>
-</ol>
-<ul class="links">
-<li>${outLink(siteLink("/get-started/guard", a, "next-commands"), "Every command")}</li>
-<li>${outLink(siteLink("/guardrails", a, "next-library"), "The guardrail library")}</li>
-<li>${outLink(siteLink("/get-started/guard", a, "next-agents"), `Set up ${OTHER_AGENTS[a]}`)}</li>
-</ul>
-</section>`;
-}
-function shareSectionHtml(result, payload, variant) {
-  const length = postLength(payload.shareText);
-  const editable = variant === "document";
-  const edit = editable ? "Edit it before posting." : "This published copy cannot change the post. In the report file it was made from, the post can be edited before posting.";
-  return `<section id="share" class="share">
-<h2>Share your result</h2>
-<p class="note share-note">Totals and at most one library guardrail&#39;s name: no commands, paths, project names or guardrails you wrote. ${edit}</p>
-<label class="share-label" for="share-text">Post preview</label>
-<textarea id="share-text" rows="4"${editable ? "" : " readonly"}>${escapeHtml(payload.shareText)}</textarea>
-<p class="share-actions"><span id="share-count" class="share-count" data-over="${length > POST_LIMIT ? "true" : "false"}">${escapeHtml(`${length} / ${POST_LIMIT}`)}</span>
-<a id="share-link" class="button" href="${escapeHtml(shareLink(payload.shareText, result.agent))}" target="_blank" rel="noopener noreferrer">Post on X</a>
-<button type="button" class="copy js-only" data-copy="share-text" data-label="Copy text" aria-label="Copy text of the post" hidden>Copy text</button></p>
-</section>`;
-}
-function beforeYouShareSection(result, variant) {
-  const review = `<code>agenttrail-guard scan --agent ${escapeHtml(result.agent)} --review</code>`;
-  const check = variant === "artifact" ? `Redaction is thorough but not a guarantee. Read the findings before passing this page on; the person who published it can check every line with ${review} before the file is written.` : `Redaction is thorough but not a guarantee. Read the findings before posting this anywhere public, and run ${review} to see every line before the file is written.`;
-  const warning = result.toolCalls === 0 ? "" : `
-<p class="warning">${check}</p>`;
-  return `<section class="callout" id="privacy">
-<h2>Before you share this</h2>
-<p class="note">This report was made on one machine from transcripts already on its disk, and the scan sent nothing anywhere.</p>
-<p class="note">Every command in this report has been through a secret scrubber, a path redactor, a pass for secret-named values and long random-looking strings, and an identifier redactor, and every MCP tool call has had its payload values structurally redacted. Redaction runs before anything is written, so this file has never held the original text.</p>
-<dl class="legend">
-<div><dt><code>&lt;path&gt;</code></dt><dd>stands for a redacted filesystem path or URL</dd></div>
-<div><dt><code>&lt;name&gt;</code> <code>&lt;host&gt;</code> <code>&lt;user&gt;</code> <code>&lt;message&gt;</code> <code>&lt;comment&gt;</code></dt><dd>stand for an identifying operand of a command &mdash; a container, a namespace, a machine, a login, a commit message or heredoc body, a shell comment</dd></div>
-<div><dt><code>&lt;value&gt;</code></dt><dd>stands for a redacted MCP payload value</dd></div>
-<div><dt><code>[REDACTED:&hellip;]</code></dt><dd>stands for a redacted secret; <code>[REDACTED:secret:generic]</code> marks a long random-looking string masked on a best guess</dd></div>
-<div><dt><code>&hellip;</code></dt><dd>marks where a long command was shortened for display</dd></div>
-</dl>${warning}
-<p class="note pdf-tip"><strong>Saving as PDF?</strong> Turn off headers and footers in the print dialog, so the file&rsquo;s location on your disk is not printed on every page.</p>
-</section>`;
-}
-function redactionSection() {
-  return `<section id="redaction"><h2>How redaction works and where it can miss</h2>
-<p class="note">Working directories and file paths appear nowhere in this file, and the projects these sessions came from are carried as a count and never as names.</p>
-<p class="note"><strong>Identifying names are a weaker claim than paths, and the difference is worth knowing.</strong> Shell commands go through an identifier redactor keyed to a fixed list of tools &mdash; container runtimes, <code>kubectl</code> (including resource names), the database clients (host, database, and the SQL handed to <code>-c</code> / <code>-e</code>), <code>ssh</code>, <code>git</code> commit messages and identity settings, 1Password&#39;s <code>op</code> (item and vault names), and <code>gh</code> titles and bodies &mdash; plus, in any command, a secret passed as a flag value (<code>--token</code>, <code>--password</code>, <code>--key</code>), a UUID, the body of a heredoc, and the text of a <code>#</code> comment. That list is a deny-list and will miss the tool nobody thought of, so a bare operand naming a resource for a tool not on it can survive.</p>
-<p class="note">Cloud account identifiers are redacted where a name or flag gives them away: <code>CLOUDFLARE_ACCOUNT_ID</code> and <code>--account-id</code>, <code>wrangler</code> commands, AWS account numbers after <code>--account</code> or inside an ARN, and <code>--project</code> for <code>gcloud</code>, <code>gsutil</code>, <code>bq</code> and <code>firebase</code>.</p>
-<p class="note"><strong>Secrets without a known format are caught by name and by shape, and both are guesses.</strong> A value after a name ending in <code>_KEY</code> or <code>-key</code>, an <code>Authorization</code> header, and any long random-looking string of 32 or more characters is masked. A secret that is shorter, that is only hexadecimal and has no revealing name, that is split by punctuation, or that has no name and is followed by a <code>.</code>, ends in <code>=</code> or is written as short dashed groups can survive. Branch names, folder names and git branch operands are kept readable and are not redacted.</p>
-<p class="note"><strong>MCP tool calls are handled the other way round:</strong> a call to an MCP server arrives as a structured payload, and rather than deny-listing known-sensitive fields, every value in it is redacted to <code>&lt;value&gt;</code> by default and only the field names and the shape are kept.</p>
-<p class="note">Guardrail ids and titles are shown as their author wrote them &mdash; which for any guardrail you added yourself means your own words, unredacted. Redaction is thorough but not a guarantee. Read the commands and guardrail names above before posting this anywhere public.</p>
-</section>`;
-}
-function coverageNote(result) {
-  if (result.notRead === 0) return "";
-  const notRead = `${escapeHtml(formatCount(result.notRead))} further transcript file${result.notRead === 1 ? "" : "s"}`;
-  const was = result.notRead === 1 ? "was" : "were";
-  const tail = `Every count above is of what was read, not of everything that exists.`;
-  const open = `<p class="note"><strong>Coverage limit.</strong>`;
-  switch (result.agent) {
-    case "cursor":
-      return `${open} This reader opens each session&#39;s file, and the files of the sub-agents that session started, in each project&#39;s <code>agent-transcripts</code> folder. ${notRead} in those folders ${was} not read. ${tail}</p>`;
-    case "codex":
-      return `${open} This reader opens the session files Codex files by date, in <code>~/.codex/sessions/&lt;year&gt;/&lt;month&gt;/&lt;day&gt;/</code>. ${notRead} elsewhere under the sessions root ${was} not read. ${tail}</p>`;
-    case "claude":
-      return `${open} This reader opens each session&#39;s transcript and the sub-agent transcripts in its <code>subagents</code> folder, folding a sub-agent&#39;s actions into the session that started it. ${notRead} elsewhere under the projects root &mdash; a stray file, or one nested somewhere it does not walk &mdash; ${was} not read. ${tail}</p>`;
-    default:
-      return unhandledAgent(result.agent);
-  }
-}
-function corpusSection(result) {
-  const lines = [];
-  lines.push(
-    `Read ${escapeHtml(formatCount(result.sessions))} session${result.sessions === 1 ? "" : "s"} across ${escapeHtml(formatCount(result.projects))} project${result.projects === 1 ? "" : "s"}.`
-  );
-  if (result.quarantined > 0) {
-    lines.push(
-      `${escapeHtml(formatCount(result.quarantined))} file${result.quarantined === 1 ? "" : "s"} yielded no session and ${result.quarantined === 1 ? "was" : "were"} skipped &mdash; a transcript holding no messages, such as a session started and abandoned, has nothing to report.`
-    );
-  }
-  if (result.skippedLines > 0 && result.skipped === void 0) {
-    lines.push(
-      `${escapeHtml(formatCount(result.skippedLines))} individual line${result.skippedLines === 1 ? "" : "s"} could not be parsed and ${result.skippedLines === 1 ? "was" : "were"} skipped.`
-    );
-  }
-  if (result.tokens === null) {
-    lines.push(
-      `${escapeHtml(agentName(result.agent))}&#39;s session files record no token counts, so this report shows none.`
-    );
-  }
-  const coverage = coverageNote(result);
-  return `<section id="scanned"><h2>What was scanned</h2>
-<p class="note">${lines.join(" ")}</p>${coverage === "" ? "" : `
-${coverage}`}
-</section>`;
-}
-function skippedSection(payload) {
-  const skipped = payload.skipped;
-  if (skipped === void 0) return "";
-  const phrases = skippedPhrases(skipped);
-  const kinds = phrases.length === 0 ? `<p class="empty">Every line of every session file that was opened was read.</p>` : `<ul class="list">
-${phrases.map((phrase) => `<li>${escapeHtml(phrase)}</li>`).join("\n")}
-</ul>`;
-  const tools = skipped.unmappedTools.length === 0 ? "" : `
-<p class="note">Tool calls this reader does not recognize, by name:</p>
-<ul class="shapes">
-${skipped.unmappedTools.map(
-    (tool) => `<li><code>${escapeHtml(tool.name)}</code><span class="times">${escapeHtml(formatCount(tool.count))}&times;</span></li>`
-  ).join("\n")}
-</ul>`;
-  const notes = [];
-  if (skipped.notActions > 0) {
-    notes.push(
-      `${counted(skipped.notActions, "tool call was", "tool calls were")} not evaluated because no guardrail checks that kind of call: plans, to-do lists, questions, and starting a sub-agent, whose own tool calls are read from its file.`
-    );
-  }
-  if (skipped.turnsEndedWithError > 0) {
-    notes.push(
-      `${counted(skipped.turnsEndedWithError, "turn", "turns")} ended with an error; the tool calls made before it were read.`
-    );
-  }
-  return `<section id="not-evaluated"><h2>What was not evaluated</h2>
-<p class="note">None of this stopped the scan. Each line of a session file is read on its own, and whatever could not be used is counted here.</p>
-${kinds}${tools}${notes.map((note) => `
-<p class="note">${escapeHtml(note)}</p>`).join("")}
-</section>`;
-}
-function tokensSection(result) {
-  const t = result.tokens;
-  if (t === null) return "";
-  const rows = [
-    ["Input", formatCount(t.input)],
-    ["Output", formatCount(t.output)],
-    ["Read from cache (cumulative)", formatCount(t.cacheRead)],
-    ["Written to cache", formatCount(t.cacheCreation)]
-  ];
-  if (t.turnsWithSplit > 0) {
-    rows.push([
-      "\u2026of which 5-minute / 1-hour",
-      `${formatCount(t.cacheCreation5m)} / ${formatCount(t.cacheCreation1h)}`
-    ]);
-  }
-  const body = rows.map(
-    ([label, value]) => `<tr><th scope="row">${escapeHtml(label ?? "")}</th><td class="num">${escapeHtml(value ?? "")}</td></tr>`
-  ).join("\n");
-  const splitNote = t.turnsWithSplit > 0 ? `<p class="note">The 5-minute / 1-hour split is reported separately by the model and is not derived from the total above; on real sessions the two do not always agree, so both are shown as reported.</p>` : `<p class="note">None of these sessions reported a 5-minute / 1-hour cache-write split, so that row is omitted rather than shown as zero.</p>`;
-  const cacheReadNote = t.cacheRead > 0 ? `<p class="note">"Read from cache" is cumulative \u2014 the cached prefix is re-read and re-charged every turn, so this counts the same tokens many times over a session. It is a total of what the model billed for, not of distinct input.</p>` : "";
-  return `<section id="tokens"><h2>Tokens</h2>
-<p class="note">Read straight from the transcripts, so these are exact counts and not estimates.</p>
-<div class="table-wrap"><table class="kv">
-${body}
-</table></div>
-${cacheReadNote}${splitNote}</section>`;
-}
-function productNoteSection(result) {
-  if (result.agent !== "claude") return "";
-  const a = result.agent;
-  const { primary, secondary } = PRODUCT_NOTE;
-  return `<aside class="product-note" id="os" aria-label="About AgentTrail OS">
-<p class="eyebrow">${escapeHtml(PRODUCT_NOTE.eyebrow)}</p>
-<h2>${escapeHtml(PRODUCT_NOTE.heading)}</h2>
-<p>${escapeHtml(PRODUCT_NOTE.body)}</p>
-<p class="product-note-action">${outLink(siteLink(primary.path, a, primary.content), escapeHtml(primary.label), "button")}
-${outLink(siteLink(secondary.path, a, secondary.content), escapeHtml(secondary.label), "text-link")}</p>
-</aside>`;
-}
-function pageTitle(result, meta) {
-  return `AgentTrail Guard scan report \xB7 ${agentName(result.agent)} \xB7 ${meta.generatedAt.toISOString().slice(0, 10)}`;
-}
-function dataBlockText(payload) {
-  return JSON.stringify(payload, null, 1).replace(/</g, "\\u003c");
-}
-function contentSecurityPolicy() {
-  const hash = createHash("sha256").update(REPORT_SCRIPT, "utf8").digest("base64");
-  return `default-src 'none'; script-src 'sha256-${hash}'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; require-trusted-types-for 'script'`;
-}
-function renderReport(result, meta, options = {}) {
-  const variant = options.variant ?? "document";
-  const payload = reportPayload(result, meta);
-  const scanned = result.toolCalls > 0;
-  const head = `<title>${escapeHtml(pageTitle(result, meta))}</title>
-<style>${REPORT_STYLES}</style>`;
-  const sections = [
-    topBar(payload),
-    heroSection(result, payload, meta, variant),
-    ...scanned ? [
-      wouldHaveDoneSection(result, payload),
-      fixFirstSection(payload),
-      owaspSection(payload),
-      findingsSection(payload, variant),
-      recurringSection(payload)
-    ] : [],
-    nextStepsSection(result),
-    scanned ? shareSectionHtml(result, payload, variant) : "",
-    beforeYouShareSection(result, variant),
-    redactionSection(),
-    corpusSection(result),
-    skippedSection(payload),
-    scanned ? tokensSection(result) : "",
-    productNoteSection(result)
-  ].filter((section) => section !== "");
-  const body = `<main class="page" lang="en">
-${sections.join("\n")}
-<footer>
-<p class="footer-brand">${LOGO_MARK_SVG}<span>agenttrail-guard ${escapeHtml(meta.version)} &middot; ${escapeHtml(payload.catalog)}</span></p>
-<p>Source: ${escapeHtml(REPOSITORY_URL)}</p>
-<p>A finding is a guardrail that matched. It is not proof that anything went wrong, and the guardrails state their own coverage limits.</p>
-<ul class="footer-links">
-<li>${outLink(siteLink("/agenttrail-guard", result.agent, "footer-guard"), "AgentTrail Guard")}</li>
-<li>${outLink(siteLink("/guardrails", result.agent, "footer-library"), "Guardrail library")}</li>
-<li>${outLink(siteLink("/security", result.agent, "footer-security"), "Security")}</li>
-</ul>
-</footer>
-<p id="page-status" class="sr-only" role="status" aria-live="polite"></p>
-<textarea id="copy-buffer" class="sr-only" tabindex="-1" aria-hidden="true" readonly></textarea>
-</main>`;
-  if (variant === "artifact") return `${head}
-${body}
-`;
-  return `<!doctype html>
-<html lang="en">
-<head>
-<meta http-equiv="Content-Security-Policy" content="${contentSecurityPolicy()}">
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="color-scheme" content="light dark">
-${head}
-</head>
-<body>
-${body}
-<script type="application/json" id="report-data">
-${dataBlockText(payload)}
-</script>
-<script>${REPORT_SCRIPT}</script>
-</body>
-</html>
-`;
-}
-function reviewStrings(result) {
-  const payload = reportPayload(result, { version: "", generatedAt: /* @__PURE__ */ new Date(0) });
-  const seen = /* @__PURE__ */ new Set();
-  const take = (value) => {
-    if (seen.has(value)) return [];
-    seen.add(value);
-    return [value];
-  };
-  const guardrails = [];
-  const commands = [];
-  for (const finding of payload.findings) {
-    guardrails.push(...take(`${finding.ruleId}  ${finding.title}`));
-    for (const example of finding.examples) commands.push(...take(example.text));
-  }
-  for (const item of payload.recurring) {
-    guardrails.push(...take(`${item.ruleId}  ${item.title}`));
-    commands.push(...take(item.text));
-  }
-  const tools = (payload.skipped?.unmappedTools ?? []).flatMap((tool) => take(tool.name));
-  const groups = [];
-  if (guardrails.length > 0)
-    groups.push({ label: "Guardrails named in the report", lines: guardrails });
-  if (commands.length > 0) groups.push({ label: "Command shapes in the report", lines: commands });
-  if (tools.length > 0) groups.push({ label: "Tool names in the report", lines: tools });
-  if (payload.findings.length > 0) {
-    groups.push({ label: "The suggested post, which you can edit", lines: [payload.shareText] });
-  }
-  return groups;
-}
-function renderJson(result, meta) {
-  return `${JSON.stringify(
-    {
-      tool: "agenttrail-guard",
-      version: meta.version,
-      generatedAt: meta.generatedAt.toISOString(),
-      catalog: formatCatalogStamp(catalogStamp(), meta.generatedAt),
-      result
-    },
-    null,
-    2
-  )}
-`;
-}
-
-// src/engine/matchers.ts
-var import_picomatch2 = __toESM(require_picomatch2(), 1);
-var DETAIL_ATTR = "detail";
-var FILE_PATH_ATTR = "file_path";
-var FILE_GLOB_OPTIONS = { dot: true, nocase: true };
-var LABEL_GLOB_OPTIONS = { dot: true, nocase: true };
-function matchKind(conditionKind, span) {
-  const matched = span.kind.toLowerCase() === conditionKind.toLowerCase();
-  return {
-    matched,
-    reason: matched ? `kind: "${conditionKind}" matched` : `kind: expected "${conditionKind}", got "${span.kind}"`
-  };
-}
-function matchLabel(conditionLabel, span) {
-  const matched = createCompiledLabelMatcher(conditionLabel)(span.label);
-  return {
-    matched,
-    reason: matched ? `label: "${conditionLabel}" matched` : `label: expected "${conditionLabel}", got "${span.label}"`
-  };
-}
-function matchDetailContains(requiredSubstrings, span) {
-  const detail = span.attributes[DETAIL_ATTR];
-  if (detail === void 0) {
-    return { matched: false, reason: "detail_contains: detail attribute missing" };
-  }
-  const missing = [];
-  for (const substring of requiredSubstrings) {
-    if (!detail.includes(substring)) {
-      missing.push(substring);
-    }
-  }
-  if (missing.length > 0) {
-    return {
-      matched: false,
-      reason: `detail_contains: missing substrings: ${JSON.stringify(missing)}`
-    };
-  }
-  return {
-    matched: true,
-    reason: `detail_contains: all ${requiredSubstrings.length} substring(s) found`
-  };
-}
-function matchDetailMatches(patterns, span) {
-  const detail = span.attributes[DETAIL_ATTR];
-  if (detail === void 0) {
-    return { matched: false, reason: "detail_matches: detail attribute missing" };
-  }
-  for (const pattern of patterns) {
-    if (createCompiledDetailMatcher(pattern)(detail)) {
-      return { matched: true, reason: `detail_matches: "${pattern}" matched` };
-    }
-  }
-  return {
-    matched: false,
-    reason: `detail_matches: no pattern of ${patterns.length} matched`
-  };
-}
-function matchFileGlob(pattern, span) {
-  const filePath = span.attributes[FILE_PATH_ATTR];
-  if (filePath === void 0) {
-    return { matched: false, reason: "file_glob: file_path attribute missing" };
-  }
-  try {
-    const isMatch = (0, import_picomatch2.default)(pattern, FILE_GLOB_OPTIONS);
-    const matched = isMatch(filePath);
-    return {
-      matched,
-      reason: matched ? `file_glob: "${pattern}" matched "${filePath}"` : `file_glob: "${pattern}" did not match "${filePath}"`
-    };
-  } catch {
-    return {
-      matched: false,
-      reason: `file_glob: invalid pattern: "${pattern}"`
-    };
-  }
-}
-function resolveNumericField(field, span) {
-  switch (field) {
-    case "tokens":
-      return span.tokens;
-    case "cached_tokens":
-      return span.cachedTokens;
-    case "duration_ms":
-      return span.durationMs;
-    default: {
-      const _exhaustive = field;
-      throw new Error(`unmapped numeric field: ${String(_exhaustive)}`);
-    }
-  }
-}
-function matchNumeric(comparison, span) {
-  const actual = resolveNumericField(comparison.field, span);
-  const { op, value, field } = comparison;
-  let matched;
-  switch (op) {
-    case "gt":
-      matched = actual > value;
-      break;
-    case "gte":
-      matched = actual >= value;
-      break;
-    case "lt":
-      matched = actual < value;
-      break;
-    case "lte":
-      matched = actual <= value;
-      break;
-    default: {
-      const _exhaustive = op;
-      throw new Error(`unmapped numeric op: ${String(_exhaustive)}`);
-    }
-  }
-  return {
-    matched,
-    reason: matched ? `numeric: ${field} (${actual}) ${op} ${value} matched` : `numeric: ${field} (${actual}) not ${op} ${value}`
-  };
-}
-var compiledGlobCache = /* @__PURE__ */ new Map();
-var compiledLabelCache = /* @__PURE__ */ new Map();
-var compiledDetailCache = /* @__PURE__ */ new Map();
-function createCompiledLabelMatcher(pattern) {
-  let matcher = compiledLabelCache.get(pattern);
-  if (matcher === void 0) {
-    try {
-      matcher = (0, import_picomatch2.default)(pattern, LABEL_GLOB_OPTIONS);
-    } catch {
-      matcher = () => false;
-    }
-    compiledLabelCache.set(pattern, matcher);
-  }
-  const cached = matcher;
-  return (label) => cached(label);
-}
-function createCompiledDetailMatcher(pattern) {
-  let compiled = compiledDetailCache.get(pattern);
-  if (compiled === void 0) {
-    try {
-      compiled = new RegExp(pattern, "i");
-    } catch {
-      compiled = null;
-    }
-    compiledDetailCache.set(pattern, compiled);
-  }
-  const cached = compiled;
-  return cached === null ? () => false : (detail) => cached.test(detail);
-}
-function createCompiledFileGlobMatcher(pattern) {
-  let matcher = compiledGlobCache.get(pattern);
-  if (!matcher) {
-    try {
-      matcher = (0, import_picomatch2.default)(pattern, FILE_GLOB_OPTIONS);
-      compiledGlobCache.set(pattern, matcher);
-    } catch {
-      return (_span) => ({
-        matched: false,
-        reason: `file_glob: invalid pattern: "${pattern}"`
-      });
-    }
-  }
-  const cachedMatcher = matcher;
-  return (span) => {
-    const filePath = span.attributes[FILE_PATH_ATTR];
-    if (filePath === void 0) {
-      return { matched: false, reason: "file_glob: file_path attribute missing" };
-    }
-    const matched = cachedMatcher(filePath);
-    return {
-      matched,
-      reason: matched ? `file_glob: "${pattern}" matched "${filePath}"` : `file_glob: "${pattern}" did not match "${filePath}"`
-    };
-  };
-}
-
-// src/engine/scope.ts
-function isInScopeArray(scopeArray, value) {
-  return scopeArray.includes("*") || scopeArray.includes(value);
-}
-function matchScope(scope, context) {
-  if (scope === void 0) {
-    return { matched: true, reason: "scope: no scope filter (applies globally)" };
-  }
-  const failures = [];
-  if (scope.agent_in !== void 0) {
-    if (!isInScopeArray(scope.agent_in, context.agentId)) {
-      failures.push(`agent_in: "${context.agentId}" not in [${scope.agent_in.join(", ")}]`);
-    }
-  }
-  if (scope.project_in !== void 0) {
-    if (!isInScopeArray(scope.project_in, context.projectId)) {
-      failures.push(`project_in: "${context.projectId}" not in [${scope.project_in.join(", ")}]`);
-    }
-  }
-  if (failures.length > 0) {
-    return {
-      matched: false,
-      reason: `scope: ${failures.join("; ")}`
-    };
-  }
-  return { matched: true, reason: "scope: all scope filters matched" };
-}
-
-// src/engine/evaluator.ts
-function evaluateConditionCompiled(condition, span, compiledGlobMatcher) {
-  const kindResult = matchKind(condition.kind, span);
-  if (!kindResult.matched) {
-    return kindResult;
-  }
-  const reasons = [kindResult.reason];
-  if (condition.label !== void 0) {
-    const labelResult = matchLabel(condition.label, span);
-    if (!labelResult.matched) {
-      return labelResult;
-    }
-    reasons.push(labelResult.reason);
-  }
-  if (condition.detail_contains !== void 0) {
-    const detailResult = matchDetailContains(condition.detail_contains, span);
-    if (!detailResult.matched) {
-      return detailResult;
-    }
-    reasons.push(detailResult.reason);
-  }
-  if (condition.detail_matches !== void 0) {
-    const regexResult = matchDetailMatches(condition.detail_matches, span);
-    if (!regexResult.matched) {
-      return regexResult;
-    }
-    reasons.push(regexResult.reason);
-  }
-  if (condition.file_glob !== void 0) {
-    if (compiledGlobMatcher) {
-      const globResult = compiledGlobMatcher(span);
-      if (!globResult.matched) {
-        return globResult;
-      }
-      reasons.push(globResult.reason);
-    } else {
-      const globResult = matchFileGlob(condition.file_glob, span);
-      if (!globResult.matched) {
-        return globResult;
-      }
-      reasons.push(globResult.reason);
-    }
-  }
-  if (condition.numeric !== void 0) {
-    for (const comparison of condition.numeric) {
-      const numericResult = matchNumeric(comparison, span);
-      if (!numericResult.matched) {
-        return numericResult;
-      }
-      reasons.push(numericResult.reason);
-    }
-  }
-  return {
-    matched: true,
-    reason: reasons.join("; ")
-  };
-}
-function compilePolicy(predicate) {
-  function compileConditions(conditions) {
-    if (conditions === void 0) return void 0;
-    return conditions.map((condition) => {
-      const globMatcher = condition.file_glob ? createCompiledFileGlobMatcher(condition.file_glob) : void 0;
-      return globMatcher ? { condition, globMatcher } : { condition };
-    });
-  }
-  const compiledAnyOf = compileConditions(predicate.match.any_of);
-  const compiledAllOf = compileConditions(predicate.match.all_of);
-  const compiledNoneOf = compileConditions(predicate.match.none_of);
-  const scope = predicate.scope;
-  return (context) => {
-    const scopeResult = matchScope(scope, context);
-    if (!scopeResult.matched) {
-      return { matched: false, reasons: [scopeResult.reason] };
-    }
-    const reasons = [];
-    const span = context.span;
-    if (compiledAllOf !== void 0) {
-      for (const { condition, globMatcher } of compiledAllOf) {
-        const result = evaluateConditionCompiled(condition, span, globMatcher);
-        if (!result.matched) {
-          return {
-            matched: false,
-            reasons: [`all_of: condition failed \u2014 ${result.reason}`]
-          };
-        }
-        reasons.push(`all_of: ${result.reason}`);
-      }
-    }
-    if (compiledAnyOf !== void 0) {
-      let anyMatched = false;
-      const anyOfReasons = [];
-      for (const { condition, globMatcher } of compiledAnyOf) {
-        const result = evaluateConditionCompiled(condition, span, globMatcher);
-        if (result.matched) {
-          anyMatched = true;
-          anyOfReasons.push(`any_of: ${result.reason}`);
-        }
-      }
-      if (!anyMatched) {
-        return { matched: false, reasons: ["any_of: no conditions matched"] };
-      }
-      reasons.push(...anyOfReasons);
-    }
-    if (compiledNoneOf !== void 0) {
-      for (const { condition, globMatcher } of compiledNoneOf) {
-        const result = evaluateConditionCompiled(condition, span, globMatcher);
-        if (result.matched) {
-          return {
-            matched: false,
-            reasons: [`none_of: excluded condition matched \u2014 ${result.reason}`]
-          };
-        }
-      }
-      reasons.push(`none_of: no excluded condition matched (${compiledNoneOf.length} checked)`);
-    }
-    return { matched: true, reasons };
-  };
-}
-
-// src/core/rules.ts
-function compileCatalog(rules12, config) {
-  const compiled = [];
-  const overrides = config?.guardrailActionOverrides ?? {};
-  const disabled = new Set(config?.disabledGuardrails ?? []);
-  const disabledPacks = new Set(config?.disabledPacks ?? []);
-  for (const rule of rules12) {
-    if (disabledPacks.has(rule.category)) continue;
-    if (disabled.has(rule.id)) continue;
-    const action = overrides[rule.id] ?? rule.defaultAction;
-    const predicate = {
-      version: 1,
-      match: rule.match,
-      action
-    };
-    try {
-      compiled.push({ rule, action, evaluate: compilePolicy(predicate) });
-    } catch {
-    }
-  }
-  return compiled;
+function totalTokens(t) {
+  return t.input + t.output + t.cacheRead + t.cacheCreation;
+}
+function formatTokens(n2) {
+  if (!Number.isFinite(n2) || n2 < 0) return "0";
+  if (n2 >= 1e9) return `${(n2 / 1e9).toFixed(1)}B`;
+  if (n2 >= 1e6) return `${(n2 / 1e6).toFixed(1)}M`;
+  if (n2 >= 1e3) return `${(n2 / 1e3).toFixed(1)}K`;
+  return String(Math.floor(n2));
+}
+function formatCount(n2) {
+  if (!Number.isFinite(n2) || n2 < 0) return "0";
+  return Math.floor(n2).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
 }
 
 // src/core/cursor-emit.ts
@@ -9671,13 +8347,13 @@ var CLOUD_ID_FLAG = /(--(?:account-id|account|owner-id|account-number))(=|\s+)([
 var AWS_ARN_ACCOUNT = /(?<=\barn:aws[a-z-]*:[a-z0-9-]*:[a-z0-9-]*:)\d{12}(?![A-Za-z0-9])/g;
 var HEX_ACCOUNT = /^[0-9a-f]{32}$/i;
 var CLOUD_PROJECT_FLAGS = /* @__PURE__ */ new Set(["--project", "--project_id", "--project-id"]);
-function redactCloudIds(text) {
-  return text.replace(
+function redactCloudIds(text2) {
+  return text2.replace(
     CLOUD_ID_ENV,
-    (_m, name, sep, quote) => `${name}${sep}${quote}${NAME_PLACEHOLDER}${quote}`
+    (_m, name, sep4, quote) => `${name}${sep4}${quote}${NAME_PLACEHOLDER}${quote}`
   ).replace(
     CLOUD_ID_FLAG,
-    (_m, flag, join6, quote) => `${flag}${join6}${quote}${NAME_PLACEHOLDER}${quote}`
+    (_m, flag, join12, quote) => `${flag}${join12}${quote}${NAME_PLACEHOLDER}${quote}`
   ).replace(AWS_ARN_ACCOUNT, NAME_PLACEHOLDER);
 }
 function sshUserOption(word) {
@@ -9698,17 +8374,17 @@ function isPlaceholderOnly(word) {
   return /^(?:<[a-z]+>|\[REDACTED:[^\]]*\])$/.test(inner);
 }
 var OP_ENV_ASSIGNMENT = /^(OP_[A-Z0-9_]+)=(.+)$/;
-function tokenize(text) {
+function tokenize(text2) {
   const pieces = [];
   let start = -1;
   let i = 0;
   const flush = (end) => {
     if (start >= 0)
-      pieces.push({ kind: "word", word: { text: text.slice(start, end), start, end } });
+      pieces.push({ kind: "word", word: { text: text2.slice(start, end), start, end } });
     start = -1;
   };
-  while (i < text.length) {
-    const ch = text[i];
+  while (i < text2.length) {
+    const ch = text2[i];
     if (SPACE.test(ch)) {
       flush(i);
       if (ch === "\n") pieces.push({ kind: "break" });
@@ -9722,14 +8398,14 @@ function tokenize(text) {
       continue;
     }
     if (ch === "#" && start < 0) {
-      const newline = text.indexOf("\n", i);
-      const commentEnd = newline === -1 ? text.length : newline;
+      const newline = text2.indexOf("\n", i);
+      const commentEnd = newline === -1 ? text2.length : newline;
       pieces.push({ kind: "comment", start: i, end: commentEnd });
       i = commentEnd;
       continue;
     }
     if (ch === "'" || ch === '"') {
-      const close = text.indexOf(ch, i + 1);
+      const close = text2.indexOf(ch, i + 1);
       if (close !== -1) {
         if (start < 0) start = i;
         i = close + 1;
@@ -9739,7 +8415,7 @@ function tokenize(text) {
     if (start < 0) start = i;
     i++;
   }
-  flush(text.length);
+  flush(text2.length);
   return pieces;
 }
 function replaceValue(word, placeholder) {
@@ -9758,36 +8434,36 @@ function gitIdentityPair(word) {
 function withoutIds(word) {
   return word.replace(UUID, NAME_PLACEHOLDER);
 }
-function redactHeredocBodies(text) {
-  if (!text.includes("<<")) return text;
+function redactHeredocBodies(text2) {
+  if (!text2.includes("<<")) return text2;
   const edits = [];
   let lineStart = 0;
-  while (lineStart < text.length) {
-    const lineEnd = text.indexOf("\n", lineStart);
+  while (lineStart < text2.length) {
+    const lineEnd = text2.indexOf("\n", lineStart);
     if (lineEnd === -1) break;
-    const operators = [...text.slice(lineStart, lineEnd).matchAll(HEREDOC_OPERATOR)];
+    const operators = [...text2.slice(lineStart, lineEnd).matchAll(HEREDOC_OPERATOR)];
     let next = lineEnd + 1;
     for (const operator of operators) {
       const stripTabs = operator[1] === "-";
       const delimiter = operator[3];
-      let at = next;
+      let at2 = next;
       let terminator = -1;
       let terminatorEnd = -1;
-      while (at <= text.length) {
-        const newline = text.indexOf("\n", at);
-        const end = newline === -1 ? text.length : newline;
-        const line = text.slice(at, end);
-        if ((stripTabs ? line.replace(/^\t+/, "") : line).trim() === delimiter) {
-          terminator = at;
+      while (at2 <= text2.length) {
+        const newline = text2.indexOf("\n", at2);
+        const end = newline === -1 ? text2.length : newline;
+        const line2 = text2.slice(at2, end);
+        if ((stripTabs ? line2.replace(/^\t+/, "") : line2).trim() === delimiter) {
+          terminator = at2;
           terminatorEnd = end;
           break;
         }
         if (newline === -1) break;
-        at = newline + 1;
+        at2 = newline + 1;
       }
       if (terminator === -1) {
-        if (next < text.length) edits.push({ start: next, end: text.length });
-        next = text.length;
+        if (next < text2.length) edits.push({ start: next, end: text2.length });
+        next = text2.length;
         break;
       }
       if (terminator > next) edits.push({ start: next, end: terminator - 1 });
@@ -9795,14 +8471,14 @@ function redactHeredocBodies(text) {
     }
     lineStart = next;
   }
-  if (edits.length === 0) return text;
+  if (edits.length === 0) return text2;
   let out = "";
   let cursor = 0;
   for (const edit of edits) {
-    out += `${text.slice(cursor, edit.start)}${MESSAGE_PLACEHOLDER}`;
+    out += `${text2.slice(cursor, edit.start)}${MESSAGE_PLACEHOLDER}`;
     cursor = edit.end;
   }
-  return out + text.slice(cursor);
+  return out + text2.slice(cursor);
 }
 function freshState(family, command) {
   return {
@@ -9955,8 +8631,8 @@ function classify(word, state, options) {
 }
 function redactIdentifiers(input, options = {}) {
   if (input.length === 0) return input;
-  const text = redactCloudIds(redactHeredocBodies(input));
-  const pieces = tokenize(text);
+  const text2 = redactCloudIds(redactHeredocBodies(input));
+  const pieces = tokenize(text2);
   const edits = [];
   let state = freshState(void 0);
   for (const piece of pieces) {
@@ -9965,7 +8641,7 @@ function redactIdentifiers(input, options = {}) {
       continue;
     }
     if (piece.kind === "comment") {
-      const body = text.slice(piece.start + 1, piece.end);
+      const body = text2.slice(piece.start + 1, piece.end);
       if (body.trim().length > 0) {
         edits.push({ start: piece.start, end: piece.end, text: `#${COMMENT_PLACEHOLDER}` });
       }
@@ -10013,14 +8689,14 @@ function redactIdentifiers(input, options = {}) {
     const replacement = withoutIds(classify(word, state, options) ?? word);
     if (replacement !== word) edits.push({ start, end, text: replacement });
   }
-  if (edits.length === 0) return text;
+  if (edits.length === 0) return text2;
   let out = "";
   let cursor = 0;
   for (const edit of edits) {
-    out += text.slice(cursor, edit.start) + edit.text;
+    out += text2.slice(cursor, edit.start) + edit.text;
     cursor = edit.end;
   }
-  return out + text.slice(cursor);
+  return out + text2.slice(cursor);
 }
 
 // src/core/redact-mcp.ts
@@ -10040,12 +8716,12 @@ function redactNode(node) {
   }
   return MCP_VALUE_PLACEHOLDER;
 }
-function redactJsonTextValues(text) {
+function redactJsonTextValues(text2) {
   let out = "";
   let i = 0;
-  const n = text.length;
-  while (i < n) {
-    const ch = text[i];
+  const n2 = text2.length;
+  while (i < n2) {
+    const ch = text2[i];
     if (ch !== '"') {
       out += ch;
       i++;
@@ -10053,8 +8729,8 @@ function redactJsonTextValues(text) {
     }
     let j = i + 1;
     let terminated = false;
-    while (j < n) {
-      const c = text[j];
+    while (j < n2) {
+      const c = text2[j];
       if (c === "\\") {
         j += 2;
         continue;
@@ -10069,13 +8745,13 @@ function redactJsonTextValues(text) {
       return `${out}"${MCP_VALUE_PLACEHOLDER}"`;
     }
     let k = j + 1;
-    while (k < n) {
-      const c = text[k];
+    while (k < n2) {
+      const c = text2[k];
       if (c === " " || c === "	" || c === "\n" || c === "\r") k++;
       else break;
     }
-    if (text[k] === ":") {
-      out += text.slice(i, j + 1);
+    if (text2[k] === ":") {
+      out += text2.slice(i, j + 1);
     } else {
       out += `"${MCP_VALUE_PLACEHOLDER}"`;
     }
@@ -10108,12 +8784,12 @@ function isPathShaped(token) {
   return BARE_DRIVE.test(token);
 }
 var QUOTED_REGION = /'[^']*'|"[^"]*"/g;
-function containsPath(text) {
-  return (text.match(TOKEN_RUN) ?? []).some(isPathShaped);
+function containsPath(text2) {
+  return (text2.match(TOKEN_RUN) ?? []).some(isPathShaped);
 }
-function redactPaths(text) {
-  if (text.length === 0) return text;
-  const collapsed = text.replace(QUOTED_REGION, (region) => {
+function redactPaths(text2) {
+  if (text2.length === 0) return text2;
+  const collapsed = text2.replace(QUOTED_REGION, (region) => {
     if (region.includes(REDACTION_PREFIX)) return region;
     const quote = region[0] ?? '"';
     const inner = region.slice(1, -1);
@@ -10148,8 +8824,8 @@ function entropyOf(value) {
   const counts = /* @__PURE__ */ new Map();
   for (const ch of value) counts.set(ch, (counts.get(ch) ?? 0) + 1);
   let bits = 0;
-  for (const n of counts.values()) {
-    const p = n / value.length;
+  for (const n2 of counts.values()) {
+    const p = n2 / value.length;
     bits -= p * Math.log2(p);
   }
   return bits;
@@ -10223,9 +8899,9 @@ function redactSecrets(input) {
   if (input.length === 0) return input;
   let out = input.replace(
     KEY_NAME_ASSIGNMENT,
-    (_m, name, sep, dq, sq) => {
+    (_m, name, sep4, dq, sq) => {
       const quote = dq ?? sq ?? "";
-      return `${name}${sep}${quote}${NAME_RULE_PLACEHOLDER}${quote}`;
+      return `${name}${sep4}${quote}${NAME_RULE_PLACEHOLDER}${quote}`;
     }
   );
   out = out.replace(
@@ -10594,17 +9270,17 @@ function runsMysql(tokens) {
   const program = programWord(tokens);
   return program !== null && PROGRAM.test(basename(program));
 }
-function closingQuote(text, quote, from, end) {
+function closingQuote(text2, quote, from, end) {
   for (let j = from; j + quote.length <= end; j++) {
-    if (isNewline(text, j)) return j;
-    if (text.startsWith(quote, j) && (quote === '\\"' || text[j - 1] !== "\\")) return j;
+    if (isNewline(text2, j)) return j;
+    if (text2.startsWith(quote, j) && (quote === '\\"' || text2[j - 1] !== "\\")) return j;
   }
   return -1;
 }
-function isNewline(text, j) {
-  const c = text[j];
+function isNewline(text2, j) {
+  const c = text2[j];
   if (c === "\n" || c === "\r") return true;
-  return c === "\\" && (text[j + 1] === "n" || text[j + 1] === "r");
+  return c === "\\" && (text2[j + 1] === "n" || text2[j + 1] === "r");
 }
 function isNameChar(code2) {
   return code2 >= 48 && code2 <= 57 || // 0-9
@@ -10614,54 +9290,54 @@ function isNameChar(code2) {
   code2 === 46 || // .
   code2 === 45;
 }
-function jsonKeyLength(text, i, end) {
-  const escaped = text[i] === "\\";
+function jsonKeyLength(text2, i, end) {
+  const escaped = text2[i] === "\\";
   const nameStart = i + (escaped ? 2 : 1);
   let j = nameStart;
-  while (j < nameStart + 65 && j < end && isNameChar(text.charCodeAt(j))) j++;
+  while (j < nameStart + 65 && j < end && isNameChar(text2.charCodeAt(j))) j++;
   if (j === nameStart || j - nameStart > 64) return 0;
   if (escaped) {
-    if (text[j] !== "\\" || text[j + 1] !== '"') return 0;
+    if (text2[j] !== "\\" || text2[j + 1] !== '"') return 0;
     j += 2;
   } else {
-    if (text[j] !== '"') return 0;
+    if (text2[j] !== '"') return 0;
     j++;
   }
-  while (j < end && (text[j] === " " || text[j] === "	")) j++;
-  return j < end && text[j] === ":" ? j + 1 - i : 0;
+  while (j < end && (text2[j] === " " || text2[j] === "	")) j++;
+  return j < end && text2[j] === ":" ? j + 1 - i : 0;
 }
-function holdsCommand(text, at, i) {
-  const from = Math.max(at, i - 8);
+function holdsCommand(text2, at2, i) {
+  const from = Math.max(at2, i - 8);
   let p = i - 1;
-  while (p >= from && (text[p] === " " || text[p] === "	")) p--;
+  while (p >= from && (text2[p] === " " || text2[p] === "	")) p--;
   if (p < from) return false;
-  const c = text[p];
+  const c = text2[p];
   if (c === ":" || c === "," || c === "[" || c === "{") return true;
   if (c !== "c") return false;
   let q = p - 1;
-  while (q >= from && /[A-Za-z]/.test(text[q])) q--;
-  return q >= from && text[q] === "-" && (q === from || text[q - 1] === " " || text[q - 1] === "	");
+  while (q >= from && /[A-Za-z]/.test(text2[q])) q--;
+  return q >= from && text2[q] === "-" && (q === from || text2[q - 1] === " " || text2[q - 1] === "	");
 }
-function gluedWordStart(text, i, at) {
-  const from = Math.max(at, i - 64);
+function gluedWordStart(text2, i, at2) {
+  const from = Math.max(at2, i - 64);
   let j = i;
-  while (j > from && text[j - 1] !== " " && text[j - 1] !== "	") j--;
+  while (j > from && text2[j - 1] !== " " && text2[j - 1] !== "	") j--;
   return j;
 }
 var carried = null;
-function statementStart(text, end) {
+function statementStart(text2, end) {
   const windowStart = Math.max(0, end - WINDOW);
   let i;
-  let at;
+  let at2;
   let found;
   let blank;
   let inside;
   let word;
-  if (carried && carried.text === text && carried.i <= end && carried.i >= windowStart) {
-    ({ i, at, found, blank, inside, word } = carried);
+  if (carried && carried.text === text2 && carried.i <= end && carried.i >= windowStart) {
+    ({ i, at: at2, found, blank, inside, word } = carried);
   } else {
     i = windowStart;
-    at = windowStart;
+    at2 = windowStart;
     found = windowStart === 0;
     blank = true;
     inside = null;
@@ -10669,11 +9345,11 @@ function statementStart(text, end) {
   }
   carried = null;
   while (i < end) {
-    const c = text[i];
-    const next = text[i + 1];
+    const c = text2[i];
+    const next = text2[i + 1];
     if (c === "\\") {
       if (next === "n" || next === "r") {
-        at = i + 2;
+        at2 = i + 2;
         found = true;
         blank = true;
         inside = null;
@@ -10681,7 +9357,7 @@ function statementStart(text, end) {
         continue;
       }
       if (next === "\\") {
-        i += text[i + 2] === "\\" && text[i + 3] === "n" ? 4 : 2;
+        i += text2[i + 2] === "\\" && text2[i + 3] === "n" ? 4 : 2;
         blank = false;
         continue;
       }
@@ -10689,8 +9365,8 @@ function statementStart(text, end) {
         i += 2;
         continue;
       }
-      if (next === "u" && text.startsWith("0026", i + 2)) {
-        at = i + 6;
+      if (next === "u" && text2.startsWith("0026", i + 2)) {
+        at2 = i + 6;
         found = true;
         blank = true;
         i += 6;
@@ -10699,16 +9375,16 @@ function statementStart(text, end) {
     }
     const quote = c === "\\" && next === '"' ? '\\"' : c === '"' || c === "'" ? c : null;
     if (quote) {
-      const key = jsonKeyLength(text, i, end);
+      const key = jsonKeyLength(text2, i, end);
       if (key > 0) {
         i += key;
-        at = i;
+        at2 = i;
         found = true;
         blank = true;
         inside = null;
         continue;
       }
-      const after = text[i + quote.length];
+      const after = text2[i + quote.length];
       if (quote === inside && word && (after === " " || after === "	")) {
         i += quote.length;
         blank = false;
@@ -10717,27 +9393,27 @@ function statementStart(text, end) {
       }
       if (quote === inside || !blank && (after === "," || after === "]" || after === "}")) {
         i += quote.length;
-        at = i;
+        at2 = i;
         found = true;
         blank = true;
         inside = null;
         continue;
       }
-      if (blank || holdsCommand(text, at, i)) {
+      if (blank || holdsCommand(text2, at2, i)) {
         i += quote.length;
-        at = i;
+        at2 = i;
         found = true;
         blank = true;
         inside = quote;
         word = true;
         continue;
       }
-      const close = closingQuote(text, quote, i + quote.length, end);
+      const close = closingQuote(text2, quote, i + quote.length, end);
       if (close === -1) {
-        carried = { text, i, at, found, blank, inside, word };
-        return { start: gluedWordStart(text, i, at), unsure: true, inside };
+        carried = { text: text2, i, at: at2, found, blank, inside, word };
+        return { start: gluedWordStart(text2, i, at2), unsure: true, inside };
       }
-      if (isNewline(text, close)) {
+      if (isNewline(text2, close)) {
         i += quote.length;
         blank = false;
         continue;
@@ -10747,7 +9423,7 @@ function statementStart(text, end) {
       continue;
     }
     if (SEPARATORS.has(c)) {
-      at = i + 1;
+      at2 = i + 1;
       found = true;
       blank = true;
       word = false;
@@ -10759,8 +9435,8 @@ function statementStart(text, end) {
     }
     i++;
   }
-  carried = { text, i, at, found, blank, inside, word };
-  if (found && at >= windowStart) return { start: at, unsure: false, inside };
+  carried = { text: text2, i, at: at2, found, blank, inside, word };
+  if (found && at2 >= windowStart) return { start: at2, unsure: false, inside };
   return {
     start: Math.max(windowStart, end - UNSURE_TAIL),
     unsure: true,
@@ -10769,26 +9445,26 @@ function statementStart(text, end) {
   };
 }
 var words = null;
-function wordWithin(text, from, end) {
-  if (!words || words.text !== text || words.end > end) {
-    words = { text, last: -1, next: -1, end };
+function wordWithin(text2, from, end) {
+  if (!words || words.text !== text2 || words.end > end) {
+    words = { text: text2, last: -1, next: -1, end };
   }
   words.end = end;
   while (words.next < end) {
     if (words.next !== -1) words.last = words.next;
     PROGRAM_WORDS.lastIndex = words.next === -1 ? 0 : words.next + 1;
-    const m = PROGRAM_WORDS.exec(text);
+    const m = PROGRAM_WORDS.exec(text2);
     words.next = m ? m.index : Number.POSITIVE_INFINITY;
   }
   return words.last >= from;
 }
-function substitutedProgram(text, start) {
+function substitutedProgram(text2, start) {
   const close = start - 1;
-  const c = text[close];
+  const c = text2[close];
   if (c !== ")" && c !== "`") return false;
   let open = -1;
   for (let j = close - 1; j >= Math.max(0, close - 64); j--) {
-    if (c === ")" ? text[j] === "(" && text[j - 1] === "$" : text[j] === "`") {
+    if (c === ")" ? text2[j] === "(" && text2[j - 1] === "$" : text2[j] === "`") {
       open = j;
       break;
     }
@@ -10796,19 +9472,19 @@ function substitutedProgram(text, start) {
   if (open === -1) return false;
   let p = c === ")" ? open - 2 : open - 1;
   const from = p - 8;
-  while (p >= 0 && p > from && (text[p] === " " || text[p] === "	")) p--;
-  const before = text[p];
+  while (p >= 0 && p > from && (text2[p] === " " || text2[p] === "	")) p--;
+  const before = text2[p];
   if (p >= 0 && !SEPARATORS.has(before) && before !== '"' && before !== "'") {
     return false;
   }
-  return PROGRAM_WORD.test(text.slice(open + 1, close));
+  return PROGRAM_WORD.test(text2.slice(open + 1, close));
 }
-function argvProgram(text, offset, match) {
+function argvProgram(text2, offset, match) {
   let open = -1;
   if (match[0] === "[") open = offset;
   else {
     for (let j = offset - 1; j >= Math.max(0, offset - WINDOW); j--) {
-      const c = text[j];
+      const c = text2[j];
       if (c === "[") {
         open = j;
         break;
@@ -10817,25 +9493,25 @@ function argvProgram(text, offset, match) {
     }
   }
   if (open === -1) return false;
-  const tokens = text.slice(open + 1, offset).split(",").map((element) => element.trim().replace(/["\\]/g, ""));
+  const tokens = text2.slice(open + 1, offset).split(",").map((element) => element.trim().replace(/["\\]/g, ""));
   return runsMysql(tokens);
 }
-function isMysqlPasswordFlag(match, offset, text) {
-  if (match[0] === "[" || match[0] === ",") return argvProgram(text, offset, match);
+function isMysqlPasswordFlag(match, offset, text2) {
+  if (match[0] === "[" || match[0] === ",") return argvProgram(text2, offset, match);
   if (isEmptyQuoted(match)) return false;
-  const reading = statementStart(text, offset);
+  const reading = statementStart(text2, offset);
   if (reading.inside !== null && match.startsWith(reading.inside, 3)) return false;
   if (reading.unsure && quoteThenClose(match)) return false;
-  if (reading.outside) return wordWithin(text, reading.start, offset);
-  const statement = text.slice(reading.start, offset);
+  if (reading.outside) return wordWithin(text2, reading.start, offset);
+  const statement = text2.slice(reading.start, offset);
   if (reading.unsure) return PROGRAM_WORD.test(statement);
   const tokens = statement.trim().split(/\s+/);
-  return runsMysql(tokens) || substitutedProgram(text, reading.start);
+  return runsMysql(tokens) || substitutedProgram(text2, reading.start);
 }
 
 // src/core/scrub.ts
-function redacted(kind, hint) {
-  return hint ? `[REDACTED:${kind}:${hint}]` : `[REDACTED:${kind}]`;
+function redacted(kind2, hint) {
+  return hint ? `[REDACTED:${kind2}:${hint}]` : `[REDACTED:${kind2}]`;
 }
 var ESCAPE_BOUNDARY = String.raw`(?<=\\[nrtfb])|(?<=\\u[0-9A-Fa-f]{4})|(?<=\x1b\[[0-9;:?]{0,32}[@-~])|(?<=\\(?:u001[bB]|x1[bB]|033)\[[0-9;:?]{0,32}[@-~])|(?<=\x1b\([0-9A-Za-z])|(?<=\\(?:u001[bB]|x1[bB]|033)\([0-9A-Za-z])`;
 var LEAD2 = `(?:\\b|${ESCAPE_BOUNDARY})`;
@@ -11061,10 +9737,10 @@ var SENTINEL_RE = new RegExp(`${SENTINEL_CHAR}(\\d+)${SENTINEL_CHAR}`, "g");
 function sentinel(index) {
   return `${SENTINEL_CHAR}${index}${SENTINEL_CHAR}`;
 }
-function applyPattern(text, pattern, tally, slots) {
-  if (pattern.prefilter && !pattern.prefilter.test(text)) return text;
+function applyPattern(text2, pattern, tally, slots) {
+  if (pattern.prefilter && !pattern.prefilter.test(text2)) return text2;
   const needsLuhn = LUHN_VALIDATED_IDS.has(pattern.id);
-  return text.replace(pattern.regex, (...args2) => {
+  return text2.replace(pattern.regex, (...args2) => {
     const match = args2[0];
     if (needsLuhn && !passesLuhn(match)) return match;
     if (pattern.accept && !pattern.accept(match, args2[args2.length - 2], args2[args2.length - 1])) {
@@ -11077,18 +9753,18 @@ function applyPattern(text, pattern, tally, slots) {
     return sentinel(slot);
   });
 }
-function scrubText(text) {
-  if (text.length === 0) {
-    return { text, redactions: {}, total: 0 };
+function scrubText(text2) {
+  if (text2.length === 0) {
+    return { text: text2, redactions: {}, total: 0 };
   }
   const tally = {};
   const slots = [];
-  let out = text.includes(SENTINEL_CHAR) ? text.split(SENTINEL_CHAR).join("") : text;
+  let out = text2.includes(SENTINEL_CHAR) ? text2.split(SENTINEL_CHAR).join("") : text2;
   for (const pattern of PATTERNS) {
     out = applyPattern(out, pattern, tally, slots);
   }
   if (slots.length === 0) {
-    return { text, redactions: {}, total: 0 };
+    return { text: text2, redactions: {}, total: 0 };
   }
   out = out.replace(SENTINEL_RE, (_m, idx) => slots[Number(idx)]);
   let total = 0;
@@ -11114,11 +9790,11 @@ function toolCallsOf(session) {
 }
 
 // src/core/scan-report.ts
-function redactForReport(text) {
-  return redactIdentifiers(redactSecrets(redactPaths(scrubText(text).text)));
+function redactForReport(text2) {
+  return redactIdentifiers(redactSecrets(redactPaths(scrubText(text2).text)));
 }
-function redactTitle(text) {
-  return redactIdentifiers(redactSecrets(scrubText(text).text), { kubeResourceOperands: false });
+function redactTitle(text2) {
+  return redactIdentifiers(redactSecrets(scrubText(text2).text), { kubeResourceOperands: false });
 }
 var MAX_DISPLAY_LEN = 160;
 function flatten(s) {
@@ -11159,6 +9835,18 @@ function evaluateAction(catalog, allowlist, candidates) {
   const [first, ...rest] = candidates;
   return strictestCandidate([evaluate(first), ...rest.map(evaluate)]);
 }
+function toolUseCalls(agent, use) {
+  switch (agent) {
+    case "claude":
+      return [{ kind: "action", candidates: [mapToolCall(toolCallPayload(use))] }];
+    case "cursor":
+      return [mapCursorSessionTool(use)];
+    case "codex":
+      return mapCodexSessionTool(use);
+    default:
+      return unhandledAgent(agent);
+  }
+}
 function* claudeSessionCalls(session) {
   for (const payload of toolCallsOf(session)) {
     yield { kind: "action", candidates: [mapToolCall(payload)] };
@@ -11189,7 +9877,7 @@ function strictestAction(actions) {
 function byCountThenText(a, b) {
   return b.count - a.count || a.text.localeCompare(b.text);
 }
-function aggregateScan(corpus, catalog, allowlist, shipped = /* @__PURE__ */ new Set()) {
+function aggregateScan(corpus, catalog, allowlist, shipped = /* @__PURE__ */ new Set(), verification) {
   const agent = corpus.agent ?? "claude";
   const capabilities = corpus.capabilities ?? DEFAULT_CAPABILITIES;
   const sessionCalls = sessionCallsFor(agent);
@@ -11233,8 +9921,8 @@ function aggregateScan(corpus, catalog, allowlist, shipped = /* @__PURE__ */ new
       const group = decided.get(key);
       if (group === void 0) decided.set(key, { action: strictest, ruleIds: deciders, calls: 1 });
       else group.calls++;
-      const text = displayTextOf(mapped);
-      shapeCalls.set(text, (shapeCalls.get(text) ?? 0) + 1);
+      const text2 = displayTextOf(mapped);
+      shapeCalls.set(text2, (shapeCalls.get(text2) ?? 0) + 1);
       callOwasp.push(decision.matches.flatMap((m) => ruleOf.get(m.ruleId)?.rule.owasp ?? []));
       for (const match of decision.matches) {
         let acc = byRule.get(match.ruleId);
@@ -11243,7 +9931,7 @@ function aggregateScan(corpus, catalog, allowlist, shipped = /* @__PURE__ */ new
           byRule.set(match.ruleId, acc);
         }
         acc.count++;
-        acc.shapes.set(text, (acc.shapes.get(text) ?? 0) + 1);
+        acc.shapes.set(text2, (acc.shapes.get(text2) ?? 0) + 1);
       }
     }
   }
@@ -11254,7 +9942,7 @@ function aggregateScan(corpus, catalog, allowlist, shipped = /* @__PURE__ */ new
     const title = redactTitle(entry?.rule.title ?? ruleId);
     const severity = entry?.rule.severity ?? "unknown";
     const action = entry?.action ?? "warn";
-    const examples = [...acc.shapes].map(([text, count2]) => ({ text, count: count2 })).sort(byCountThenText);
+    const examples = [...acc.shapes].map(([text2, count2]) => ({ text: text2, count: count2 })).sort(byCountThenText);
     const owasp = [...entry?.rule.owasp ?? []];
     const rule = entry?.rule;
     const fromLibrary = rule !== void 0 && shipped.has(rule);
@@ -11304,7 +9992,8 @@ function aggregateScan(corpus, catalog, allowlist, shipped = /* @__PURE__ */ new
     owasp: owaspTally(findings, callOwasp),
     // Withheld, not zeroed, when the records carry no counts: a total of 0 is a
     // measurement nobody made.
-    tokens: capabilities.tokens ? tokens : null
+    tokens: capabilities.tokens ? tokens : null,
+    ...verification === void 0 ? {} : { verification }
   };
   if (!capabilities.skips) return result;
   const unmappedTools = [...unmapped2].map(([name, count2]) => ({ name, count: count2 })).sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
@@ -11338,6 +10027,10166 @@ function mcpReviewDisclosures(corpus, catalog, allowlist) {
   return out;
 }
 
+// src/core/verify/prefix-words.ts
+var PREFIX_WORDS = /* @__PURE__ */ new Set([
+  "sudo",
+  "doas",
+  "env",
+  "command",
+  "builtin",
+  "exec",
+  "time",
+  "nohup",
+  "nice",
+  "ionice",
+  "setsid",
+  "caffeinate",
+  "stdbuf",
+  "timeout",
+  "flock",
+  "watch",
+  "npx",
+  "bunx",
+  "gtimeout",
+  "chronic",
+  "unbuffer",
+  "taskset",
+  "chrt",
+  "runuser",
+  "dotenv",
+  "!",
+  "{",
+  "}",
+  "if",
+  "then",
+  "else",
+  "elif",
+  "do",
+  "while",
+  "until"
+]);
+var PREFIX_VALUE_OPTIONS = /* @__PURE__ */ new Map([
+  [
+    "sudo",
+    /* @__PURE__ */ new Set([
+      "-u",
+      "--user",
+      "-g",
+      "--group",
+      "-C",
+      "--close-from",
+      "-D",
+      "--chdir",
+      "-h",
+      "--host",
+      "-p",
+      "--prompt",
+      "-R",
+      "--chroot",
+      "-r",
+      "--role",
+      "-t",
+      "--type",
+      "-T",
+      "--command-timeout",
+      "-U",
+      "--other-user"
+    ])
+  ],
+  ["doas", /* @__PURE__ */ new Set(["-u", "-C"])],
+  ["env", /* @__PURE__ */ new Set(["-u", "--unset", "-C", "--chdir", "-S", "--split-string", "-a", "--argv0"])],
+  ["nice", /* @__PURE__ */ new Set(["-n", "--adjustment"])],
+  [
+    "ionice",
+    /* @__PURE__ */ new Set(["-c", "--class", "-n", "--classdata", "-p", "--pid", "-P", "--pgid", "-u", "--uid"])
+  ],
+  ["caffeinate", /* @__PURE__ */ new Set(["-t", "-w"])],
+  ["timeout", /* @__PURE__ */ new Set(["-s", "--signal", "-k", "--kill-after"])],
+  ["gtimeout", /* @__PURE__ */ new Set(["-s", "--signal", "-k", "--kill-after"])],
+  ["chrt", /* @__PURE__ */ new Set(["-T", "--sched-runtime", "-P", "--sched-period", "-D", "--sched-deadline"])],
+  [
+    "runuser",
+    /* @__PURE__ */ new Set([
+      "-u",
+      "--user",
+      "-g",
+      "--group",
+      "-G",
+      "--supp-group",
+      "-s",
+      "--shell",
+      "-w",
+      "--whitelist-environment",
+      "-c",
+      "--command",
+      "--session-command"
+    ])
+  ],
+  ["dotenv", /* @__PURE__ */ new Set(["-e", "-v", "-c", "-p", "-f", "--file", "-q", "--quote", "--export"])],
+  ["stdbuf", /* @__PURE__ */ new Set(["-i", "--input", "-o", "--output", "-e", "--error"])],
+  ["time", /* @__PURE__ */ new Set(["-f", "--format", "-o", "--output"])],
+  ["exec", /* @__PURE__ */ new Set(["-a"])],
+  [
+    "flock",
+    /* @__PURE__ */ new Set(["-w", "--wait", "--timeout", "-E", "--conflict-exit-code", "-c", "--command"])
+  ],
+  ["watch", /* @__PURE__ */ new Set(["-n", "--interval", "-q", "--equexit", "--shotsdir"])],
+  [
+    "npx",
+    /* @__PURE__ */ new Set([
+      "-p",
+      "--package",
+      "-c",
+      "--call",
+      "-w",
+      "--workspace",
+      "--registry",
+      "--cache",
+      "--prefix",
+      "--userconfig"
+    ])
+  ],
+  ["bunx", /* @__PURE__ */ new Set(["-p", "--package"])],
+  // The launchers' own options, before and after the subcommand that runs a command.
+  ["aws-vault", /* @__PURE__ */ new Set(["-d", "--duration", "--region", "-t", "--mfa-token", "--backend"])],
+  ["op", /* @__PURE__ */ new Set(["--env-file", "--account", "--config", "--session"])],
+  ["doppler", /* @__PURE__ */ new Set(["-p", "--project", "-c", "--config", "--token", "--scope", "--command"])],
+  ["mise", /* @__PURE__ */ new Set(["-C", "--cd", "-E", "--env", "-j", "--jobs", "-c", "--command"])],
+  [
+    "uv",
+    /* @__PURE__ */ new Set([
+      "--from",
+      "--with",
+      "--with-editable",
+      "--with-requirements",
+      "-p",
+      "--python",
+      "--project",
+      "--directory",
+      "--env-file",
+      "--extra",
+      "--group",
+      "--only-group",
+      "--package",
+      "--index",
+      "--index-url",
+      "--extra-index-url",
+      "--default-index"
+    ])
+  ],
+  ["poetry", /* @__PURE__ */ new Set(["-C", "--directory", "-P", "--project"])],
+  ["bundle", /* @__PURE__ */ new Set(["--gemfile"])],
+  ["pnpm", /* @__PURE__ */ new Set(["-C", "--dir", "-F", "--filter", "--workspace-dir", "--reporter"])],
+  [
+    "npm",
+    /* @__PURE__ */ new Set([
+      "-w",
+      "--workspace",
+      "-p",
+      "--package",
+      "-c",
+      "--call",
+      "--prefix",
+      "--registry",
+      "--cache",
+      "--userconfig"
+    ])
+  ]
+]);
+var PREFIX_SHELL_STRING_OPTIONS = /* @__PURE__ */ new Map([
+  ["env", /* @__PURE__ */ new Set(["-S", "--split-string"])],
+  ["flock", /* @__PURE__ */ new Set(["-c", "--command"])],
+  ["npx", /* @__PURE__ */ new Set(["-c", "--call"])],
+  ["npm", /* @__PURE__ */ new Set(["-c", "--call"])],
+  ["runuser", /* @__PURE__ */ new Set(["-c", "--command", "--session-command"])],
+  ["doppler", /* @__PURE__ */ new Set(["--command"])],
+  ["mise", /* @__PURE__ */ new Set(["-c", "--command"])],
+  ["pnpm", /* @__PURE__ */ new Set(["-c", "--shell-mode"])]
+]);
+var PREFIX_OPERANDS = /* @__PURE__ */ new Set([
+  "timeout",
+  "gtimeout",
+  "flock",
+  "taskset",
+  "chrt"
+]);
+var LAUNCHERS = /* @__PURE__ */ new Map([
+  ["aws-vault", { subcommands: /* @__PURE__ */ new Set(["exec"]), operands: 1 }],
+  ["op", { subcommands: /* @__PURE__ */ new Set(["run"]), operands: 0 }],
+  ["doppler", { subcommands: /* @__PURE__ */ new Set(["run"]), operands: 0 }],
+  ["mise", { subcommands: /* @__PURE__ */ new Set(["exec", "x"]), operands: 0, dashDash: "require" }],
+  ["direnv", { subcommands: /* @__PURE__ */ new Set(["exec"]), operands: 1 }],
+  [
+    "uv",
+    { subcommands: /* @__PURE__ */ new Set(["run"]), operands: 0, nested: /* @__PURE__ */ new Map([["tool", /* @__PURE__ */ new Set(["run"])]]) }
+  ],
+  ["bun", { subcommands: /* @__PURE__ */ new Set(["x"]), operands: 0 }],
+  ["poetry", { subcommands: /* @__PURE__ */ new Set(["run"]), operands: 0 }],
+  ["pipenv", { subcommands: /* @__PURE__ */ new Set(["run"]), operands: 0 }],
+  ["pdm", { subcommands: /* @__PURE__ */ new Set(["run"]), operands: 0 }],
+  ["bundle", { subcommands: /* @__PURE__ */ new Set(["exec"]), operands: 0 }],
+  ["bundler", { subcommands: /* @__PURE__ */ new Set(["exec"]), operands: 0 }],
+  ["pnpm", { subcommands: /* @__PURE__ */ new Set(["exec", "dlx"]), operands: 0 }],
+  ["yarn", { subcommands: /* @__PURE__ */ new Set(["exec", "dlx"]), operands: 0 }],
+  ["npm", { subcommands: /* @__PURE__ */ new Set(["exec", "x"]), operands: 0 }]
+]);
+var GIT_GLOBAL_VALUE_OPTIONS = /* @__PURE__ */ new Set([
+  "-C",
+  "-c",
+  "--git-dir",
+  "--work-tree",
+  "--namespace",
+  "--config-env",
+  "--super-prefix",
+  "--attr-source"
+]);
+function gitSubcommandIndex(args2) {
+  let k = 0;
+  while (k < args2.length && args2[k].startsWith("-")) {
+    k += GIT_GLOBAL_VALUE_OPTIONS.has(args2[k]) ? 2 : 1;
+  }
+  return k;
+}
+var ASSIGNMENT3 = /^[A-Za-z_][A-Za-z0-9_]*=/;
+function programNameOf(value) {
+  const base = (value.split(/[\\/]/).pop() ?? "").toLowerCase().replace(/\.exe$/, "");
+  return base === "awscli" ? "aws" : base;
+}
+function awsCliModule(values, at2) {
+  let j = at2 + 1;
+  while (j < values.length && values[j].startsWith("-")) {
+    if (values[j] === "-m") return values[j + 1] === "awscli" ? j + 1 : -1;
+    j += values[j] === "-W" || values[j] === "-X" ? 2 : 1;
+  }
+  return -1;
+}
+function readOption(name, word) {
+  const valued = PREFIX_VALUE_OPTIONS.get(name);
+  if (word.startsWith("--")) {
+    const eq = word.indexOf("=");
+    const option = eq < 0 ? word : word.slice(0, eq);
+    return { given: [option], takesNext: eq < 0 && valued?.has(option) === true };
+  }
+  const given = [];
+  for (let c = 1; c < word.length; c++) {
+    const option = `-${word[c]}`;
+    given.push(option);
+    if (valued?.has(option) === true) return { given, takesNext: c === word.length - 1 };
+  }
+  return { given, takesNext: false };
+}
+function programStart(values) {
+  const assignments = [];
+  let shellString = false;
+  let k = 0;
+  while (k < values.length) {
+    const value = values[k];
+    if (ASSIGNMENT3.test(value)) {
+      assignments.push(k);
+      k += 1;
+      continue;
+    }
+    const name = programNameOf(value);
+    const launcher = LAUNCHERS.get(name);
+    if (!PREFIX_WORDS.has(name) && launcher === void 0) {
+      const module = /^python[0-9.]*$/.test(name) ? awsCliModule(values, k) : -1;
+      return { index: module < 0 ? k : module, assignments, shellString };
+    }
+    const strings = PREFIX_SHELL_STRING_OPTIONS.get(name);
+    const given = /* @__PURE__ */ new Set();
+    let ended = false;
+    const readOptions = () => {
+      while (k < values.length && values[k].startsWith("-")) {
+        if (values[k] === "--") {
+          k += 1;
+          ended = true;
+          return;
+        }
+        const read = readOption(name, values[k]);
+        for (const option of read.given) {
+          given.add(option);
+          if (strings?.has(option) === true) shellString = true;
+        }
+        k += read.takesNext ? 2 : 1;
+      }
+    };
+    const start = k;
+    k += 1;
+    readOptions();
+    if (launcher !== void 0) {
+      const sub = values[k] ?? "";
+      const nested = launcher.nested?.get(sub)?.has(values[k + 1] ?? "") === true;
+      if (ended || !launcher.subcommands.has(sub) && !nested) {
+        return { index: start, assignments, shellString };
+      }
+      k += launcher.subcommands.has(sub) ? 1 : 2;
+      if (launcher.dashDash === "require") {
+        readOptions();
+        if (ended) continue;
+        const dash = values.indexOf("--", k);
+        if (dash < 0) return { index: values.length, assignments, shellString };
+        k = dash + 1;
+        continue;
+      }
+      readOptions();
+      if (ended) continue;
+      k += launcher.operands;
+      readOptions();
+      continue;
+    }
+    if (PREFIX_OPERANDS.has(name) && k < values.length && !ended) {
+      k += 1;
+      if (name === "flock") readOptions();
+    }
+    if (name === "runuser" && !given.has("-u") && !given.has("--user") && !ended) {
+      if (k < values.length) k += 1;
+      readOptions();
+    }
+    if (name === "dotenv" && values[k] === "run" && !ended) {
+      k += 1;
+      readOptions();
+    }
+    if (name === "watch" && !given.has("-x") && !given.has("--exec")) shellString = true;
+  }
+  return { index: k, assignments, shellString };
+}
+
+// src/core/verify/shell-words.ts
+var SHELLS = /* @__PURE__ */ new Set(["sh", "bash", "zsh", "dash", "ksh"]);
+function ansiQuoteEnd(text2, at2) {
+  let i = at2 + 2;
+  while (i < text2.length) {
+    const ch = text2[i];
+    if (ch === "\\") {
+      i += text2[i + 1] === "c" ? 3 : 2;
+      continue;
+    }
+    if (ch === "'") return i + 1;
+    i += 1;
+  }
+  return -1;
+}
+var ANSI_ESCAPES = {
+  a: "\x07",
+  b: "\b",
+  e: "\x1B",
+  E: "\x1B",
+  f: "\f",
+  n: "\n",
+  r: "\r",
+  t: "	",
+  v: "\v",
+  "\\": "\\",
+  "'": "'",
+  '"': '"',
+  "?": "?"
+};
+var ANSI_ESCAPE = /\\(?:x([0-9A-Fa-f]{1,2})|u([0-9A-Fa-f]{1,4})|U([0-9A-Fa-f]{1,8})|([0-7]{1,3})|c([\s\S])|([\s\S]))/g;
+function ansiQuoteValue(inner) {
+  const value = inner.replace(
+    ANSI_ESCAPE,
+    (whole, hex, u4, u8, octal, control, one) => {
+      const code2 = hex ?? u4 ?? u8;
+      if (code2 !== void 0) {
+        const point = Number.parseInt(code2, 16);
+        return point <= 1114111 ? String.fromCodePoint(point) : whole;
+      }
+      if (octal !== void 0) return String.fromCharCode(Number.parseInt(octal, 8) & 255);
+      if (control !== void 0) return String.fromCharCode(control.charCodeAt(0) & 31);
+      return ANSI_ESCAPES[one ?? ""] ?? whole;
+    }
+  );
+  const nul = value.indexOf("\0");
+  return nul < 0 ? value : value.slice(0, nul);
+}
+function quoteEnd(text2, at2, quote) {
+  let i = at2 + 1;
+  while (i < text2.length) {
+    const ch = text2[i];
+    if (quote !== "'" && ch === "\\") {
+      i += 2;
+      continue;
+    }
+    if (quote === '"' && ch === "$" && text2[i + 1] === "(") {
+      i = substitutionEnd(text2, i + 1);
+      if (i < 0) return -1;
+      continue;
+    }
+    if (ch === quote) return i + 1;
+    i += 1;
+  }
+  return -1;
+}
+function skipQuoted(text2, at2, quote) {
+  const end = quoteEnd(text2, at2, quote);
+  return end < 0 ? text2.length : end;
+}
+function skipSubstitution(text2, at2) {
+  const end = substitutionEnd(text2, at2);
+  return end < 0 ? text2.length : end;
+}
+function substitutionEnd(text2, at2) {
+  let depth = 0;
+  let i = at2;
+  while (i < text2.length) {
+    const ch = text2[i];
+    if (ch === "$" && text2[i + 1] === "'") {
+      i = ansiQuoteEnd(text2, i);
+      if (i < 0) return -1;
+      continue;
+    }
+    if (ch === "'" || ch === '"' || ch === "`") {
+      i = quoteEnd(text2, i, ch);
+      if (i < 0) return -1;
+      continue;
+    }
+    if (ch === "\\") {
+      i += 2;
+      continue;
+    }
+    if (ch === "(") depth += 1;
+    else if (ch === ")") {
+      depth -= 1;
+      if (depth === 0) return i + 1;
+    }
+    i += 1;
+  }
+  return -1;
+}
+function shellItems(text2) {
+  const items = [];
+  const pending = [];
+  let words2 = [];
+  let writes = [];
+  let next = "word";
+  let start = -1;
+  let value = "";
+  let expands = false;
+  let globAt = -1;
+  const endWord = (end) => {
+    if (start < 0) return;
+    const word = { raw: text2.slice(start, end), value, expands, globAt };
+    if (next === "word") words2.push(word);
+    else if (next === "write") writes.push(word);
+    else if (next === "heredoc" || next === "heredoc-tabs") {
+      pending.push({ delimiter: value, stripTabs: next === "heredoc-tabs", words: words2 });
+    }
+    next = "word";
+    start = -1;
+    value = "";
+    expands = false;
+    globAt = -1;
+  };
+  const endCommand = (end) => {
+    endWord(end);
+    if (words2.length > 0 || writes.length > 0) items.push({ kind: "command", words: words2, writes });
+    words2 = [];
+    writes = [];
+  };
+  const begin = (at2) => {
+    if (start < 0) start = at2;
+  };
+  let i = 0;
+  while (i < text2.length) {
+    const ch = text2[i];
+    if (ch === "\n") {
+      endCommand(i);
+      i += 1;
+      while (pending.length > 0) {
+        const doc = pending.shift();
+        const program = doc.words[commandStart(doc.words).index];
+        if (program !== void 0 && SHELLS.has(programName(program))) {
+          pending.length = 0;
+          break;
+        }
+        while (i < text2.length) {
+          const lineEnd = text2.indexOf("\n", i);
+          const stop = lineEnd < 0 ? text2.length : lineEnd;
+          const line2 = text2.slice(i, stop);
+          i = lineEnd < 0 ? text2.length : lineEnd + 1;
+          if ((doc.stripTabs ? line2.replace(/^\t+/, "") : line2) === doc.delimiter) break;
+        }
+      }
+      continue;
+    }
+    if (ch === " " || ch === "	" || ch === "\r") {
+      endWord(i);
+      i += 1;
+      continue;
+    }
+    if (ch === "#" && start < 0) {
+      const lineEnd = text2.indexOf("\n", i);
+      i = lineEnd < 0 ? text2.length : lineEnd;
+      continue;
+    }
+    if (ch === "'" || ch === '"') {
+      begin(i);
+      const end = skipQuoted(text2, i, ch);
+      const inner = text2.slice(i + 1, Math.max(i + 1, end - 1));
+      if (ch === '"') {
+        if (inner.includes("$") || inner.includes("`")) expands = true;
+        value += inner.replace(/\\(["\\$`])/g, "$1");
+      } else value += inner;
+      i = end;
+      continue;
+    }
+    if (ch === "\\") {
+      begin(i);
+      if (text2[i + 1] !== "\n") value += text2[i + 1] ?? "";
+      i += 2;
+      continue;
+    }
+    if (ch === "$") {
+      begin(i);
+      if (text2[i + 1] === "'") {
+        const end = ansiQuoteEnd(text2, i);
+        const stop = end < 0 ? text2.length : end - 1;
+        value += ansiQuoteValue(text2.slice(i + 2, Math.max(i + 2, stop)));
+        i = end < 0 ? text2.length : end;
+        continue;
+      }
+      if (text2[i + 1] === '"') {
+        i += 1;
+        continue;
+      }
+      if (text2[i + 1] === "(") {
+        const end = skipSubstitution(text2, i + 1);
+        value += text2.slice(i, end);
+        expands = true;
+        i = end;
+        continue;
+      }
+      if (/[A-Za-z_{0-9@*#?$!-]/.test(text2[i + 1] ?? "")) expands = true;
+      value += ch;
+      i += 1;
+      continue;
+    }
+    if (ch === "`") {
+      begin(i);
+      const end = skipQuoted(text2, i, "`");
+      value += text2.slice(i, end);
+      expands = true;
+      i = end;
+      continue;
+    }
+    if (ch === "<" || ch === ">") {
+      if (start >= 0 && /^\d+$/.test(value)) {
+        start = -1;
+        value = "";
+      } else endWord(i);
+      if (text2.startsWith("<<<", i)) {
+        next = "herestring";
+        i += 3;
+      } else if (text2.startsWith("<<-", i)) {
+        next = "heredoc-tabs";
+        i += 3;
+      } else if (text2.startsWith("<<", i)) {
+        next = "heredoc";
+        i += 2;
+      } else {
+        const writing = ch === ">" || text2[i + 1] === ">";
+        i += 1;
+        const duplicating = text2[i] === "&";
+        while (i < text2.length && /[>|&<]/.test(text2[i])) i += 1;
+        next = duplicating ? "read" : writing ? "write" : "read";
+      }
+      continue;
+    }
+    if (ch === "&" && text2[i + 1] === ">") {
+      endWord(i);
+      i += 2;
+      if (text2[i] === ">") i += 1;
+      next = "write";
+      continue;
+    }
+    if (ch === "(" || ch === ")") {
+      endCommand(i);
+      items.push({ kind: ch === "(" ? "open" : "close" });
+      i += 1;
+      continue;
+    }
+    if (ch === ";" || ch === "&" || ch === "|") {
+      endCommand(i);
+      i += 1;
+      if (/[&|;]/.test(text2[i] ?? "")) i += 1;
+      continue;
+    }
+    begin(i);
+    if (globAt < 0 && (ch === "*" || ch === "?" || ch === "[")) globAt = value.length;
+    value += ch;
+    i += 1;
+  }
+  endCommand(text2.length);
+  return items;
+}
+function shellCommands(text2) {
+  return shellItems(text2).filter((item) => item.kind === "command");
+}
+function programName(word) {
+  return programNameOf(word.value);
+}
+function commandStart(words2) {
+  const { index, assignments } = programStart(words2.map((word) => word.value));
+  return { index, assignments: assignments.map((i) => words2[i]) };
+}
+function gitCommand(words2) {
+  const at2 = commandStart(words2).index;
+  const program = words2[at2];
+  if (program === void 0 || programName(program) !== "git") return void 0;
+  const folders = [];
+  let elsewhere = false;
+  let k = at2 + 1;
+  while (k < words2.length && words2[k].value.startsWith("-")) {
+    const option = words2[k].value;
+    if (option.startsWith("--git-dir") || option.startsWith("--work-tree")) elsewhere = true;
+    if (option === "-C" && words2[k + 1] !== void 0) folders.push(words2[k + 1]);
+    k += GIT_GLOBAL_VALUE_OPTIONS.has(option) ? 2 : 1;
+  }
+  const sub = words2[k]?.value ?? "";
+  return { sub, args: words2.slice(k + 1), folders, elsewhere };
+}
+function operands(args2, valueOptions = /* @__PURE__ */ new Set()) {
+  const out = [];
+  let k = 0;
+  while (k < args2.length) {
+    const word = args2[k];
+    if (word.value === "--") {
+      out.push(...args2.slice(k + 1));
+      break;
+    }
+    if (word.value.startsWith("-") && word.value !== "-") {
+      k += valueOptions.has(word.value) ? 2 : 1;
+      continue;
+    }
+    out.push(word);
+    k += 1;
+  }
+  return out;
+}
+function directoryChange(words2) {
+  const at2 = commandStart(words2).index;
+  const program = words2[at2];
+  if (program === void 0) return { kind: "none" };
+  const name = programName(program);
+  if (name === "popd") return { kind: "unknown" };
+  if (name !== "cd" && name !== "pushd") return { kind: "none" };
+  const targets = operands(words2.slice(at2 + 1));
+  if (targets.length === 0) return name === "cd" ? { kind: "home" } : { kind: "unknown" };
+  const target = targets[0];
+  if (targets.length > 1 || target.expands || target.value === "-") return { kind: "unknown" };
+  return { kind: "to", path: target.value };
+}
+
+// src/core/verify/command-facts.ts
+var IAM_SUBJECTS = [
+  "access-keys",
+  "policies",
+  "roles",
+  "users",
+  "groups",
+  "credentials",
+  "other"
+];
+var DATABASE_CHECKS = ["checked", "not-available"];
+var INFRA_KINDS = [
+  "terraform",
+  "kubernetes",
+  "helm",
+  "cloud-delete",
+  "deploy",
+  "prod-config",
+  "other"
+];
+var UPLOAD_KINDS = [
+  "http-upload",
+  "file-copy",
+  "cloud-storage",
+  "paste",
+  "raw-socket",
+  "other"
+];
+var TUNNEL_PROCESS_NAMES = [
+  "ngrok",
+  "cloudflared",
+  "bore",
+  "frpc",
+  "frps",
+  "chisel",
+  "zrok",
+  "devtunnel",
+  "tmole",
+  "loclx",
+  "inlets",
+  "rathole",
+  "gost",
+  "socat"
+];
+var PROCESS_CHECKS = ["checked", "could-not-check"];
+var PACKAGE_MANAGERS = [
+  "npm",
+  "pnpm",
+  "yarn",
+  "bun",
+  "pip",
+  "uv",
+  "poetry",
+  "pipenv",
+  "cargo",
+  "go",
+  "gem",
+  "bundler",
+  "composer"
+];
+var PACKAGE_AGE_NOT_CHECKED = "not-checked-offline";
+var COMMAND_FACT_VALUE_ENUMS = [
+  IAM_SUBJECTS,
+  DATABASE_CHECKS,
+  INFRA_KINDS,
+  UPLOAD_KINDS,
+  TUNNEL_PROCESS_NAMES,
+  PROCESS_CHECKS,
+  PACKAGE_MANAGERS,
+  [PACKAGE_AGE_NOT_CHECKED]
+];
+var COMMAND_FACT_KEYS = [
+  // Tests.
+  "thresholdsLowered",
+  "autoUpdateReverts",
+  "autoUpdateNow",
+  "on",
+  "off",
+  "unread",
+  "configsRewritten",
+  "excludesAdded",
+  "passWithNoTests",
+  "ciStepsForcedTrue",
+  "testFilesDeleted",
+  "deletedAfterFailing",
+  "deletedFailureUnknown",
+  "unreadEdits",
+  // Every check.
+  "mentioned",
+  "unconfirmed",
+  "couldHide",
+  // Cloud.
+  "iamChanges",
+  "iamSubjects",
+  "autoScalingChanges",
+  "s3Changes",
+  "terraformChanges",
+  "terraformAutoApprove",
+  "localStack",
+  // Production infrastructure.
+  "databaseTargets",
+  "local",
+  "scratch",
+  "other",
+  "databaseCheck",
+  "infraMatches",
+  "infraKinds",
+  "localInfra",
+  // Unreviewed code.
+  "pushesToMain",
+  "commitsOnMain",
+  "commitsNotOnMain",
+  "pushesNotChecked",
+  "pushesCreatingMain",
+  "pushesUnattributed",
+  // Egress.
+  "uploads",
+  "uploadKinds",
+  "tunnelsStarted",
+  "localOnly",
+  "tunnelsRunning",
+  "tunnelPrograms",
+  "processCheck",
+  // Dependencies.
+  "dependencies",
+  "installs",
+  "lockfileRestores",
+  "managers",
+  "packageAge"
+];
+
+// src/core/verify/git-facts.ts
+var RM_TARGET_CLASSES = [
+  "home-or-above",
+  "unguarded-variable",
+  "guarded-variable",
+  "scratch",
+  "tracked",
+  "untracked",
+  "home",
+  "other"
+];
+var DATABASE_CLASSES = ["local", "scratch", "other", "unresolved"];
+var GIT_FACT_ENUMS = [RM_TARGET_CLASSES, DATABASE_CLASSES];
+var GIT_FACT_KEYS = [
+  // Shared by every tally of calls.
+  "calls",
+  "ran",
+  "mentioned",
+  "unknown",
+  "couldNotCheck",
+  // Skipped checks.
+  "noVerify",
+  "commits",
+  "notIdentified",
+  "failed",
+  "withoutHooks",
+  "onMain",
+  "offMain",
+  "noMainToCheck",
+  "gone",
+  "otherNoVerify",
+  "husky",
+  "oneCommand",
+  "hooksPath",
+  "off",
+  "on",
+  "none",
+  "instructions",
+  "read",
+  "sayToSkip",
+  "agentWrote",
+  "agentWroteStill",
+  "agentWroteRemoved",
+  "couldNotRead",
+  // Lost work.
+  "branches",
+  "deleted",
+  "recoverable",
+  "onAnotherRef",
+  "stashes",
+  "dropped",
+  "cleared",
+  "listed",
+  "discards",
+  "paths",
+  "ownCopy",
+  "agentEdited",
+  "mainCheckout",
+  // Destructive commands.
+  "rm",
+  "targets",
+  "trackedBack",
+  "trackedGone",
+  "trackedPartlyBack",
+  "databases",
+  // Every category: exact fix commands that could not be made safe.
+  "unsafeFixes",
+  // Every category: calls that ran holding a form this reading does not take apart.
+  "hidingCalls"
+];
+
+// src/core/verify/types.ts
+var VERIFY_CATEGORIES = [
+  "secrets",
+  "skipped-checks",
+  "lost-work",
+  "cloud",
+  "prod-infra",
+  "tests",
+  "destructive",
+  "unreviewed",
+  "egress"
+];
+var VERIFY_STATUSES = [
+  "act",
+  "review",
+  "clean",
+  "not-checked",
+  "could-not-check"
+];
+var RUN_STATES = ["ran", "mentioned", "unknown"];
+var RAN_EVIDENCE = ["tool-result", "output-record", "none"];
+var HIDING_FORMS = [
+  "shell-string",
+  "inline-code",
+  "piped-script",
+  "find-exec",
+  "xargs",
+  "process-substitution",
+  "command-substitution",
+  "eval",
+  "git-config",
+  "git-exec",
+  "git-hook",
+  "unread-shell",
+  "unterminated-quote",
+  "unread-match"
+];
+var SECRET_PROVENANCES = [
+  "pasted-into-prompt",
+  "typed-into-command",
+  "printed-by-command",
+  "in-agent-reply"
+];
+var SECRET_KINDS = [
+  "aws-access-key",
+  "aws-secret-key",
+  "private-key",
+  "github-token",
+  "slack-token",
+  "api-key",
+  "jwt",
+  "bearer-token",
+  "auth-header",
+  "database-url",
+  "url-credentials",
+  "password",
+  "named-secret",
+  "random-string",
+  "other"
+];
+var SECRET_CLASSES = [
+  "likely-real",
+  "committed-fixture",
+  "placeholder",
+  "local-dev"
+];
+var FIXTURE_CHECKS = ["complete", "partial", "unavailable", "not-needed"];
+var MAX_SECRET_ITEMS = 200;
+var WATCHED_PROCESSES = ["claude", "cursor", "codex", ...TUNNEL_PROCESS_NAMES];
+var FACT_VALUE_ENUMS = [
+  VERIFY_CATEGORIES,
+  VERIFY_STATUSES,
+  RUN_STATES,
+  RAN_EVIDENCE,
+  HIDING_FORMS,
+  SECRET_PROVENANCES,
+  SECRET_KINDS,
+  SECRET_CLASSES,
+  FIXTURE_CHECKS,
+  WATCHED_PROCESSES,
+  ...GIT_FACT_ENUMS,
+  ...COMMAND_FACT_VALUE_ENUMS
+];
+var FACT_KEYS = [
+  "classes",
+  "items",
+  "moreItems",
+  "filesRead",
+  "filesNotRead",
+  "unplaced",
+  "setAside",
+  "unnamedOutputOnly",
+  "namedNotCredentialShaped",
+  "fixtureCheck",
+  "reposChecked",
+  "reposNotChecked",
+  "kind",
+  "via",
+  "files",
+  "hidingForms",
+  ...GIT_FACT_KEYS,
+  ...COMMAND_FACT_KEYS
+];
+
+// src/core/verify/ran.ts
+function emptySegment() {
+  return {
+    words: [],
+    inputs: [],
+    pipedOut: false,
+    writesFile: false,
+    written: [],
+    readsFile: false
+  };
+}
+function holdsSubstitution(text2) {
+  return text2.includes("$(") || text2.includes("`");
+}
+function quoteEnd2(text2, at2, quote) {
+  let i = at2 + 1;
+  while (i < text2.length) {
+    const ch = text2[i];
+    if (quote !== "'" && ch === "\\") {
+      i += 2;
+      continue;
+    }
+    if (quote === '"' && ch === "$" && text2[i + 1] === "(") {
+      i = substitutionEnd2(text2, i + 1);
+      if (i < 0) return -1;
+      continue;
+    }
+    if (ch === quote) return i + 1;
+    i += 1;
+  }
+  return -1;
+}
+function skipSubstitution2(text2, at2) {
+  const end = substitutionEnd2(text2, at2);
+  return end < 0 ? text2.length : end;
+}
+function readDelimiter(text2, at2) {
+  let i = at2;
+  while (text2[i] === " " || text2[i] === "	") i += 1;
+  const quote = text2[i];
+  if (quote === "'" || quote === '"') {
+    const close = text2.indexOf(quote, i + 1);
+    if (close < 0) return void 0;
+    return { delimiter: text2.slice(i + 1, close), end: close + 1 };
+  }
+  const match = /^[^\s;&|<>()]+/.exec(text2.slice(i));
+  if (match === null) return void 0;
+  return { delimiter: match[0].replace(/\\/g, ""), end: i + match[0].length };
+}
+function substitutionEnd2(text2, at2) {
+  let depth = 0;
+  let i = at2;
+  const pending = [];
+  while (i < text2.length) {
+    const ch = text2[i];
+    if (ch === "\n" && pending.length > 0) {
+      i += 1;
+      for (const doc of pending.splice(0)) {
+        while (i < text2.length) {
+          const lineEnd = text2.indexOf("\n", i);
+          const stop = lineEnd < 0 ? text2.length : lineEnd;
+          const line2 = text2.slice(i, stop);
+          i = lineEnd < 0 ? text2.length : lineEnd + 1;
+          if ((doc.stripTabs ? line2.replace(/^\t+/, "") : line2) === doc.delimiter) break;
+        }
+      }
+      continue;
+    }
+    if (ch === "<" && text2[i + 1] === "<" && text2[i + 2] !== "<") {
+      const stripTabs = text2[i + 2] === "-";
+      const read = readDelimiter(text2, i + (stripTabs ? 3 : 2));
+      if (read !== void 0) {
+        pending.push({ delimiter: read.delimiter, stripTabs });
+        i = read.end;
+        continue;
+      }
+    }
+    if (ch === "$" && text2[i + 1] === "'") {
+      i = ansiQuoteEnd(text2, i);
+      if (i < 0) return -1;
+      continue;
+    }
+    if (ch === "'" || ch === '"' || ch === "`") {
+      i = quoteEnd2(text2, i, ch);
+      if (i < 0) return -1;
+      continue;
+    }
+    if (ch === "\\") {
+      i += 2;
+      continue;
+    }
+    if (ch === "(") depth += 1;
+    else if (ch === ")") {
+      depth -= 1;
+      if (depth === 0) return i + 1;
+    }
+    i += 1;
+  }
+  return -1;
+}
+function parseShell(text2) {
+  const segments = [];
+  const comments = [];
+  const pending = [];
+  const groups = [];
+  let substitution;
+  let targetWrites = false;
+  let processSubstitution = false;
+  let targetRuns = false;
+  let open = false;
+  let segment = emptySegment();
+  let next = "word";
+  let wordStart = -1;
+  let value = "";
+  let runs = false;
+  let quotedWord = false;
+  const endWord = (end) => {
+    if (wordStart < 0) return;
+    const word = { start: wordStart, end, value, runs };
+    if (next === "word") segment.words.push(word);
+    else if (next === "heredoc" || next === "heredoc-tabs") {
+      pending.push({
+        delimiter: value,
+        stripTabs: next === "heredoc-tabs",
+        quoted: quotedWord,
+        segment
+      });
+    } else if (next === "herestring") {
+      segment.inputs.push({ start: word.start, end: word.end, expands: runs });
+    } else if (next === "target") {
+      if (targetWrites) segment.written.push(value);
+      if (runs) targetRuns = true;
+    }
+    targetWrites = false;
+    next = "word";
+    wordStart = -1;
+    value = "";
+    runs = false;
+    quotedWord = false;
+  };
+  const endSegment = (end) => {
+    endWord(end);
+    if (segment.words.length > 0 || segment.inputs.length > 0) segments.push(segment);
+    segment = emptySegment();
+  };
+  const pipeFrom = (from) => {
+    for (let k = Math.max(0, from); k < segments.length; k++)
+      segments[k].pipedOut = true;
+  };
+  const pipeLast = () => {
+    const last = segments[segments.length - 1];
+    if (last === void 0) return;
+    last.pipedOut = true;
+    if (last.words.length === 1 && last.words[0]?.value === "}") {
+      for (let k = segments.length - 1; k >= 0; k--) {
+        const seg = segments[k];
+        seg.pipedOut = true;
+        if (seg.words[0]?.value === "{") break;
+      }
+    }
+  };
+  const startWord = (at2) => {
+    if (wordStart < 0) wordStart = at2;
+  };
+  let i = 0;
+  while (i < text2.length) {
+    const ch = text2[i];
+    if (ch === "\n") {
+      endSegment(i);
+      i += 1;
+      while (pending.length > 0 && i <= text2.length) {
+        const doc = pending.shift();
+        const start = i;
+        let end = text2.length;
+        let after = text2.length;
+        while (i < text2.length) {
+          const lineEnd = text2.indexOf("\n", i);
+          const stop = lineEnd < 0 ? text2.length : lineEnd;
+          const line2 = text2.slice(i, stop);
+          if ((doc.stripTabs ? line2.replace(/^\t+/, "") : line2) === doc.delimiter) {
+            end = i;
+            after = lineEnd < 0 ? text2.length : lineEnd + 1;
+            break;
+          }
+          i = lineEnd < 0 ? text2.length : lineEnd + 1;
+        }
+        doc.segment.inputs.push({
+          start,
+          end,
+          expands: !doc.quoted && holdsSubstitution(text2.slice(start, end))
+        });
+        i = after;
+      }
+      continue;
+    }
+    if (ch === " " || ch === "	" || ch === "\r") {
+      endWord(i);
+      i += 1;
+      continue;
+    }
+    if (ch === "#" && wordStart < 0) {
+      const lineEnd = text2.indexOf("\n", i);
+      const stop = lineEnd < 0 ? text2.length : lineEnd;
+      comments.push({ start: i, end: stop });
+      i = stop;
+      continue;
+    }
+    if (ch === "$" && text2[i + 1] === "'") {
+      startWord(i);
+      quotedWord = true;
+      const end = ansiQuoteEnd(text2, i);
+      if (end < 0) open = true;
+      const stop = end < 0 ? text2.length : end - 1;
+      value += ansiQuoteValue(text2.slice(i + 2, Math.max(i + 2, stop)));
+      i = end < 0 ? text2.length : end;
+      continue;
+    }
+    if (ch === "$" && text2[i + 1] === '"') {
+      startWord(i);
+      i += 1;
+      continue;
+    }
+    if (ch === "'" || ch === '"') {
+      startWord(i);
+      quotedWord = true;
+      const closed = quoteEnd2(text2, i, ch);
+      if (closed < 0) open = true;
+      const end = closed < 0 ? text2.length : closed;
+      const inner = text2.slice(i + 1, closed < 0 ? end : Math.max(i + 1, end - 1));
+      if (ch === '"' && (inner.includes("$(") || inner.includes("`"))) runs = true;
+      value += ch === '"' ? inner.replace(/\\(["\\$`])/g, "$1") : inner;
+      i = end;
+      continue;
+    }
+    if (ch === "\\") {
+      startWord(i);
+      quotedWord = true;
+      if (text2[i + 1] !== "\n") value += text2[i + 1] ?? "";
+      i += 2;
+      continue;
+    }
+    if (ch === "$" && text2[i + 1] === "(") {
+      startWord(i);
+      const closed = substitutionEnd2(text2, i + 1);
+      if (closed < 0) open = true;
+      const end = closed < 0 ? text2.length : closed;
+      value += text2.slice(i, end);
+      runs = true;
+      i = end;
+      continue;
+    }
+    if (ch === "`") {
+      startWord(i);
+      const closed = quoteEnd2(text2, i, "`");
+      if (closed < 0) open = true;
+      const end = closed < 0 ? text2.length : closed;
+      value += text2.slice(i, end);
+      runs = true;
+      i = end;
+      continue;
+    }
+    if ((ch === "<" || ch === ">") && text2[i + 1] === "(") {
+      endWord(i);
+      next = "word";
+      if (ch === ">") segment.pipedOut = true;
+      substitution = ch === "<" ? "input" : "output";
+      processSubstitution = true;
+      i += 1;
+      continue;
+    }
+    if (ch === "<" || ch === ">") {
+      if (wordStart >= 0 && /^\d+$/.test(value)) {
+        wordStart = -1;
+        value = "";
+      } else endWord(i);
+      if (text2.startsWith("<<<", i)) {
+        next = "herestring";
+        i += 3;
+      } else if (text2.startsWith("<<-", i)) {
+        next = "heredoc-tabs";
+        i += 3;
+      } else if (text2.startsWith("<<", i)) {
+        next = "heredoc";
+        i += 2;
+      } else {
+        const start = i;
+        i += 1;
+        while (i < text2.length && /[>|&<]/.test(text2[i])) i += 1;
+        const operator = text2.slice(start, i);
+        const toDescriptor = operator.endsWith("&") && /^\s*(?:\d|-)/.test(text2.slice(i));
+        if (operator.startsWith(">") && !toDescriptor) segment.writesFile = true;
+        if (operator.startsWith("<") && !toDescriptor) segment.readsFile = true;
+        targetWrites = operator.startsWith(">") && !toDescriptor;
+        next = "target";
+      }
+      continue;
+    }
+    if (ch === "&" && text2[i + 1] === ">") {
+      endWord(i);
+      i += 2;
+      if (text2[i] === ">") i += 1;
+      segment.writesFile = true;
+      next = "target";
+      targetWrites = true;
+      continue;
+    }
+    if (ch === "(") {
+      endSegment(i);
+      groups.push({ from: segments.length, read: substitution === "input" });
+      substitution = void 0;
+      i += 1;
+      continue;
+    }
+    if (ch === ")") {
+      endSegment(i);
+      const group = groups.pop();
+      const from = group?.from ?? 0;
+      i += 1;
+      if (group?.read === true) pipeFrom(from);
+      const after = /^[ \t]*\|(?!\|)/.exec(text2.slice(i));
+      if (after !== null) pipeFrom(from);
+      continue;
+    }
+    if (ch === ";" || ch === "&" || ch === "|") {
+      endSegment(i);
+      i += 1;
+      const pipe = ch === "|" && text2[i] !== "|";
+      if (/[&|;]/.test(text2[i] ?? "")) i += 1;
+      if (pipe) pipeLast();
+      continue;
+    }
+    startWord(i);
+    value += ch;
+    i += 1;
+  }
+  endSegment(text2.length);
+  return { segments, comments, processSubstitution, targetRuns, open };
+}
+function programName2(word) {
+  return programNameOf(word.value);
+}
+function programIndex(words2) {
+  return programStart(words2.map((word) => word.value)).index;
+}
+var PRINTERS = /* @__PURE__ */ new Set(["echo", "printf"]);
+var LOOKUPS = /* @__PURE__ */ new Set([
+  "man",
+  "which",
+  "type",
+  "apropos",
+  "whatis",
+  "tldr",
+  "whereis",
+  "help"
+]);
+var SEARCHERS = /* @__PURE__ */ new Set([
+  "grep",
+  "egrep",
+  "fgrep",
+  "zgrep",
+  "rg",
+  "ag",
+  "ack"
+]);
+var SEARCH_VALUE_OPTIONS = /* @__PURE__ */ new Set([
+  "-A",
+  "-B",
+  "-C",
+  "-m",
+  "-f",
+  "-d",
+  "-D",
+  "-g",
+  "-t",
+  "-T",
+  "-j",
+  "-M",
+  "-E",
+  "--glob",
+  "--iglob",
+  "--type",
+  "--type-not",
+  "--max-count",
+  "--file",
+  "--context",
+  "--after-context",
+  "--before-context",
+  "--max-columns",
+  "--encoding"
+]);
+var INPUT_SINKS = /* @__PURE__ */ new Set(["cat", "tee", "echo", "printf"]);
+var INERT_PROGRAMS = /* @__PURE__ */ new Set([
+  "ls",
+  "cat",
+  "wc",
+  "head",
+  "tail",
+  "diff",
+  "chmod",
+  "echo",
+  "printf",
+  "grep",
+  "egrep",
+  "fgrep",
+  "rg",
+  "sort",
+  "uniq",
+  "cut",
+  "tr",
+  "nl",
+  "column",
+  "stat",
+  "file",
+  "du",
+  "mkdir",
+  "touch",
+  "pwd",
+  "cd",
+  "true",
+  "false"
+]);
+var INERT_GIT = /* @__PURE__ */ new Set(["add", "commit", "status", "diff", "log", "show"]);
+var PURE_CONSUMERS = /* @__PURE__ */ new Set([
+  "head",
+  "tail",
+  "wc",
+  "sort",
+  "uniq",
+  "less",
+  "more",
+  "cut",
+  "tr",
+  "nl",
+  "column",
+  "jq",
+  "grep",
+  "egrep",
+  "fgrep",
+  "rg",
+  "cat",
+  "tee",
+  // A group such as `(echo a; echo b) | head` reaches the pipe through each of its members.
+  "echo",
+  "printf"
+]);
+function commandOf(segment) {
+  const at2 = programIndex(segment.words);
+  const program = segment.words[at2];
+  if (program === void 0) return void 0;
+  const name = programName2(program);
+  const rest = segment.words.slice(at2 + 1);
+  if (name !== "git") return { name, sub: "", globals: [], args: rest };
+  const k = gitSubcommandIndex(rest.map((word) => word.value));
+  return {
+    name,
+    sub: rest[k]?.value ?? "",
+    globals: rest.slice(0, k),
+    args: rest.slice(k + 1)
+  };
+}
+var GIT_CONFIG_OPTIONS = /^(?:-c|--config-env(?:=.*)?|--exec-path(?:=.*)?)$/;
+function setsGitConfig(command) {
+  return command.globals.some((w) => GIT_CONFIG_OPTIONS.test(w.value));
+}
+function runsGitProgram(command) {
+  return command.args.some(
+    (w) => w.value === "--ext-diff" || command.sub === "rebase" && /^(?:--exec(?:=.*)?|-x.*)$/.test(w.value)
+  );
+}
+var GIT_RUNNABLE_PATH = /(?:^|[\\/])(?:\.git[\\/]|\.husky[\\/]|\.githooks[\\/]|hooks[\\/])|(?:^|[\\/])(?:\.git(?:attributes|config|modules)|git[\\/]config)$/;
+function plainPath(path) {
+  return path.replace(/^(?:\.[\\/])+/, "").replace(/[\\/]+$/, "");
+}
+function hooksPathsNamed(segments) {
+  const out = [];
+  for (const segment of segments) {
+    segment.words.forEach((word, k) => {
+      const named = /^core\.hookspath(?:=(.*))?$/i.exec(word.value);
+      if (named === null) return;
+      const value = named[1] ?? segment.words[k + 1]?.value;
+      if (value !== void 0 && value !== "") out.push(plainPath(value));
+    });
+  }
+  return out;
+}
+function gitMayRun(path, hooksPaths) {
+  if (GIT_RUNNABLE_PATH.test(path)) return true;
+  const plain = plainPath(path);
+  return hooksPaths.some(
+    (dir) => plain === dir || plain.startsWith(`${dir}/`) || plain.startsWith(`${dir}\\`)
+  );
+}
+function runsAProgramOption(command) {
+  if (command.name === "rg") return command.args.some((w) => /^--pre(?:=|$)/.test(w.value));
+  if (command.name === "sort") {
+    return command.args.some((w) => /^--compress-program(?:=|$)/.test(w.value));
+  }
+  return false;
+}
+function isInert(segment, gitRunnableWritten) {
+  const command = commandOf(segment);
+  if (command === void 0) return true;
+  if (segment.words[programIndex(segment.words)]?.value.includes("/")) return false;
+  if (command.name === "git") {
+    if (setsGitConfig(command) || runsGitProgram(command)) return false;
+    if (gitRunnableWritten) return false;
+    return INERT_GIT.has(command.sub);
+  }
+  if (runsAProgramOption(command)) return false;
+  return INERT_PROGRAMS.has(command.name);
+}
+function writtenBy(segment) {
+  const paths = [...segment.written];
+  const command = commandOf(segment);
+  if (command?.name === "tee") {
+    for (const w of command.args) if (!w.value.startsWith("-")) paths.push(w.value);
+  }
+  return paths;
+}
+function writesAFile(segment) {
+  return segment.writesFile || writtenBy(segment).length > 0;
+}
+function isHeredocValue(raw) {
+  if (!raw.startsWith("$(") || skipSubstitution2(raw, 1) !== raw.length) return false;
+  const inner = parseShell(raw.slice(2, -1));
+  if (inner.segments.length !== 1 || inner.comments.length > 0) return false;
+  const only = inner.segments[0];
+  return only.words.length === 1 && programName2(only.words[0]) === "cat" && only.inputs.length === 1 && only.inputs[0]?.expands === false && !only.pipedOut && !only.writesFile;
+}
+function isDataValue(word, value = word.value) {
+  return !word.runs || isHeredocValue(value);
+}
+var TEST_RUNNERS = /* @__PURE__ */ new Set(["vitest", "jest", "mocha", "pytest", "test"]);
+var LAUNCHERS2 = /* @__PURE__ */ new Set(["npx", "pnpm", "npm", "yarn", "bun", "bunx"]);
+var TEST_FILTER_OPTIONS = /* @__PURE__ */ new Set([
+  "-t",
+  "--testNamePattern",
+  "-k",
+  "--grep",
+  "-g"
+]);
+var GIT_HISTORY = /* @__PURE__ */ new Set([
+  "log",
+  "show",
+  "whatchanged",
+  "shortlog",
+  "rev-list"
+]);
+var GIT_MESSAGE = /* @__PURE__ */ new Set(["commit", "tag", "merge", "notes", "stash"]);
+var GH_TEXT_GROUPS = /* @__PURE__ */ new Set([
+  "pr",
+  "issue",
+  "release",
+  "api",
+  "gist",
+  "repo"
+]);
+var GH_TEXT_OPTIONS = /* @__PURE__ */ new Set([
+  "-t",
+  "--title",
+  "-b",
+  "--body",
+  "-n",
+  "--notes",
+  "-f",
+  "-F",
+  "--field",
+  "--raw-field",
+  "-d",
+  "--description"
+]);
+function optionValues(words2, options) {
+  const out = [];
+  for (let k = 0; k < words2.length; k++) {
+    const word = words2[k];
+    if (options.has(word.value)) {
+      const value = words2[k + 1];
+      if (value !== void 0 && isDataValue(value)) out.push(value);
+      k += 1;
+      continue;
+    }
+    const eq = word.value.indexOf("=");
+    if (word.value.startsWith("--") && eq > 0 && options.has(word.value.slice(0, eq))) {
+      if (isDataValue(word, word.value.slice(eq + 1))) out.push(word);
+      continue;
+    }
+    if (/^-[A-Za-z]./.test(word.value) && !word.value.startsWith("--")) {
+      if (options.has(word.value.slice(0, 2)) && isDataValue(word, word.value.slice(2))) {
+        out.push(word);
+      }
+    }
+  }
+  return out;
+}
+function searchPatterns(words2) {
+  const explicit = optionValues(words2, /* @__PURE__ */ new Set(["-e", "--regexp"]));
+  if (explicit.length > 0) return explicit;
+  for (let k = 0; k < words2.length; k++) {
+    const word = words2[k];
+    if (word.value === "--") {
+      const operand = words2[k + 1];
+      return operand === void 0 || operand.runs ? [] : [operand];
+    }
+    if (word.value.startsWith("-")) {
+      if (SEARCH_VALUE_OPTIONS.has(word.value)) k += 1;
+      continue;
+    }
+    return word.runs ? [] : [word];
+  }
+  return [];
+}
+function segmentRegions(segment, keep) {
+  if (keep) return [];
+  const words2 = segment.words;
+  const at2 = programIndex(words2);
+  const program = words2[at2];
+  if (program === void 0) return [];
+  const name = programName2(program);
+  const rest = words2.slice(at2 + 1);
+  const regions = [];
+  const blank = (list, kind2) => {
+    for (const word of list) regions.push({ start: word.start, end: word.end, kind: kind2 });
+  };
+  if (PRINTERS.has(name))
+    blank(
+      rest.filter((w) => !w.runs),
+      "doc"
+    );
+  else if (LOOKUPS.has(name))
+    blank(
+      rest.filter((w) => !w.runs),
+      "search"
+    );
+  else if (SEARCHERS.has(name)) blank(searchPatterns(rest), "search");
+  else if (name === "git") {
+    const k = gitSubcommandIndex(rest.map((word) => word.value));
+    const sub = rest[k]?.value ?? "";
+    const args2 = rest.slice(k + 1);
+    if (sub === "grep") blank(searchPatterns(args2), "search");
+    else if (GIT_HISTORY.has(sub)) {
+      blank(optionValues(args2, /* @__PURE__ */ new Set(["-S", "-G", "--grep"])), "search");
+    } else if (GIT_MESSAGE.has(sub)) {
+      blank(optionValues(args2, /* @__PURE__ */ new Set(["-m", "--message"])), "doc");
+    }
+  } else if (name === "gh" && GH_TEXT_GROUPS.has(rest[0]?.value ?? "")) {
+    blank(optionValues(rest, GH_TEXT_OPTIONS), "doc");
+  }
+  const startsTests = TEST_RUNNERS.has(name) || LAUNCHERS2.has(name) && rest.some((w) => TEST_RUNNERS.has(w.value));
+  if (startsTests && name !== "test") {
+    blank(optionValues(rest, TEST_FILTER_OPTIONS), "test-string");
+  }
+  if (INPUT_SINKS.has(name)) {
+    for (const input of segment.inputs) {
+      if (!input.expands) regions.push({ start: input.start, end: input.end, kind: "heredoc" });
+    }
+  }
+  return regions;
+}
+var SHELLS2 = /* @__PURE__ */ new Set([
+  "bash",
+  "sh",
+  "zsh",
+  "dash",
+  "ksh",
+  "mksh",
+  "ash",
+  "fish"
+]);
+var STRING_RUNNERS = /* @__PURE__ */ new Set(["su", "runuser", "script"]);
+var AWKS = /^(?:awk|gawk|mawk|nawk)$/;
+var AWK_PIPE = /(?:^|[^|])\|(?!\|)/;
+function inlineScripts(args2, valued) {
+  const scripts = [];
+  let operand;
+  for (let k = 0; k < args2.length; k++) {
+    const value = args2[k].value;
+    if (value === "-e" || value === "--expression") {
+      scripts.push(args2[k + 1]?.value ?? "");
+      k += 1;
+    } else if (value.startsWith("--expression=")) {
+      scripts.push(value.slice("--expression=".length));
+    } else if (valued.has(value)) k += 1;
+    else if (!value.startsWith("-") && operand === void 0) operand = value;
+  }
+  if (scripts.length === 0 && operand !== void 0) scripts.push(operand);
+  return scripts;
+}
+function sedRunsCommands(script) {
+  for (const part of script.split(/[;\n]/)) {
+    const command = part.trim().replace(/^(?:[0-9$,~+]+|\/(?:\\.|[^/])*\/)*!?\s*/, "");
+    if (/^e(?:\s|$)/.test(command)) return true;
+    const sub = /^s(.)(?:\\.|(?!\1).)*\1(?:\\.|(?!\1).)*\1([A-Za-z0-9]*)/.exec(command);
+    if (sub !== null && (sub[2] ?? "").includes("e")) return true;
+  }
+  return false;
+}
+function scriptRunsCommands(name, args2) {
+  if (AWKS.test(name)) {
+    return inlineScripts(args2, /* @__PURE__ */ new Set(["-F", "-v", "-f"])).some(
+      (s) => /\bsystem\s*\(/.test(s) || AWK_PIPE.test(s)
+    );
+  }
+  if (name === "sed" || name === "gsed") {
+    return inlineScripts(args2, /* @__PURE__ */ new Set(["-f", "--file", "-l"])).some(sedRunsCommands);
+  }
+  return false;
+}
+function runsInNixShell(name, args2) {
+  if (name === "nix-shell") return args2.some((w) => /^--(?:run|command)(?:=|$)/.test(w.value));
+  return name === "nix" && args2[0]?.value === "develop" && args2.some((w) => /^(?:-c|--command)(?:=|$)/.test(w.value));
+}
+var STRING_RUNNER_OPTION = /^(?:--command|--session-command)(?:=.*)?$|^-[A-Za-z]*c[A-Za-z]*$/;
+function runsAString(args2) {
+  for (let k = 0; k < args2.length; k++) {
+    const value = args2[k].value;
+    if (value === "-o" || value === "+o") {
+      k += 1;
+      continue;
+    }
+    if (value === "--command" || /^-[A-Za-z]*c[A-Za-z]*$/.test(value)) return true;
+    if (!value.startsWith("-") && !value.startsWith("+")) return false;
+  }
+  return false;
+}
+var INLINE_CODE = [
+  [/^python[0-9.]*$/, /^-[A-Za-z]*c$/],
+  [/^(?:node|nodejs|bun)$/, /^(?:-e|-p|--eval|--print)(?:=.*)?$/],
+  [/^perl$/, /^-[A-Za-z]*[eE]$/],
+  [/^ruby$/, /^-[A-Za-z]*e$/],
+  [/^php$/, /^-r$/],
+  [/^osascript$/, /^-e$/],
+  [/^(?:pwsh|powershell)$/, /^-(?:c|command|encodedcommand|ec|e)$/i]
+];
+function runsInlineCode(name, args2) {
+  if (name === "deno") return args2[0]?.value === "eval";
+  const entry = INLINE_CODE.find(([program]) => program.test(name));
+  if (entry === void 0) return false;
+  for (const word of args2) {
+    if (entry[1].test(word.value)) return true;
+    if (!word.value.startsWith("-") || word.value === "-m") return false;
+  }
+  return false;
+}
+var STDIN_INTERPRETER = /^(?:python[0-9.]*|node|nodejs|perl|ruby|php|pwsh|powershell)$/;
+function runsPipedScript(name, args2) {
+  const shell = SHELLS2.has(name);
+  if (!shell && !STDIN_INTERPRETER.test(name)) return false;
+  for (const word of args2) {
+    if (word.value === "-" || shell && /^-[A-Za-z]*s[A-Za-z]*$/.test(word.value)) return true;
+    if (word.value === "--") continue;
+    if (!word.value.startsWith("-")) return false;
+  }
+  return true;
+}
+function runsASubstitution(word) {
+  if (isDataValue(word)) return false;
+  const eq = word.value.indexOf("=");
+  return eq < 0 || !isDataValue(word, word.value.slice(eq + 1));
+}
+function segmentHidingForms(segment, command, gitConfigured, gitRunnableWritten, fedByPipe) {
+  const forms = [];
+  if (segment.words.some(runsASubstitution) || segment.inputs.some((input) => input.expands)) {
+    forms.push("command-substitution");
+  }
+  if (programStart(segment.words.map((word) => word.value)).shellString) forms.push("shell-string");
+  if (command === void 0) return forms;
+  const { name, args: args2 } = command;
+  if (SHELLS2.has(name) && runsAString(args2)) forms.push("shell-string");
+  if (STRING_RUNNERS.has(name) && args2.some((word) => STRING_RUNNER_OPTION.test(word.value))) {
+    forms.push("shell-string");
+  }
+  if (runsInNixShell(name, args2)) forms.push("shell-string");
+  if (runsInlineCode(name, args2) || scriptRunsCommands(name, args2)) forms.push("inline-code");
+  const fed = fedByPipe || segment.inputs.length > 0;
+  if (fed && !(SHELLS2.has(name) && runsAString(args2)) && runsPipedScript(name, args2)) {
+    forms.push("piped-script");
+  }
+  if (name === "eval") forms.push("eval");
+  if (name === "xargs") forms.push("xargs");
+  if (name === "find" && args2.some((w) => /^-(?:exec|execdir|ok|okdir)$/.test(w.value))) {
+    forms.push("find-exec");
+  }
+  if ((name === "fd" || name === "fdfind") && args2.some((w) => /^(?:-x|-X|--exec|--exec-batch)(?:=.*)?$/.test(w.value))) {
+    forms.push("find-exec");
+  }
+  if (name === "git") {
+    if (setsGitConfig(command) || gitConfigured) forms.push("git-config");
+    if (runsGitProgram(command)) forms.push("git-exec");
+    if (gitRunnableWritten) forms.push("git-hook");
+  }
+  return forms;
+}
+function readCommand(command, trustWrites) {
+  const parsed = parseShell(command);
+  const regions = parsed.comments.map((c) => ({ ...c, kind: "doc" }));
+  const segments = parsed.segments;
+  const count2 = segments.length;
+  const hooksPaths = [...new Set(hooksPathsNamed(segments))];
+  const commands = segments.map(commandOf);
+  const gitRunnableBefore = new Array(count2).fill(false);
+  let gitRunnable = false;
+  for (let j = 0; j < count2; j++) {
+    gitRunnableBefore[j] = gitRunnable;
+    if (!gitRunnable) {
+      gitRunnable = writtenBy(segments[j]).some((path) => gitMayRun(path, hooksPaths));
+    }
+  }
+  const mayRunAfter = new Array(count2).fill(false);
+  if (!trustWrites) {
+    for (let j = count2 - 2; j >= 0; j--) {
+      mayRunAfter[j] = mayRunAfter[j + 1] || !isInert(segments[j + 1], gitRunnableBefore[j + 1]);
+    }
+  }
+  const laterMayRun = (index) => mayRunAfter[index];
+  const consumersFrom = new Array(count2 + 1).fill(true);
+  for (let j = count2 - 1; j >= 0; j--) {
+    const seg = segments[j];
+    const command2 = commands[j];
+    const consumer = command2 === void 0 || PURE_CONSUMERS.has(command2.name) && !runsAProgramOption(command2) && !(writesAFile(seg) && laterMayRun(j));
+    consumersFrom[j] = consumer && (!seg.pipedOut || consumersFrom[j + 1]);
+  }
+  const pipesOnlyToConsumers = (index) => consumersFrom[index + 1];
+  const forms = /* @__PURE__ */ new Set();
+  if (parsed.processSubstitution) forms.add("process-substitution");
+  if (parsed.targetRuns) forms.add("command-substitution");
+  if (parsed.open) forms.add("unterminated-quote");
+  let gitConfigured = false;
+  segments.forEach((segment, index) => {
+    const keep = segment.pipedOut && !pipesOnlyToConsumers(index) || writesAFile(segment) && laterMayRun(index);
+    regions.push(...segmentRegions(segment, keep));
+    const command2 = commands[index];
+    for (const form of segmentHidingForms(
+      segment,
+      command2,
+      gitConfigured,
+      gitRunnableBefore[index],
+      segments[index - 1]?.pipedOut === true
+    )) {
+      forms.add(form);
+    }
+    if (command2?.name === "git" && command2.sub === "config") gitConfigured = true;
+  });
+  const hidingForms = HIDING_FORMS.filter((form) => forms.has(form));
+  if (regions.length === 0) return { view: { text: command, kinds: [] }, hidingForms };
+  regions.sort((a, b) => a.start - b.start);
+  let out = "";
+  let cursor = 0;
+  for (const region of regions) {
+    if (region.end <= cursor) continue;
+    const start = Math.max(region.start, cursor);
+    out += command.slice(cursor, start);
+    out += command.slice(start, region.end).replace(/[^\n]/g, " ");
+    cursor = region.end;
+  }
+  out += command.slice(cursor);
+  const kinds = [];
+  for (const region of regions) if (!kinds.includes(region.kind)) kinds.push(region.kind);
+  return { view: { text: out, kinds }, hidingForms };
+}
+function executedView(command) {
+  return readCommand(command, false).view;
+}
+function commandHidingForms(command) {
+  return readCommand(command, false).hidingForms;
+}
+function simpleCommandsOf(command) {
+  return simpleViews(command, true);
+}
+function simpleViews(text2, bodies) {
+  const { segments } = parseShell(text2);
+  const out = [];
+  segments.forEach((segment, k) => {
+    out.push({
+      words: segment.words.map((word) => word.value),
+      writes: segment.written,
+      readsFile: segment.readsFile,
+      pipedIn: segments[k - 1]?.pipedOut === true
+    });
+    if (!bodies) return;
+    for (const input of segment.inputs) {
+      out.push(...simpleViews(text2.slice(input.start, input.end), false));
+    }
+  });
+  return out;
+}
+var READ_PROGRAMS = {
+  "skipped-checks": /* @__PURE__ */ new Set(["git"]),
+  "lost-work": /* @__PURE__ */ new Set(["git", "cp"]),
+  destructive: /* @__PURE__ */ new Set([
+    "rm",
+    "docker",
+    "podman",
+    "kubectl",
+    "ssh",
+    "psql",
+    "dropdb",
+    "mysql",
+    "mariadb",
+    "mysqladmin",
+    "redis-cli",
+    "mongo",
+    "mongosh",
+    "sqlite3",
+    "prisma",
+    "rails",
+    "rake"
+  ]),
+  cloud: /* @__PURE__ */ new Set(["aws", "awslocal", "terraform", "tofu", "terragrunt"]),
+  "prod-infra": /* @__PURE__ */ new Set(["kubectl", "helm", "terraform", "tofu", "terragrunt", "tflocal", "aws"]),
+  tests: /* @__PURE__ */ new Set(["rm", "unlink", "git", "sed", "perl", "tee", "cp", "mv", "patch"]),
+  unreviewed: /* @__PURE__ */ new Set(["git"]),
+  egress: /* @__PURE__ */ new Set([
+    "curl",
+    "wget",
+    "scp",
+    "rsync",
+    "aws",
+    "awslocal",
+    "gsutil",
+    "gcloud",
+    "az",
+    "rclone",
+    "gh",
+    "nc",
+    "ncat",
+    "netcat",
+    "socat",
+    "ssh",
+    "ngrok",
+    "cloudflared",
+    "lt",
+    "localtunnel",
+    "bore",
+    "frpc",
+    "chisel",
+    "zrok",
+    "devtunnel",
+    "tmole",
+    "loclx",
+    "inlets"
+  ]),
+  dependencies: /* @__PURE__ */ new Set([
+    "npm",
+    "pnpm",
+    "yarn",
+    "bun",
+    "pip",
+    "pip3",
+    "python",
+    "python3",
+    "uv",
+    "poetry",
+    "pipenv",
+    "cargo",
+    "go",
+    "gem",
+    "bundle",
+    "bundler",
+    "composer"
+  ])
+};
+var DATA_PROGRAMS = /* @__PURE__ */ new Set([
+  ...PRINTERS,
+  ...LOOKUPS,
+  ...SEARCHERS,
+  ...INPUT_SINKS,
+  ...INERT_PROGRAMS,
+  ...PURE_CONSUMERS,
+  "sed",
+  "awk",
+  "gawk",
+  "find",
+  "tree",
+  "cmp",
+  "basename",
+  "dirname",
+  "realpath",
+  "readlink",
+  "date",
+  "sleep",
+  "test",
+  "[",
+  "[[",
+  "pushd",
+  "popd",
+  "export",
+  "unset",
+  "set",
+  "read",
+  "local",
+  "declare",
+  "alias",
+  "exit",
+  "return",
+  "wait",
+  "fi",
+  "done",
+  "esac"
+]);
+var knownPrograms;
+function isKnownProgram(name) {
+  knownPrograms ??= /* @__PURE__ */ new Set([
+    ...Object.values(READ_PROGRAMS).flatMap((programs) => [...programs]),
+    ...DATA_PROGRAMS,
+    ...SHELLS2
+  ]);
+  return knownPrograms.has(name);
+}
+function opaqueCommands(text2) {
+  const out = [];
+  for (const simple of simpleCommandsOf(text2)) {
+    const at2 = programStart(simple.words).index;
+    const program = simple.words[at2];
+    if (program === void 0 || isKnownProgram(programNameOf(program))) continue;
+    out.push(simple.words.slice(at2));
+  }
+  return out;
+}
+function quoteWords(words2) {
+  return words2.map((word) => `'${word.replace(/'/g, "'\\''")}'`).join(" ");
+}
+function backstopTails(words2, programs) {
+  const out = [];
+  for (let k = 1; k < words2.length; k++) {
+    if (programs.has(programNameOf(words2[k]))) out.push(quoteWords(words2.slice(k)));
+  }
+  return out;
+}
+function spellsWordsWithQuotes(text2) {
+  return /\$'|\w['"\\]/.test(text2);
+}
+function decodedCommand(text2) {
+  return simpleCommandsOf(text2).map((simple) => simple.words.join(" ")).join("\n");
+}
+function hidingFormsOf(mapped) {
+  const command = mapped.args.full_command;
+  if (command === void 0) return [];
+  if (SHELL_TOOLS2.has(mapped.tool)) return commandHidingForms(command);
+  if (UNREAD_SHELL_TOOLS.has(mapped.tool)) return ["unread-shell"];
+  return [];
+}
+function ranEvidenceOf(agent) {
+  switch (agent) {
+    case "claude":
+      return "tool-result";
+    case "codex":
+      return "output-record";
+    case "cursor":
+      return "none";
+    default:
+      return unhandledAgent(agent);
+  }
+}
+function recordsToolResults(agent) {
+  return ranEvidenceOf(agent) !== "none";
+}
+var EXIT_CODE = /^\s*Exit code -?\d+/;
+var SHELL_TOOLS2 = /* @__PURE__ */ new Set(["Bash"]);
+var UNREAD_SHELL_TOOLS = /* @__PURE__ */ new Set(["PowerShell"]);
+function verdict(state, why) {
+  return { state, why };
+}
+function runVerdict(agent, mapped, result, stillMatches) {
+  if (mapped.tool === "WebSearch") return verdict("mentioned", "search");
+  const command = mapped.args.full_command;
+  const matchesIn = (text2) => stillMatches({ ...mapped, args: { ...mapped.args, full_command: text2 } });
+  let onlyWrittenFile = () => false;
+  if (SHELL_TOOLS2.has(mapped.tool) && command !== void 0) {
+    const view = executedView(command);
+    const first = view.kinds[0];
+    if (first !== void 0 && !matchesIn(view.text)) return verdict("mentioned", first);
+    onlyWrittenFile = () => {
+      const trusting = readCommand(command, true).view;
+      return trusting.text !== view.text && !matchesIn(trusting.text);
+    };
+  }
+  if (!recordsToolResults(agent)) return verdict("unknown", "not-recorded");
+  if (result === void 0) return verdict("unknown", "no-result");
+  if (result.isError && !EXIT_CODE.test(result.content)) return verdict("unknown", "error-result");
+  if (onlyWrittenFile()) return verdict("ran", "may-run-written-file");
+  return result.isError ? verdict("ran", "exit-code") : verdict("ran", "result");
+}
+function isResultBackedRun(run) {
+  return run.state === "ran" && (run.why === "result" || run.why === "exit-code");
+}
+function tallyMatchedCalls(corpus, catalog, allowlist) {
+  const agent = corpus.agent ?? "claude";
+  const tally = { ran: 0, mentioned: 0, unknown: 0 };
+  const stillMatches = (call) => evaluateAction(catalog, allowlist, [call]).decision.matches.length > 0;
+  for (const session of corpus.sessions) {
+    const seen = /* @__PURE__ */ new Set();
+    for (const turn of session.turns) {
+      for (const use of turn.toolUses) {
+        if (agent === "claude" && use.toolUseId !== "") {
+          if (seen.has(use.toolUseId)) continue;
+          seen.add(use.toolUseId);
+        }
+        const result = session.toolResults.get(use.toolUseId);
+        for (const call of toolUseCalls(agent, use)) {
+          if (call.kind !== "action") continue;
+          const { mapped, decision } = evaluateAction(catalog, allowlist, call.candidates);
+          if (decision.matches.length === 0) continue;
+          const run = runVerdict(agent, mapped, result, stillMatches);
+          tally[run.state === "ran" && !isResultBackedRun(run) ? "unknown" : run.state] += 1;
+        }
+      }
+    }
+  }
+  return {
+    tally,
+    resultsRecorded: recordsToolResults(agent),
+    ranEvidence: ranEvidenceOf(agent)
+  };
+}
+
+// src/core/verify/calls.ts
+var SHELL_TOOL = "Bash";
+function isRecord4(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+function text(value) {
+  return typeof value === "string" ? value : "";
+}
+function claudeEdits(use) {
+  const input = use.input;
+  const path = text(input.file_path);
+  if (path === "") return [];
+  switch (use.name) {
+    case "Edit":
+      return [
+        {
+          path,
+          removed: text(input.old_string),
+          added: text(input.new_string),
+          whole: false,
+          deleted: false
+        }
+      ];
+    case "MultiEdit": {
+      const edits = Array.isArray(input.edits) ? input.edits : [];
+      const removed = [];
+      const added = [];
+      for (const edit of edits) {
+        if (!isRecord4(edit)) continue;
+        removed.push(text(edit.old_string));
+        added.push(text(edit.new_string));
+      }
+      return [
+        {
+          path,
+          removed: removed.join("\n"),
+          added: added.join("\n"),
+          whole: false,
+          deleted: false
+        }
+      ];
+    }
+    case "Write":
+      return [{ path, removed: "", added: text(input.content), whole: true, deleted: false }];
+    default:
+      return [];
+  }
+}
+function patchEdits(patch) {
+  const files = [];
+  let current;
+  for (const raw of patch.split("\n")) {
+    const line2 = raw.replace(/\r$/, "");
+    const marker = /^\*\*\* (Update|Add|Delete) File: (.*)$/.exec(line2);
+    if (marker !== null) {
+      const path = (marker[2] ?? "").trim();
+      const mode = marker[1] === "Update" ? "update" : marker[1] === "Add" ? "add" : "delete";
+      current = path === "" ? void 0 : { path, mode, removed: [], added: [] };
+      if (current !== void 0) files.push(current);
+      continue;
+    }
+    if (line2.startsWith("***")) {
+      if (line2.startsWith("*** End Patch")) current = void 0;
+      continue;
+    }
+    if (current === void 0) continue;
+    if (line2.startsWith("+")) current.added.push(line2.slice(1));
+    else if (line2.startsWith("-")) current.removed.push(line2.slice(1));
+  }
+  return files.map((file2) => ({
+    path: file2.path,
+    removed: file2.removed.join("\n"),
+    added: file2.added.join("\n"),
+    whole: file2.mode === "add",
+    deleted: file2.mode === "delete"
+  }));
+}
+function mappedPath(mapped) {
+  return mapped.args.file_path ?? "";
+}
+var CURSOR_EDIT_TOOLS = /* @__PURE__ */ new Set(["Write", "Edit", "Delete"]);
+function readCalls(corpus, catalog, allowlist) {
+  const agent = corpus.agent ?? "claude";
+  const calls = [];
+  for (const [index, session] of corpus.sessions.entries()) {
+    const seen = /* @__PURE__ */ new Set();
+    let order = 0;
+    let hookWritten = false;
+    const add = (call) => {
+      calls.push(call);
+      if (!hookWritten && writesHook(call) && ranOrMayHaveRun(agent, call)) hookWritten = true;
+    };
+    for (const turn of session.turns) {
+      for (const use of turn.toolUses) {
+        if (agent === "claude" && use.toolUseId !== "") {
+          if (seen.has(use.toolUseId)) continue;
+          seen.add(use.toolUseId);
+        }
+        const result = session.toolResults.get(use.toolUseId);
+        const mappedCalls = toolUseCalls(agent, use);
+        const shim = agent === "codex" && typeof use.input.input === "string" ? readShimCalls(use.input.input) : void 0;
+        for (const [k, call] of mappedCalls.entries()) {
+          if (call.kind !== "action") continue;
+          const { mapped, decision } = evaluateAction(catalog, allowlist, call.candidates);
+          const base = {
+            session: index,
+            order: order++,
+            cwd: session.cwd,
+            mapped,
+            result,
+            ruleIds: [
+              .../* @__PURE__ */ new Set([
+                ...decision.matches.map((m) => m.ruleId),
+                ...decodedMatches(catalog, allowlist, mapped)
+              ])
+            ],
+            hidingForms: hidingFormsOf(mapped)
+          };
+          if (mapped.tool === SHELL_TOOL && mapped.args.full_command !== void 0) {
+            const command = mapped.args.full_command;
+            const forms = base.hidingForms;
+            const hooked = hookWritten && runsGitHooks(command);
+            add({
+              ...base,
+              command,
+              hidingForms: hooked ? HIDING_FORMS.filter((f) => f === "git-hook" || forms.includes(f)) : forms
+            });
+            continue;
+          }
+          let edits = [];
+          if (agent === "claude") edits = claudeEdits(use);
+          else if (agent === "codex") {
+            const shimCall = shim?.[k];
+            if (shimCall?.fn === "apply_patch" && shimCall.text !== void 0) {
+              edits = patchEdits(shimCall.text);
+            }
+          } else if (CURSOR_EDIT_TOOLS.has(mapped.tool) && mappedPath(mapped) !== "") {
+            edits = [
+              {
+                path: mappedPath(mapped),
+                removed: "",
+                added: "",
+                whole: mapped.tool !== "Delete",
+                deleted: mapped.tool === "Delete"
+              }
+            ];
+          }
+          if (edits.length === 0) {
+            add(base);
+            continue;
+          }
+          for (const edit of edits) add({ ...base, edit });
+        }
+      }
+    }
+  }
+  return { agent, calls };
+}
+function runStateOf(agent, call, holds) {
+  const verdict2 = runVerdict(
+    agent,
+    call.mapped,
+    call.result,
+    (changed) => holds(changed.args.full_command ?? "")
+  );
+  return verdict2.state === "ran" && !isResultBackedRun(verdict2) ? "unknown" : verdict2.state;
+}
+function executedText(command) {
+  return executedView(command).text;
+}
+function decodedMatches(catalog, allowlist, mapped) {
+  const command = mapped.args.full_command;
+  if (mapped.tool !== SHELL_TOOL || command === void 0 || !spellsWordsWithQuotes(command)) {
+    return [];
+  }
+  const runs = decodedCommand(executedText(command));
+  const decoded = { ...mapped, args: { ...mapped.args, full_command: runs } };
+  return evaluateAction(catalog, allowlist, [decoded]).decision.matches.map((m) => m.ruleId);
+}
+function rulesMatcher(catalog, allowlist, keep) {
+  const subset = catalog.filter(keep);
+  const matches = (call, text2) => evaluateAction(subset, allowlist, [
+    { ...call.mapped, args: { ...call.mapped.args, full_command: text2 } }
+  ]).decision.matches.length > 0;
+  return (call, command) => subset.length > 0 && (matches(call, command) || spellsWordsWithQuotes(command) && matches(call, decodedCommand(command)));
+}
+function quietStatus(unknown, couldHide = 0) {
+  return unknown > 0 || couldHide > 0 ? "could-not-check" : "clean";
+}
+var HOOKED_GIT = /* @__PURE__ */ new Set([
+  "commit",
+  "merge",
+  "push",
+  "rebase",
+  "checkout",
+  "switch",
+  "am",
+  "cherry-pick",
+  "pull",
+  "revert"
+]);
+var HOOKS_PATH = /(?:^|[\\/])(?:\.git[\\/]hooks|\.husky|\.githooks)(?:[\\/]|$)/;
+function runsGitHooks(command) {
+  return simpleCommands(executedText(command)).some((simple) => {
+    const { program, args: args2 } = programAndArgs(simple);
+    return program === "git" && HOOKED_GIT.has(args2[gitSubcommandIndex(args2)] ?? "");
+  });
+}
+function writesHook(call) {
+  if (call.edit !== void 0) return HOOKS_PATH.test(call.edit.path) && !call.edit.deleted;
+  if (call.command === void 0) return false;
+  const text2 = executedText(call.command);
+  return HOOKS_PATH.test(text2) && /(?:>|\btee\b|\bcp\b|\bmv\b|\bln\b|\bchmod\b)/.test(text2) || /\bgit\b[^;&|\n]*\bconfig\b[^;&|\n]*\bcore\.hooksPath\b/.test(text2);
+}
+function ranOrMayHaveRun(agent, call) {
+  const verdict2 = runVerdict(agent, call.mapped, call.result, () => true);
+  return verdict2.state !== "mentioned" && verdict2.why !== "error-result";
+}
+var HIDDEN = /* @__PURE__ */ new WeakMap();
+function hidden(corpus) {
+  const known = HIDDEN.get(corpus);
+  if (known !== void 0) return known;
+  let count2 = 0;
+  const forms = /* @__PURE__ */ new Set();
+  for (const call of corpus.calls) {
+    if (call.hidingForms.length === 0) continue;
+    if (!ranOrMayHaveRun(corpus.agent, call)) continue;
+    count2 += 1;
+    for (const form of call.hidingForms) forms.add(form);
+  }
+  const out = { count: count2, forms: HIDING_FORMS.filter((f) => forms.has(f)) };
+  HIDDEN.set(corpus, out);
+  return out;
+}
+function couldHideCount(corpus) {
+  return hidden(corpus).count;
+}
+function heldHidingForms(corpus) {
+  return hidden(corpus).forms;
+}
+function hidingFacts(corpus, unread) {
+  const known = hidden(corpus);
+  const bare = [...new Set(unread)].filter((call) => call.hidingForms.length === 0).length;
+  if (bare === 0) return { couldHide: known.count, hidingForms: known.forms };
+  return {
+    couldHide: known.count + bare,
+    hidingForms: HIDING_FORMS.filter((f) => f === "unread-match" || known.forms.includes(f))
+  };
+}
+function backstopCalls(corpus, programs, reads, rule) {
+  const out = [];
+  for (const call of corpus.calls) {
+    if (!isShell(call)) continue;
+    const opaque = opaqueCommands(executedText(call.command));
+    if (opaque.length === 0) continue;
+    const hit = opaque.some(
+      (words2) => backstopTails(words2, programs).some((tail) => reads(tail, call)) || rule?.(call, words2.join(" ")) === true
+    );
+    if (hit && ranOrMayHaveRun(corpus.agent, call)) out.push(call);
+  }
+  return out;
+}
+function runsAnyOf(command, programs) {
+  return simpleCommands(command).some((simple) => programs.has(programAndArgs(simple).program));
+}
+function baseName(path) {
+  return path.split(/[\\/]/).pop() ?? path;
+}
+function simpleCommands(command) {
+  return simpleCommandsOf(command);
+}
+function programAndArgs(simple) {
+  const list = simple.words;
+  const { index: k, assignments } = programStart(list);
+  return {
+    program: programNameOf(list[k] ?? ""),
+    args: list.slice(k + 1),
+    assignments: assignments.map((i) => list[i])
+  };
+}
+function isEdit(call) {
+  return call.edit !== void 0;
+}
+function isShell(call) {
+  return call.command !== void 0;
+}
+
+// src/core/verify/card-parts.ts
+function counted(count2, one, many) {
+  return `${count2} ${count2 === 1 ? one : many}`;
+}
+function moreMatches(count2, others) {
+  return others ? counted(count2, "more match", "more matches") : counted(count2, "match", "matches");
+}
+function noun(count2, one, many) {
+  return count2 === 1 ? one : many;
+}
+function restsOnCodex(context) {
+  return context.ranEvidence === "output-record";
+}
+var MAX_LOCAL_FIXES = 50;
+
+// src/core/verify/cards.ts
+function sentence(template, facts) {
+  const text2 = template.render(facts);
+  return text2 === void 0 ? void 0 : { template: template.id, text: text2 };
+}
+function sentences(templates, facts) {
+  const out = [];
+  for (const template of templates) {
+    const made = sentence(template, facts);
+    if (made !== void 0) out.push(made);
+  }
+  return out;
+}
+var GIT_STATE_CLAIMS = /* @__PURE__ */ new Set([
+  "skipped-checks",
+  "lost-work"
+]);
+function confirmedByGitState(card) {
+  return card.headline?.confirmedBy === "git-state" && GIT_STATE_CLAIMS.has(card.category);
+}
+function chipFor(facts, reasons, fallback) {
+  const reason = reasons.find((r) => r.count(facts) > 0) ?? fallback;
+  const count2 = reason.count(facts);
+  return { count: count2, label: { template: reason.id, text: count2 === 1 ? reason.one : reason.many } };
+}
+var NOT_CHECKED_SENTENCE = {
+  id: "not-checked",
+  render: () => "Not checked."
+};
+var COULD_NOT_CHECK_SENTENCE = {
+  id: "could-not-check",
+  render: () => "Could not be checked on this machine, so this is not a clean result."
+};
+var HIDING_FORM_LABELS = {
+  "shell-string": "a shell given a string to run",
+  "find-exec": "find -exec",
+  xargs: "xargs",
+  "process-substitution": "process substitution",
+  "command-substitution": "a command substitution",
+  eval: "eval",
+  "git-config": "git with config set on its command line or by an earlier command",
+  "git-exec": "git with --exec or an external diff",
+  "git-hook": "git after a hook was written",
+  "unread-shell": "a shell this reading does not parse",
+  "inline-code": "code run inline by an interpreter",
+  "piped-script": "a script piped into a shell or interpreter",
+  "unterminated-quote": "a quote left open",
+  "unread-match": "a command of its kind behind a program this check does not read"
+};
+function hidingFormLabel(form) {
+  return HIDING_FORM_LABELS[form] ?? form.replace(/-/g, " ");
+}
+var UNCONFIRMED_SENTENCE = {
+  id: "could-not-confirm",
+  render: (u) => {
+    if (u.reason === "no-output") {
+      return "Could not confirm: these sessions record no command output, so a count of commands that ran is zero because nothing could be confirmed, not because nothing ran.";
+    }
+    const n2 = Math.max(1, u.calls ?? 0);
+    return `Could not confirm everything: ${n2} ${n2 === 1 ? "command" : "commands"} that ran, or may have run, used a form the checks cannot read, listed under Also checked on this machine.`;
+  }
+};
+var HIDING_FORMS_LIST = {
+  id: "also-checked.hiding-forms",
+  render: (cards) => cards.some((card) => card.unconfirmed?.reason === "hiding-forms") ? `Forms the checks cannot read inside, so a card where a command that ran, or may have run, used one could not confirm everything: ${HIDING_FORMS.map(hidingFormLabel).join("; ")}.` : void 0
+};
+function notCheckedCard(category) {
+  return {
+    category,
+    tone: "not-checked",
+    count: 0,
+    found: sentences([NOT_CHECKED_SENTENCE], void 0),
+    now: [],
+    fixes: [],
+    codexCaveat: false
+  };
+}
+function couldNotCheckCard(category, count2) {
+  return {
+    category,
+    tone: "could-not-check",
+    count: count2,
+    found: sentences([COULD_NOT_CHECK_SENTENCE], void 0),
+    now: [],
+    fixes: [],
+    codexCaveat: false
+  };
+}
+var TONE_ORDER = [
+  "act",
+  "review",
+  "clean",
+  "could-not-check",
+  "not-checked"
+];
+function orderCards(cards) {
+  return [...cards].sort(
+    (a, b) => TONE_ORDER.indexOf(a.tone) - TONE_ORDER.indexOf(b.tone) || VERIFY_CATEGORIES.indexOf(a.category) - VERIFY_CATEGORIES.indexOf(b.category)
+  );
+}
+var KNOWN_TONES = new Set(VERIFY_STATUSES);
+function hidingFormsIn(facts) {
+  if (facts === null || typeof facts !== "object") return [];
+  const named = facts.hidingForms;
+  if (!Array.isArray(named)) return [];
+  return HIDING_FORMS.filter((form) => named.includes(form));
+}
+function hidingCallsIn(facts) {
+  if (facts === null || typeof facts !== "object") return 0;
+  const f = facts;
+  const counts = [f.couldHide, f.hidingCalls].filter(
+    (n2) => typeof n2 === "number" && Number.isInteger(n2) && n2 > 0
+  );
+  return counts.length === 0 ? 0 : Math.max(...counts);
+}
+var READS_TEXT = /* @__PURE__ */ new Set(["secrets"]);
+function unconfirmedOf(category, status, facts, resultsRecorded) {
+  const forms = hidingFormsIn(facts);
+  if (forms.length > 0) {
+    return { reason: "hiding-forms", forms, calls: Math.max(1, hidingCallsIn(facts)) };
+  }
+  if (!resultsRecorded && !READS_TEXT.has(category) && status === "clean") {
+    return { reason: "no-output", forms: [] };
+  }
+  return void 0;
+}
+function honestStatus(category, status, facts, resultsRecorded) {
+  const known = KNOWN_TONES.has(status) ? status : "could-not-check";
+  return known === "clean" && unconfirmedOf(category, known, facts, resultsRecorded) !== void 0 ? "could-not-check" : known;
+}
+function confirmedCard(built, facts, verification) {
+  const recorded = verification.resultsRecorded;
+  const tone = KNOWN_TONES.has(built.tone) ? built.tone : "could-not-check";
+  const found = unconfirmedOf(built.category, tone, facts, recorded);
+  const unconfirmed = found === void 0 ? void 0 : tone === "act" || tone === "review" ? { ...found, found: true } : found;
+  const finalTone = honestStatus(built.category, tone, facts, recorded);
+  const lead = unconfirmed === void 0 && finalTone === "could-not-check" ? sentences([COULD_NOT_CHECK_SENTENCE], void 0) : [];
+  const caveat = unconfirmed === void 0 ? void 0 : sentence(UNCONFIRMED_SENTENCE, unconfirmed);
+  return {
+    ...built,
+    tone: finalTone,
+    found: [
+      ...lead,
+      ...built.found.filter((line2) => line2.template !== COULD_NOT_CHECK_SENTENCE.id)
+    ],
+    ...unconfirmed === void 0 ? {} : { unconfirmed },
+    ...caveat === void 0 ? {} : { caveat }
+  };
+}
+function cardsFor(verification, builders) {
+  const context = { ranEvidence: verification.ranEvidence };
+  const cards = VERIFY_CATEGORIES.map((category) => {
+    const result = verification.categories[category];
+    if (result.status === "not-checked") return notCheckedCard(category);
+    const build = builders[category];
+    if (build === void 0 || result.facts === void 0) {
+      return couldNotCheckCard(category, result.matches ?? 0);
+    }
+    const built = build(result, context);
+    return confirmedCard(built, result.facts, verification);
+  });
+  return orderCards(cards);
+}
+var HEADLINE_ORDER = [
+  "secrets",
+  "skipped-checks",
+  "lost-work",
+  "cloud",
+  "tests",
+  "destructive"
+];
+var HEADLINE_TONES = {
+  secrets: "act",
+  "skipped-checks": "act",
+  "lost-work": "act",
+  cloud: "review",
+  tests: "act",
+  destructive: "act"
+};
+var HEADLINE_BASIS = {
+  secrets: "likely-real-credentials",
+  "skipped-checks": "commits-on-main-without-checks",
+  "lost-work": "recoverable-deleted-work",
+  cloud: "iam-changes",
+  tests: "lowered-test-floors",
+  destructive: "unguarded-recursive-deletes"
+};
+function isPositiveCount(value) {
+  return typeof value === "number" && Number.isInteger(value) && value > 0;
+}
+function pickHeadline(cards, context) {
+  return leadingCards(cards, context)[0];
+}
+function leadingCards(cards, context) {
+  if (context.ranEvidence === "output-record") return [];
+  return HEADLINE_ORDER.flatMap((category) => {
+    const card = cards.find(
+      (c) => c.category === category && c.headline !== void 0 && c.tone === HEADLINE_TONES[category] && c.headline.basis === HEADLINE_BASIS[category] && isPositiveCount(c.headline.count) && !c.headline.restsOnCodexRan && (c.unconfirmed === void 0 || confirmedByGitState(c))
+    );
+    return card === void 0 ? [] : [card];
+  });
+}
+var LOCAL_ONLY = /* @__PURE__ */ Symbol("local-only");
+var LOCAL_FIX_SERIALIZED = "a local fix command belongs in the local fixes file only, and is never serialized";
+function localFix(category, command) {
+  return Object.freeze({
+    [LOCAL_ONLY]: true,
+    category,
+    command,
+    toJSON() {
+      throw new Error(LOCAL_FIX_SERIALIZED);
+    }
+  });
+}
+var SAFE_REF = /^[A-Za-z0-9_@%+=:,./-]+$/;
+var SHA = /^[0-9a-f]{7,64}$/;
+function isSafeBranch(name) {
+  if (!SAFE_REF.test(name) || name.includes(":")) return false;
+  if (name === "@" || name === "HEAD" || name.includes("..") || name.includes("@{")) return false;
+  if (name.includes("//") || name.startsWith("/") || name.endsWith("/")) return false;
+  if (name.endsWith(".")) return false;
+  return name.split("/").every((part) => !part.startsWith(".") && !part.endsWith(".lock"));
+}
+function isSafeRepoPath(path) {
+  return SAFE_REF.test(path) && !path.includes(":") && !path.startsWith("/") && !path.includes("..");
+}
+function safeValue(part) {
+  let value;
+  let safe;
+  if ("sha" in part) {
+    value = part.sha;
+    safe = SHA.test(value);
+  } else if ("branch" in part) {
+    value = part.branch;
+    safe = isSafeBranch(value);
+  } else if ("repoPath" in part) {
+    value = part.repoPath;
+    safe = isSafeRepoPath(value);
+  } else {
+    value = part.ref;
+    safe = SAFE_REF.test(value);
+  }
+  return safe && !value.startsWith("-") ? value : void 0;
+}
+function quoteArgument(argument) {
+  return `'${argument.replace(/'/g, "'\\''")}'`;
+}
+function localFixCommand(category, parts) {
+  const argv = [];
+  for (const part of parts) {
+    if (typeof part === "string") {
+      argv.push(quoteArgument(part));
+      continue;
+    }
+    const value = safeValue(part);
+    if (value === void 0) {
+      return { category, unsafe: true, note: "could not make a safe command" };
+    }
+    argv.push(quoteArgument(value));
+  }
+  return localFix(category, argv.join(" "));
+}
+function isLocalFix(value) {
+  return typeof value === "object" && value !== null && LOCAL_ONLY in value;
+}
+
+// src/core/verify/hosts.ts
+var LOCAL_NAMES = /* @__PURE__ */ new Set([
+  "localhost",
+  "localhost.localdomain",
+  "ip6-localhost",
+  "ip6-loopback",
+  "host.docker.internal",
+  "gateway.docker.internal",
+  "host.containers.internal",
+  "0.0.0.0",
+  "::",
+  "::1",
+  "[::1]",
+  "[::]"
+]);
+var LOCALSTACK = /^localstack$|(?:^|\.)localhost\.localstack\.cloud$/;
+function isLocalHost(host) {
+  const name = host.toLowerCase().replace(/\.$/, "");
+  if (LOCAL_NAMES.has(name)) return true;
+  if (/^127(?:\.\d{1,3}){3}$/.test(name)) return true;
+  if (/\.localhost$/.test(name)) return true;
+  return LOCALSTACK.test(name);
+}
+function hostOf(target) {
+  const url = /^[a-z][a-z0-9+.-]*:\/\/(?:[^@/?#\s]*@)?(\[[^\]]+\]|[^:/?#\s]+)/i.exec(target);
+  if (url !== null) return url[1];
+  const remote = /^(?:[^@/:\s]+@)?(\[[^\]]+\]|[^:/\s]+):(?!\/\/)/.exec(target);
+  if (remote !== null) return remote[1];
+  return void 0;
+}
+function bareHost(target) {
+  const match = /^(\[[^\]]+\]|[A-Za-z0-9.-]+)(?::\d+)?(?:\/.*)?$/.exec(target);
+  return match?.[1];
+}
+function endpointUrls(args2) {
+  const out = [];
+  for (let k = 0; k < args2.length; k++) {
+    const arg = args2[k];
+    if (arg === "--endpoint-url") out.push(args2[k + 1] ?? "");
+    else if (arg.startsWith("--endpoint-url=")) out.push(arg.slice("--endpoint-url=".length));
+  }
+  return out;
+}
+function endpointsLocal(args2) {
+  const urls = endpointUrls(args2);
+  if (urls.length === 0) return void 0;
+  return urls.every((url) => {
+    const host = hostOf(url) ?? bareHost(url);
+    return host !== void 0 && isLocalHost(host);
+  });
+}
+
+// src/core/verify/repos.ts
+import { dirname, isAbsolute, join as join3 } from "path";
+function rootCache() {
+  return /* @__PURE__ */ new Map();
+}
+async function repoRoot(io, dir, cache) {
+  const known = cache.get(dir);
+  if (known !== void 0) return known;
+  let outcome;
+  if (io.isDirectory(dir) !== true) outcome = { ok: false, reason: "missing" };
+  else {
+    const top = await io.git(dir, ["rev-parse", "--show-toplevel"]);
+    const root = top.ok ? top.stdout.trim() : "";
+    outcome = top.ok ? root === "" ? { ok: false, reason: "failed" } : { ok: true, root } : { ok: false, reason: top.reason };
+  }
+  cache.set(dir, outcome);
+  return outcome;
+}
+function placed(path, cwd) {
+  if (isAbsolute(path)) return path;
+  return cwd === null || cwd === "" ? void 0 : join3(cwd, path);
+}
+async function readRepoFile(io, path, cache) {
+  const root = await repoRoot(io, dirname(path), cache);
+  if (!root.ok) return { ok: false, reason: root.reason };
+  return io.readFile(path);
+}
+
+// src/core/verify/cloud.ts
+var AWS_VALUE_OPTIONS = /* @__PURE__ */ new Set([
+  "--profile",
+  "--region",
+  "--endpoint-url",
+  "--output",
+  "--query",
+  "--color",
+  "--ca-bundle",
+  "--cli-read-timeout",
+  "--cli-connect-timeout",
+  "--cli-binary-format"
+]);
+function optionValue(args2, name) {
+  for (let k = 0; k < args2.length; k++) {
+    const arg = args2[k];
+    if (arg === name) return args2[k + 1];
+    if (arg.startsWith(`${name}=`)) return arg.slice(name.length + 1);
+  }
+  return void 0;
+}
+function operands2(args2) {
+  const out = [];
+  for (let k = 0; k < args2.length; k++) {
+    const arg = args2[k];
+    if (arg.startsWith("--")) {
+      if (!arg.includes("=") && k + 1 < args2.length && !args2[k + 1].startsWith("-")) {
+        if (!/^--(?:recursive|dryrun|dry-run|quiet|force|delete|exact-timestamps)$/.test(arg))
+          k += 1;
+      }
+      continue;
+    }
+    if (arg.startsWith("-")) continue;
+    out.push(arg);
+  }
+  return out;
+}
+function iamSubject(operation) {
+  if (operation.includes("access-key")) return "access-keys";
+  if (/login-profile|password|mfa|ssh-public-key|signing-certificate|service-specific-credential/.test(
+    operation
+  )) {
+    return "credentials";
+  }
+  if (operation.includes("policy")) return "policies";
+  if (operation.includes("role") || operation.includes("instance-profile")) return "roles";
+  if (operation.includes("group")) return "groups";
+  if (operation.includes("user")) return "users";
+  return "other";
+}
+function review(parts) {
+  return localFixCommand("cloud", parts);
+}
+function iamReview(subject, args2) {
+  const user = optionValue(args2, "--user-name");
+  const role = optionValue(args2, "--role-name");
+  const group = optionValue(args2, "--group-name");
+  if (subject === "access-keys" && user !== void 0) {
+    return review(["aws", "iam", "list-access-keys", "--user-name", { ref: user }]);
+  }
+  if (role !== void 0) {
+    return review(["aws", "iam", "list-attached-role-policies", "--role-name", { ref: role }]);
+  }
+  if (group !== void 0)
+    return review(["aws", "iam", "get-group", "--group-name", { ref: group }]);
+  if (user !== void 0) {
+    return review(["aws", "iam", "list-attached-user-policies", "--user-name", { ref: user }]);
+  }
+  return void 0;
+}
+function bucketReview(bucket) {
+  return review(["aws", "s3", "ls", { ref: `s3://${bucket}` }]);
+}
+function readAws(args2, local) {
+  let k = 0;
+  while (k < args2.length && args2[k].startsWith("--")) {
+    k += AWS_VALUE_OPTIONS.has(args2[k]) ? 2 : 1;
+  }
+  const service = args2[k] ?? "";
+  const operation = args2[k + 1] ?? "";
+  const rest = args2.slice(k + 2);
+  const toLocal = endpointsLocal(args2) ?? local;
+  let change;
+  if (service === "iam" && operation !== "" && !/^(?:get|list|simulate|generate|wait|help)\b/.test(operation)) {
+    const subject = iamSubject(operation);
+    const review2 = iamReview(subject, rest);
+    change = { service: "iam", subject, ...review2 === void 0 ? {} : { review: review2 } };
+  } else if (service === "autoscaling" && operation !== "" && !/^(?:describe|get|wait|help)\b/.test(operation)) {
+    const group = optionValue(rest, "--auto-scaling-group-name");
+    change = {
+      service: "auto-scaling",
+      ...group === void 0 ? {} : {
+        review: review([
+          "aws",
+          "autoscaling",
+          "describe-auto-scaling-groups",
+          "--auto-scaling-group-names",
+          { ref: group }
+        ])
+      }
+    };
+  } else if (service === "s3") {
+    const targets = operands2(rest);
+    const last = targets[targets.length - 1] ?? "";
+    const writes = ["rm", "rb", "mb", "website"].includes(operation) || ["cp", "mv", "sync"].includes(operation) && last.startsWith("s3://");
+    const bucket = targets.map((t) => /^s3:\/\/([^/\s]+)/.exec(t)?.[1]).find((b) => b !== void 0);
+    if (writes) {
+      change = {
+        service: "s3",
+        ...bucket === void 0 ? {} : { review: bucketReview(bucket) }
+      };
+    }
+  } else if (service === "s3api" && operation !== "" && !/^(?:get|list|head|wait|help|select)\b/.test(operation)) {
+    const bucket = optionValue(rest, "--bucket");
+    change = {
+      service: "s3",
+      ...bucket === void 0 ? {} : { review: bucketReview(bucket) }
+    };
+  }
+  if (change === void 0) return [];
+  return toLocal ? "local" : [change];
+}
+var TERRAFORM_CHANGES = /* @__PURE__ */ new Set([
+  "apply",
+  "destroy",
+  "import",
+  "taint",
+  "untaint",
+  "force-unlock"
+]);
+var STATE_CHANGES = /* @__PURE__ */ new Set(["rm", "mv", "push", "replace-provider"]);
+function readTerraform(args2, cwd) {
+  let folder;
+  const words2 = [];
+  for (const arg of args2) {
+    if (arg.startsWith("-chdir=")) folder = arg.slice("-chdir=".length);
+    else if (!arg.startsWith("-")) words2.push(arg);
+  }
+  const [first, second] = words2[0] === "run-all" || words2[0] === "run" ? words2.slice(1) : words2;
+  const changes = first !== void 0 && TERRAFORM_CHANGES.has(first) || first === "state" && second !== void 0 && STATE_CHANGES.has(second) || first === "workspace" && second === "delete";
+  if (!changes) return [];
+  const where = folder === void 0 ? cwd ?? void 0 : placed(folder, cwd) ?? folder;
+  return [
+    {
+      service: "terraform",
+      autoApprove: args2.some((a) => /^--?auto-approve(?:=true)?$/.test(a)),
+      // The folder goes in as an argument, never as shell text: `sh` runs the fixed script with
+      // it as `$1`.
+      ...where === void 0 ? {} : {
+        review: review(["sh", "-c", 'cd "$1" && terraform show', "sh", { ref: where }])
+      }
+    }
+  ];
+}
+function readCloud(command, cwd = null) {
+  const changes = [];
+  let localStack = 0;
+  for (const simple of simpleCommands(command)) {
+    const { program, args: args2 } = programAndArgs(simple);
+    if (program === "aws" || program === "awslocal") {
+      const read = readAws(args2, program === "awslocal");
+      if (read === "local") localStack += 1;
+      else changes.push(...read);
+    } else if (program === "terraform" || program === "tofu" || program === "terragrunt") {
+      changes.push(...readTerraform(args2, cwd));
+    }
+  }
+  return { changes, localStack };
+}
+var TERRAFORM_RULES = /* @__PURE__ */ new Set([
+  "pi.terraform-auto-approve",
+  "pi.terraform-state-mutate"
+]);
+var IAM_RULES = /* @__PURE__ */ new Set(["ps.iam-grant"]);
+var CLOUD_UNREAD_RULES = /* @__PURE__ */ new Set([
+  "pi.cloud-resource-delete",
+  "se.public-acl"
+]);
+var CLOUD_PROGRAMS = READ_PROGRAMS.cloud;
+function checkCloud(input) {
+  const { agent, calls } = input.calls;
+  const terraformRule = rulesMatcher(
+    input.catalog,
+    input.allowlist,
+    (r) => TERRAFORM_RULES.has(r.rule.id)
+  );
+  const autoApproveRule = rulesMatcher(
+    input.catalog,
+    input.allowlist,
+    (r) => r.rule.id === "pi.terraform-auto-approve"
+  );
+  const iamRule = rulesMatcher(input.catalog, input.allowlist, (r) => IAM_RULES.has(r.rule.id));
+  const unreadRule = rulesMatcher(
+    input.catalog,
+    input.allowlist,
+    (r) => CLOUD_UNREAD_RULES.has(r.rule.id)
+  );
+  const unread = [];
+  const counts = {
+    iamChanges: 0,
+    autoScalingChanges: 0,
+    s3Changes: 0,
+    terraformChanges: 0,
+    terraformAutoApprove: 0,
+    localStack: 0,
+    mentioned: 0,
+    unconfirmed: 0
+  };
+  const subjects = /* @__PURE__ */ new Set();
+  const fixes = [];
+  const reviews = /* @__PURE__ */ new Set();
+  let matches = 0;
+  for (const call of calls) {
+    if (!isShell(call)) continue;
+    const ruled = call.ruleIds.some((id) => TERRAFORM_RULES.has(id) || IAM_RULES.has(id));
+    const unreadable = call.ruleIds.some((id) => CLOUD_UNREAD_RULES.has(id)) && !runsAnyOf(call.command, CLOUD_PROGRAMS);
+    const reading = readCloud(call.command, call.cwd);
+    if (!ruled && !unreadable && reading.changes.length === 0 && reading.localStack === 0) continue;
+    const holds = (command) => {
+      const r = readCloud(command, call.cwd);
+      return r.changes.length > 0 || r.localStack > 0 || terraformRule(call, command) || iamRule(call, command) || unreadable && unreadRule(call, command);
+    };
+    matches += 1;
+    const state = runStateOf(agent, call, holds);
+    if (state === "mentioned") {
+      counts.mentioned += 1;
+      continue;
+    }
+    if (state === "unknown") {
+      counts.unconfirmed += 1;
+      continue;
+    }
+    const ran = executedText(call.command);
+    const read = readCloud(ran, call.cwd);
+    const changes = [...read.changes];
+    counts.localStack += read.localStack;
+    if (!changes.some((c) => c.service === "terraform") && terraformRule(call, ran)) {
+      changes.push({ service: "terraform", autoApprove: autoApproveRule(call, ran) });
+    }
+    if (!changes.some((c) => c.service === "iam") && iamRule(call, ran)) {
+      changes.push({ service: "iam", subject: "other" });
+    }
+    if (unreadable && changes.length === 0 && read.localStack === 0 && !runsAnyOf(ran, CLOUD_PROGRAMS) && unreadRule(call, ran)) {
+      unread.push(call);
+    }
+    for (const change of changes) {
+      if (change.service === "iam") {
+        counts.iamChanges += 1;
+        subjects.add(change.subject ?? "other");
+      } else if (change.service === "auto-scaling") counts.autoScalingChanges += 1;
+      else if (change.service === "s3") counts.s3Changes += 1;
+      else {
+        counts.terraformChanges += 1;
+        if (change.autoApprove === true) counts.terraformAutoApprove += 1;
+      }
+      const review2 = change.review;
+      if (review2 === void 0 || fixes.length >= MAX_LOCAL_FIXES) continue;
+      if (isLocalFix(review2)) {
+        if (reviews.has(review2.command)) continue;
+        reviews.add(review2.command);
+      }
+      fixes.push(review2);
+    }
+  }
+  const behind = backstopCalls(
+    input.calls,
+    READ_PROGRAMS.cloud,
+    (tail, call) => readCloud(tail, call.cwd).changes.length > 0,
+    (call, text2) => unreadRule(call, text2) || terraformRule(call, text2) || iamRule(call, text2)
+  );
+  const facts = {
+    ...counts,
+    iamSubjects: IAM_SUBJECTS.filter((s) => subjects.has(s)),
+    ...hidingFacts(input.calls, [...unread, ...behind])
+  };
+  return { check: { status: cloudStatus(facts), matches, facts }, localFixes: fixes };
+}
+function changesOf(f) {
+  return f.iamChanges + f.autoScalingChanges + f.s3Changes + f.terraformChanges;
+}
+function cloudStatus(facts) {
+  return changesOf(facts) > 0 ? "review" : quietStatus(facts.unconfirmed, facts.couldHide);
+}
+var SUBJECT_WORDS = {
+  "access-keys": "access keys",
+  policies: "policies",
+  roles: "roles",
+  users: "users",
+  groups: "groups",
+  credentials: "sign-in credentials",
+  other: "other IAM settings"
+};
+function whenAny(id, count2, say) {
+  return { id, render: (f) => count2(f) > 0 ? say(count2(f), f) : void 0 };
+}
+var CLOUD_FOUND = [
+  whenAny(
+    "cloud.iam",
+    (f) => f.iamChanges,
+    (n2, f) => `${counted(n2, "IAM change", "IAM changes")} ran, touching ${f.iamSubjects.map((s) => SUBJECT_WORDS[s]).join(", ")}.`
+  ),
+  whenAny(
+    "cloud.auto-scaling",
+    (f) => f.autoScalingChanges,
+    (n2) => `${counted(n2, "Auto Scaling change", "Auto Scaling changes")} ran.`
+  ),
+  whenAny(
+    "cloud.s3",
+    (f) => f.s3Changes,
+    (n2) => `${counted(n2, "S3 write or delete", "S3 writes or deletes")} ran.`
+  ),
+  whenAny(
+    "cloud.terraform",
+    (f) => f.terraformChanges,
+    (n2, f) => `${counted(n2, "Terraform command that changes", "Terraform commands that change")} infrastructure or state ran${f.terraformAutoApprove > 0 ? `, ${f.terraformAutoApprove} of them with -auto-approve` : ""}.`
+  ),
+  {
+    id: "cloud.nothing",
+    render: (f) => changesOf(f) === 0 && f.couldHide === 0 && f.unconfirmed === 0 ? "No IAM, Auto Scaling, S3 or Terraform change ran." : void 0
+  },
+  whenAny(
+    "cloud.local-stack",
+    (f) => f.localStack,
+    (n2) => `${counted(n2, "AWS call", "AWS calls")} went to LocalStack on this machine and ${n2 === 1 ? "is" : "are"} not counted.`
+  ),
+  whenAny(
+    "cloud.mentioned",
+    (f) => f.mentioned,
+    (n2, f) => `${moreMatches(n2, changesOf(f) + f.localStack > 0)} only mentioned a cloud command and did not run.`
+  ),
+  whenAny(
+    "cloud.unconfirmed",
+    (f) => f.unconfirmed,
+    (n2) => `${counted(n2, "match", "matches")} could not be confirmed as run.`
+  )
+];
+var CLOUD_NOW = [
+  whenAny(
+    "cloud.cannot-check",
+    changesOf,
+    () => "Cloud changes cannot be checked from this machine: their current state is in the cloud account, so each needs a person to review it."
+  )
+];
+var CLOUD_FIX_STEPS = [
+  whenAny(
+    "cloud.fix.review",
+    changesOf,
+    (_, f) => f.iamChanges > 0 ? "Review each change in the cloud account, starting with IAM, with the read-only commands below." : "Review each change in the cloud account with the read-only commands below."
+  )
+];
+var CLOUD_HEADLINE = whenAny(
+  "cloud.headline",
+  (f) => f.iamChanges,
+  (n2) => `${counted(n2, "IAM change", "IAM changes")} ran and ${n2 === 1 ? "needs" : "need"} review`
+);
+var CLOUD_CHIP = {
+  id: "cloud.chip",
+  render: (f) => noun(changesOf(f), "cloud change to review", "cloud changes to review")
+};
+function cloudShapes(f) {
+  const shapes = [];
+  const iam = f.iamChanges > 0 ? f.iamSubjects : [];
+  if (iam.includes("access-keys")) {
+    shapes.push({ shape: "aws iam list-access-keys --user-name <user>" });
+  }
+  if (iam.some((s) => s === "policies" || s === "roles")) {
+    shapes.push({ shape: "aws iam list-attached-role-policies --role-name <role>" });
+  }
+  if (iam.includes("users")) {
+    shapes.push({ shape: "aws iam list-attached-user-policies --user-name <user>" });
+  }
+  if (iam.includes("groups")) shapes.push({ shape: "aws iam get-group --group-name <group>" });
+  if (f.autoScalingChanges > 0) {
+    shapes.push({
+      shape: "aws autoscaling describe-auto-scaling-groups --auto-scaling-group-names <group>"
+    });
+  }
+  if (f.s3Changes > 0) shapes.push({ shape: "aws s3 ls s3://<bucket>" });
+  if (f.terraformChanges > 0) shapes.push({ shape: "cd <folder> && terraform show" });
+  return shapes;
+}
+var cloudCard = (result, context) => {
+  const f = result.facts;
+  const headline2 = sentence(CLOUD_HEADLINE, f);
+  const card = {
+    category: "cloud",
+    tone: result.status,
+    count: result.matches,
+    found: sentences(CLOUD_FOUND, f),
+    now: sentences(CLOUD_NOW, f),
+    fixes: cloudShapes(f),
+    fixSteps: sentences(CLOUD_FIX_STEPS, f),
+    chip: {
+      count: changesOf(f),
+      label: sentence(CLOUD_CHIP, f) ?? { template: CLOUD_CHIP.id, text: "" }
+    },
+    codexCaveat: restsOnCodex(context) && changesOf(f) > 0,
+    ...headline2 === void 0 ? {} : {
+      headline: {
+        basis: "iam-changes",
+        count: f.iamChanges,
+        restsOnCodexRan: restsOnCodex(context),
+        sentence: headline2
+      }
+    }
+  };
+  return card;
+};
+
+// src/core/verify/egress.ts
+var CURL_VALUE_OPTIONS = /* @__PURE__ */ new Set([
+  "-H",
+  "--header",
+  "-d",
+  "--data",
+  "--data-binary",
+  "--data-raw",
+  "--data-ascii",
+  "--data-urlencode",
+  "--json",
+  "-X",
+  "--request",
+  "-o",
+  "--output",
+  "-u",
+  "--user",
+  "-F",
+  "--form",
+  "-T",
+  "--upload-file",
+  "-A",
+  "--user-agent",
+  "-e",
+  "--referer",
+  "-b",
+  "--cookie",
+  "-c",
+  "--cookie-jar",
+  "-m",
+  "--max-time",
+  "--connect-timeout",
+  "-w",
+  "--write-out",
+  "-x",
+  "--proxy",
+  "--url",
+  "--resolve",
+  "--cacert",
+  "--cert",
+  "--key",
+  "-K",
+  "--config",
+  "--retry"
+]);
+function realHost(host) {
+  return host !== void 0 && host.length > 1;
+}
+function targetHost(target) {
+  return hostOf(target) ?? bareHost(target);
+}
+var CURL_ROUTING = /* @__PURE__ */ new Set([
+  "-x",
+  "--proxy",
+  "--preproxy",
+  "--socks4",
+  "--socks4a",
+  "--socks5",
+  "--socks5-hostname",
+  "--resolve",
+  "--connect-to",
+  "--proxy1.0",
+  "-K",
+  "--config"
+]);
+var CURL_SHORT_VALUES = "HdXouFTAebcmwxKErQYyzCDtPU";
+function curlWords(args2) {
+  const options = [];
+  const operands3 = [];
+  for (let k = 0; k < args2.length; k++) {
+    const arg = args2[k];
+    if (arg.startsWith("--") && arg.length > 2) {
+      const eq = arg.indexOf("=");
+      if (eq > 0) options.push({ name: arg.slice(0, eq), value: arg.slice(eq + 1) });
+      else if (CURL_VALUE_OPTIONS.has(arg) || CURL_ROUTING.has(arg)) {
+        options.push({ name: arg, value: args2[k + 1] ?? "" });
+        k += 1;
+      } else options.push({ name: arg, value: "" });
+    } else if (arg.startsWith("-") && arg.length > 1) {
+      for (let i = 1; i < arg.length; i++) {
+        const letter = arg[i];
+        if (!CURL_SHORT_VALUES.includes(letter)) {
+          options.push({ name: `-${letter}`, value: "" });
+          continue;
+        }
+        const attached = arg.slice(i + 1);
+        if (attached !== "") options.push({ name: `-${letter}`, value: attached });
+        else {
+          options.push({ name: `-${letter}`, value: args2[k + 1] ?? "" });
+          k += 1;
+        }
+        break;
+      }
+    } else operands3.push(arg);
+  }
+  return { options, operands: operands3 };
+}
+var CURL_DATA = /^(?:-d|--data(?:-binary|-raw|-ascii|-urlencode)?|--json)$/;
+function readCurl(args2, routedByEnvironment) {
+  const { options, operands: operands3 } = curlWords(args2);
+  let sendsFile = false;
+  let routed = routedByEnvironment;
+  const hosts = operands3.map(targetHost);
+  for (const { name, value } of options) {
+    if (CURL_ROUTING.has(name)) routed = true;
+    if (name === "--url") hosts.push(targetHost(value));
+    if (name === "-T" || name === "--upload-file") sendsFile = true;
+    if ((name === "-F" || name === "--form") && /[@<]/.test(value)) sendsFile = true;
+    if (CURL_DATA.test(name) && value.startsWith("@")) sendsFile = true;
+  }
+  if (!sendsFile) return void 0;
+  const local = !routed && hosts.length > 0 && hosts.every((host) => realHost(host) && isLocalHost(host));
+  return { kind: "upload", upload: "http-upload", local };
+}
+function copyOperands(args2, valueOptions) {
+  const out = [];
+  for (let k = 0; k < args2.length; k++) {
+    const arg = args2[k];
+    if (valueOptions.has(arg)) {
+      k += 1;
+      continue;
+    }
+    if (!arg.startsWith("-")) out.push(arg);
+  }
+  return out;
+}
+var SSH_ROUTING = /(?:^|\s)-J\b|ProxyJump|ProxyCommand/i;
+function sshRouted(args2) {
+  for (let k = 0; k < args2.length; k++) {
+    const arg = args2[k];
+    if (arg === "-J" || /^-J./.test(arg)) return true;
+    if (/^-o/.test(arg) && SSH_ROUTING.test(arg === "-o" ? args2[k + 1] ?? "" : arg)) return true;
+    if ((arg === "-e" || arg === "--rsh") && SSH_ROUTING.test(args2[k + 1] ?? "")) return true;
+    if (arg.startsWith("--rsh=") && SSH_ROUTING.test(arg)) return true;
+  }
+  return false;
+}
+function readRemoteCopy(args2, routedByEnvironment) {
+  const operands3 = copyOperands(
+    args2,
+    /* @__PURE__ */ new Set(["-P", "-i", "-o", "-F", "-J", "-e", "-l", "--rsh", "--port"])
+  );
+  const destination = operands3[operands3.length - 1];
+  if (operands3.length < 2 || destination === void 0) return void 0;
+  const host = hostOf(destination);
+  if (!realHost(host)) return void 0;
+  const routed = routedByEnvironment || sshRouted(args2);
+  return { kind: "upload", upload: "file-copy", local: !routed && isLocalHost(host) };
+}
+function readStorageCopy(operands3, bucket, local) {
+  const destination = operands3[operands3.length - 1] ?? "";
+  if (operands3.length < 2 || !bucket.test(destination)) return void 0;
+  if (operands3.slice(0, -1).every((source) => bucket.test(source))) return void 0;
+  return { kind: "upload", upload: "cloud-storage", local };
+}
+function readAwsS3(args2, awslocal, routedByEnvironment) {
+  const local = !routedByEnvironment && (endpointsLocal(args2) ?? awslocal);
+  const words2 = copyOperands(
+    args2,
+    /* @__PURE__ */ new Set([
+      "--profile",
+      "--region",
+      "--endpoint-url",
+      "--acl",
+      "--exclude",
+      "--include",
+      "--storage-class",
+      "--output",
+      "--query"
+    ])
+  );
+  if (words2[0] !== "s3" || !["cp", "mv", "sync"].includes(words2[1] ?? "")) return void 0;
+  return readStorageCopy(words2.slice(2), /^s3:\/\//, local);
+}
+function readNetcat(args2, routedByEnvironment) {
+  if (args2.some((a) => /^-[A-Za-z]*[lz]/.test(a))) return void 0;
+  const operands3 = copyOperands(
+    args2,
+    /* @__PURE__ */ new Set(["-w", "-p", "-s", "-i", "-q", "-x", "-X", "-e", "-c"])
+  );
+  const host = operands3[0];
+  if (!realHost(host) || operands3.length < 2) return void 0;
+  const routed = routedByEnvironment || args2.some((a) => /^-[xX]/.test(a));
+  return { kind: "upload", upload: "raw-socket", local: !routed && isLocalHost(host) };
+}
+var SSH_VALUE_OPTIONS = /* @__PURE__ */ new Set([
+  "-p",
+  "-i",
+  "-l",
+  "-o",
+  "-F",
+  "-J",
+  "-L",
+  "-R",
+  "-D",
+  "-b",
+  "-c",
+  "-E",
+  "-e",
+  "-m",
+  "-O",
+  "-Q",
+  "-S",
+  "-W",
+  "-w",
+  "-B"
+]);
+function sshHost(args2) {
+  const destination = copyOperands(args2, SSH_VALUE_OPTIONS)[0] ?? "";
+  return destination.includes("@") ? destination.split("@").pop() : destination;
+}
+function readSsh(simple, args2) {
+  const routed = sshRouted(args2);
+  const host = sshHost(args2);
+  const local = !routed && realHost(host) && isLocalHost(host);
+  if (args2.some((a) => /^-[A-Za-z]*R/.test(a))) return { kind: "tunnel", local };
+  if ((simple.readsFile || simple.pipedIn) && realHost(host)) {
+    return { kind: "upload", upload: "file-copy", local };
+  }
+  return void 0;
+}
+var SOCAT_CONNECT = /^(?:(TCP[46]?(?:-CONNECT)?|OPENSSL(?:-CONNECT)?|SSL|UDP[46]?(?:-SENDTO|-CONNECT)?|SCTP[46]?-CONNECT|DCCP-CONNECT)|(SOCKS4A?|SOCKS5|PROXY(?:-CONNECT)?)):/i;
+function readSocat(args2) {
+  let connects = false;
+  let local = true;
+  for (const arg of args2) {
+    if (arg.startsWith("-")) continue;
+    const type = SOCAT_CONNECT.exec(arg);
+    if (type === null) continue;
+    connects = true;
+    if (type[2] !== void 0) {
+      local = false;
+      continue;
+    }
+    const rest = arg.slice(type[0].length);
+    const host = rest.startsWith("[") ? rest.slice(0, rest.indexOf("]") + 1) : rest.split(":")[0];
+    if (!realHost(host) || !isLocalHost(host)) local = false;
+  }
+  return connects ? { kind: "upload", upload: "raw-socket", local } : void 0;
+}
+var TUNNEL_STARTERS = /* @__PURE__ */ new Map([
+  ["ngrok", ["http", "tcp", "tls", "start", "tunnel"]],
+  ["cloudflared", ["tunnel"]],
+  ["lt", []],
+  ["localtunnel", []],
+  ["bore", ["local"]],
+  ["frpc", []],
+  ["chisel", ["client"]],
+  ["zrok", ["share"]],
+  ["devtunnel", ["host"]],
+  ["tmole", []],
+  ["loclx", ["tunnel"]],
+  ["inlets", ["client"]]
+]);
+var PROXY_VARIABLE = /^(?:https?|all|ftp|socks|rsync)_proxy=/i;
+var WGET_VALUE_OPTIONS = /* @__PURE__ */ new Set([
+  "-O",
+  "-o",
+  "-a",
+  "-e",
+  "-P",
+  "-U",
+  "--post-file",
+  "--body-file",
+  "--post-data",
+  "--body-data",
+  "--header",
+  "--method",
+  "--user",
+  "--password",
+  "--output-document"
+]);
+function readWget(args2, routedByEnvironment) {
+  if (!args2.some((a) => /^--(?:post|body)-file\b/.test(a))) return void 0;
+  const routed = routedByEnvironment || args2.some((a, k) => a === "-e" ? /proxy/i.test(args2[k + 1] ?? "") : /^-e.*proxy/i.test(a));
+  const hosts = copyOperands(args2, WGET_VALUE_OPTIONS).map(targetHost);
+  const local = !routed && hosts.length > 0 && hosts.every((host) => realHost(host) && isLocalHost(host));
+  return { kind: "upload", upload: "http-upload", local };
+}
+function readSimple(simple, routedBefore) {
+  const { program, args: args2, assignments } = programAndArgs(simple);
+  const routed = routedBefore || assignments.some((a) => PROXY_VARIABLE.test(a));
+  const first = args2.find((a) => !a.startsWith("-")) ?? "";
+  const starter = TUNNEL_STARTERS.get(program);
+  if (starter !== void 0 && (starter.length === 0 || starter.includes(first))) {
+    return { kind: "tunnel", local: false };
+  }
+  switch (program) {
+    case "curl":
+      return readCurl(args2, routed);
+    case "wget":
+      return readWget(args2, routed);
+    case "scp":
+    case "rsync":
+      return readRemoteCopy(args2, routed);
+    case "aws":
+    case "awslocal":
+      return readAwsS3(args2, program === "awslocal", routed);
+    case "gsutil":
+      return ["cp", "mv", "rsync"].includes(first) ? readStorageCopy(copyOperands(args2, /* @__PURE__ */ new Set()).slice(1), /^gs:\/\//, false) : void 0;
+    case "gcloud":
+      return args2[0] === "storage" && ["cp", "mv", "rsync"].includes(args2[1] ?? "") ? readStorageCopy(copyOperands(args2, /* @__PURE__ */ new Set()).slice(2), /^gs:\/\//, false) : void 0;
+    case "az":
+      return args2[0] === "storage" && args2[1] === "blob" && /^upload/.test(args2[2] ?? "") ? { kind: "upload", upload: "cloud-storage", local: false } : void 0;
+    case "rclone":
+      return ["copy", "copyto", "move", "moveto", "sync"].includes(first) ? readStorageCopy(copyOperands(args2, /* @__PURE__ */ new Set()).slice(1), /^[A-Za-z0-9_-]{2,}:/, false) : void 0;
+    case "gh":
+      if (args2[0] === "gist" && args2[1] === "create") {
+        return { kind: "upload", upload: "paste", local: false };
+      }
+      return args2[0] === "release" && args2[1] === "upload" ? { kind: "upload", upload: "http-upload", local: false } : void 0;
+    case "nc":
+    case "ncat":
+    case "netcat":
+      return readNetcat(args2, routed);
+    case "socat":
+      return readSocat(args2);
+    case "ssh":
+      return readSsh(simple, args2);
+    default:
+      return void 0;
+  }
+}
+function readEgress(command) {
+  const out = [];
+  let routed = false;
+  for (const simple of simpleCommands(command)) {
+    const { program, args: args2 } = programAndArgs(simple);
+    if (program === "export" && args2.some((a) => PROXY_VARIABLE.test(a))) routed = true;
+    const traffic = readSimple(simple, routed);
+    if (traffic !== void 0) out.push(traffic);
+  }
+  return out;
+}
+var EGRESS_RULES = /* @__PURE__ */ new Map([
+  ["ex.file-upload", "other"],
+  ["se.secret-egress", "other"],
+  ["ex.paste-service", "paste"],
+  ["ex.reverse-shell", "raw-socket"],
+  ["ex.tunnel-expose", "tunnel"]
+]);
+function tunnelProgramOf(entry) {
+  const name = (entry.trim().split(/[\\/]/).pop() ?? "").trim().toLowerCase().replace(/\.exe$/, "");
+  return TUNNEL_PROCESS_NAMES.includes(name) ? name : void 0;
+}
+function tunnelProgramsIn(running) {
+  const seen = /* @__PURE__ */ new Set();
+  for (const entry of running) {
+    const program = tunnelProgramOf(entry);
+    if (program !== void 0) seen.add(program);
+  }
+  return TUNNEL_PROCESS_NAMES.filter((p) => seen.has(p));
+}
+async function checkEgress(input) {
+  const { agent, calls } = input.calls;
+  const egressRule = rulesMatcher(
+    input.catalog,
+    input.allowlist,
+    (r) => EGRESS_RULES.has(r.rule.id)
+  );
+  const counts = {
+    uploads: 0,
+    tunnelsStarted: 0,
+    localOnly: 0,
+    mentioned: 0,
+    unconfirmed: 0
+  };
+  const kinds = /* @__PURE__ */ new Set();
+  let matches = 0;
+  for (const call of calls) {
+    if (!isShell(call)) continue;
+    const ruled = call.ruleIds.filter((id) => EGRESS_RULES.has(id));
+    if (ruled.length === 0 && readEgress(call.command).length === 0) continue;
+    matches += 1;
+    const holds = (command) => readEgress(command).length > 0 || egressRule(call, command);
+    const state = runStateOf(agent, call, holds);
+    if (state === "mentioned") {
+      counts.mentioned += 1;
+      continue;
+    }
+    if (state === "unknown") {
+      counts.unconfirmed += 1;
+      continue;
+    }
+    const ran = executedText(call.command);
+    const traffic = readEgress(ran);
+    if (traffic.length === 0 && egressRule(call, ran)) {
+      const as = ruled.map((id) => EGRESS_RULES.get(id)).find((k) => k !== void 0) ?? "other";
+      traffic.push(
+        as === "tunnel" ? { kind: "tunnel", local: false } : { kind: "upload", upload: as, local: false }
+      );
+    }
+    for (const item of traffic) {
+      if (item.local) counts.localOnly += 1;
+      else if (item.kind === "tunnel") counts.tunnelsStarted += 1;
+      else {
+        counts.uploads += 1;
+        kinds.add(item.upload);
+      }
+    }
+  }
+  const listed = await input.io.processNames();
+  const running = listed.ok ? tunnelProgramsIn(listed.running) : [];
+  const facts = {
+    ...counts,
+    uploadKinds: UPLOAD_KINDS.filter((k) => kinds.has(k)),
+    tunnelsRunning: running.length,
+    tunnelPrograms: running,
+    processCheck: listed.ok ? "checked" : "could-not-check",
+    // Traffic behind a program no check reads, in any call, read or not.
+    ...hidingFacts(
+      input.calls,
+      backstopCalls(
+        input.calls,
+        READ_PROGRAMS.egress,
+        (tail) => readEgress(tail).some((t) => !t.local),
+        egressRule
+      )
+    )
+  };
+  const fixes = running.map(
+    (program) => (
+      // The program is one of `TUNNEL_PROCESS_NAMES`, so the command carries no data.
+      localFixCommand("egress", ["pgrep", "-lx", program])
+    )
+  );
+  return { check: { status: egressStatus(facts), matches, facts }, localFixes: fixes };
+}
+function egressStatus(facts) {
+  if (facts.tunnelsRunning > 0) return "act";
+  if (facts.uploads + facts.tunnelsStarted > 0) return "review";
+  if (facts.processCheck === "could-not-check") return "could-not-check";
+  return quietStatus(facts.unconfirmed, facts.couldHide);
+}
+var KIND_WORDS = {
+  "http-upload": "HTTP uploads",
+  "file-copy": "copies to another host",
+  "cloud-storage": "copies into cloud storage",
+  paste: "paste or gist posts",
+  "raw-socket": "raw network sends",
+  other: "other uploads a guardrail matched"
+};
+function when(id, test, say) {
+  return { id, render: (f) => test(f) ? say(f) : void 0 };
+}
+var EGRESS_FOUND = [
+  when(
+    "egress.uploads",
+    (f) => f.uploads > 0,
+    (f) => `${counted(f.uploads, "upload", "uploads")} that ran sent data off this machine: ${f.uploadKinds.map((k) => KIND_WORDS[k]).join(", ")}.`
+  ),
+  when(
+    "egress.tunnels-started",
+    (f) => f.tunnelsStarted > 0,
+    (f) => `${counted(f.tunnelsStarted, "tunnel was", "tunnels were")} started to expose a port on this machine.`
+  ),
+  when(
+    "egress.none",
+    (f) => f.uploads + f.tunnelsStarted === 0 && f.couldHide === 0 && f.unconfirmed === 0,
+    () => "No upload or tunnel that ran sent data off this machine."
+  ),
+  when(
+    "egress.local-only",
+    (f) => f.localOnly > 0,
+    (f) => `${counted(f.localOnly, "match", "matches")} went only to this machine (a local server or LocalStack) and ${f.localOnly === 1 ? "is" : "are"} not counted.`
+  ),
+  when(
+    "egress.mentioned",
+    (f) => f.mentioned > 0,
+    (f) => `${moreMatches(f.mentioned, f.uploads + f.tunnelsStarted + f.localOnly > 0)} only mentioned an upload or a tunnel (in a test, a search or a message) and did not run.`
+  ),
+  when(
+    "egress.unconfirmed",
+    (f) => f.unconfirmed > 0,
+    (f) => `${counted(f.unconfirmed, "match", "matches")} could not be confirmed as run.`
+  )
+];
+var EGRESS_NOW = [
+  when(
+    "egress.running",
+    (f) => f.tunnelsRunning > 0,
+    (f) => `${counted(f.tunnelsRunning, "tunnel or relay program is", "tunnel or relay programs are")} running now: ${f.tunnelPrograms.join(", ")}.`
+  ),
+  when(
+    "egress.running-none",
+    (f) => f.processCheck === "checked" && f.tunnelsRunning === 0,
+    () => "No known tunnel or relay program is running now."
+  ),
+  when(
+    "egress.running-unknown",
+    (f) => f.processCheck === "could-not-check",
+    () => "The running programs could not be listed, so running tunnels were not checked."
+  )
+];
+var EGRESS_FIX_STEPS = [
+  when(
+    "egress.fix.running",
+    (f) => f.tunnelsRunning > 0,
+    () => "Stop the tunnel or relay programs you did not start on purpose."
+  ),
+  when(
+    "egress.fix.uploads",
+    (f) => f.uploads + f.tunnelsStarted > 0,
+    () => "Check what each upload or tunnel sent, and to where."
+  )
+];
+var EGRESS_CHIP = {
+  id: "egress.chip",
+  count: (f) => f.uploads,
+  one: "upload off this machine",
+  many: "uploads off this machine"
+};
+var EGRESS_CHIP_REASONS = [
+  {
+    id: "egress.chip.running",
+    count: (f) => f.tunnelsRunning,
+    one: "tunnel or relay program running now",
+    many: "tunnel or relay programs running now"
+  },
+  EGRESS_CHIP,
+  {
+    id: "egress.chip.tunnels",
+    count: (f) => f.tunnelsStarted,
+    one: "tunnel started",
+    many: "tunnels started"
+  }
+];
+var egressCard = (result, context) => {
+  const f = result.facts;
+  const card = {
+    category: "egress",
+    tone: result.status,
+    count: result.matches,
+    found: sentences(EGRESS_FOUND, f),
+    now: sentences(EGRESS_NOW, f),
+    fixes: f.tunnelsRunning > 0 ? [{ shape: "pgrep -lx <program>" }] : [],
+    fixSteps: sentences(EGRESS_FIX_STEPS, f),
+    chip: chipFor(f, EGRESS_CHIP_REASONS, EGRESS_CHIP),
+    codexCaveat: restsOnCodex(context) && f.uploads + f.tunnelsStarted > 0
+  };
+  return card;
+};
+
+// src/core/verify/prod-infra.ts
+var PROD_INFRA_CATEGORY = "prod-infra";
+var KIND_OF_RULE = /* @__PURE__ */ new Map([
+  ["pi.terraform-auto-approve", "terraform"],
+  ["pi.terraform-state-mutate", "terraform"],
+  ["pi.kubectl-delete", "kubernetes"],
+  ["pi.prod-namespace", "kubernetes"],
+  ["pi.helm-release", "helm"],
+  ["pi.cloud-resource-delete", "cloud-delete"],
+  ["pi.deploy-to-prod", "deploy"],
+  ["block-prod-config-edit", "prod-config"]
+]);
+var LOCAL_KUBE_CONTEXT = /^(?:kind-.+|k3d-.+|minikube|docker-desktop|docker-for-desktop|rancher-desktop|colima(?:-.+)?|orbstack|localhost)$/;
+var CONTEXT_OPTIONS = /* @__PURE__ */ new Set(["--context", "--kube-context"]);
+var KUBE_TARGET_OPTIONS = /* @__PURE__ */ new Set([
+  "--server",
+  "-s",
+  "--kubeconfig",
+  "--cluster",
+  "--kube-apiserver"
+]);
+var KUBECONFIG_VARIABLE = /^KUBECONFIG=/;
+var LOCAL_TARGET_PROGRAMS = /* @__PURE__ */ new Set([
+  "kubectl",
+  "helm",
+  "tflocal",
+  "awslocal",
+  "aws"
+]);
+var LOCAL_SIDE_PROGRAMS = /* @__PURE__ */ new Set([
+  "",
+  "cd",
+  "export",
+  "unset",
+  "fi",
+  "done",
+  "esac",
+  "true",
+  "false",
+  "sleep",
+  "pwd",
+  "echo",
+  "printf",
+  "ls",
+  "cat",
+  "grep",
+  "head",
+  "tail",
+  "wc",
+  "jq",
+  "sort",
+  "uniq"
+]);
+function targetsOnlyThisMachine(command) {
+  if (commandHidingForms(command).length > 0) return false;
+  let any = false;
+  let kubeconfigSet = false;
+  for (const simple of simpleCommands(command)) {
+    const { program, args: args2, assignments } = programAndArgs(simple);
+    if (program === "export" && args2.some((a) => KUBECONFIG_VARIABLE.test(a))) kubeconfigSet = true;
+    if (!LOCAL_SIDE_PROGRAMS.has(program) && !LOCAL_TARGET_PROGRAMS.has(program)) return false;
+    if (program === "kubectl" || program === "helm") {
+      any = true;
+      if (kubeconfigSet || assignments.some((a) => KUBECONFIG_VARIABLE.test(a))) return false;
+      let context;
+      for (let k = 0; k < args2.length; k++) {
+        const arg = args2[k];
+        const eq = arg.indexOf("=");
+        const name = arg.startsWith("-") && eq > 0 ? arg.slice(0, eq) : arg;
+        if (KUBE_TARGET_OPTIONS.has(name)) return false;
+        if (CONTEXT_OPTIONS.has(arg)) context = args2[k + 1];
+        else if (eq > 0 && CONTEXT_OPTIONS.has(name)) context = arg.slice(eq + 1);
+      }
+      if (context === void 0 || !LOCAL_KUBE_CONTEXT.test(context)) return false;
+    } else if (program === "tflocal" || program === "awslocal") any = true;
+    else if (program === "aws") {
+      any = true;
+      if (endpointsLocal(args2) !== true) return false;
+    }
+  }
+  return any;
+}
+function checkProdInfra(input) {
+  const { agent, calls } = input.calls;
+  const isProdRule = (rule) => rule.rule.category === PROD_INFRA_CATEGORY;
+  const prodIds = new Set(input.catalog.filter(isProdRule).map((r) => r.rule.id));
+  const prodRule = rulesMatcher(input.catalog, input.allowlist, isProdRule);
+  const kinds = /* @__PURE__ */ new Set();
+  let infraMatches = 0;
+  let localInfra = 0;
+  let mentioned = 0;
+  let unconfirmed = 0;
+  let candidates = 0;
+  for (const call of calls) {
+    const matched = call.ruleIds.filter((id) => prodIds.has(id));
+    if (matched.length === 0) continue;
+    candidates += 1;
+    const state = isShell(call) ? runStateOf(agent, call, (command) => prodRule(call, command)) : runStateOf(agent, call, () => true);
+    if (state === "mentioned") mentioned += 1;
+    else if (state === "unknown") unconfirmed += 1;
+    else if (isShell(call) && call.hidingForms.length === 0 && targetsOnlyThisMachine(executedText(call.command)))
+      localInfra += 1;
+    else {
+      infraMatches += 1;
+      for (const id of matched) kinds.add(KIND_OF_RULE.get(id) ?? "other");
+    }
+  }
+  const supplied = input.databaseTargets;
+  const unresolved = Math.max(0, input.databaseTargetsUnresolved ?? 0);
+  const facts = {
+    databaseTargets: {
+      local: supplied?.local ?? 0,
+      scratch: supplied?.scratch ?? 0,
+      other: supplied?.other ?? 0
+    },
+    databaseCheck: supplied === void 0 ? "not-available" : "checked",
+    infraMatches,
+    infraKinds: INFRA_KINDS.filter((k) => kinds.has(k)),
+    localInfra,
+    mentioned,
+    unconfirmed: unconfirmed + unresolved,
+    couldHide: couldHideCount(input.calls),
+    hidingForms: heldHidingForms(input.calls)
+  };
+  return {
+    status: prodInfraStatus(facts),
+    matches: candidates + facts.databaseTargets.other + unresolved,
+    facts
+  };
+}
+function prodInfraStatus(facts) {
+  if (facts.databaseTargets.other > 0 || facts.infraMatches > 0) return "review";
+  if (facts.databaseCheck === "not-available") return "could-not-check";
+  return quietStatus(facts.unconfirmed, facts.couldHide);
+}
+var KIND_WORDS2 = {
+  terraform: "Terraform",
+  kubernetes: "Kubernetes",
+  helm: "Helm releases",
+  "cloud-delete": "cloud resource deletes",
+  deploy: "production deploys",
+  "prod-config": "production config edits",
+  other: "your own production guardrails"
+};
+function when2(id, test, say) {
+  return { id, render: (f) => test(f) ? say(f) : void 0 };
+}
+function otherMatches(f) {
+  const db = f.databaseTargets;
+  const databases = f.databaseCheck === "checked" ? db.other + db.local + db.scratch : 0;
+  return databases + f.infraMatches + f.localInfra > 0;
+}
+var PROD_FOUND = [
+  when2(
+    "prod.databases",
+    (f) => f.databaseCheck === "checked" && f.databaseTargets.other > 0,
+    (f) => `${counted(f.databaseTargets.other, "database command", "database commands")} that ran targeted a database that is not on this machine or a scratch copy, which this report counts as production.`
+  ),
+  when2(
+    "prod.databases-local",
+    (f) => f.databaseCheck === "checked" && f.databaseTargets.local + f.databaseTargets.scratch > 0,
+    (f) => {
+      const n2 = f.databaseTargets.local + f.databaseTargets.scratch;
+      return `${counted(n2, "database command", "database commands")} targeted a local or scratch database and ${n2 === 1 ? "is" : "are"} not counted.`;
+    }
+  ),
+  when2(
+    "prod.databases-none",
+    (f) => f.databaseCheck === "checked" && f.databaseTargets.other === 0 && f.couldHide === 0 && f.unconfirmed === 0,
+    () => "No database command that ran targeted a database beyond local and scratch ones."
+  ),
+  when2(
+    "prod.databases-unavailable",
+    (f) => f.databaseCheck === "not-available",
+    () => "Database targets could not be checked, so this is not a clean result."
+  ),
+  when2(
+    "prod.infra",
+    (f) => f.infraMatches > 0,
+    (f) => `${counted(f.infraMatches, "command or edit", "commands or edits")} that ran matched a production infrastructure guardrail: ${f.infraKinds.map((k) => KIND_WORDS2[k]).join(", ")}.`
+  ),
+  when2(
+    "prod.local-infra",
+    (f) => f.localInfra > 0,
+    (f) => `${counted(f.localInfra, "match", "matches")} targeted this machine (a local Kubernetes cluster or LocalStack) and ${f.localInfra === 1 ? "is" : "are"} not counted.`
+  ),
+  when2(
+    "prod.infra-none",
+    (f) => f.infraMatches === 0 && f.couldHide === 0 && f.unconfirmed === 0,
+    // After the line on matches that targeted this machine, "other" keeps the two from
+    // contradicting each other.
+    (f) => f.localInfra > 0 ? "No other command or edit that ran matched a production infrastructure guardrail." : "No command or edit that ran matched a production infrastructure guardrail."
+  ),
+  when2(
+    "prod.mentioned",
+    (f) => f.mentioned > 0,
+    (f) => `${moreMatches(f.mentioned, otherMatches(f))} only mentioned a production command and did not run.`
+  ),
+  when2(
+    "prod.unconfirmed",
+    (f) => f.unconfirmed > 0,
+    (f) => `${counted(f.unconfirmed, "match", "matches")} could not be confirmed as run, or as aimed at this machine.`
+  )
+];
+function anyTarget(f) {
+  return f.databaseTargets.other > 0 || f.infraMatches > 0;
+}
+var PROD_NOW = [
+  when2(
+    "prod.cannot-check",
+    anyTarget,
+    () => "What these did to a production system cannot be checked from this machine."
+  )
+];
+var PROD_FIX_STEPS = [
+  when2(
+    "prod.fix.review",
+    anyTarget,
+    () => "Review each one with whoever owns the production system it touched."
+  )
+];
+var PROD_CHIP = {
+  id: "prod.chip",
+  count: (f) => f.databaseTargets.other,
+  one: "production database touched",
+  many: "production databases touched"
+};
+var PROD_CHIP_REASONS = [
+  PROD_CHIP,
+  {
+    id: "prod.chip.infra",
+    count: (f) => f.infraMatches,
+    one: "command matched a production infrastructure guardrail",
+    many: "commands matched a production infrastructure guardrail"
+  }
+];
+var prodInfraCard = (result, context) => {
+  const f = result.facts;
+  const card = {
+    category: "prod-infra",
+    tone: result.status,
+    count: result.matches,
+    found: sentences(PROD_FOUND, f),
+    now: sentences(PROD_NOW, f),
+    fixes: [],
+    fixSteps: sentences(PROD_FIX_STEPS, f),
+    chip: chipFor(f, PROD_CHIP_REASONS, PROD_CHIP),
+    codexCaveat: restsOnCodex(context) && anyTarget(f)
+  };
+  return card;
+};
+
+// src/core/verify/tests.ts
+import { dirname as dirname2 } from "path";
+var TEST_CONFIG = /^(?:(?:vitest|vite|jest|karma)\.(?:config|workspace)(?:\.[\w-]+)?\.(?:[cm]?[jt]s|json)|package\.json|\.nycrc(?:\.(?:json|ya?ml))?|\.c8rc(?:\.json)?|\.coveragerc|pytest\.ini|tox\.ini|setup\.cfg|pyproject\.toml|\.?codecov\.ya?ml)$/i;
+var COVERAGE_FILE = /^(?:\.nycrc(?:\.(?:json|ya?ml))?|\.c8rc(?:\.json)?|\.coveragerc|\.?codecov\.ya?ml)$/i;
+var COVERAGE_TEXT = /threshold|coverage|fail[_-]under|check-coverage/i;
+var THRESHOLD = /["']?\b(lines|branches|functions|statements|fail[_-]under|target)\b["']?\s*[:=]\s*["']?(\d+(?:\.\d+)?)/g;
+var AUTO_UPDATE_ON = /\bautoUpdate\b["']?\s*:\s*(?!false\b)[^\s,}]/;
+var EXCLUDE_LIST = /\b(?:exclude|coveragePathIgnorePatterns|testPathIgnorePatterns|modulePathIgnorePatterns|testIgnore|omit)\b["']?\s*[:=]\s*\[([^\]]*)\]/g;
+var QUOTED2 = /(["'`])(?:(?!\1).)+\1/g;
+var PASS_FLAG = /--pass-?with-?no-?tests\b(?!\s*=\s*false)/i;
+var PASS_SETTING = /passWithNoTests["']?\s*:\s*true|--pass-?with-?no-?tests\b(?!\s*=\s*false)/gi;
+var FORCED_TRUE = /\|\|\s*(?:true\b|exit\s+0\b|:(?=[\s"';)]|$))/gm;
+var CI_FILE = /(?:^|[\\/])(?:\.github[\\/]workflows[\\/][^\\/]+\.ya?ml|\.gitlab-ci\.ya?ml|\.circleci[\\/]config\.ya?ml|azure-pipelines\.ya?ml|bitbucket-pipelines\.ya?ml|\.travis\.ya?ml|Jenkinsfile|\.buildkite[\\/][^\\/]+)$/;
+var BUILD_OUTPUT = /(?:^|[\\/])(?:dist|build|out|coverage|node_modules)[\\/]/;
+function isTestPath(path) {
+  if (BUILD_OUTPUT.test(path)) return false;
+  const name = baseName(path.replace(/[\\/]+$/, ""));
+  return /[._](?:test|spec)\.[a-z0-9]+$/i.test(name) || /^test_.+\.py$/i.test(name) || /_test\.(?:go|py|rb|exs?)$/i.test(name) || /(?:^|[\\/])__tests__(?:[\\/]|$)/.test(path);
+}
+function isTestConfig(path) {
+  return TEST_CONFIG.test(baseName(path));
+}
+function isCiFile(path) {
+  return CI_FILE.test(path);
+}
+function thresholds(text2) {
+  const out = /* @__PURE__ */ new Map();
+  for (const match of text2.matchAll(THRESHOLD)) {
+    const key = match[1].replace("-", "_");
+    const list = out.get(key) ?? [];
+    list.push(Number(match[2]));
+    out.set(key, list);
+  }
+  return out;
+}
+function lowersThreshold(edit) {
+  if (edit.whole || edit.deleted) return false;
+  const name = baseName(edit.path);
+  if (!COVERAGE_FILE.test(name) && !COVERAGE_TEXT.test(`${edit.removed}
+${edit.added}`)) {
+    return false;
+  }
+  const before = thresholds(edit.removed);
+  const after = thresholds(edit.added);
+  if (before.size > 0 && after.size === 0) return true;
+  for (const [key, was3] of before) {
+    const now = after.get(key);
+    if (now === void 0) continue;
+    for (let i = 0; i < Math.min(was3.length, now.length); i++) {
+      if (now[i] < was3[i]) return true;
+    }
+  }
+  return false;
+}
+function excludeEntries(text2) {
+  let count2 = 0;
+  for (const match of text2.matchAll(EXCLUDE_LIST)) {
+    count2 += [...(match[1] ?? "").matchAll(QUOTED2)].length;
+  }
+  return count2;
+}
+function addsExclude(edit) {
+  return !edit.whole && !edit.deleted && excludeEntries(edit.added) > excludeEntries(edit.removed);
+}
+function occurrences(pattern, text2) {
+  return [...text2.matchAll(pattern)].length;
+}
+function addsPassWithNoTests(edit) {
+  return occurrences(PASS_SETTING, edit.added) > occurrences(PASS_SETTING, edit.removed);
+}
+function forcesCiStep(edit) {
+  return occurrences(FORCED_TRUE, edit.added) > occurrences(FORCED_TRUE, edit.removed);
+}
+function deletedTestPaths(command) {
+  const out = [];
+  for (const simple of simpleCommands(command)) {
+    const { program, args: args2 } = programAndArgs(simple);
+    let targets = [];
+    if (program === "rm" || program === "unlink") targets = args2;
+    else if (program === "git") {
+      let k = 0;
+      while (k < args2.length && args2[k].startsWith("-")) {
+        k += args2[k] === "-C" || args2[k] === "-c" ? 2 : 1;
+      }
+      if (args2[k] === "rm") targets = args2.slice(k + 1);
+    }
+    for (const target of targets) {
+      if (!target.startsWith("-") && isTestPath(target)) out.push(target);
+    }
+  }
+  return out;
+}
+var TEST_RUN = /\b(?:vitest|jest|mocha|pytest|playwright\s+test|go\s+test|cargo\s+test|(?:npm|pnpm|yarn|bun)\s+(?:run\s+)?test(?::[\w-]+)?)\b/;
+var FAILED_LINE = /\bFAIL(?:ED)?\b|✗|×|\b[1-9]\d* (?:failed|failing)\b/;
+var NAME_BEFORE = /[\s/\\"'`([]/;
+var NAME_AFTER = /[\s:"'`)\],>]/;
+function namesFile(line2, name) {
+  if (name === "") return false;
+  for (let at2 = line2.indexOf(name); at2 >= 0; at2 = line2.indexOf(name, at2 + 1)) {
+    const before = line2[at2 - 1];
+    const after = line2[at2 + name.length];
+    if ((before === void 0 || NAME_BEFORE.test(before)) && (after === void 0 || NAME_AFTER.test(after))) {
+      return true;
+    }
+  }
+  return false;
+}
+function namesAsFailing(output, name) {
+  return output.split(/\r?\n/).some((line2) => FAILED_LINE.test(line2) && namesFile(line2, name));
+}
+function shellWrittenPaths(command) {
+  const out = [];
+  for (const simple of simpleCommands(command)) {
+    out.push(...simple.writes);
+    const { program, args: args2 } = programAndArgs(simple);
+    const operands3 = args2.filter((a) => !a.startsWith("-"));
+    if (program === "sed" && args2.some((a) => /^-[A-Za-z]*i|^--in-place/.test(a)) || program === "perl" && args2.some((a) => /^-[A-Za-z]*i/.test(a))) {
+      const scripted = args2.some((a) => /^-[A-Za-z]*e$/.test(a));
+      out.push(...scripted ? operands3 : operands3.slice(1));
+    } else if (program === "tee") out.push(...operands3);
+    else if ((program === "cp" || program === "mv") && operands3.length >= 2) {
+      out.push(operands3[operands3.length - 1]);
+    }
+  }
+  return out;
+}
+var APPLY_REPORTS = /^--(?:check|stat|numstat|summary)$/;
+function changesFilesUnread(command) {
+  for (const simple of simpleCommands(command)) {
+    const { program, args: args2 } = programAndArgs(simple);
+    if (program === "patch") {
+      if (!args2.includes("--dry-run")) return true;
+      continue;
+    }
+    if (program !== "git") continue;
+    const k = gitSubcommandIndex(args2);
+    const sub = args2[k];
+    const rest = args2.slice(k + 1);
+    if (sub === "apply" && (rest.includes("--apply") || !rest.some((a) => APPLY_REPORTS.test(a)))) {
+      return true;
+    }
+    if (sub === "am") return true;
+    if ((sub === "checkout" || sub === "restore") && rest.some((a) => !a.startsWith("-") && (isTestConfig(a) || isCiFile(a)))) {
+      return true;
+    }
+  }
+  return false;
+}
+function writesConfigByShell(command) {
+  return shellWrittenPaths(command).some((path) => isTestConfig(path) || isCiFile(path)) || changesFilesUnread(command);
+}
+function isTestRun(text2) {
+  return TEST_RUN.test(text2);
+}
+function isCoverageRun(text2) {
+  return isTestRun(text2) && /\bcoverage\b/i.test(text2);
+}
+function historyFix(path, deleted) {
+  const dir = { ref: dirname2(path) };
+  const file2 = { repoPath: baseName(path) };
+  return localFixCommand(
+    "tests",
+    deleted ? ["git", "-C", dir, "log", "--diff-filter=D", "--oneline", "--", file2] : ["git", "-C", dir, "log", "-p", "--", file2]
+  );
+}
+async function checkTests(input) {
+  const { agent, calls } = input.calls;
+  const outputRecorded = agent === "claude";
+  const counts = {
+    thresholdsLowered: 0,
+    autoUpdateReverts: 0,
+    configsRewritten: 0,
+    excludesAdded: 0,
+    passWithNoTests: 0,
+    ciStepsForcedTrue: 0,
+    testFilesDeleted: 0,
+    deletedAfterFailing: 0,
+    deletedFailureUnknown: 0,
+    unreadEdits: 0,
+    mentioned: 0,
+    unconfirmed: 0
+  };
+  let matches = 0;
+  const fixes = [];
+  const addFix = (fix) => {
+    if (fixes.length < MAX_LOCAL_FIXES) fixes.push(fix);
+  };
+  const configs = /* @__PURE__ */ new Set();
+  const lowering = [];
+  const seen = /* @__PURE__ */ new Map();
+  const seenKey = (call, path) => `${call.session}\0${path}`;
+  const see = (call, path, text2) => {
+    const values = thresholds(text2);
+    if (values.size === 0) return;
+    const list = seen.get(seenKey(call, path)) ?? [];
+    list.push({ order: call.order, values });
+    seen.set(seenKey(call, path), list);
+  };
+  const written = /* @__PURE__ */ new Map();
+  const runs = /* @__PURE__ */ new Map();
+  const tally = (state) => {
+    matches += 1;
+    if (state === "mentioned") counts.mentioned += 1;
+    else if (state === "unknown") counts.unconfirmed += 1;
+    return state === "ran";
+  };
+  const failedBefore = (call, path) => {
+    const name = baseName(path.replace(/[\\/]+$/, ""));
+    return (runs.get(call.session) ?? []).some(
+      (run) => run.order < call.order && run.result !== void 0 && namesAsFailing(run.result.content, name)
+    );
+  };
+  const revertsToSeen = (call, edit) => {
+    const coverageRuns = (runs.get(call.session) ?? []).filter(
+      (run) => run.order < call.order && isCoverageRun(executedText(run.command ?? ""))
+    );
+    const lastRun = coverageRuns[coverageRuns.length - 1];
+    if (lastRun === void 0) return false;
+    const before = /* @__PURE__ */ new Map();
+    for (const entry of seen.get(seenKey(call, edit.path)) ?? []) {
+      if (entry.order >= lastRun.order) continue;
+      for (const [key, values] of entry.values) {
+        const set = before.get(key) ?? /* @__PURE__ */ new Set();
+        for (const value of values) set.add(value);
+        before.set(key, set);
+      }
+    }
+    const was3 = thresholds(edit.removed);
+    const now = thresholds(edit.added);
+    let lowered = false;
+    for (const [key, values] of now) {
+      const old = was3.get(key) ?? [];
+      for (let i = 0; i < Math.min(old.length, values.length); i++) {
+        if (values[i] >= old[i]) continue;
+        lowered = true;
+        if (!before.get(key)?.has(values[i])) return false;
+      }
+    }
+    return lowered;
+  };
+  for (const call of calls) {
+    if (isShell(call)) {
+      const raw2 = call.command;
+      const deletes = deletedTestPaths(raw2).length > 0;
+      const passes = PASS_FLAG.test(raw2);
+      const testRun = isTestRun(raw2);
+      if (writesConfigByShell(raw2)) {
+        if (tally(runStateOf(agent, call, writesConfigByShell))) counts.unreadEdits += 1;
+        if (!deletes && !passes && !testRun) continue;
+      }
+      if (!deletes && !passes && !testRun) continue;
+      if (testRun && !deletes && !passes) {
+        if (runStateOf(agent, call, isTestRun) === "ran") {
+          const list = runs.get(call.session) ?? [];
+          list.push(call);
+          runs.set(call.session, list);
+        }
+        continue;
+      }
+      const holds = (command) => deletedTestPaths(command).length > 0 || PASS_FLAG.test(command);
+      if (!tally(runStateOf(agent, call, holds))) continue;
+      const ran = executedText(raw2);
+      if (isTestRun(ran)) {
+        const list = runs.get(call.session) ?? [];
+        list.push(call);
+        runs.set(call.session, list);
+      }
+      if (PASS_FLAG.test(ran)) counts.passWithNoTests += 1;
+      for (const target of deletedTestPaths(ran)) {
+        counts.testFilesDeleted += 1;
+        if (!outputRecorded) counts.deletedFailureUnknown += 1;
+        else if (failedBefore(call, target)) counts.deletedAfterFailing += 1;
+        const path2 = placed(target, call.cwd);
+        if (path2 !== void 0) addFix(historyFix(path2, true));
+      }
+      continue;
+    }
+    if (!isEdit(call)) {
+      const read = call.mapped.args.file_path;
+      if (call.mapped.tool === "Read" && read !== void 0 && isTestConfig(read) && call.result !== void 0 && !call.result.isError) {
+        see(call, read, call.result.content);
+      }
+      continue;
+    }
+    const raw = call.edit;
+    const previous = raw.whole ? written.get(seenKey(call, raw.path)) : void 0;
+    const edit = previous === void 0 ? raw : { ...raw, removed: previous, whole: false };
+    const config = isTestConfig(edit.path);
+    const ci = isCiFile(edit.path);
+    const deletesTest = edit.deleted && isTestPath(edit.path);
+    if (!config && !ci && !deletesTest) continue;
+    const findings = {
+      lowers: config && lowersThreshold(edit),
+      rewrites: (config || ci) && edit.whole,
+      excludes: config && addsExclude(edit),
+      passes: (config || ci) && !edit.whole && addsPassWithNoTests(edit),
+      forces: ci && !edit.whole && forcesCiStep(edit)
+    };
+    const record = () => {
+      if (runStateOf(agent, call, () => true) !== "ran") return;
+      if (raw.whole) written.set(seenKey(call, raw.path), raw.added);
+      else written.delete(seenKey(call, raw.path));
+      if (config) see(call, raw.path, `${raw.removed}
+${raw.added}`);
+    };
+    if (!deletesTest && !Object.values(findings).some(Boolean)) {
+      record();
+      continue;
+    }
+    if (!tally(runStateOf(agent, call, () => true))) continue;
+    const reverts = findings.lowers && revertsToSeen(call, edit);
+    record();
+    const path = placed(edit.path, call.cwd);
+    if (config && path !== void 0) configs.add(path);
+    if (findings.lowers) {
+      lowering.push({
+        path,
+        autoUpdateInEdit: AUTO_UPDATE_ON.test(`${edit.removed}
+${edit.added}`),
+        revertsToSeen: reverts
+      });
+      if (path !== void 0) addFix(historyFix(path, false));
+    }
+    if (findings.rewrites) counts.configsRewritten += 1;
+    if (findings.excludes) counts.excludesAdded += 1;
+    if (findings.passes) counts.passWithNoTests += 1;
+    if (findings.forces) counts.ciStepsForcedTrue += 1;
+    if (deletesTest) {
+      counts.testFilesDeleted += 1;
+      if (!outputRecorded) counts.deletedFailureUnknown += 1;
+      else if (failedBefore(call, edit.path)) counts.deletedAfterFailing += 1;
+      if (path !== void 0) addFix(historyFix(path, true));
+    }
+  }
+  const cache = rootCache();
+  const onDisk = /* @__PURE__ */ new Map();
+  const autoUpdateNow = { on: 0, off: 0, unread: 0 };
+  for (const path of configs) {
+    const read = await readRepoFile(input.io, path, cache);
+    const on = read.ok ? AUTO_UPDATE_ON.test(read.text) : void 0;
+    onDisk.set(path, on);
+    if (on === void 0) autoUpdateNow.unread += 1;
+    else if (on) autoUpdateNow.on += 1;
+    else autoUpdateNow.off += 1;
+  }
+  for (const lower of lowering) {
+    const on = lower.autoUpdateInEdit || lower.path !== void 0 && onDisk.get(lower.path) === true;
+    if (on && lower.revertsToSeen) counts.autoUpdateReverts += 1;
+    else counts.thresholdsLowered += 1;
+  }
+  const behind = backstopCalls(
+    input.calls,
+    READ_PROGRAMS.tests,
+    (tail) => deletedTestPaths(tail).length > 0 || writesConfigByShell(tail) || changesFilesUnread(tail)
+  );
+  const facts = {
+    ...counts,
+    autoUpdateNow,
+    ...hidingFacts(input.calls, behind)
+  };
+  return { check: { status: testsStatus(facts), matches, facts }, localFixes: fixes };
+}
+function testsStatus(facts) {
+  if (facts.thresholdsLowered + facts.passWithNoTests + facts.ciStepsForcedTrue + facts.deletedAfterFailing > 0) {
+    return "act";
+  }
+  if (facts.excludesAdded + facts.testFilesDeleted + facts.autoUpdateReverts + facts.configsRewritten > 0) {
+    return "review";
+  }
+  return quietStatus(facts.unconfirmed + facts.unreadEdits, facts.couldHide);
+}
+function whenAny2(id, count2, say) {
+  return { id, render: (f) => count2(f) > 0 ? say(count2(f), f) : void 0 };
+}
+function signals(f) {
+  return f.thresholdsLowered + f.autoUpdateReverts + f.configsRewritten + f.excludesAdded + f.passWithNoTests + f.ciStepsForcedTrue + f.testFilesDeleted;
+}
+var TESTS_FOUND = [
+  whenAny2(
+    "tests.thresholds-lowered",
+    (f) => f.thresholdsLowered,
+    (n2) => `${counted(n2, "edit that ran lowered", "edits that ran lowered")} a test coverage threshold.`
+  ),
+  whenAny2(
+    "tests.auto-update-reverts",
+    (f) => f.autoUpdateReverts,
+    (n2) => `${counted(n2, "edit", "edits")} lowered a threshold back to a value it had before a coverage run with autoUpdate on, which may be undoing an automatic raise.`
+  ),
+  whenAny2(
+    "tests.configs-rewritten",
+    (f) => f.configsRewritten,
+    (n2) => `${counted(n2, "test config or CI file was", "test configs or CI files were")} rewritten whole with no earlier content to compare, so what changed cannot be told from the edit.`
+  ),
+  whenAny2(
+    "tests.excludes-added",
+    (f) => f.excludesAdded,
+    (n2) => `${counted(n2, "edit that ran added", "edits that ran added")} files to a test or coverage exclude list.`
+  ),
+  whenAny2(
+    "tests.pass-with-no-tests",
+    (f) => f.passWithNoTests,
+    (n2) => `${counted(n2, "test run or config was", "test runs or configs were")} set to pass with no tests (passWithNoTests).`
+  ),
+  whenAny2(
+    "tests.ci-forced-true",
+    (f) => f.ciStepsForcedTrue,
+    (n2) => `${counted(n2, "edit gave a CI step", "edits gave CI steps")} "|| true", so a failing step passes.`
+  ),
+  whenAny2(
+    "tests.deleted",
+    (f) => f.testFilesDeleted,
+    (n2) => `${counted(n2, "test file was", "test files were")} deleted by commands or edits that ran.`
+  ),
+  whenAny2(
+    "tests.deleted-after-failing",
+    (f) => f.deletedAfterFailing,
+    (n2) => `${n2} of them ${n2 === 1 ? "was" : "were"} deleted after a test run in the same session reported ${n2 === 1 ? "it" : "them"} failing.`
+  ),
+  whenAny2(
+    "tests.deleted-failure-unknown",
+    (f) => f.deletedFailureUnknown,
+    (n2) => `For ${n2} of them the test output was not recorded, so whether ${n2 === 1 ? "it" : "they"} failed first is not known.`
+  ),
+  // Said whatever the tone, as a count: a revert or a rewrite outranks it, and what these
+  // commands changed is not known either way.
+  whenAny2(
+    "tests.unread-edits",
+    (f) => f.unreadEdits,
+    (n2) => `${counted(n2, "command that ran", "commands that ran")} changed a test config or CI file through the shell or git, or applied a patch, which this check does not read, so what changed is not known.`
+  ),
+  {
+    id: "tests.nothing",
+    render: (f) => signals(f) === 0 && f.couldHide === 0 && f.unconfirmed === 0 && f.unreadEdits === 0 ? "No edit or command that ran lowered a coverage threshold, added a test exclude, passed with no tests, forced a CI step to pass or deleted a test file." : void 0
+  },
+  whenAny2(
+    "tests.mentioned",
+    (f) => f.mentioned,
+    (n2, f) => `${moreMatches(n2, signals(f) > 0)} only mentioned one of these and did not run.`
+  ),
+  whenAny2(
+    "tests.unconfirmed",
+    (f) => f.unconfirmed,
+    (n2) => `${counted(n2, "match", "matches")} could not be confirmed as run.`
+  )
+];
+var TESTS_NOW = [
+  {
+    id: "tests.auto-update-now",
+    render: ({ autoUpdateNow: a }) => {
+      const read = a.on + a.off;
+      return read > 0 ? `Coverage autoUpdate is on in ${a.on} of the ${counted(read, "test config", "test configs")} these edits touched that could be read.` : void 0;
+    }
+  },
+  whenAny2(
+    "tests.auto-update-unread",
+    (f) => f.autoUpdateNow.unread,
+    (n2) => `${counted(n2, "test config", "test configs")} these edits touched could not be read now.`
+  )
+];
+var TESTS_FIX_STEPS = [
+  whenAny2(
+    "tests.fix.thresholds",
+    (f) => f.thresholdsLowered,
+    () => "Put the lowered thresholds back, or set them to today's coverage."
+  ),
+  whenAny2(
+    "tests.fix.pass-with-no-tests",
+    (f) => f.passWithNoTests,
+    () => "Remove passWithNoTests, so a run that finds no tests fails."
+  ),
+  whenAny2(
+    "tests.fix.ci",
+    (f) => f.ciStepsForcedTrue,
+    () => 'Take "|| true" off the CI steps, so a failing step fails the build.'
+  ),
+  whenAny2(
+    "tests.fix.deleted",
+    (f) => f.deletedAfterFailing,
+    () => "Restore the deleted tests from history and fix what made them fail."
+  )
+];
+var TESTS_HEADLINE = whenAny2(
+  "tests.headline",
+  (f) => f.thresholdsLowered,
+  (n2) => `${counted(n2, "edit", "edits")} lowered a test coverage threshold`
+);
+var TESTS_CHIP = {
+  id: "tests.chip",
+  count: (f) => f.thresholdsLowered,
+  one: "test floor lowered",
+  many: "test floors lowered"
+};
+var TESTS_CHIP_REASONS = [
+  TESTS_CHIP,
+  {
+    id: "tests.chip.pass-with-no-tests",
+    count: (f) => f.passWithNoTests,
+    one: "test run or config set to pass with no tests",
+    many: "test runs or configs set to pass with no tests"
+  },
+  {
+    id: "tests.chip.ci-forced",
+    count: (f) => f.ciStepsForcedTrue,
+    one: "CI step forced to pass",
+    many: "CI steps forced to pass"
+  },
+  {
+    id: "tests.chip.deleted-after-failing",
+    count: (f) => f.deletedAfterFailing,
+    one: "test deleted after it failed",
+    many: "tests deleted after they failed"
+  },
+  {
+    id: "tests.chip.excludes",
+    count: (f) => f.excludesAdded,
+    one: "test or coverage exclude added",
+    many: "test or coverage excludes added"
+  },
+  {
+    id: "tests.chip.deleted",
+    count: (f) => f.testFilesDeleted,
+    one: "test file deleted",
+    many: "test files deleted"
+  },
+  {
+    id: "tests.chip.reverts",
+    count: (f) => f.autoUpdateReverts,
+    one: "threshold set back after an automatic raise",
+    many: "thresholds set back after an automatic raise"
+  },
+  {
+    id: "tests.chip.rewritten",
+    count: (f) => f.configsRewritten,
+    one: "test config or CI file rewritten whole",
+    many: "test configs or CI files rewritten whole"
+  }
+];
+var testsCard = (result, context) => {
+  const f = result.facts;
+  const headline2 = sentence(TESTS_HEADLINE, f);
+  const ran = signals(f) > 0;
+  const card = {
+    category: "tests",
+    tone: result.status,
+    count: result.matches,
+    found: sentences(TESTS_FOUND, f),
+    now: sentences(TESTS_NOW, f),
+    fixes: [
+      ...f.thresholdsLowered > 0 ? [{ shape: "git log -p -- <test config>" }] : [],
+      ...f.testFilesDeleted > 0 ? [{ shape: "git log --diff-filter=D --oneline -- <test file>" }] : []
+    ],
+    fixSteps: sentences(TESTS_FIX_STEPS, f),
+    chip: chipFor(f, TESTS_CHIP_REASONS, TESTS_CHIP),
+    codexCaveat: restsOnCodex(context) && ran,
+    ...headline2 === void 0 ? {} : {
+      headline: {
+        basis: "lowered-test-floors",
+        count: f.thresholdsLowered,
+        restsOnCodexRan: restsOnCodex(context),
+        sentence: headline2
+      }
+    }
+  };
+  return card;
+};
+
+// src/core/verify/unreviewed.ts
+var PUSH_VALUE_OPTIONS = /* @__PURE__ */ new Set([
+  "-o",
+  "--push-option",
+  "--receive-pack",
+  "--exec"
+]);
+var MAIN_BRANCH = /^(?:refs\/heads\/)?(main|master)$/;
+function readPushes(command) {
+  const out = [];
+  let dir;
+  for (const simple of simpleCommands(command)) {
+    const { program, args: args2 } = programAndArgs(simple);
+    if (program === "cd") {
+      dir = args2[0];
+      continue;
+    }
+    if (program !== "git") continue;
+    let k = 0;
+    let here = dir;
+    while (k < args2.length && args2[k].startsWith("-")) {
+      const arg = args2[k];
+      if (arg === "-C") here = args2[k + 1];
+      k += GIT_GLOBAL_VALUE_OPTIONS.has(arg) ? 2 : 1;
+    }
+    if (args2[k] !== "push") continue;
+    let remote;
+    let dryRun = false;
+    const refspecs = [];
+    const rest = args2.slice(k + 1);
+    for (let i = 0; i < rest.length; i++) {
+      const arg = rest[i];
+      if (arg === "--dry-run" || arg === "-n") dryRun = true;
+      else if (arg.startsWith("--repo=")) remote = arg.slice("--repo=".length);
+      else if (arg === "--repo") {
+        remote = rest[i + 1];
+        i += 1;
+      } else if (PUSH_VALUE_OPTIONS.has(arg)) i += 1;
+      else if (arg.startsWith("-")) continue;
+      else if (remote === void 0) remote = arg;
+      else refspecs.push(arg);
+    }
+    out.push({
+      remote: remote ?? "origin",
+      dir: here,
+      dryRun,
+      destinations: refspecs.map((spec) => spec.replace(/^\+/, "").split(":").pop() ?? spec)
+    });
+  }
+  return out;
+}
+function hasPush(command) {
+  return readPushes(command).length > 0;
+}
+function pushedRefs(output) {
+  const out = [];
+  for (const raw of output.split(/\r?\n/)) {
+    const line2 = raw.trimStart();
+    const range = /^\+?\s*([0-9a-f]{7,64})\.\.\.?([0-9a-f]{7,64})\s+(\S+)\s+->\s+(\S+)/.exec(line2);
+    if (range !== null) {
+      out.push({ from: range[1], to: range[2], branch: range[4] });
+      continue;
+    }
+    const created = /^\*\s+\[new branch\]\s+(\S+)\s+->\s+(\S+)/.exec(line2);
+    if (created !== null)
+      out.push({ from: void 0, to: void 0, branch: created[2] });
+  }
+  return out;
+}
+function saysWhatHappened(output) {
+  return /\s->\s|Everything up-to-date|\[up to date\]/.test(output);
+}
+var PUSH_RULES = /* @__PURE__ */ new Set(["block-force-push"]);
+async function place(io, root, update) {
+  const branch = MAIN_BRANCH.exec(update.branch)?.[1];
+  if (branch === void 0 || update.from === void 0 || update.to === void 0) {
+    return void 0;
+  }
+  const contains = await io.git(root, [
+    "for-each-ref",
+    "--contains",
+    update.to,
+    "--format=%(refname)",
+    "refs/remotes/origin/main",
+    "refs/remotes/origin/master"
+  ]);
+  if (!contains.ok) return void 0;
+  const range = await io.git(root, [
+    "log",
+    "--format=%H",
+    "--max-count=1000",
+    update.to,
+    "--not",
+    update.from
+  ]);
+  if (!range.ok) return void 0;
+  const commits2 = range.stdout.split("\n").filter((l) => l.trim() !== "").length;
+  const ref = `refs/remotes/origin/${branch}`;
+  return { onMain: contains.stdout.split("\n").some((l) => l.trim() === ref), commits: commits2 };
+}
+async function checkUnreviewed(input) {
+  const { agent, calls } = input.calls;
+  const cache = rootCache();
+  const fixes = [];
+  const counts = {
+    pushesToMain: 0,
+    commitsOnMain: 0,
+    commitsNotOnMain: 0,
+    pushesNotChecked: 0,
+    pushesCreatingMain: 0,
+    pushesUnattributed: 0,
+    mentioned: 0,
+    unconfirmed: 0
+  };
+  let matches = 0;
+  const rules12 = input.rules;
+  const pushRule = rules12 === void 0 ? void 0 : rulesMatcher(rules12.catalog, rules12.allowlist, (r) => PUSH_RULES.has(r.rule.id));
+  const unread = [];
+  for (const call of calls) {
+    if (!isShell(call)) continue;
+    if (!hasPush(call.command)) {
+      if (pushRule === void 0 || !call.ruleIds.some((id) => PUSH_RULES.has(id))) continue;
+      matches += 1;
+      const state2 = runStateOf(agent, call, (command) => pushRule(call, command));
+      if (state2 === "mentioned") counts.mentioned += 1;
+      else if (state2 === "unknown") counts.unconfirmed += 1;
+      else unread.push(call);
+      continue;
+    }
+    matches += 1;
+    const state = runStateOf(agent, call, hasPush);
+    if (state === "mentioned") {
+      counts.mentioned += 1;
+      continue;
+    }
+    if (state === "unknown") {
+      counts.unconfirmed += 1;
+      continue;
+    }
+    const pushes = readPushes(executedText(call.command)).filter((p) => !p.dryRun);
+    const push = pushes[0];
+    if (push === void 0) continue;
+    const output = call.result?.content ?? "";
+    const updates = pushedRefs(output).filter((u) => MAIN_BRANCH.test(u.branch));
+    const mainPushes = pushes.filter(couldReachMain).length;
+    if (updates.length === 0) {
+      if (pushes.length > 1) {
+        counts.pushesNotChecked += mainPushes;
+        if (saysWhatHappened(output)) counts.pushesUnattributed += mainPushes;
+      } else if (mainPushes > 0 && !saysWhatHappened(output)) counts.pushesNotChecked += 1;
+      continue;
+    }
+    if (pushes.length > 1) {
+      const extra = Math.max(0, mainPushes - updates.length);
+      counts.pushesNotChecked += extra;
+      counts.pushesUnattributed += extra;
+    }
+    counts.pushesToMain += updates.length;
+    counts.pushesCreatingMain += updates.filter((u) => u.from === void 0).length;
+    const oneTarget = pushes.every((p) => p.remote === push.remote && p.dir === push.dir);
+    const dir = placed(push.dir ?? call.cwd ?? "", call.cwd);
+    const root = dir === void 0 || dir === "" ? void 0 : await repoRoot(input.io, dir, cache);
+    if (root === void 0 || !root.ok || push.remote !== "origin") {
+      counts.pushesNotChecked += updates.length;
+      continue;
+    }
+    if (!oneTarget) {
+      counts.pushesNotChecked += updates.length;
+      counts.pushesUnattributed += updates.length;
+      continue;
+    }
+    for (const update of updates) {
+      const placement = await place(input.io, root.root, update);
+      if (placement === void 0) {
+        counts.pushesNotChecked += 1;
+        continue;
+      }
+      if (placement.onMain) {
+        counts.commitsOnMain += placement.commits;
+        if (fixes.length < MAX_LOCAL_FIXES) {
+          fixes.push(
+            localFixCommand("unreviewed", [
+              "git",
+              "-C",
+              { ref: root.root },
+              "log",
+              "--oneline",
+              { sha: update.to ?? "" },
+              "--not",
+              { sha: update.from ?? "" }
+            ])
+          );
+        }
+      } else counts.commitsNotOnMain += placement.commits;
+    }
+  }
+  const behind = backstopCalls(
+    input.calls,
+    READ_PROGRAMS.unreviewed,
+    (tail) => readPushes(tail).some((p) => !p.dryRun),
+    pushRule
+  );
+  const facts = { ...counts, ...hidingFacts(input.calls, [...unread, ...behind]) };
+  return { check: { status: unreviewedStatus(facts), matches, facts }, localFixes: fixes };
+}
+function couldReachMain(push) {
+  return push.destinations.length === 0 || push.destinations.some((d) => MAIN_BRANCH.test(d));
+}
+function unreviewedStatus(facts) {
+  if (facts.commitsOnMain > 0) return "review";
+  if (facts.pushesNotChecked > 0) return "could-not-check";
+  return quietStatus(facts.unconfirmed, facts.couldHide);
+}
+function when3(id, test, say) {
+  return { id, render: (f) => test(f) ? say(f) : void 0 };
+}
+var UNREVIEWED_FOUND = [
+  when3(
+    "unreviewed.pushes",
+    (f) => f.pushesToMain > 0,
+    (f) => `${counted(f.pushesToMain, "push that ran", "pushes that ran")} went straight to a main branch.`
+  ),
+  when3(
+    "unreviewed.none",
+    (f) => f.pushesToMain === 0 && f.pushesNotChecked === 0 && f.couldHide === 0 && f.unconfirmed === 0,
+    () => "No push that ran went straight to a main branch."
+  ),
+  when3(
+    "unreviewed.creates-main",
+    (f) => f.pushesCreatingMain > 0,
+    (f) => `${counted(f.pushesCreatingMain, "push", "pushes")} created a main branch on the remote, so its output names no range of commits, and ${f.pushesCreatingMain === 1 ? "it was" : "they were"} not checked.`
+  ),
+  when3(
+    "unreviewed.unattributed",
+    (f) => f.pushesUnattributed > 0,
+    (f) => {
+      const other = f.pushesCreatingMain > 0;
+      return `${counted(f.pushesUnattributed, other ? "more push" : "push", other ? "more pushes" : "pushes")} could not be checked: the command ran several pushes, and what their output says cannot be put to one of them.`;
+    }
+  ),
+  when3(
+    "unreviewed.not-checked",
+    (f) => f.pushesNotChecked > f.pushesCreatingMain + f.pushesUnattributed,
+    (f) => {
+      const n2 = f.pushesNotChecked - f.pushesCreatingMain - f.pushesUnattributed;
+      const other = f.pushesCreatingMain + f.pushesUnattributed > 0;
+      return `${counted(n2, other ? "more push" : "push", other ? "more pushes" : "pushes")} could not be checked: the output or the repo could not be read.`;
+    }
+  ),
+  when3(
+    "unreviewed.mentioned",
+    (f) => f.mentioned > 0,
+    (f) => {
+      const other = f.pushesToMain + f.pushesNotChecked > 0;
+      return `${counted(f.mentioned, other ? "more push was" : "push was", other ? "more pushes were" : "pushes were")} only mentioned and did not run.`;
+    }
+  ),
+  when3(
+    "unreviewed.unconfirmed",
+    (f) => f.unconfirmed > 0,
+    (f) => `${counted(f.unconfirmed, "push", "pushes")} could not be confirmed as run.`
+  )
+];
+var UNREVIEWED_NOW = [
+  when3(
+    "unreviewed.on-main",
+    (f) => f.commitsOnMain > 0,
+    (f) => `${counted(f.commitsOnMain, "commit is", "commits are")} on the remote's main branch, as this machine last fetched it.`
+  ),
+  when3(
+    "unreviewed.not-on-main",
+    (f) => f.commitsNotOnMain > 0,
+    (f) => `${counted(f.commitsNotOnMain, "pushed commit is", "pushed commits are")} no longer on it.`
+  )
+];
+var UNREVIEWED_FIX_STEPS = [
+  when3(
+    "unreviewed.fix.review",
+    (f) => f.commitsOnMain > 0,
+    () => "Review these commits as a pull request would have, and require pull requests on main."
+  )
+];
+var UNREVIEWED_CHIP = {
+  id: "unreviewed.chip",
+  render: (f) => noun(f.commitsOnMain, "commit pushed straight to main", "commits pushed straight to main")
+};
+var unreviewedCard = (result, context) => {
+  const f = result.facts;
+  const card = {
+    category: "unreviewed",
+    tone: result.status,
+    count: result.matches,
+    found: sentences(UNREVIEWED_FOUND, f),
+    now: sentences(UNREVIEWED_NOW, f),
+    fixes: f.commitsOnMain > 0 ? [{ shape: "git log --oneline <from>..<to>" }] : [],
+    fixSteps: sentences(UNREVIEWED_FIX_STEPS, f),
+    chip: {
+      count: f.commitsOnMain,
+      label: sentence(UNREVIEWED_CHIP, f) ?? { template: UNREVIEWED_CHIP.id, text: "" }
+    },
+    codexCaveat: restsOnCodex(context) && f.pushesToMain > 0
+  };
+  return card;
+};
+
+// src/core/verify/command-cards.ts
+var COMMAND_CHECK_CARDS = {
+  tests: testsCard,
+  cloud: cloudCard,
+  "prod-infra": prodInfraCard,
+  unreviewed: unreviewedCard,
+  egress: egressCard
+};
+
+// src/core/verify/destructive.ts
+import { dirname as dirname3, relative as relative2, sep as sep2 } from "path";
+
+// src/core/verify/copy.ts
+function countOf(n2, one, many = `${one}s`) {
+  return `${formatCount(n2)} ${n2 === 1 ? one : many}`;
+}
+var CATEGORY_TITLES = {
+  secrets: "Secrets in transcripts",
+  "skipped-checks": "Skipped safety checks",
+  "lost-work": "Lost work",
+  cloud: "Cloud and permissions",
+  "prod-infra": "Production infrastructure",
+  tests: "Gaming tests",
+  destructive: "Destructive commands",
+  unreviewed: "Unreviewed code",
+  egress: "Data leaving the machine"
+};
+var TONE_LABELS = {
+  act: "Act on this",
+  review: "Review",
+  clean: "Clean",
+  "could-not-check": "Could not check",
+  "not-checked": "Not checked"
+};
+var KIND_LABELS = {
+  "aws-access-key": "AWS access key",
+  "aws-secret-key": "AWS secret key",
+  "private-key": "Private key",
+  "github-token": "GitHub token",
+  "slack-token": "Slack token",
+  "api-key": "API key",
+  jwt: "JSON web token",
+  "bearer-token": "Bearer token",
+  "auth-header": "Authorization header",
+  "database-url": "Database URL with a password",
+  "url-credentials": "URL with a password",
+  password: "Password",
+  "named-secret": "A named secret",
+  "random-string": "Random-looking secret",
+  other: "Other credential"
+};
+var PROVENANCE_PHRASES = {
+  "pasted-into-prompt": "you pasted it into a prompt",
+  "typed-into-command": "typed into a command",
+  "printed-by-command": "printed by a command",
+  "in-agent-reply": "in an agent reply"
+};
+function evidenceRow(item) {
+  return {
+    kind: KIND_LABELS[item.kind] ?? KIND_LABELS.other,
+    how: item.via.map((via) => PROVENANCE_PHRASES[via]).filter((phrase) => phrase !== void 0).join(", "),
+    files: `in ${countOf(item.files, "transcript file")}`
+  };
+}
+var MORE_EVIDENCE = {
+  id: "evidence.more",
+  render: ({ more }) => more > 0 ? `And ${countOf(more, "more likely-real credential", "more likely-real credentials")}.` : void 0
+};
+var RAN_BASIS = {
+  id: "lead.ran-basis",
+  render: (v) => v.resultsRecorded ? "Checked against command output: a match counts only when the transcript records that its command ran." : void 0
+};
+var NO_RESULTS = {
+  id: "lead.no-results",
+  render: (v) => v.resultsRecorded ? void 0 : "These sessions record no command output, so no matched command could be confirmed as run. A count of commands that ran is zero here because nothing could be confirmed, not because nothing ran."
+};
+var MENTIONED = {
+  id: "lead.mentioned",
+  render: (v) => v.matchedCalls.mentioned > 0 ? `${countOf(v.matchedCalls.mentioned, "match", "matches")} only mentioned a command, in a search, a message or a file, and ${v.matchedCalls.mentioned === 1 ? "is" : "are"} left out.` : void 0
+};
+var UNCONFIRMED = {
+  id: "lead.unconfirmed",
+  render: (v) => v.resultsRecorded && v.matchedCalls.unknown > 0 ? `${countOf(v.matchedCalls.unknown, "matched call")} had no recorded output to show ${v.matchedCalls.unknown === 1 ? "it" : "they"} ran, and ${v.matchedCalls.unknown === 1 ? "is" : "are"} left out.` : void 0
+};
+var CODEX_TESTED_ON = "tested only on synthetic sessions built from Codex's documented rollout format, never on a real Codex session";
+var CODEX_UNVERIFIED_TEXT = `The Codex reading is limited and unverified: it is ${CODEX_TESTED_ON}. A Codex call counted as ran may be one a hook blocked, ids a Codex command printed show as not identified, and no Codex-only finding leads the report.`;
+var CODEX_UNVERIFIED = {
+  id: "lead.codex-unverified",
+  render: (v) => v.ranEvidence === "output-record" ? CODEX_UNVERIFIED_TEXT : void 0
+};
+var LEAD_NOTES = [
+  RAN_BASIS,
+  NO_RESULTS,
+  MENTIONED,
+  UNCONFIRMED,
+  CODEX_UNVERIFIED
+];
+function leadNotes(verification) {
+  return sentences(LEAD_NOTES, verification);
+}
+var CHIP_CANDIDATES = [
+  "secrets",
+  "skipped-checks",
+  "lost-work",
+  "cloud",
+  "prod-infra",
+  "destructive",
+  "egress"
+];
+var CHIP_COUNT = 6;
+function chipCategories(headline2) {
+  return CHIP_CANDIDATES.filter((c) => c !== headline2).slice(0, CHIP_COUNT);
+}
+var CHIP_TONE = {
+  id: "chip.tone",
+  render: ({ tone }) => TONE_LABELS[tone].toLowerCase()
+};
+function chipText(card) {
+  const counted5 = card.chip !== void 0 && (card.tone === "act" || card.tone === "review" || card.tone === "clean");
+  if (card.unconfirmed !== void 0 && (!counted5 || (card.chip?.count ?? 0) === 0)) {
+    return {
+      label: sentence(CHIP_UNCONFIRMED, card) ?? { template: CHIP_UNCONFIRMED.id, text: "" }
+    };
+  }
+  if (counted5 && card.chip !== void 0) {
+    return { count: card.chip.count, label: card.chip.label };
+  }
+  return { label: sentence(CHIP_TONE, card) ?? { template: CHIP_TONE.id, text: "" } };
+}
+var CHIP_UNCONFIRMED = {
+  id: "chip.could-not-confirm",
+  render: ({ unconfirmed }) => unconfirmed === void 0 ? void 0 : "could not confirm"
+};
+function toneLabel(card) {
+  return card.unconfirmed !== void 0 && card.tone === "could-not-check" ? "Could not confirm" : TONE_LABELS[card.tone];
+}
+var CODEX_CAVEAT = {
+  id: "card.codex-caveat",
+  render: ({ codexCaveat: codexCaveat2 }) => codexCaveat2 ? "Codex counts here include every call Codex recorded an output for, which may include calls a hook blocked." : void 0
+};
+var TONE_TALLY = {
+  id: "cards.tally",
+  render: (cards) => {
+    const parts = [];
+    const n2 = (tone) => cards.filter((c) => c.tone === tone).length;
+    if (n2("act") > 0) parts.push(`${formatCount(n2("act"))} to act on`);
+    if (n2("review") > 0) parts.push(`${formatCount(n2("review"))} to review`);
+    if (n2("clean") > 0) parts.push(`${formatCount(n2("clean"))} clean`);
+    if (n2("could-not-check") > 0)
+      parts.push(`${formatCount(n2("could-not-check"))} could not check`);
+    if (n2("not-checked") > 0) parts.push(`${formatCount(n2("not-checked"))} not checked`);
+    return parts.length === 0 ? void 0 : parts.join(" \xB7 ");
+  }
+};
+var FIXES_FILE_NOTE = {
+  id: "card.fixes-file",
+  render: ({ variant }) => variant === "artifact" ? `The exact commands, with real names and paths, are in ${FIXES_FILE} on the machine the scan ran on. That file was not published with this page.` : `The exact commands for this machine, with real names and paths, are in ${FIXES_FILE} next to this report. That file stays on this machine and is not part of this page.`
+};
+var UNSAFE_FIXES_FILE_NOTE = {
+  id: "card.fixes-file-unsafe",
+  render: ({ variant }) => variant === "artifact" ? `The local fixes file, ${FIXES_FILE} on the machine the scan ran on, lists the fixes here that could not be made safe, with no command for them. That file was not published with this page.` : `The local fixes file, ${FIXES_FILE} next to this report, lists the fixes here that could not be made safe, with no command for them. That file stays on this machine and is not part of this page.`
+};
+var FIXES_FILE = "agenttrail-guard-fixes.txt";
+function cardCount(card) {
+  if (card.tone === "not-checked" || card.tone === "could-not-check" && card.count === 0) {
+    return void 0;
+  }
+  return card.countLine ?? sentence(CARD_COUNT, card);
+}
+var CARD_COUNT = {
+  id: "card.count",
+  render: ({ tone, count: count2 }) => tone === "not-checked" || tone === "could-not-check" && count2 === 0 ? void 0 : countOf(count2, "match", "matches")
+};
+
+// src/core/verify/git-copy.ts
+function counted2(n2, singular, plural2 = `${singular}s`) {
+  return `${formatCount(n2)} ${n2 === 1 ? singular : plural2}`;
+}
+function was(n2) {
+  return n2 === 1 ? "was" : "were";
+}
+function is(n2) {
+  return n2 === 1 ? "is" : "are";
+}
+function callsIn(tally) {
+  return tally.ran + tally.mentioned + tally.unknown;
+}
+function addTallies(...tallies) {
+  const sum = { ran: 0, mentioned: 0, unknown: 0 };
+  for (const tally of tallies) {
+    sum.ran += tally.ran;
+    sum.mentioned += tally.mentioned;
+    sum.unknown += tally.unknown;
+  }
+  return sum;
+}
+function statusOf(found) {
+  if (found.sessions === 0) return "not-checked";
+  if (found.act) return "act";
+  if (found.review) return "review";
+  if (found.incomplete) return "could-not-check";
+  return "clean";
+}
+function codexCaveat(context, ran) {
+  return context.ranEvidence === "output-record" && ran > 0;
+}
+function codexLimitedTemplate(category) {
+  return { id: `${category}.codex-limited`, render: () => CODEX_UNVERIFIED_TEXT };
+}
+function codexLines(template, context, facts) {
+  return context.ranEvidence === "output-record" ? sentences([template], facts) : [];
+}
+function cardExtras(chip, fixSteps) {
+  return {
+    ...chip.label === void 0 ? {} : { chip: { count: chip.count, label: chip.label } },
+    ...fixSteps.length === 0 ? {} : { fixSteps }
+  };
+}
+var FixList = class {
+  made = [];
+  unsafe = [];
+  #category;
+  constructor(category) {
+    this.#category = category;
+  }
+  /** Make one command from `parts`, or keep it as unsafe. */
+  add(parts) {
+    const fix = localFixCommand(this.#category, parts);
+    if (isLocalFix(fix)) this.made.push(fix);
+    else this.unsafe.push(fix);
+  }
+};
+function unsafeFixLine(n2) {
+  return n2 > 0 ? `Could not make a safe command for ${counted2(n2, "fix", "fixes")}: a name or path in ${n2 === 1 ? "it" : "them"} holds characters a command cannot carry safely, so no command is given for ${n2 === 1 ? "it" : "them"}.` : void 0;
+}
+var MAX_PROBED_ITEMS = 500;
+var TEMP_ROOTS = [
+  "/tmp",
+  "/private/tmp",
+  "/var/tmp",
+  "/private/var/tmp",
+  "/var/folders",
+  "/private/var/folders",
+  "/dev/shm"
+];
+function isUnder(path, roots) {
+  return roots.some((root) => {
+    const base = root.replace(/[\\/]+$/, "");
+    return path === base || path.startsWith(`${base}/`) || path.startsWith(`${base}\\`);
+  });
+}
+
+// src/core/verify/repo-probe.ts
+import { isAbsolute as isAbsolute2, join as join4, relative, resolve, sep } from "path";
+function isFailure(value) {
+  return typeof value === "object" && value !== null && "failed" in value;
+}
+function isCommitId(value) {
+  return /^[0-9a-f]{7,64}$/.test(value);
+}
+function literalPathspec(folder, path) {
+  const rel = relative(folder, path);
+  if (rel.startsWith("..") || isAbsolute2(rel)) return void 0;
+  const posix2 = rel === "" ? "." : rel.split(sep).join("/");
+  if (posix2.startsWith("-") || /[\0\r\n\\]/.test(posix2)) return void 0;
+  return `:(literal)${posix2}`;
+}
+var COMMIT_HOOKS = ["pre-commit", "commit-msg"];
+var CHECK_HOOKS = [
+  "pre-commit",
+  "commit-msg",
+  "pre-push",
+  "pre-merge-commit",
+  "prepare-commit-msg"
+];
+var RepoProbe = class {
+  #io;
+  #toplevels = /* @__PURE__ */ new Map();
+  #hooks = /* @__PURE__ */ new Map();
+  #defaults = /* @__PURE__ */ new Map();
+  #stashes = /* @__PURE__ */ new Map();
+  constructor(io) {
+    this.#io = io;
+  }
+  /**
+   * Is anything at `path`? `false` only when the seam says nothing is there; `undefined` when
+   * it cannot be told, which no caller reads as missing.
+   */
+  exists(path) {
+    if (this.#io.pathExists !== void 0) return this.#io.pathExists(path);
+    return this.#io.isDirectory(path) === void 0 ? void 0 : true;
+  }
+  /** Is `path` a folder: `undefined` when it cannot be read. */
+  isFolder(path) {
+    return this.#io.isDirectory(path);
+  }
+  /**
+   * The top folder of the repository `folder` is in. `missing` only when the folder is not
+   * there; a folder that cannot be told about is `failed`.
+   */
+  toplevel(folder) {
+    let answer = this.#toplevels.get(folder);
+    if (answer === void 0) {
+      answer = (async () => {
+        const isFolder3 = this.#io.isDirectory(folder);
+        if (isFolder3 === false) return { failed: "missing" };
+        if (isFolder3 === void 0) {
+          return { failed: this.exists(folder) === false ? "missing" : "failed" };
+        }
+        const top = await this.#io.git(folder, ["rev-parse", "--show-toplevel"]);
+        if (!top.ok) return { failed: top.reason };
+        const root = top.stdout.trim();
+        return root === "" ? { failed: "failed" } : root;
+      })();
+      this.#toplevels.set(folder, answer);
+    }
+    return answer;
+  }
+  /** The folder git runs a repository's hooks from now, after `core.hooksPath`. */
+  hooksFolder(root) {
+    let answer = this.#hooks.get(root);
+    if (answer === void 0) {
+      answer = (async () => {
+        const out = await this.#io.git(root, ["rev-parse", "--git-path", "hooks"]);
+        if (!out.ok) return { failed: out.reason };
+        const path = out.stdout.trim();
+        if (path === "") return { failed: "failed" };
+        return isAbsolute2(path) ? path : resolve(root, path);
+      })();
+      this.#hooks.set(root, answer);
+    }
+    return answer;
+  }
+  /**
+   * Does the repository have any of `names` as a hook file now? A folder by a hook's name is no
+   * hook. A name that cannot be told about, with no hook found, is a failure, never "none".
+   */
+  async hasHooks(root, names) {
+    const folder = await this.hooksFolder(root);
+    if (isFailure(folder)) return folder;
+    return this.#anyHook(folder, names);
+  }
+  /** Is any of `names` a hook file in `folder`: yes, no, or a failure when it cannot be told. */
+  #anyHook(folder, names) {
+    let unsure = false;
+    for (const name of names) {
+      const path = join4(folder, name);
+      const there = this.exists(path);
+      if (there === false) continue;
+      const isFolder3 = there === void 0 ? void 0 : this.#io.isDirectory(path);
+      if (isFolder3 === false) return true;
+      if (isFolder3 === void 0) unsure = true;
+    }
+    return unsure ? { failed: "failed" } : false;
+  }
+  /**
+   * The repository's hooks now: `on` when the folder in effect holds one of `names`; `off` when
+   * `core.hooksPath` points away from the default folder at one that holds none (switched
+   * off); `none` when the default folder holds none (never set up).
+   */
+  async hooksState(root, names) {
+    const folder = await this.hooksFolder(root);
+    if (isFailure(folder)) return folder;
+    const hook = this.#anyHook(folder, names);
+    if (isFailure(hook)) return hook;
+    if (hook) return "on";
+    const common = await this.#io.git(root, ["rev-parse", "--git-common-dir"]);
+    if (!common.ok) return { failed: common.reason };
+    const dir = common.stdout.trim();
+    if (dir === "") return { failed: "failed" };
+    const standard = resolve(isAbsolute2(dir) ? dir : resolve(root, dir), "hooks");
+    return resolve(folder) === standard ? "none" : "off";
+  }
+  /** The full id of a commit that is still in the object store, or `null` when it is not. */
+  async commit(root, id) {
+    if (!isCommitId(id)) return { failed: "refused" };
+    const out = await this.#io.git(root, [
+      "log",
+      "--no-walk",
+      "--ignore-missing",
+      "--format=%H",
+      id
+    ]);
+    if (!out.ok) return { failed: out.reason };
+    const full = out.stdout.trim().split("\n")[0] ?? "";
+    if (full === "") return null;
+    return isCommitId(full) && full.startsWith(id) ? full : { failed: "failed" };
+  }
+  /** Which of origin/main and origin/master the repository has. */
+  defaultRefs(root) {
+    let answer = this.#defaults.get(root);
+    if (answer === void 0) {
+      answer = (async () => {
+        const out = await this.#io.git(root, [
+          "for-each-ref",
+          "--format=%(refname)",
+          "refs/remotes/origin/main",
+          "refs/remotes/origin/master"
+        ]);
+        return out.ok ? lines(out.stdout) : { failed: out.reason };
+      })();
+      this.#defaults.set(root, answer);
+    }
+    return answer;
+  }
+  /** Is the commit on origin/main or origin/master? Pass a full id `commit` returned. */
+  async onDefaultBranch(root, full) {
+    if (!isCommitId(full)) return { failed: "refused" };
+    const out = await this.#io.git(root, [
+      "for-each-ref",
+      "--contains",
+      full,
+      "--format=%(refname)",
+      "refs/remotes/origin/main",
+      "refs/remotes/origin/master"
+    ]);
+    return out.ok ? lines(out.stdout).length > 0 : { failed: out.reason };
+  }
+  /** Is the commit on any branch, remote-tracking branch or tag? */
+  async onAnyRef(root, full) {
+    if (!isCommitId(full)) return { failed: "refused" };
+    const out = await this.#io.git(root, [
+      "for-each-ref",
+      "--contains",
+      full,
+      "--format=%(refname)",
+      "refs/heads",
+      "refs/remotes",
+      "refs/tags"
+    ]);
+    return out.ok ? lines(out.stdout).length > 0 : { failed: out.reason };
+  }
+  /** The commits in the repository's stash list now. */
+  stashes(root) {
+    let answer = this.#stashes.get(root);
+    if (answer === void 0) {
+      answer = (async () => {
+        const out = await this.#io.git(root, ["stash", "list", "--format=%H"]);
+        return out.ok ? new Set(lines(out.stdout)) : { failed: out.reason };
+      })();
+      this.#stashes.set(root, answer);
+    }
+    return answer;
+  }
+  /**
+   * The tracked files under `path`, asked from `folder` (an existing folder `path` is in), and
+   * how many of them are missing from the working tree now.
+   */
+  async tracked(folder, path) {
+    const spec = literalPathspec(folder, path);
+    if (spec === void 0) return { failed: "refused" };
+    const all = await this.#io.git(folder, ["ls-files", "-z", "--", spec]);
+    if (!all.ok) return { failed: all.reason };
+    const tracked = entries(all.stdout).length;
+    if (tracked === 0) return { tracked: 0, missing: 0 };
+    const gone = await this.#io.git(folder, ["ls-files", "--deleted", "-z", "--", spec]);
+    if (!gone.ok) return { failed: gone.reason };
+    return { tracked, missing: entries(gone.stdout).length };
+  }
+  /** Read one file through the seam. */
+  read(path) {
+    return this.#io.readFile(path);
+  }
+};
+function lines(text2) {
+  return text2.split(/\r?\n/).map((line2) => line2.trim()).filter((line2) => line2 !== "");
+}
+function entries(text2) {
+  return text2.split("\0").filter((entry) => entry !== "");
+}
+
+// src/core/verify/shell-calls.ts
+import { isAbsolute as isAbsolute3, join as join5, resolve as resolve2 } from "path";
+var EDIT_TOOLS = /* @__PURE__ */ new Set(["Edit", "Write", "MultiEdit", "NotebookEdit"]);
+var NOT_WRITTEN_KEYS = /* @__PURE__ */ new Set([
+  "file_path",
+  "path",
+  "notebook_path",
+  "old_string",
+  "old_str",
+  "target_file"
+]);
+var MAX_DEPTH = 8;
+function writtenTexts(value, out = [], depth = 0) {
+  if (depth > MAX_DEPTH) return out;
+  if (typeof value === "string") {
+    if (value !== "") out.push(value);
+  } else if (Array.isArray(value)) {
+    for (const item of value) writtenTexts(item, out, depth + 1);
+  } else if (value !== null && typeof value === "object") {
+    for (const [key, item] of Object.entries(value)) {
+      if (!NOT_WRITTEN_KEYS.has(key)) writtenTexts(item, out, depth + 1);
+    }
+  }
+  return out;
+}
+function resolvePath(folder, path, home) {
+  if (path === "") return void 0;
+  if (path === "~") return home;
+  if (path.startsWith("~/")) return join5(home, path.slice(2));
+  if (path.startsWith("~")) return void 0;
+  if (isAbsolute3(path)) return resolve2(path);
+  if (folder === void 0) return void 0;
+  return resolve2(folder, path);
+}
+function walkCommands(text2, cwd, home, visit, depth = 0) {
+  let folder = cwd;
+  const saved = [];
+  for (const item of shellItems(text2)) {
+    if (item.kind === "open") {
+      saved.push(folder);
+      continue;
+    }
+    if (item.kind === "close") {
+      if (saved.length > 0) folder = saved.pop();
+      continue;
+    }
+    visit(item, folder);
+    if (depth < MAX_NESTING) {
+      for (const inner of innerCommands(item)) {
+        walkCommands(inner, folder, home, visit, depth + 1);
+      }
+    }
+    const change = directoryChange(item.words);
+    if (change.kind === "to") folder = resolvePath(folder, change.path, home);
+    else if (change.kind === "home") folder = home;
+    else if (change.kind === "unknown") folder = void 0;
+  }
+}
+var MAX_NESTING = 4;
+var SHELL_PROGRAMS = /* @__PURE__ */ new Set(["sh", "bash", "zsh", "dash", "ksh"]);
+function substitutions(raw) {
+  const out = [];
+  let inSingle = false;
+  for (let i = 0; i < raw.length; i++) {
+    const ch = raw[i];
+    if (ch === "\\" && !inSingle) {
+      i += 1;
+      continue;
+    }
+    if (!inSingle && ch === "$" && raw[i + 1] === "'") {
+      const end = ansiQuoteEnd(raw, i);
+      if (end < 0) break;
+      i = end - 1;
+      continue;
+    }
+    if (ch === "'") inSingle = !inSingle;
+    if (inSingle) continue;
+    if (ch === "$" && raw[i + 1] === "(" && raw[i + 2] !== "(") {
+      let depth = 0;
+      let j = i + 1;
+      for (; j < raw.length; j++) {
+        if (raw[j] === "(") depth += 1;
+        else if (raw[j] === ")") {
+          depth -= 1;
+          if (depth === 0) break;
+        }
+      }
+      out.push(raw.slice(i + 2, j));
+      i = j;
+    } else if (ch === "`") {
+      const end = raw.indexOf("`", i + 1);
+      if (end < 0) break;
+      out.push(raw.slice(i + 1, end));
+      i = end;
+    }
+  }
+  return out;
+}
+function innerCommands(command) {
+  const out = [];
+  for (const word of command.words) {
+    if (word.expands) out.push(...substitutions(word.raw));
+  }
+  const start = commandStart(command.words).index;
+  const program = command.words[start];
+  if (program !== void 0 && SHELL_PROGRAMS.has(programName(program))) {
+    const args2 = command.words.slice(start + 1);
+    const flag = args2.findIndex((a) => /^-[A-Za-z]*c[A-Za-z]*$/.test(a.value));
+    const script = flag >= 0 ? args2[flag + 1] : void 0;
+    if (script !== void 0) out.push(script.value);
+  }
+  return out;
+}
+function gitFolder(folder, options, home) {
+  let at2 = folder;
+  for (const option of options) {
+    if (option.expands) return void 0;
+    at2 = resolvePath(at2, option.value, home);
+  }
+  return at2;
+}
+function sessionFolder(cwd) {
+  return cwd !== null && cwd !== "" && isAbsolute3(cwd) ? resolve2(cwd) : void 0;
+}
+function folderAfter(text2, from, home) {
+  let folder = from;
+  let depth = 0;
+  let changed = false;
+  for (const item of shellItems(text2)) {
+    if (item.kind === "open") depth += 1;
+    else if (item.kind === "close") depth = Math.max(0, depth - 1);
+    else if (depth === 0) {
+      const change = directoryChange(item.words);
+      if (change.kind === "none") continue;
+      changed = true;
+      if (change.kind === "to") folder = resolvePath(folder, change.path, home);
+      else if (change.kind === "home") folder = home;
+      else folder = void 0;
+    }
+  }
+  return changed ? { kind: "to", folder } : { kind: "same" };
+}
+var CWD_RESET = /Shell cwd was reset to (\S[^\n]*?)\s*$/m;
+function claudeFolderAfter(agent, mapped, command, result, from, home) {
+  const reset = result === void 0 ? void 0 : CWD_RESET.exec(result.content)?.[1];
+  if (reset !== void 0) return isAbsolute3(reset) ? resolve2(reset) : void 0;
+  const after = folderAfter(command, from, home);
+  if (after.kind === "same") return from;
+  const verdict2 = runVerdict(agent, mapped, result, () => true);
+  return verdict2.state === "ran" && verdict2.why === "result" ? after.folder : void 0;
+}
+function codexFolders(input) {
+  const source = input.input;
+  if (typeof source !== "string") return [];
+  return [...readShimWorkdirs(source) ?? []];
+}
+function readCalls2(corpus, home) {
+  const agent = corpus.agent ?? "claude";
+  const shell = [];
+  const writes = [];
+  const folders = /* @__PURE__ */ new Set();
+  const hidingForms = /* @__PURE__ */ new Set();
+  let hidingCalls = 0;
+  let id = 0;
+  corpus.sessions.forEach((session, index) => {
+    const start = sessionFolder(session.cwd);
+    if (start !== void 0) folders.add(start);
+    let current = start;
+    const seen = /* @__PURE__ */ new Set();
+    for (const turn of session.turns) {
+      for (const use of turn.toolUses) {
+        if (agent === "claude" && use.toolUseId !== "") {
+          if (seen.has(use.toolUseId)) continue;
+          seen.add(use.toolUseId);
+        }
+        const result = session.toolResults.get(use.toolUseId);
+        const workdirs = agent === "codex" ? codexFolders(use.input) : [];
+        toolUseCalls(agent, use).forEach((call, callIndex) => {
+          if (call.kind !== "action") return;
+          const workdir = workdirs[callIndex];
+          const cwd = agent === "codex" ? workdir === void 0 ? start : resolvePath(start, workdir, home) : current;
+          for (const mapped of call.candidates) {
+            id += 1;
+            const forms = hidingFormsOf(mapped);
+            if (forms.length > 0 && ranOrMayHaveRun2(runVerdict(agent, mapped, result, () => true))) {
+              hidingCalls += 1;
+              for (const form of forms) hidingForms.add(form);
+            }
+            const command = mapped.args.full_command;
+            if (mapped.tool === "Bash" && command !== void 0) {
+              const view = executedView(command).text;
+              const entry = {
+                id,
+                session: index,
+                mapped,
+                command,
+                view,
+                result,
+                cwd
+              };
+              shell.push(entry);
+              for (const path2 of redirectWrites(agent, entry, home)) {
+                writes.push({ id, session: index, path: path2, texts: [] });
+              }
+              if (agent === "claude") {
+                current = claudeFolderAfter(agent, mapped, command, result, current, home);
+              }
+              continue;
+            }
+            const file2 = mapped.args.file_path;
+            if (!EDIT_TOOLS.has(mapped.tool) || file2 === void 0) continue;
+            const path = resolvePath(cwd, file2, home);
+            if (path === void 0) continue;
+            if (!isResultBackedRun(runVerdict(agent, mapped, result, () => true))) continue;
+            const texts = agent === "codex" ? [] : writtenTexts(use.input);
+            writes.push({ id, session: index, path, texts });
+          }
+        });
+      }
+    }
+  });
+  return {
+    agent,
+    home,
+    shell,
+    writes,
+    sessions: corpus.sessions.length,
+    folders: [...folders],
+    hiding: { calls: hidingCalls, forms: HIDING_FORMS.filter((f) => hidingForms.has(f)) }
+  };
+}
+function redirectWrites(agent, call, home) {
+  if (!/>/.test(call.view)) return [];
+  const find = (text2) => {
+    const out = [];
+    walkCommands(text2, call.cwd, home, (command, folder) => {
+      for (const target of command.writes) {
+        if (target.expands) continue;
+        const path = resolvePath(folder, target.value, home);
+        if (path !== void 0 && !path.startsWith("/dev/")) out.push(path);
+      }
+    });
+    return out;
+  };
+  const verdict2 = runVerdict(
+    agent,
+    call.mapped,
+    call.result,
+    (m) => find(m.args.full_command ?? "").length > 0
+  );
+  return isResultBackedRun(verdict2) ? find(call.view) : [];
+}
+var MAX_MENTION_WORDS = 64;
+function blankedRegions(command, view) {
+  const out = [];
+  let start = -1;
+  let last = -1;
+  for (let i = 0; i <= command.length; i++) {
+    const blanked = i < command.length && view[i] !== command[i];
+    if (blanked) {
+      if (start < 0) start = i;
+      last = i;
+    } else if (start >= 0 && (i >= command.length || !/\s/.test(command[i]))) {
+      out.push(command.slice(start, last + 1));
+      start = -1;
+    }
+  }
+  return out;
+}
+function mentionedIn(call, detect, home) {
+  for (const blanked of blankedRegions(call.command, call.view)) {
+    const region = blanked.replace(/^#+/, "");
+    if (detect(region, call.cwd, home).length > 0) return true;
+    const words2 = shellItems(region).flatMap(
+      (item) => item.kind === "command" ? item.words.map((w) => w.value) : []
+    );
+    for (const word of words2.slice(0, MAX_MENTION_WORDS)) {
+      if (word.includes(" ") && detect(word, call.cwd, home).length > 0) return true;
+    }
+  }
+  return false;
+}
+var WORDS = /* @__PURE__ */ new WeakMap();
+function wordsOf(call) {
+  let words2 = WORDS.get(call);
+  if (words2 === void 0) {
+    words2 = shellItems(call.command).flatMap(
+      (item) => item.kind === "command" ? [item.words.map((w) => w.value).join(" ")] : []
+    ).join("\n");
+    WORDS.set(call, words2);
+  }
+  return words2;
+}
+function judge(log, call, hint, detect) {
+  if (!hint.test(call.command) && !(spellsWordsWithQuotes(call.command) && hint.test(wordsOf(call)))) {
+    return void 0;
+  }
+  const found = detect(call.view, call.cwd, log.home);
+  if (found.length === 0) {
+    if (!mentionedIn(call, detect, log.home)) return void 0;
+    const verdict3 = runVerdict(log.agent, call.mapped, call.result, () => false);
+    return { call, verdict: verdict3, found: [] };
+  }
+  const verdict2 = runVerdict(
+    log.agent,
+    call.mapped,
+    call.result,
+    (m) => detect(m.args.full_command ?? "", call.cwd, log.home).length > 0
+  );
+  return { call, verdict: verdict2, found: isResultBackedRun(verdict2) ? found : [] };
+}
+function judgeAll(log, hint, detect) {
+  const out = [];
+  for (const call of log.shell) {
+    const judged = judge(log, call, hint, detect);
+    if (judged !== void 0) out.push(judged);
+  }
+  return out;
+}
+function tallyOf(judged) {
+  const tally = { ran: 0, mentioned: 0, unknown: 0 };
+  for (const j of judged) {
+    if (j.verdict.state === "ran" && !isResultBackedRun(j.verdict)) tally.unknown += 1;
+    else tally[j.verdict.state] += 1;
+  }
+  return tally;
+}
+function ranOrMayHaveRun2(verdict2) {
+  if (isResultBackedRun(verdict2)) return true;
+  return verdict2.state === "unknown" && (verdict2.why === "no-result" || verdict2.why === "not-recorded");
+}
+function backstopIds(log, programs, detectors, rule) {
+  const ids = /* @__PURE__ */ new Set();
+  for (const call of log.shell) {
+    const opaque = opaqueCommands(call.view);
+    if (opaque.length === 0) continue;
+    const reads = (tail) => detectors.some((detect) => detect(tail, call.cwd, log.home).length > 0);
+    const hit = opaque.some(
+      (words2) => backstopTails(words2, programs).some(reads) || rule?.(call.mapped, words2.join(" ")) === true
+    );
+    if (hit && ranOrMayHaveRun2(runVerdict(log.agent, call.mapped, call.result, () => true))) {
+      ids.add(call.id);
+    }
+  }
+  return ids;
+}
+function withUnread(log, unread) {
+  const bare = log.shell.filter(
+    (call) => unread.has(call.id) && hidingFormsOf(call.mapped).length === 0
+  ).length;
+  return {
+    hidingCalls: log.hiding.calls + bare,
+    hidingForms: HIDING_FORMS.filter(
+      (form) => log.hiding.forms.includes(form) || form === "unread-match" && bare > 0
+    )
+  };
+}
+function outputOf(call) {
+  return call.result?.content ?? "";
+}
+
+// src/core/verify/destructive.ts
+function databaseTargetClasses(check) {
+  if (!("facts" in check)) return void 0;
+  const classes = check.facts.databases.classes;
+  return {
+    local: classes.local,
+    scratch: classes.scratch,
+    other: classes.other,
+    unresolved: classes.unresolved
+  };
+}
+function recursiveRmTargets(args2) {
+  let recursive = false;
+  for (const word of args2) {
+    const value = word.value;
+    if (value === "--") break;
+    if (value === "--recursive") recursive = true;
+    else if (/^-[A-Za-z]+$/.test(value) && /[rR]/.test(value)) recursive = true;
+  }
+  return recursive ? operands(args2) : [];
+}
+var rmTargets = (text2, cwd, home) => {
+  const out = [];
+  walkCommands(text2, cwd, home, (command, folder) => {
+    const start = commandStart(command.words).index;
+    const program = command.words[start];
+    if (program === void 0 || programName(program) !== "rm") return;
+    for (const word of recursiveRmTargets(command.words.slice(start + 1))) {
+      out.push({ folder, word });
+    }
+  });
+  return out;
+};
+function guarded(raw) {
+  if (raw.includes("`") || raw.includes("$(")) return false;
+  let inSingle = false;
+  for (let i = 0; i < raw.length; i++) {
+    const ch = raw[i];
+    if (ch === "'") inSingle = !inSingle;
+    if (inSingle || ch !== "$") continue;
+    if (!/^\$\{[A-Za-z_][A-Za-z0-9_]*:\?/.test(raw.slice(i))) return false;
+  }
+  return true;
+}
+var SCRATCH_NAMES = /* @__PURE__ */ new Set([
+  "node_modules",
+  "dist",
+  "build",
+  "out",
+  ".next",
+  ".nuxt",
+  ".turbo",
+  ".cache",
+  "coverage",
+  "target",
+  "__pycache__",
+  ".pytest_cache",
+  ".mypy_cache",
+  ".ruff_cache",
+  ".parcel-cache",
+  ".svelte-kit",
+  ".vite",
+  ".angular",
+  ".gradle",
+  ".expo",
+  ".output",
+  ".vercel",
+  "storybook-static",
+  "tmp",
+  "temp",
+  ".tmp"
+]);
+function namesScratch(path, folder) {
+  const below = folder !== void 0 && (path === folder || path.startsWith(`${folder}${sep2}`)) ? relative2(folder, path) : path.split(/[\\/]/).pop() ?? "";
+  return below.split(/[\\/]/).some((part) => SCRATCH_NAMES.has(part));
+}
+function literalPart(value, wild = value.search(/[*?[]/)) {
+  if (wild < 0) return value;
+  const cut = value.lastIndexOf("/", wild);
+  return cut < 0 ? "." : value.slice(0, cut) || "/";
+}
+var MAX_PARENT_STEPS = 64;
+async function classify2(context, target) {
+  const { word } = target;
+  if (word.expands) return { kind: guarded(word.raw) ? "guarded-variable" : "unguarded-variable" };
+  const home = context.log.home;
+  if (word.globAt >= 0 && /(^|\/)\.\.(\/|$)/.test(word.value.slice(word.globAt))) {
+    return { kind: "could-not-check" };
+  }
+  const path = resolvePath(target.folder, literalPart(word.value, word.globAt), home);
+  if (path === void 0) return { kind: "could-not-check" };
+  if (path === home || path === sep2 || isUnder(home, [path])) return { kind: "home-or-above" };
+  const byName = isUnder(path, context.scratchRoots) || namesScratch(path, target.folder);
+  let folder = path;
+  let steps = 0;
+  while (context.probe.isFolder(folder) !== true && steps < MAX_PARENT_STEPS) {
+    const up = dirname3(folder);
+    if (up === folder) break;
+    folder = up;
+    steps += 1;
+  }
+  if (context.probe.isFolder(folder) !== true) return { kind: "could-not-check" };
+  const root = await context.probe.toplevel(folder);
+  if (isFailure(root)) {
+    if (root.failed !== "not-a-repo") return { kind: "could-not-check" };
+    if (byName) return { kind: "scratch" };
+    return { kind: isUnder(path, [home]) ? "home" : "other" };
+  }
+  const state = await context.probe.tracked(folder, path);
+  if (isFailure(state)) return { kind: "could-not-check" };
+  if (state.tracked === 0) return { kind: byName ? "scratch" : "untracked" };
+  return {
+    kind: "tracked",
+    missing: state.missing > 0,
+    folder,
+    path,
+    absent: context.probe.exists(path) === false
+  };
+}
+function restoreParts(folder, path) {
+  const rel = relative2(folder, path).split(sep2).join("/") || ".";
+  return ["git", "-C", { ref: folder }, "--literal-pathspecs", "restore", "--", { repoPath: rel }];
+}
+async function checkRm(context, judged, fixes) {
+  const classes = Object.fromEntries(RM_TARGET_CLASSES.map((c) => [c, 0]));
+  let targets = 0;
+  let trackedBack = 0;
+  let trackedGone = 0;
+  let trackedPartlyBack = 0;
+  let couldNotCheck = 0;
+  for (const j of judged) {
+    for (const target of j.found) {
+      targets += 1;
+      if (targets > MAX_PROBED_ITEMS) {
+        couldNotCheck += 1;
+        continue;
+      }
+      const classed = await classify2(context, target);
+      if (classed.kind === "could-not-check") {
+        couldNotCheck += 1;
+        continue;
+      }
+      classes[classed.kind] += 1;
+      if (classed.kind !== "tracked") continue;
+      if (!classed.missing) {
+        trackedBack += 1;
+        continue;
+      }
+      if (!classed.absent) {
+        trackedPartlyBack += 1;
+        continue;
+      }
+      trackedGone += 1;
+      fixes.add(restoreParts(classed.folder, classed.path));
+    }
+  }
+  return {
+    calls: tallyOf(judged),
+    targets,
+    classes,
+    trackedBack,
+    trackedGone,
+    trackedPartlyBack,
+    couldNotCheck
+  };
+}
+function trackedMissing(f) {
+  return f.rm.trackedGone + f.rm.trackedPartlyBack;
+}
+var DESTRUCTIVE_SQL = /\b(?:drop\s+(?:database|schema|table)|truncate)\b/i;
+var LOCAL_HOST = /^(?:localhost|127(?:\.\d{1,3}){3}|0\.0\.0\.0|\[?::1\]?|host\.docker\.internal|[a-z0-9-]+\.localhost)$/i;
+var SCRATCH_DATABASE = /(?:^|[_.-])(?:test|tests|testing|tmp|temp|scratch|e2e|ci|sandbox|throwaway|dummy)(?:$|[_.\d-])/i;
+var URL_PARTS = /^[a-z][a-z0-9+.-]*:\/\/(?:[^@/?#]*@)?(\[[^\]]*\]|[^:/?#]*)(?::\d+)?(?:\/([^?#]*))?/i;
+function hostClass(host, noHost) {
+  if (host === void 0 || host === "") return noHost;
+  if (host.startsWith("/")) return "local";
+  if (host.includes("$")) return "unresolved";
+  return LOCAL_HOST.test(host) ? "local" : "remote";
+}
+var CONNINFO = /(?:^|\s)(?:host|hostaddr|service|dbname)\s*=/;
+function conninfoOf(text2) {
+  const out = /* @__PURE__ */ new Map();
+  for (const match of text2.matchAll(/(\w+)\s*=\s*(?:'((?:[^'\\]|\\.)*)'|(\S*))/g)) {
+    out.set(match[1].toLowerCase(), match[2] ?? match[3] ?? "");
+  }
+  return out;
+}
+function optionValue2(words2, short, long) {
+  for (let k = 0; k < words2.length; k++) {
+    const value = words2[k].value;
+    const word = words2[k];
+    if (short !== void 0 && value === short || long !== void 0 && value === long) {
+      return words2[k + 1];
+    }
+    if (long !== void 0 && value.startsWith(`${long}=`)) {
+      return { ...word, value: value.slice(long.length + 1) };
+    }
+    if (short !== void 0 && value.startsWith(short) && value.length > short.length && !value.startsWith("--")) {
+      return { ...word, value: value.slice(short.length) };
+    }
+  }
+  return void 0;
+}
+function serverOf(args2, assignments, options, sql = "") {
+  const urls = args2.filter((a) => /^[a-z][a-z0-9+.-]*:\/\//i.test(a.value));
+  const hostWord = optionValue2(args2, options.host[0], options.host[1]);
+  const nameWord = options.name === void 0 ? void 0 : optionValue2(args2, options.name[0], options.name[1]);
+  const urlWord = urls[0] ?? (nameWord !== void 0 && /:\/\//.test(nameWord.value) ? nameWord : void 0);
+  const fromUrl = urlWord?.value.match(URL_PARTS) ?? void 0;
+  const infoWord = args2.find((a) => CONNINFO.test(a.value));
+  const info = infoWord === void 0 ? void 0 : conninfoOf(infoWord.value);
+  const pgHost = assignments.find((a) => a.value.startsWith("PGHOST="));
+  const rest = operands(args2, DATABASE_VALUE_OPTIONS);
+  const positional = options.positionalHost === true && rest[0] !== void 0 && !rest[0].value.includes("://") && /^[^/\s]+(?::\d+)?\//.test(rest[0].value) ? rest[0] : void 0;
+  const host = fromUrl?.[1] ?? info?.get("host") ?? info?.get("hostaddr") ?? positional?.value.split("/")[0]?.replace(/:\d+$/, "") ?? hostWord?.value ?? pgHost?.value.slice("PGHOST=".length);
+  const service = host === void 0 && info?.has("service") === true;
+  const variable = hostWord?.expands === true || pgHost?.expands === true || urlWord?.expands === true || infoWord?.expands === true || hostWord === void 0 && fromUrl === void 0 && (nameWord?.expands === true || rest.some((o) => o.expands));
+  const dropped = /\bdrop\s+database\s+(?:if\s+exists\s+)?[`"']?([\w.-]+)/i.exec(sql)?.[1];
+  const name = dropped ?? fromUrl?.[2] ?? info?.get("dbname") ?? positional?.value.split("/")[1] ?? nameWord?.value ?? rest.find((o) => !o.value.includes("://") && !CONNINFO.test(o.value))?.value ?? "";
+  return {
+    host: variable || service ? "unresolved" : hostClass(host, options.noHost),
+    scratch: SCRATCH_DATABASE.test(name),
+    noHostGiven: !variable && !service && (host === void 0 || host === "")
+  };
+}
+var DATABASE_VALUE_OPTIONS = /* @__PURE__ */ new Set([
+  "-h",
+  "-p",
+  "-U",
+  "-u",
+  "-d",
+  "-D",
+  "-c",
+  "-e",
+  "-f",
+  "-v",
+  "-o",
+  "-P",
+  "-T",
+  "-F",
+  "-R",
+  "-n",
+  "-a",
+  "--host",
+  "--port",
+  "--username",
+  "--user",
+  "--dbname",
+  "--database",
+  "--command",
+  "--execute",
+  "--file",
+  "--set",
+  "--variable",
+  "--uri",
+  "--eval"
+]);
+var KUBECTL_VALUE_OPTIONS = /* @__PURE__ */ new Set([
+  "-n",
+  "--namespace",
+  "--context",
+  "--cluster",
+  "--kubeconfig",
+  "-s",
+  "--server",
+  "--user",
+  "--token"
+]);
+var LAUNCHERS3 = /* @__PURE__ */ new Set(["npx", "pnpm", "yarn", "bunx", "bun"]);
+function databaseTargets(words2, scratchRoots, view, depth = 0) {
+  const start = commandStart(words2);
+  let at2 = start.index;
+  let program = words2[at2];
+  if (program === void 0 || depth > 3) return [];
+  let name = programName(program);
+  if (LAUNCHERS3.has(name)) {
+    at2 += 1;
+    while (words2[at2] !== void 0 && ["exec", "dlx", "run", "x"].includes(words2[at2].value))
+      at2 += 1;
+    program = words2[at2];
+    if (program === void 0) return [];
+    name = programName(program);
+  }
+  const args2 = words2.slice(at2 + 1);
+  const values = args2.map((a) => a.value);
+  const relay = (rest, host) => databaseTargets(rest, scratchRoots, view, depth + 1).map(
+    (t) => host === "remote" ? { ...t, host } : t.noHostGiven === true ? { ...t, host: "local" } : t
+  );
+  switch (name) {
+    case "docker":
+    case "podman": {
+      let k = values[0] === "compose" ? 1 : 0;
+      if (values[k] !== "exec") return [];
+      k += 1;
+      while (k < args2.length && args2[k].value.startsWith("-")) {
+        k += ["-e", "--env", "-u", "--user", "-w", "--workdir"].includes(
+          args2[k].value
+        ) ? 2 : 1;
+      }
+      return relay(args2.slice(k + 1), "local");
+    }
+    case "kubectl": {
+      let k = 0;
+      while (k < args2.length && args2[k].value.startsWith("-")) {
+        k += KUBECTL_VALUE_OPTIONS.has(args2[k].value) ? 2 : 1;
+      }
+      const dash = values.indexOf("--");
+      return values[k] === "exec" && dash > k ? relay(args2.slice(dash + 1), "remote") : [];
+    }
+    case "ssh": {
+      const rest = operands(args2, /* @__PURE__ */ new Set(["-p", "-i", "-l", "-o", "-F", "-J", "-L", "-R", "-D"]));
+      const text2 = rest.slice(1).map((w) => w.value).join(" ");
+      return shellCommands(text2).flatMap((c) => relay(c.words, "remote"));
+    }
+    case "psql": {
+      const sql = optionValue2(args2, "-c", "--command")?.value ?? view;
+      return DESTRUCTIVE_SQL.test(sql) ? [
+        serverOf(
+          args2,
+          start.assignments,
+          { host: ["-h", "--host"], name: ["-d", "--dbname"], noHost: "unresolved" },
+          sql
+        )
+      ] : [];
+    }
+    case "dropdb":
+      return [serverOf(args2, start.assignments, { host: ["-h", "--host"], noHost: "unresolved" })];
+    case "mysql":
+    case "mariadb": {
+      const sql = optionValue2(args2, "-e", "--execute")?.value ?? view;
+      return DESTRUCTIVE_SQL.test(sql) ? [
+        serverOf(
+          args2,
+          start.assignments,
+          { host: ["-h", "--host"], name: ["-D", "--database"], noHost: "unresolved" },
+          sql
+        )
+      ] : [];
+    }
+    case "mysqladmin":
+      return values.includes("drop") ? [serverOf(args2, start.assignments, { host: ["-h", "--host"], noHost: "unresolved" })] : [];
+    case "redis-cli":
+      return values.some((v) => /^flush(?:all|db)$/i.test(v)) ? [
+        serverOf(args2, start.assignments, {
+          host: ["-h", void 0],
+          name: ["-u", "--uri"],
+          noHost: "local"
+        })
+      ] : [];
+    case "mongo":
+    case "mongosh": {
+      const script = optionValue2(args2, void 0, "--eval")?.value ?? "";
+      return /dropDatabase\s*\(|\.drop\s*\(/.test(script) ? [
+        serverOf(args2, start.assignments, {
+          host: [void 0, "--host"],
+          noHost: "unresolved",
+          positionalHost: true
+        })
+      ] : [];
+    }
+    case "sqlite3": {
+      const [file2, sql] = operands(args2);
+      if (file2 === void 0 || !DESTRUCTIVE_SQL.test(sql?.value ?? view)) return [];
+      return [
+        {
+          host: "local",
+          scratch: file2.value === ":memory:" || isUnder(file2.value, scratchRoots) || SCRATCH_DATABASE.test(file2.value.split(/[\\/]/).pop() ?? "")
+        }
+      ];
+    }
+    case "prisma": {
+      const reset = values[0] === "migrate" && values[1] === "reset" || values[0] === "db" && values[1] === "push" && values.includes("--force-reset");
+      return reset ? [{ host: "unresolved", scratch: false }] : [];
+    }
+    case "rails":
+    case "rake":
+      return values.some((v) => /^db:(?:drop|reset|purge)(?::|$)/.test(v)) ? [{ host: "unresolved", scratch: false }] : [];
+    default:
+      return [];
+  }
+}
+function databaseClass(target) {
+  if (target.host === "remote") return "other";
+  if (target.host === "unresolved") return "unresolved";
+  return target.scratch ? "scratch" : "local";
+}
+function databaseDetector(scratchRoots) {
+  return (text2, cwd, home) => {
+    const out = [];
+    walkCommands(text2, cwd, home, (command) => {
+      out.push(...databaseTargets(command.words, scratchRoots, text2));
+    });
+    return out;
+  };
+}
+var DATABASE_HINT = /drop|truncate|flush|migrate\s+reset|force-reset|db:(?:drop|reset|purge)|dropDatabase|\.drop\s*\(/i;
+var DESTRUCTIVE_RULES = /* @__PURE__ */ new Set([
+  "dd.rm-rf-absolute",
+  "require-approval-rm-rf",
+  "dd.database-drop",
+  "dd.migration-reset",
+  "block-destructive-sql"
+]);
+function unreadMatches(context, read) {
+  const rules12 = context.rules;
+  const subset = rules12?.catalog.filter((rule) => DESTRUCTIVE_RULES.has(rule.rule.id)) ?? [];
+  const matches = (mapped) => rules12 !== void 0 && subset.length > 0 && evaluateAction(subset, rules12.allowlist, [mapped]).decision.matches.length > 0;
+  const detectors = [rmTargets, databaseDetector(context.scratchRoots)];
+  const ids = backstopIds(
+    context.log,
+    READ_PROGRAMS.destructive,
+    detectors,
+    (mapped, text2) => matches({ ...mapped, args: { ...mapped.args, full_command: text2 } })
+  );
+  for (const call of context.log.shell) {
+    if (read.has(call.id)) continue;
+    const ran = { ...call.mapped, args: { ...call.mapped.args, full_command: call.view } };
+    if (!matches(ran)) continue;
+    if (isResultBackedRun(runVerdict(context.log.agent, call.mapped, call.result, matches))) {
+      ids.add(call.id);
+    }
+  }
+  return ids;
+}
+function destructiveStatus(facts, sessions) {
+  const { rm, databases } = facts;
+  const all = addTallies(rm.calls, databases.calls);
+  return statusOf({
+    sessions,
+    act: rm.classes["home-or-above"] + rm.classes["unguarded-variable"] > 0 || trackedMissing(facts) > 0,
+    review: rm.classes.untracked + rm.classes.home + rm.classes.other > 0 || databases.classes.other + databases.classes.unresolved > 0,
+    // A target built from guarded variables names a folder this check cannot know.
+    incomplete: rm.couldNotCheck + rm.classes["guarded-variable"] + all.unknown + facts.hidingCalls > 0
+  });
+}
+async function checkDestructive(context) {
+  const log = context.log;
+  const fixes = new FixList("destructive");
+  const rmCalls = judgeAll(log, /\brm\b/, rmTargets);
+  const dbCalls = judgeAll(log, DATABASE_HINT, databaseDetector(context.scratchRoots));
+  const rm = await checkRm(context, rmCalls, fixes);
+  const dbClasses = Object.fromEntries(DATABASE_CLASSES.map((c) => [c, 0]));
+  for (const j of dbCalls) {
+    for (const target of j.found) dbClasses[databaseClass(target)] += 1;
+  }
+  const databases = { calls: tallyOf(dbCalls), classes: dbClasses };
+  const unread = unreadMatches(context, new Set([...rmCalls, ...dbCalls].map((j) => j.call.id)));
+  const facts = {
+    rm,
+    databases,
+    unsafeFixes: fixes.unsafe.length,
+    ...withUnread(log, unread)
+  };
+  const status = destructiveStatus(facts, log.sessions);
+  return {
+    result: { status, matches: callsIn(allCalls(facts)), facts },
+    localFixes: fixes.made,
+    unsafeFixes: fixes.unsafe
+  };
+}
+function allCalls(f) {
+  return addTallies(f.rm.calls, f.databases.calls);
+}
+function n(f, c) {
+  return f.rm.classes[c];
+}
+var HEADLINE = {
+  id: "destructive.headline",
+  render: (f) => n(f, "unguarded-variable") > 0 ? `${counted2(n(f, "unguarded-variable"), "rm -rf target")} ${was(n(f, "unguarded-variable"))} built from a variable with no guard.` : void 0
+};
+var CODEX = codexLimitedTemplate("destructive");
+var CHIP_UNGUARDED = {
+  id: "destructive.chip",
+  count: (f) => n(f, "unguarded-variable"),
+  one: "rm -rf target built from an unguarded variable",
+  many: "rm -rf targets built from an unguarded variable"
+};
+var CHIP_REASONS = [
+  CHIP_UNGUARDED,
+  {
+    id: "destructive.chip.home-or-above",
+    count: (f) => n(f, "home-or-above"),
+    one: "rm -rf target at or above the home folder",
+    many: "rm -rf targets at or above the home folder"
+  },
+  {
+    id: "destructive.chip.tracked",
+    count: (f) => trackedMissing(f),
+    one: "deleted target with tracked files still missing",
+    many: "deleted targets with tracked files still missing"
+  },
+  {
+    id: "destructive.chip.untracked",
+    count: (f) => n(f, "untracked"),
+    one: "deleted folder git keeps no copy of",
+    many: "deleted folders git keeps no copy of"
+  },
+  {
+    id: "destructive.chip.outside",
+    count: (f) => n(f, "home") + n(f, "other"),
+    one: "deleted folder outside any repo",
+    many: "deleted folders outside any repo"
+  },
+  {
+    id: "destructive.chip.databases",
+    count: (f) => f.databases.classes.other + f.databases.classes.unresolved,
+    one: "database beyond local and scratch dropped or wiped",
+    many: "databases beyond local and scratch dropped or wiped"
+  }
+];
+function classLine(c, what) {
+  return {
+    id: `destructive.rm.${c}`,
+    render: (f) => n(f, c) > 0 ? `${counted2(n(f, c), "target")} ${what(n(f, c))}` : void 0
+  };
+}
+var FOUND = [
+  {
+    id: "destructive.rm",
+    render: (f) => f.rm.calls.ran > 0 ? `${counted2(f.rm.calls.ran, "rm -rf command")} ran, with ${counted2(f.rm.targets, "target")}.` : void 0
+  },
+  classLine(
+    "home-or-above",
+    (c) => `${was(c)} the home folder itself, a folder that holds it, or the root, so everything in ${c === 1 ? "it" : "them"} was deleted.`
+  ),
+  classLine(
+    "unguarded-variable",
+    (c) => `${was(c)} built from a variable with no \${VAR:?} guard, so an empty value deletes from the wrong folder.`
+  ),
+  classLine("scratch", (c) => `${was(c)} scratch, temp or build output.`),
+  classLine("tracked", () => "held files git tracks."),
+  classLine(
+    "untracked",
+    (c) => `${was(c)} in a repo with nothing tracked under ${c === 1 ? "it" : "them"}, so git keeps no copy.`
+  ),
+  classLine("home", (c) => `${was(c)} under the home folder, outside any repo.`),
+  classLine("other", (c) => `${was(c)} outside the home folder and outside any repo.`),
+  classLine(
+    "guarded-variable",
+    (c) => `${was(c)} built from guarded variables, so ${c === 1 ? "its" : "their"} folder is not known.`
+  ),
+  {
+    id: "destructive.databases",
+    render: (f) => {
+      const c = f.databases.classes;
+      const total = c.local + c.scratch + c.other + c.unresolved;
+      if (total === 0) return void 0;
+      const parts = [];
+      if (c.other > 0) parts.push(`${c.other} on another machine`);
+      if (c.unresolved > 0) parts.push(`${c.unresolved} whose host is set elsewhere`);
+      if (c.local > 0) parts.push(`${c.local} local`);
+      if (c.scratch > 0) parts.push(`${c.scratch} local scratch or test`);
+      return `${counted2(total, "database")} ${was(total)} dropped or wiped: ${parts.join(", ")}.`;
+    }
+  },
+  {
+    id: "destructive.mentioned",
+    render: (f) => {
+      const m = allCalls(f).mentioned;
+      return m > 0 ? `${counted2(m, "match", "matches")} only mentioned a delete, and ${m === 1 ? "is" : "are"} not counted.` : void 0;
+    }
+  },
+  {
+    id: "destructive.unknown",
+    render: (f) => {
+      const u = allCalls(f).unknown;
+      return u > 0 ? `${counted2(u, "command")} could not be confirmed as run.` : void 0;
+    }
+  },
+  {
+    id: "destructive.none",
+    render: (f) => allCalls(f).ran === 0 && f.hidingCalls === 0 ? "No rm -rf and no database wipe that this check could read ran." : void 0
+  }
+];
+var NOW = [
+  {
+    id: "destructive.now.unsafe-fixes",
+    render: (f) => unsafeFixLine(f.unsafeFixes)
+  },
+  {
+    id: "destructive.now.tracked-gone",
+    render: (f) => f.rm.trackedGone > 0 ? `${counted2(f.rm.trackedGone, "tracked target")} ${is(f.rm.trackedGone)} still gone.` : void 0
+  },
+  {
+    id: "destructive.now.tracked-partly-back",
+    render: (f) => f.rm.trackedPartlyBack > 0 ? `${counted2(f.rm.trackedPartlyBack, "tracked target")} ${is(f.rm.trackedPartlyBack)} partly back, with tracked files still missing. No exact command is made for ${f.rm.trackedPartlyBack === 1 ? "it" : "them"}: restoring a whole target would overwrite any new changes in the files that are back.` : void 0
+  },
+  {
+    id: "destructive.now.tracked-back",
+    render: (f) => f.rm.trackedBack > 0 ? `${counted2(f.rm.trackedBack, "tracked target")} ${f.rm.trackedBack === 1 ? "has" : "have"} every tracked file back.` : void 0
+  },
+  {
+    id: "destructive.now.could-not-check",
+    render: (f) => f.rm.couldNotCheck > 0 ? `${counted2(f.rm.couldNotCheck, "target")} could not be checked on this machine.` : void 0
+  }
+];
+var FIX_STEPS = [
+  {
+    id: "destructive.fix.restore",
+    render: (f) => f.rm.trackedGone > 0 ? "Restore each tracked target that is still wholly gone." : void 0
+  },
+  {
+    id: "destructive.fix.restore-partly",
+    render: (f) => f.rm.trackedPartlyBack > 0 ? "Where a target is partly back, restore only the files still missing, one by one, after checking that none of them was deleted on purpose." : void 0
+  },
+  {
+    id: "destructive.fix.guard",
+    render: (f) => n(f, "unguarded-variable") > 0 ? `Write a path built from a variable as \${VAR:?}/path, so an empty variable stops the command instead of deleting from the wrong folder.` : void 0
+  },
+  {
+    id: "destructive.fix.outside",
+    render: (f) => n(f, "untracked") + n(f, "home") + n(f, "other") > 0 ? "Check that each folder deleted outside scratch and build output was meant to go. Git keeps no copy of untracked files." : void 0
+  },
+  {
+    id: "destructive.fix.databases",
+    render: (f) => f.databases.classes.other + f.databases.classes.unresolved > 0 ? "Check that each database wiped on another machine, or whose host is set elsewhere, was meant to be." : void 0
+  }
+];
+function fixShapes(f) {
+  const out = [];
+  if (f.rm.trackedGone > 0) out.push({ shape: "git --literal-pathspecs restore -- <path>" });
+  return out;
+}
+var destructiveCard = (result, context) => {
+  const f = result.facts;
+  const headline2 = sentence(HEADLINE, f);
+  const extras = cardExtras(chipFor(f, CHIP_REASONS, CHIP_UNGUARDED), sentences(FIX_STEPS, f));
+  return {
+    ...extras,
+    category: "destructive",
+    tone: result.status,
+    count: result.matches,
+    found: [...sentences(FOUND, f), ...codexLines(CODEX, context, f)],
+    now: sentences(NOW, f),
+    fixes: fixShapes(f),
+    codexCaveat: codexCaveat(context, allCalls(f).ran),
+    ...headline2 === void 0 ? {} : {
+      headline: {
+        basis: "unguarded-recursive-deletes",
+        count: n(f, "unguarded-variable"),
+        restsOnCodexRan: context.ranEvidence === "output-record",
+        sentence: headline2
+      }
+    }
+  };
+};
+
+// src/core/verify/lost-work.ts
+import { resolve as resolve3, sep as sep3 } from "path";
+function folderOf(git, folder, home) {
+  return git.elsewhere ? void 0 : gitFolder(folder, git.folders, home);
+}
+function forceDeletesBranch(args2) {
+  let del = false;
+  let force = false;
+  let remote = false;
+  for (const word of args2) {
+    const value = word.value;
+    if (value === "--") break;
+    if (value === "--delete") del = true;
+    else if (value === "--force") force = true;
+    else if (value === "--remotes") remote = true;
+    else if (/^-[A-Za-z]+$/.test(value)) {
+      if (value.includes("D")) {
+        del = true;
+        force = true;
+      }
+      if (value.includes("d")) del = true;
+      if (value.includes("f")) force = true;
+      if (value.includes("r")) remote = true;
+    }
+  }
+  return del && force && !remote;
+}
+var branchDeletes = (text2, cwd, home) => {
+  const out = [];
+  walkCommands(text2, cwd, home, (command, folder) => {
+    const git = gitCommand(command.words);
+    if (git?.sub === "branch" && forceDeletesBranch(git.args)) {
+      out.push({ folder: folderOf(git, folder, home) });
+    }
+  });
+  return out;
+};
+var stashDrops = (text2, cwd, home) => {
+  const out = [];
+  walkCommands(text2, cwd, home, (command, folder) => {
+    const git = gitCommand(command.words);
+    if (git?.sub !== "stash") return;
+    const verb = git.args[0]?.value;
+    if (verb === "drop" || verb === "clear") {
+      out.push({ folder: folderOf(git, folder, home), clear: verb === "clear" });
+    }
+  });
+  return out;
+};
+var RESTORE_VALUE_OPTIONS = /* @__PURE__ */ new Set(["-s", "--source"]);
+function discardedPaths(sub, args2) {
+  if (sub === "reset") return args2.some((a) => a.value === "--hard") ? "all" : void 0;
+  if (sub === "checkout") {
+    const dash = args2.findIndex((a) => a.value === "--");
+    if (dash >= 0) {
+      const paths = args2.slice(dash + 1);
+      if (paths.length === 0) return void 0;
+      return paths.some((p) => p.value === ".") ? "all" : paths;
+    }
+    const rest = operands(args2);
+    if (rest.length === 1 && rest[0]?.value === ".") return "all";
+    return args2.some((a) => a.value === "-f" || a.value === "--force") ? "all" : void 0;
+  }
+  if (sub === "switch") {
+    const values = args2.map((a) => a.value);
+    return values.includes("--discard-changes") || values.includes("-f") || values.includes("--force") ? "all" : void 0;
+  }
+  if (sub === "clean") {
+    if (!args2.some((a) => /^-[A-Za-z]*f[A-Za-z]*$/.test(a.value) || a.value === "--force")) {
+      return void 0;
+    }
+    if (args2.some((a) => /^-[A-Za-z]*n[A-Za-z]*$/.test(a.value) || a.value === "--dry-run")) {
+      return void 0;
+    }
+    const paths = operands(args2, /* @__PURE__ */ new Set(["-e", "--exclude"]));
+    return paths.length === 0 || paths.some((p) => p.value === ".") ? "all" : paths;
+  }
+  if (sub === "restore") {
+    const values = args2.map((a) => a.value);
+    const staged = values.includes("--staged") || values.includes("-S");
+    const worktree = values.includes("--worktree") || values.includes("-W");
+    if (staged && !worktree) return void 0;
+    if (values.some((v) => v.startsWith("--pathspec-from-file"))) return "all";
+    const paths = operands(args2, RESTORE_VALUE_OPTIONS);
+    if (paths.length === 0) return void 0;
+    return paths.some((p) => p.value === ".") ? "all" : paths;
+  }
+  return void 0;
+}
+var discards = (text2, cwd, home) => {
+  const out = [];
+  walkCommands(text2, cwd, home, (command, folder) => {
+    const git = gitCommand(command.words);
+    if (git === void 0) return;
+    const paths = discardedPaths(git.sub, git.args);
+    if (paths !== void 0) out.push({ folder: folderOf(git, folder, home), paths });
+  });
+  return out;
+};
+var CLONE_VALUE_OPTIONS = /* @__PURE__ */ new Set([
+  "-b",
+  "--branch",
+  "-o",
+  "--origin",
+  "--depth",
+  "--reference",
+  "--separate-git-dir",
+  "-c",
+  "--config",
+  "--template",
+  "-u",
+  "--upload-pack",
+  "-j",
+  "--jobs",
+  "--filter",
+  "--shallow-since",
+  "--shallow-exclude",
+  "--server-option"
+]);
+var WORKTREE_VALUE_OPTIONS = /* @__PURE__ */ new Set(["-b", "-B", "--reason", "--orphan"]);
+var copies = (text2, cwd, home) => {
+  const out = [];
+  const add = (folder, word) => {
+    if (word === void 0 || word.expands) return;
+    const path = resolvePath(folder, word.value, home);
+    if (path !== void 0) out.push(path);
+  };
+  walkCommands(text2, cwd, home, (command, folder) => {
+    const git = gitCommand(command.words);
+    if (git !== void 0) {
+      const base = folderOf(git, folder, home);
+      if (git.sub === "worktree" && git.args[0]?.value === "add") {
+        add(base, operands(git.args.slice(1), WORKTREE_VALUE_OPTIONS)[0]);
+      } else if (git.sub === "clone") {
+        const [url, into] = operands(git.args, CLONE_VALUE_OPTIONS);
+        if (into !== void 0) add(base, into);
+        else if (url !== void 0 && !url.expands) {
+          const name = url.value.replace(/[\\/]+$/, "").split(/[\\/:]/).pop() ?? "";
+          const folderName = name.replace(/\.git$/, "");
+          if (folderName !== "") {
+            add(base, { raw: folderName, value: folderName, expands: false, globAt: -1 });
+          }
+        }
+      }
+      return;
+    }
+    const start = commandStart(command.words).index;
+    const program = command.words[start];
+    if (program === void 0 || programName(program) !== "cp") return;
+    const args2 = command.words.slice(start + 1);
+    const recursive = args2.some(
+      (a) => /^-[A-Za-z]*[rRa]/.test(a.value) || a.value === "--recursive"
+    );
+    const rest = operands(args2);
+    if (recursive && rest.length >= 2) add(folder, rest[rest.length - 1]);
+  });
+  return out;
+};
+var DELETED_BRANCH = /^Deleted branch (\S+) \(was ([0-9a-f]{7,64})\)\.?\s*$/gm;
+var DROPPED_STASH = /^Dropped (?:refs\/)?stash@\{\d+\} \(([0-9a-f]{7,64})\)\s*$/gm;
+function failedWithNone(context, call, pattern) {
+  if (context.log.agent === "codex" || call.result?.isError !== true) return false;
+  return [...outputOf(call).matchAll(pattern)].length === 0;
+}
+function reported(judged, pattern, read) {
+  const folders = new Set(judged.found.map((f) => f.folder));
+  const items = [...outputOf(judged.call).matchAll(pattern)].map(read);
+  if (folders.size !== 1 || items.length === 0) return void 0;
+  const [folder] = [...folders];
+  return items.map((item) => ({ ...item, folder }));
+}
+async function checkBranches(context, judged, fixes) {
+  const items = [];
+  let notIdentified = 0;
+  let failed = 0;
+  for (const j of judged) {
+    if (j.found.length === 0) continue;
+    const found = reported(j, DELETED_BRANCH, (m) => ({
+      name: m[1],
+      id: m[2]
+    }));
+    if (found !== void 0) items.push(...found);
+    else if (failedWithNone(context, j.call, DELETED_BRANCH)) failed += 1;
+    else notIdentified += 1;
+  }
+  let recoverable2 = 0;
+  let onAnotherRef = 0;
+  let gone = 0;
+  let couldNotCheck = 0;
+  const seen = /* @__PURE__ */ new Set();
+  for (const [index, item] of items.entries()) {
+    const looked = index < MAX_PROBED_ITEMS ? await lookUp(context, item, seen) : void 0;
+    if (looked === void 0) {
+      couldNotCheck += 1;
+      continue;
+    }
+    if (looked === "seen") continue;
+    if (looked === null) {
+      gone += 1;
+      continue;
+    }
+    const held = await context.probe.onAnyRef(looked.root, looked.full);
+    if (isFailure(held)) couldNotCheck += 1;
+    else if (held) onAnotherRef += 1;
+    else {
+      recoverable2 += 1;
+      fixes.add([
+        "git",
+        "-C",
+        { ref: looked.root },
+        "branch",
+        { branch: `recovered/${item.name ?? ""}` },
+        { sha: looked.full }
+      ]);
+    }
+  }
+  return {
+    calls: tallyOf(judged),
+    deleted: items.length,
+    notIdentified,
+    failed,
+    recoverable: recoverable2,
+    onAnotherRef,
+    gone,
+    couldNotCheck
+  };
+}
+async function lookUp(context, item, seen) {
+  if (item.folder === void 0) return void 0;
+  const root = await context.probe.toplevel(item.folder);
+  if (isFailure(root)) return void 0;
+  const full = await context.probe.commit(root, item.id);
+  if (isFailure(full)) return void 0;
+  if (full === null) return null;
+  const key = `${root}\0${full}`;
+  if (seen.has(key)) return "seen";
+  seen.add(key);
+  return { root, full };
+}
+async function checkStashes(context, judged, fixes) {
+  const items = [];
+  let cleared = 0;
+  let notIdentified = 0;
+  let failed = 0;
+  for (const j of judged) {
+    const drops = j.found.filter((f) => !f.clear);
+    cleared += j.found.length - drops.length;
+    if (drops.length === 0) continue;
+    const found = reported({ ...j, found: drops }, DROPPED_STASH, (m) => ({ id: m[1] }));
+    if (found !== void 0) items.push(...found);
+    else if (drops.length === j.found.length && failedWithNone(context, j.call, DROPPED_STASH)) {
+      failed += 1;
+    } else notIdentified += 1;
+  }
+  let recoverable2 = 0;
+  let listed = 0;
+  let gone = 0;
+  let couldNotCheck = 0;
+  const seen = /* @__PURE__ */ new Set();
+  for (const [index, item] of items.entries()) {
+    const looked = index < MAX_PROBED_ITEMS ? await lookUp(context, item, seen) : void 0;
+    if (looked === void 0) {
+      couldNotCheck += 1;
+      continue;
+    }
+    if (looked === "seen") continue;
+    if (looked === null) {
+      gone += 1;
+      continue;
+    }
+    const list = await context.probe.stashes(looked.root);
+    if (isFailure(list)) couldNotCheck += 1;
+    else if (list.has(looked.full)) listed += 1;
+    else {
+      recoverable2 += 1;
+      fixes.add([
+        "git",
+        "-C",
+        { ref: looked.root },
+        "stash",
+        "store",
+        "-m",
+        "recovered",
+        { sha: looked.full }
+      ]);
+    }
+  }
+  return {
+    calls: tallyOf(judged),
+    dropped: items.length,
+    cleared,
+    notIdentified,
+    failed,
+    recoverable: recoverable2,
+    listed,
+    gone,
+    couldNotCheck
+  };
+}
+var AGENT_WORKTREES = [
+  `${sep3}.claude${sep3}worktrees${sep3}`,
+  `${sep3}.codex${sep3}worktrees${sep3}`,
+  `${sep3}.cursor${sep3}worktrees${sep3}`
+];
+function within(path, folder) {
+  return path === folder || path.startsWith(folder.endsWith(sep3) ? folder : `${folder}${sep3}`);
+}
+async function checkDiscards(context, judged, own) {
+  const log = context.log;
+  let paths = 0;
+  let ownCopy = 0;
+  let agentEdited = 0;
+  let mainCheckout = 0;
+  let couldNotCheck = 0;
+  const isOwn = (folder) => own.some((copy) => within(folder, copy)) || isUnder(folder, context.scratchRoots) || AGENT_WORKTREES.some((marker) => `${folder}${sep3}`.includes(marker));
+  for (const j of judged) {
+    for (const found of j.found) {
+      if (found.paths === "all") {
+        paths += 1;
+        if (found.folder === void 0) {
+          couldNotCheck += 1;
+          continue;
+        }
+        const folder = resolve3(found.folder);
+        const root = await context.probe.toplevel(folder);
+        if (isOwn(folder) || !isFailure(root) && isOwn(root)) ownCopy += 1;
+        else mainCheckout += 1;
+        continue;
+      }
+      const targets = found.paths.map(
+        (p) => p.expands ? void 0 : resolvePath(found.folder, p.value, log.home)
+      );
+      for (const target of targets) {
+        paths += 1;
+        if (target === void 0 || found.folder === void 0) {
+          couldNotCheck += 1;
+          continue;
+        }
+        if (isOwn(resolve3(found.folder))) {
+          ownCopy += 1;
+          continue;
+        }
+        const edited = log.writes.some(
+          (w) => within(w.path, target) && (w.session !== j.call.session || w.id < j.call.id)
+        );
+        if (edited) agentEdited += 1;
+        else mainCheckout += 1;
+      }
+    }
+  }
+  return { calls: tallyOf(judged), paths, ownCopy, agentEdited, mainCheckout, couldNotCheck };
+}
+function lostWorkStatus(facts, sessions) {
+  const { branches, stashes, discards: discards2 } = facts;
+  const all = addTallies(branches.calls, stashes.calls, discards2.calls);
+  return statusOf({
+    sessions,
+    act: branches.recoverable + stashes.recoverable > 0,
+    review: discards2.mainCheckout > 0,
+    incomplete: branches.notIdentified + branches.couldNotCheck + stashes.notIdentified + stashes.cleared + stashes.couldNotCheck + discards2.couldNotCheck + all.unknown + facts.hidingCalls > 0
+  });
+}
+async function checkLostWork(context) {
+  const log = context.log;
+  const fixes = new FixList("lost-work");
+  const branchCalls = judgeAll(log, /branch/, branchDeletes);
+  const stashCalls = judgeAll(log, /stash/, stashDrops);
+  const discardCalls = judgeAll(log, /checkout|restore|reset|switch|clean/, discards);
+  const own = judgeAll(log, /worktree|clone|cp\s/, copies).flatMap((j) => j.found);
+  const branches = await checkBranches(context, branchCalls, fixes);
+  const stashes = await checkStashes(context, stashCalls, fixes);
+  const discarded = await checkDiscards(context, discardCalls, own);
+  const behind = backstopIds(log, READ_PROGRAMS["lost-work"], [
+    branchDeletes,
+    stashDrops,
+    discards
+  ]);
+  const facts = {
+    branches,
+    stashes,
+    discards: discarded,
+    unsafeFixes: fixes.unsafe.length,
+    ...withUnread(log, behind)
+  };
+  const status = lostWorkStatus(facts, log.sessions);
+  return {
+    result: { status, matches: callsIn(allCalls2(facts)), facts },
+    localFixes: fixes.made,
+    unsafeFixes: fixes.unsafe
+  };
+}
+function allCalls2(f) {
+  return addTallies(f.branches.calls, f.stashes.calls, f.discards.calls);
+}
+function recoverable(f) {
+  return f.branches.recoverable + f.stashes.recoverable;
+}
+var HEADLINE2 = {
+  id: "lost-work.headline",
+  render: (f) => recoverable(f) > 0 ? `${counted2(recoverable(f), "deleted branch or stash", "deleted branches or stashes")} can still be recovered.` : void 0
+};
+var FOUND2 = [
+  {
+    id: "lost-work.branches",
+    render: (f) => f.branches.deleted > 0 ? `${counted2(f.branches.deleted, "branch", "branches")} ${was(f.branches.deleted)} force-deleted.` : void 0
+  },
+  {
+    id: "lost-work.stashes",
+    render: (f) => f.stashes.dropped > 0 ? `${counted2(f.stashes.dropped, "stash", "stashes")} ${was(f.stashes.dropped)} dropped.` : void 0
+  },
+  {
+    id: "lost-work.stashes-cleared",
+    render: (f) => f.stashes.cleared > 0 ? `${counted2(f.stashes.cleared, "git stash clear command")} ran. It prints no ids, so what it removed could not be looked up.` : void 0
+  },
+  {
+    id: "lost-work.not-identified",
+    render: (f) => {
+      const n2 = f.branches.notIdentified + f.stashes.notIdentified;
+      return n2 > 0 ? `${counted2(n2, "branch or stash deletion", "branch or stash deletions")} ran, but the commit id is not in the recorded output, so it could not be looked up.` : void 0;
+    }
+  },
+  {
+    id: "lost-work.failed",
+    render: (f) => {
+      const n2 = f.branches.failed + f.stashes.failed;
+      return n2 > 0 ? `${counted2(n2, "branch or stash deletion", "branch or stash deletions")} ended in an error and reported nothing deleted, so ${n2 === 1 ? "it is" : "they are"} not counted as lost work.` : void 0;
+    }
+  },
+  {
+    id: "lost-work.discards",
+    render: (f) => f.discards.paths > 0 ? `Uncommitted changes to ${counted2(f.discards.paths, "path")} were discarded with git checkout, git restore, git reset --hard, git switch or git clean.` : void 0
+  },
+  {
+    id: "lost-work.mentioned",
+    render: (f) => {
+      const n2 = allCalls2(f).mentioned;
+      return n2 > 0 ? `${counted2(n2, "match", "matches")} only mentioned deleting work, and ${n2 === 1 ? "is" : "are"} not counted.` : void 0;
+    }
+  },
+  {
+    id: "lost-work.unknown",
+    render: (f) => {
+      const n2 = allCalls2(f).unknown;
+      return n2 > 0 ? `${counted2(n2, "command")} could not be confirmed as run.` : void 0;
+    }
+  },
+  {
+    id: "lost-work.none",
+    render: (f) => allCalls2(f).ran === 0 && f.hidingCalls === 0 ? "No command this check could read deleted a branch or a stash, or discarded changes." : void 0
+  }
+];
+var NOW2 = [
+  {
+    id: "lost-work.now.unsafe-fixes",
+    render: (f) => unsafeFixLine(f.unsafeFixes)
+  },
+  {
+    id: "lost-work.now.recoverable-branches",
+    render: (f) => f.branches.recoverable > 0 ? `${counted2(f.branches.recoverable, "deleted branch", "deleted branches")} ${is(f.branches.recoverable)} still in the repo and on no other branch: recoverable by commit id.` : void 0
+  },
+  {
+    id: "lost-work.now.recoverable-stashes",
+    render: (f) => f.stashes.recoverable > 0 ? `${counted2(f.stashes.recoverable, "dropped stash", "dropped stashes")} ${is(f.stashes.recoverable)} still in the repo: recoverable by commit id.` : void 0
+  },
+  {
+    id: "lost-work.now.on-another-ref",
+    render: (f) => f.branches.onAnotherRef > 0 ? `${counted2(f.branches.onAnotherRef, "deleted branch", "deleted branches")} ${is(f.branches.onAnotherRef)} still on another branch or tag, so nothing is lost.` : void 0
+  },
+  {
+    id: "lost-work.now.listed",
+    render: (f) => f.stashes.listed > 0 ? `${counted2(f.stashes.listed, "dropped stash", "dropped stashes")} ${is(f.stashes.listed)} back in the stash list.` : void 0
+  },
+  {
+    id: "lost-work.now.gone",
+    render: (f) => {
+      const n2 = f.branches.gone + f.stashes.gone;
+      return n2 > 0 ? `${counted2(n2, "deleted branch or stash", "deleted branches or stashes")} ${is(n2)} no longer in the repo.` : void 0;
+    }
+  },
+  {
+    id: "lost-work.now.discards-main",
+    render: (f) => f.discards.mainCheckout > 0 ? `${counted2(f.discards.mainCheckout, "discarded path")} ${was(f.discards.mainCheckout)} in a main checkout with no agent edit on record, so ${f.discards.mainCheckout === 1 ? "it" : "they"} may have held someone's own changes. Git keeps no copy of those.` : void 0
+  },
+  {
+    id: "lost-work.now.discards-agent",
+    render: (f) => f.discards.agentEdited > 0 ? `${counted2(f.discards.agentEdited, "discarded path")} held files the agent had edited.` : void 0
+  },
+  {
+    id: "lost-work.now.discards-own",
+    render: (f) => f.discards.ownCopy > 0 ? `${counted2(f.discards.ownCopy, "discarded path")} ${was(f.discards.ownCopy)} in the agent's own worktree or a scratch copy.` : void 0
+  },
+  {
+    id: "lost-work.now.could-not-check",
+    render: (f) => {
+      const n2 = f.branches.couldNotCheck + f.stashes.couldNotCheck + f.discards.couldNotCheck;
+      return n2 > 0 ? `${counted2(n2, "item")} could not be checked on this machine.` : void 0;
+    }
+  }
+];
+var CODEX2 = codexLimitedTemplate("lost-work");
+var CHIP_RECOVERABLE = {
+  id: "lost-work.chip",
+  count: (f) => recoverable(f),
+  one: "deleted branch or stash still recoverable",
+  many: "deleted branches or stashes still recoverable"
+};
+var CHIP_REASONS2 = [
+  CHIP_RECOVERABLE,
+  {
+    id: "lost-work.chip.discards",
+    count: (f) => f.discards.mainCheckout,
+    one: "path discarded in a main checkout",
+    many: "paths discarded in a main checkout"
+  }
+];
+var FIX_STEPS2 = [
+  {
+    id: "lost-work.fix.recover",
+    render: (f) => recoverable(f) > 0 ? "Recover each one by its commit id before git cleans unreachable commits away." : void 0
+  },
+  {
+    id: "lost-work.fix.discards",
+    render: (f) => f.discards.mainCheckout > 0 ? "Check whether the discarded paths held changes you still need. Git cannot bring them back, but an editor's local history may." : void 0
+  }
+];
+function fixShapes2(f) {
+  const out = [];
+  if (f.branches.recoverable > 0) out.push({ shape: "git branch recovered/<name> <sha>" });
+  if (f.stashes.recoverable > 0) out.push({ shape: "git stash store -m recovered <sha>" });
+  return out;
+}
+var lostWorkCard = (result, context) => {
+  const f = result.facts;
+  const headline2 = sentence(HEADLINE2, f);
+  const extras = cardExtras(chipFor(f, CHIP_REASONS2, CHIP_RECOVERABLE), sentences(FIX_STEPS2, f));
+  return {
+    ...extras,
+    category: "lost-work",
+    tone: result.status,
+    count: result.matches,
+    found: [...sentences(FOUND2, f), ...codexLines(CODEX2, context, f)],
+    now: sentences(NOW2, f),
+    fixes: fixShapes2(f),
+    codexCaveat: codexCaveat(context, allCalls2(f).ran),
+    ...headline2 === void 0 ? {} : {
+      headline: {
+        basis: "recoverable-deleted-work",
+        count: recoverable(f),
+        restsOnCodexRan: context.ranEvidence === "output-record",
+        // Commits still in the object store, read from git, not from commands.
+        confirmedBy: "git-state",
+        sentence: headline2
+      }
+    }
+  };
+};
+
+// src/core/verify/secrets-card.ts
+function likelyReal(n2) {
+  return countOf(n2, "likely-real credential");
+}
+function filesItRead(n2) {
+  return n2 === 1 ? "the one transcript file it read" : `the ${formatCount(n2)} transcript files it read`;
+}
+function be(n2) {
+  return n2 === 1 ? "is" : "are";
+}
+function anyFound(f) {
+  return f.classes["likely-real"] + f.classes["committed-fixture"] + f.classes.placeholder + f.classes["local-dev"] > 0;
+}
+var FOUND_LIKELY_REAL = {
+  id: "secrets.found.likely-real",
+  render: (f) => f.classes["likely-real"] > 0 ? `Found ${likelyReal(f.classes["likely-real"])} in ${filesItRead(f.filesRead)}.` : void 0
+};
+var FOUND_NO_LIKELY_REAL = {
+  id: "secrets.found.no-likely-real",
+  render: (f) => f.classes["likely-real"] === 0 && f.filesRead > 0 ? anyFound(f) ? `Found no likely-real credential in ${filesItRead(f.filesRead)}.` : `Found no credential-shaped value in ${filesItRead(f.filesRead)}.` : void 0
+};
+var FOUND_FIXTURES = {
+  id: "secrets.found.committed-fixtures",
+  render: (f) => {
+    const n2 = f.classes["committed-fixture"];
+    if (n2 === 0) return void 0;
+    return n2 === 1 ? "1 value is also in a git-tracked file, a committed fixture: it may be test data, or a real secret that was committed." : `${formatCount(n2)} values are also in git-tracked files, committed fixtures: each may be test data, or a real secret that was committed.`;
+  }
+};
+var FOUND_NOT_COUNTED = {
+  id: "secrets.found.not-counted",
+  render: (f) => {
+    const parts = [];
+    const placeholders = f.classes.placeholder;
+    const local = f.classes["local-dev"];
+    if (placeholders > 0) {
+      parts.push(
+        countOf(placeholders, "placeholder or false positive", "placeholders or false positives")
+      );
+    }
+    if (local > 0) {
+      parts.push(`${countOf(local, "local dev value")} for a database or service on this machine`);
+    }
+    return parts.length > 0 ? `Not counted as likely real: ${parts.join(", and ")}.` : void 0;
+  }
+};
+var FOUND_SET_ASIDE = {
+  id: "secrets.found.set-aside",
+  render: (f) => {
+    const { unnamedOutputOnly, namedNotCredentialShaped } = f.setAside;
+    const n2 = unnamedOutputOnly + namedNotCredentialShaped;
+    if (n2 === 0) return void 0;
+    const why = [];
+    if (unnamedOutputOnly > 0) {
+      why.push(`${formatCount(unnamedOutputOnly)} unnamed and seen only in output or replies`);
+    }
+    if (namedNotCredentialShaped > 0) {
+      why.push(`${formatCount(namedNotCredentialShaped)} named but not shaped like a credential`);
+    }
+    return `Of the placeholders or false positives, ${formatCount(n2)} ${n2 === 1 ? "was" : "were"} set aside by a rule that can miss a real credential: ${why.join(", and ")}.`;
+  }
+};
+var FOUND_FIXTURES_PARTIAL = {
+  id: "secrets.found.fixtures-partial",
+  render: (f) => f.classes["likely-real"] > 0 && f.fixtureCheck === "partial" ? `${countOf(f.reposNotChecked, "repo")} could not be searched for committed fixtures, so some of these may be fixtures.` : void 0
+};
+var FOUND_FIXTURES_UNAVAILABLE = {
+  id: "secrets.found.fixtures-unavailable",
+  render: (f) => f.classes["likely-real"] > 0 && f.fixtureCheck === "unavailable" ? "No repo could be searched for committed fixtures, so a fixture would be counted here as likely real." : void 0
+};
+var FOUND_UNREAD = {
+  id: "secrets.found.unread",
+  render: (f) => f.filesNotRead > 0 ? `${countOf(f.filesNotRead, "transcript file")} could not be read.` : void 0
+};
+var FOUND_UNPLACED = {
+  id: "secrets.found.unplaced",
+  render: (f) => f.unplaced > 0 ? `${countOf(f.unplaced, "redacted text")} could not be lined up with the original, so ${f.unplaced === 1 ? "it was" : "they were"} not classed.` : void 0
+};
+var FOUND_METHOD = {
+  id: "secrets.found.method",
+  render: (f) => f.filesRead > 0 ? "Each value was classed by its format and by where else it appears. None was checked with the service that issued it." : void 0
+};
+var SECRETS_FOUND = [
+  FOUND_LIKELY_REAL,
+  FOUND_NO_LIKELY_REAL,
+  FOUND_FIXTURES,
+  FOUND_NOT_COUNTED,
+  FOUND_SET_ASIDE,
+  FOUND_FIXTURES_PARTIAL,
+  FOUND_FIXTURES_UNAVAILABLE,
+  FOUND_UNREAD,
+  FOUND_UNPLACED,
+  FOUND_METHOD
+];
+var NOW_STILL_THERE = {
+  id: "secrets.now.still-there",
+  render: (f) => {
+    const n2 = f.classes["likely-real"];
+    if (n2 === 0) return void 0;
+    return n2 === 1 ? "It is still in the transcript files on this machine, where anything that can read those files can read it." : `All ${formatCount(n2)} are still in the transcript files on this machine, where anything that can read those files can read them.`;
+  }
+};
+var NOW_FIXTURES = {
+  id: "secrets.now.committed-fixtures",
+  render: (f) => {
+    const n2 = f.classes["committed-fixture"];
+    if (n2 === 0) return void 0;
+    return n2 === 1 ? "The committed fixture is in a git-tracked file today, and so in the repo's history." : `The ${formatCount(n2)} committed fixtures are in git-tracked files today, and so in the repo's history.`;
+  }
+};
+var NOW_FIXTURE_CAVEAT = {
+  id: "secrets.now.fixture-caveat",
+  render: (f) => f.classes["likely-real"] === 0 && f.classes["committed-fixture"] > 0 ? "If a committed fixture is a real secret, it stays in the repo's history even after the file is removed, so rotate it with the service that issued it." : void 0
+};
+var NOW_NOTHING = {
+  id: "secrets.now.nothing",
+  render: (f) => f.classes["likely-real"] === 0 && f.classes["committed-fixture"] === 0 && f.filesRead > 0 ? "There is no likely-real credential to rotate." : void 0
+};
+var SECRETS_NOW = [
+  NOW_STILL_THERE,
+  NOW_FIXTURES,
+  NOW_FIXTURE_CAVEAT,
+  NOW_NOTHING
+];
+var FIX_ROTATE = {
+  id: "secrets.fix.rotate",
+  render: (f) => {
+    const n2 = f.classes["likely-real"];
+    if (n2 === 0) return void 0;
+    return n2 === 1 ? "Rotate it first, with the service that issued it, so the copy in the transcripts no longer works." : "Rotate each one first, with the service that issued it, so the copies in the transcripts no longer work.";
+  }
+};
+var FIX_FIXTURES = {
+  id: "secrets.fix.committed-fixtures",
+  render: (f) => f.classes["likely-real"] > 0 && f.classes["committed-fixture"] > 0 ? "If a committed fixture is a real secret, rotate it as well: removing the file does not remove it from the repo's history." : void 0
+};
+var SECRETS_FIX = [FIX_ROTATE, FIX_FIXTURES];
+var SECRETS_HEADLINE = {
+  id: "secrets.headline",
+  render: (f) => {
+    const n2 = f.classes["likely-real"];
+    return n2 > 0 ? `${likelyReal(n2)} ${be(n2)} still in the agent's transcripts` : void 0;
+  }
+};
+var SECRETS_READ = {
+  id: "secrets.read",
+  render: (f) => {
+    if (f.filesRead === 0) return void 0;
+    let line2 = `Read ${countOf(f.filesRead, "transcript file")} again`;
+    if (f.reposChecked > 0) {
+      line2 += ` and searched the git-tracked files of ${countOf(f.reposChecked, "repo")} the sessions ran in, with read-only git`;
+    }
+    if (f.reposNotChecked > 0) {
+      line2 += `; ${countOf(f.reposNotChecked, "repo")} the sessions named could not be searched`;
+    }
+    return `${line2}.`;
+  }
+};
+var SECRETS_COUNT = {
+  id: "secrets.count",
+  render: ({ matches }) => countOf(matches, "credential-shaped value")
+};
+var SECRETS_CHIP = {
+  id: "secrets.chip",
+  render: (f) => f.classes["likely-real"] === 1 ? "likely-real credential in transcripts" : "likely-real credentials in transcripts"
+};
+var secretsCard = (result) => {
+  const facts = result.facts;
+  const likely = facts.classes["likely-real"];
+  const headline2 = sentence(SECRETS_HEADLINE, facts);
+  const chip = sentence(SECRETS_CHIP, facts);
+  const countLine = sentence(SECRETS_COUNT, result);
+  const read = sentence(SECRETS_READ, facts);
+  return {
+    category: "secrets",
+    tone: result.status,
+    count: result.matches,
+    ...countLine === void 0 ? {} : { countLine },
+    found: sentences(SECRETS_FOUND, facts),
+    now: sentences(SECRETS_NOW, facts),
+    fixSteps: sentences(SECRETS_FIX, facts),
+    fixes: [],
+    codexCaveat: false,
+    ...headline2 === void 0 ? {} : {
+      headline: {
+        basis: "likely-real-credentials",
+        count: likely,
+        restsOnCodexRan: false,
+        sentence: headline2
+      }
+    },
+    ...chip === void 0 ? {} : { chip: { count: likely, label: chip } },
+    ...read === void 0 ? {} : { read }
+  };
+};
+
+// src/core/verify/skipped.ts
+import { dirname as dirname4, join as join6 } from "path";
+var COMMIT_VALUE_OPTIONS = /* @__PURE__ */ new Set([
+  "-m",
+  "--message",
+  "-F",
+  "--file",
+  "-C",
+  "--reuse-message",
+  "-c",
+  "--reedit-message",
+  "-t",
+  "--template",
+  "--author",
+  "--date",
+  "--fixup",
+  "--squash",
+  "--cleanup",
+  "--trailer",
+  "--pathspec-from-file"
+]);
+var COMMIT_VALUE_LETTERS = "mFCct";
+function commitSkipsHooks(args2) {
+  let k = 0;
+  while (k < args2.length) {
+    const value = args2[k].value;
+    if (value === "--") return false;
+    if (value === "--no-verify") return true;
+    let takesNext = false;
+    if (value.startsWith("--")) takesNext = COMMIT_VALUE_OPTIONS.has(value);
+    else if (value.startsWith("-") && value !== "-") {
+      for (let c = 1; c < value.length; c++) {
+        const letter = value[c];
+        if (letter === "n") return true;
+        if (COMMIT_VALUE_LETTERS.includes(letter)) {
+          takesNext = c === value.length - 1;
+          break;
+        }
+        if (letter === "S" || letter === "u") break;
+      }
+    }
+    const next = args2[k + 1];
+    const bareOption = next !== void 0 && next.raw === next.value && next.value.startsWith("-");
+    k += takesNext && next !== void 0 && !bareOption ? 2 : 1;
+  }
+  return false;
+}
+function commits(text2, cwd, home) {
+  const out = [];
+  walkCommands(text2, cwd, home, (command, folder) => {
+    const git = gitCommand(command.words);
+    if (git === void 0 || git.sub !== "commit") return;
+    out.push({
+      folder: git.elsewhere ? void 0 : gitFolder(folder, git.folders, home),
+      skips: commitSkipsHooks(git.args)
+    });
+  });
+  return out;
+}
+var noVerifyCommits = (text2, cwd, home) => commits(text2, cwd, home).filter((c) => c.skips);
+var otherNoVerify = (text2, cwd, home) => {
+  const out = [];
+  walkCommands(text2, cwd, home, (command, folder) => {
+    const git = gitCommand(command.words);
+    if (git === void 0 || git.sub === "commit") return;
+    if (git.args.some((a) => a.value === "--no-verify" && a.raw === a.value)) {
+      out.push({ folder: git.elsewhere ? void 0 : gitFolder(folder, git.folders, home) });
+    }
+  });
+  return out;
+};
+function huskyOff(word) {
+  const match = /^(HUSKY|HUSKY_SKIP_HOOKS)=(.*)$/.exec(word.value);
+  if (match === null) return false;
+  const value = match[2].toLowerCase();
+  return match[1] === "HUSKY" ? value === "0" || value === "false" : value === "1" || value === "true";
+}
+var huskyCommands = (text2, cwd, home) => {
+  const out = [];
+  walkCommands(text2, cwd, home, (command, folder) => {
+    const start = commandStart(command.words);
+    const program = command.words[start.index];
+    const exported = program !== void 0 && programName(program) === "export" && command.words.slice(start.index + 1).some(huskyOff);
+    if (!start.assignments.some(huskyOff) && !exported) return;
+    const git = gitCommand(command.words);
+    out.push({
+      folder: git === void 0 ? folder : git.elsewhere ? void 0 : gitFolder(folder, git.folders, home)
+    });
+  });
+  return out;
+};
+var oneCommandSkips = (text2, cwd, home) => {
+  const out = [];
+  walkCommands(text2, cwd, home, (command, folder) => {
+    const git = gitCommand(command.words);
+    if (git === void 0) return;
+    const start = commandStart(command.words);
+    const skipEnv = start.assignments.some((word) => /^SKIP=\S/.test(word.value));
+    const before = command.words.slice(start.index + 1, command.words.length - git.args.length);
+    const configSkip = before.some(
+      (word, k) => word.value === "-c" && /^core\.hookspath=/i.test(before[k + 1]?.value ?? "")
+    );
+    if (!skipEnv && !configSkip) return;
+    out.push({ folder: git.elsewhere ? void 0 : gitFolder(folder, git.folders, home) });
+  });
+  return out;
+};
+var CONFIG_VALUE_OPTIONS = /* @__PURE__ */ new Set([
+  "-f",
+  "--file",
+  "--blob",
+  "--type",
+  "--default",
+  "--comment",
+  "--value"
+]);
+var CONFIG_READS = /* @__PURE__ */ new Set([
+  "--get",
+  "--get-all",
+  "--get-regexp",
+  "--get-urlmatch",
+  "-l",
+  "--list",
+  "get",
+  "list"
+]);
+var hooksPathChanges = (text2, cwd, home) => {
+  const out = [];
+  walkCommands(text2, cwd, home, (command, folder) => {
+    const git = gitCommand(command.words);
+    if (git === void 0 || git.sub !== "config") return;
+    if (git.args.some((a) => CONFIG_READS.has(a.value))) return;
+    const rest = operands(git.args, CONFIG_VALUE_OPTIONS);
+    const verb = rest[0]?.value;
+    const named = verb === "set" || verb === "unset" ? rest.slice(1) : rest;
+    if (named[0]?.value.toLowerCase() !== "core.hookspath") return;
+    const unset = verb === "unset" || git.args.some((a) => a.value === "--unset" || a.value === "--unset-all");
+    if (!unset && named.length < 2) return;
+    out.push({ folder: git.elsewhere ? void 0 : gitFolder(folder, git.folders, home) });
+  });
+  return out;
+};
+var INSTRUCTION_NAMES = /* @__PURE__ */ new Set([
+  "claude.md",
+  "claude.local.md",
+  "agents.md",
+  "agent.md",
+  "gemini.md",
+  ".cursorrules",
+  ".windsurfrules",
+  "copilot-instructions.md",
+  "memory.md"
+]);
+var REPO_INSTRUCTION_FILES = [
+  "CLAUDE.md",
+  "CLAUDE.local.md",
+  "AGENTS.md",
+  "GEMINI.md",
+  ".cursorrules",
+  ".windsurfrules",
+  ".github/copilot-instructions.md"
+];
+function isInstructionFile(path) {
+  const parts = path.split(/[\\/]/);
+  const base = (parts[parts.length - 1] ?? "").toLowerCase();
+  if (INSTRUCTION_NAMES.has(base)) return true;
+  return /\.mdc?$/.test(base) && parts.some((part) => part === ".claude" || part === ".codex" || part === ".cursor");
+}
+var SKIP_VERB = String.raw`(?:skip|skipping|bypass|bypassing|disable|disabling|ignore|ignoring|turn\s+off)`;
+var SKIP_OBJECT = String.raw`(?:the\s+|all\s+|any\s+)?(?:git\s+|pre-commit\s+|pre-push\s+|commit\s+|husky\s+|lint\s+|ci\s+)?(?:hooks?|checks?|pre-commit|pre-push|husky|linting|lint)`;
+var SKIP_LINE = new RegExp(
+  String.raw`--no-verify\b|\bHUSKY(?:_SKIP_HOOKS)?=|\bSKIP=[A-Za-z]|core\.hooksPath\b[^\n]{0,24}?(?:/dev/null|''|"")|\b${SKIP_VERB}\s+${SKIP_OBJECT}\b`,
+  "i"
+);
+var NEGATED = /\b(?:never|don'?t|do\s+not|does\s+not|must\s+not|mustn'?t|should\s+not|shouldn'?t|can'?t|cannot|avoid|forbidden|not\s+allowed|no\s+longer|refuse|instead\s+of|rather\s+than)\b/i;
+function tellsToSkip(text2) {
+  return text2.split(/\r?\n/).some((line2) => SKIP_LINE.test(line2) && !NEGATED.test(line2));
+}
+var SKIP_GREP = "grep -n -i -E 'no-verify|HUSKY|SKIP=|hooks'";
+var SKIP_GREP_PARTS = [
+  "grep",
+  "-n",
+  "-i",
+  "-E",
+  "no-verify|HUSKY|SKIP=|hooks"
+];
+var COMMIT_LINE = /^\[[^\]\n]*? ([0-9a-f]{7,64})\] /gm;
+var OTHER_COMMIT_MAKERS = /* @__PURE__ */ new Set([
+  "cherry-pick",
+  "revert",
+  "merge",
+  "am",
+  "rebase",
+  "pull"
+]);
+function makesOtherCommits(text2, cwd, home) {
+  let found = false;
+  walkCommands(text2, cwd, home, (command) => {
+    const git = gitCommand(command.words);
+    if (git !== void 0 && OTHER_COMMIT_MAKERS.has(git.sub)) found = true;
+  });
+  return found;
+}
+function noVerifyIds(context, judged) {
+  const toCheck = [];
+  let notIdentified = 0;
+  let failed = 0;
+  let noFolder = 0;
+  for (const j of judged) {
+    if (j.found.length === 0) continue;
+    const all = commits(j.call.view, j.call.cwd, context.log.home);
+    const folders = new Set(j.found.map((f) => f.folder));
+    const [folder] = [...folders];
+    const ids = [...outputOf(j.call).matchAll(COMMIT_LINE)].map((m) => m[1]);
+    if (ids.length === 0 && context.log.agent !== "codex" && j.call.result?.isError === true) {
+      failed += 1;
+      continue;
+    }
+    if (all.length !== j.found.length || folders.size !== 1 || ids.length === 0 || ids.length !== all.length || makesOtherCommits(j.call.view, j.call.cwd, context.log.home)) {
+      notIdentified += 1;
+      continue;
+    }
+    if (folder === void 0) {
+      noFolder += ids.length;
+      continue;
+    }
+    for (const id of ids) toCheck.push({ folder, id });
+  }
+  return { toCheck, notIdentified, failed, noFolder };
+}
+async function checkCommits(context, judged, fixes) {
+  const { toCheck, notIdentified, failed, noFolder } = noVerifyIds(context, judged);
+  const probe = context.probe;
+  let withoutHooks = 0;
+  let onMain = 0;
+  let offMain = 0;
+  let noMainToCheck = 0;
+  let gone = 0;
+  let couldNotCheck = noFolder;
+  const seen = /* @__PURE__ */ new Set();
+  for (const [index, item] of toCheck.entries()) {
+    if (index >= MAX_PROBED_ITEMS) {
+      couldNotCheck += 1;
+      continue;
+    }
+    const root = await probe.toplevel(item.folder);
+    if (isFailure(root)) {
+      couldNotCheck += 1;
+      continue;
+    }
+    const key = `${root}\0${item.id}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const hooks = await probe.hasHooks(root, COMMIT_HOOKS);
+    if (isFailure(hooks)) {
+      couldNotCheck += 1;
+      continue;
+    }
+    if (!hooks) {
+      withoutHooks += 1;
+      continue;
+    }
+    const full = await probe.commit(root, item.id);
+    if (isFailure(full)) {
+      couldNotCheck += 1;
+      continue;
+    }
+    if (full === null) {
+      gone += 1;
+      continue;
+    }
+    const defaults = await probe.defaultRefs(root);
+    if (isFailure(defaults)) {
+      couldNotCheck += 1;
+      continue;
+    }
+    if (defaults.length === 0) {
+      noMainToCheck += 1;
+      continue;
+    }
+    const reached = await probe.onDefaultBranch(root, full);
+    if (isFailure(reached)) {
+      couldNotCheck += 1;
+      continue;
+    }
+    if (reached) onMain += 1;
+    else offMain += 1;
+    fixes.add(["git", "-C", { ref: root }, "show", "--stat", { sha: full }]);
+  }
+  return {
+    calls: tallyOf(judged),
+    commits: toCheck.length,
+    notIdentified,
+    failed,
+    withoutHooks,
+    onMain,
+    offMain,
+    noMainToCheck,
+    gone,
+    couldNotCheck
+  };
+}
+async function checkHooksNow(context, changes, skips, fixes) {
+  const folders = /* @__PURE__ */ new Set();
+  let couldNotCheck = 0;
+  for (const j of [changes, ...skips].flat()) {
+    for (const found of j.found) {
+      if (found.folder === void 0) couldNotCheck += 1;
+      else folders.add(found.folder);
+    }
+  }
+  const roots = /* @__PURE__ */ new Set();
+  for (const folder of [...folders].slice(0, MAX_PROBED_ITEMS)) {
+    const root = await context.probe.toplevel(folder);
+    if (isFailure(root)) couldNotCheck += 1;
+    else roots.add(root);
+  }
+  couldNotCheck += Math.max(0, folders.size - MAX_PROBED_ITEMS);
+  let off = 0;
+  let on = 0;
+  let none = 0;
+  for (const root of roots) {
+    const state = await context.probe.hooksState(root, CHECK_HOOKS);
+    if (isFailure(state)) couldNotCheck += 1;
+    else if (state === "on") on += 1;
+    else if (state === "none") none += 1;
+    else {
+      off += 1;
+      fixes.add(["git", "-C", { ref: root }, "config", "--unset", "core.hooksPath"]);
+    }
+  }
+  return { calls: tallyOf(changes), off, on, none, couldNotCheck };
+}
+function homeInstructions(context) {
+  const home = context.log.home;
+  switch (context.log.agent) {
+    case "claude":
+      return [join6(home, ".claude", "CLAUDE.md")];
+    case "codex":
+      return [join6(home, ".codex", "AGENTS.md")];
+    default:
+      return [];
+  }
+}
+async function checkInstructions(context, fixes) {
+  const files = /* @__PURE__ */ new Map();
+  for (const write of context.log.writes) {
+    if (!isInstructionFile(write.path)) continue;
+    const file2 = files.get(write.path) ?? { agentWrote: false, lookedFor: false };
+    if (write.texts.some(tellsToSkip)) file2.agentWrote = true;
+    files.set(write.path, file2);
+  }
+  let rootsNotAsked = 0;
+  for (const folder of context.log.folders.slice(0, MAX_PROBED_ITEMS)) {
+    const root = await context.probe.toplevel(folder);
+    if (isFailure(root)) {
+      const gone = root.failed === "missing" && context.probe.isFolder(folder) !== true && context.probe.exists(folder) !== void 0;
+      if (root.failed !== "not-a-repo" && !gone) rootsNotAsked += 1;
+      continue;
+    }
+    for (const name of REPO_INSTRUCTION_FILES) {
+      const path = join6(root, name);
+      if (!files.has(path)) files.set(path, { agentWrote: false, lookedFor: true });
+    }
+  }
+  for (const path of homeInstructions(context)) {
+    if (!files.has(path)) files.set(path, { agentWrote: false, lookedFor: true });
+  }
+  let read = 0;
+  let sayToSkip = 0;
+  let agentWrote = 0;
+  let agentWroteStill = 0;
+  let agentWroteRemoved = 0;
+  let couldNotRead = rootsNotAsked;
+  for (const [index, [path, file2]] of [...files].entries()) {
+    if (file2.agentWrote) agentWrote += 1;
+    if (index >= MAX_PROBED_ITEMS) {
+      couldNotRead += 1;
+      continue;
+    }
+    const there = context.probe.exists(path);
+    if (there === void 0) {
+      couldNotRead += 1;
+      continue;
+    }
+    if (!there) {
+      if (file2.agentWrote) agentWroteRemoved += 1;
+      continue;
+    }
+    if (!file2.lookedFor) await context.probe.toplevel(dirname4(path));
+    const text2 = await context.probe.read(path);
+    if (!text2.ok) {
+      couldNotRead += 1;
+      continue;
+    }
+    read += 1;
+    const says = tellsToSkip(text2.text);
+    if (says) {
+      sayToSkip += 1;
+      fixes.add([...SKIP_GREP_PARTS, { ref: path }]);
+    }
+    if (file2.agentWrote) {
+      if (says) agentWroteStill += 1;
+      else agentWroteRemoved += 1;
+    }
+  }
+  return { read, sayToSkip, agentWrote, agentWroteStill, agentWroteRemoved, couldNotRead };
+}
+function skippedChecksStatus(facts, sessions) {
+  const { noVerify, hooksPath, instructions } = facts;
+  return statusOf({
+    sessions,
+    act: noVerify.onMain > 0 || hooksPath.off > 0 || instructions.sayToSkip > 0,
+    review: noVerify.offMain + noVerify.noMainToCheck > 0 || facts.otherNoVerify.ran > 0 || facts.husky.ran > 0 || facts.oneCommand.ran > 0,
+    incomplete: noVerify.notIdentified + noVerify.couldNotCheck + hooksPath.couldNotCheck + instructions.couldNotRead + allCalls3(facts).unknown + facts.hidingCalls > 0
+  });
+}
+async function checkSkippedChecks(context) {
+  const log = context.log;
+  const fixes = new FixList("skipped-checks");
+  const commitCalls = judgeAll(log, /no-verify|commit[^\n]*\s-[A-Za-z]*n/, noVerifyCommits);
+  const otherCalls = judgeAll(log, /--no-verify/, otherNoVerify);
+  const huskyCalls = judgeAll(log, /HUSKY/, huskyCommands);
+  const oneCommandCalls = judgeAll(log, /SKIP=|hooksPath=/i, oneCommandSkips);
+  const configCalls = judgeAll(log, /hooksPath/i, hooksPathChanges);
+  const noVerify = await checkCommits(context, commitCalls, fixes);
+  const hooksPath = await checkHooksNow(
+    context,
+    configCalls,
+    [commitCalls, otherCalls, huskyCalls, oneCommandCalls],
+    fixes
+  );
+  const instructions = await checkInstructions(context, fixes);
+  const behind = backstopIds(log, READ_PROGRAMS["skipped-checks"], [
+    noVerifyCommits,
+    otherNoVerify,
+    oneCommandSkips,
+    hooksPathChanges
+  ]);
+  const facts = {
+    noVerify,
+    otherNoVerify: tallyOf(otherCalls),
+    husky: tallyOf(huskyCalls),
+    oneCommand: tallyOf(oneCommandCalls),
+    hooksPath,
+    instructions,
+    unsafeFixes: fixes.unsafe.length,
+    ...withUnread(log, behind)
+  };
+  const status = skippedChecksStatus(facts, log.sessions);
+  return {
+    result: { status, matches: callsIn(allCalls3(facts)), facts },
+    localFixes: fixes.made,
+    unsafeFixes: fixes.unsafe
+  };
+}
+function withHooks(f) {
+  const n2 = f.noVerify;
+  return n2.onMain + n2.offMain + n2.noMainToCheck + n2.gone;
+}
+function allCalls3(f) {
+  return addTallies(f.noVerify.calls, f.otherNoVerify, f.husky, f.oneCommand, f.hooksPath.calls);
+}
+var HEADLINE3 = {
+  id: "skipped-checks.headline",
+  render: (f) => f.noVerify.onMain > 0 ? `${counted2(f.noVerify.onMain, "commit")} reached main without ${f.noVerify.onMain === 1 ? "its" : "their"} checks.` : void 0
+};
+var FOUND3 = [
+  {
+    id: "skipped-checks.no-verify",
+    render: (f) => withHooks(f) > 0 ? `${counted2(withHooks(f), "commit")} ${was(withHooks(f))} made with --no-verify in a repo with commit hooks.` : void 0
+  },
+  {
+    id: "skipped-checks.no-verify-no-hooks",
+    render: (f) => f.noVerify.withoutHooks > 0 ? `${counted2(f.noVerify.withoutHooks, "commit")} used --no-verify in a repo with no commit hooks, so no check was skipped.` : void 0
+  },
+  {
+    id: "skipped-checks.no-verify-not-identified",
+    render: (f) => f.noVerify.notIdentified > 0 ? `${counted2(f.noVerify.notIdentified, "commit command")} with --no-verify ran, but the commit id is not in the recorded output, so it could not be looked up.` : void 0
+  },
+  {
+    id: "skipped-checks.no-verify-failed",
+    render: (f) => f.noVerify.failed > 0 ? `${counted2(f.noVerify.failed, "commit command")} with --no-verify ended in an error and printed no commit, so no commit is counted.` : void 0
+  },
+  {
+    id: "skipped-checks.other-no-verify",
+    render: (f) => f.otherNoVerify.ran > 0 ? `${counted2(f.otherNoVerify.ran, "push, merge or rebase", "pushes, merges or rebases")} ran with --no-verify.` : void 0
+  },
+  {
+    id: "skipped-checks.husky",
+    render: (f) => f.husky.ran > 0 ? `${counted2(f.husky.ran, "command")} ran with Husky's hooks turned off for that one command (HUSKY=0).` : void 0
+  },
+  {
+    id: "skipped-checks.one-command",
+    render: (f) => f.oneCommand.ran > 0 ? `${counted2(f.oneCommand.ran, "git command")} ran with hooks turned off for that one command (pre-commit's SKIP= or git -c core.hooksPath).` : void 0
+  },
+  {
+    id: "skipped-checks.hooks-path",
+    render: (f) => f.hooksPath.calls.ran > 0 ? `${counted2(f.hooksPath.calls.ran, "change")} to core.hooksPath ran, which switches hooks for every later command.` : void 0
+  },
+  {
+    id: "skipped-checks.instructions",
+    render: (f) => f.instructions.sayToSkip > 0 ? `${counted2(f.instructions.sayToSkip, "agent instruction or memory file")} ${f.instructions.sayToSkip === 1 ? "tells" : "tell"} the agent to skip checks.` : void 0
+  },
+  {
+    id: "skipped-checks.instructions-written",
+    render: (f) => f.instructions.agentWrote > 0 ? `The agent wrote an instruction to skip checks into ${counted2(f.instructions.agentWrote, "file")} itself.` : void 0
+  },
+  {
+    id: "skipped-checks.mentioned",
+    render: (f) => {
+      const n2 = allCalls3(f).mentioned;
+      return n2 > 0 ? `${counted2(n2, "match", "matches")} only mentioned skipping a check, and ${n2 === 1 ? "is" : "are"} not counted.` : void 0;
+    }
+  },
+  {
+    id: "skipped-checks.unknown",
+    render: (f) => {
+      const n2 = allCalls3(f).unknown;
+      return n2 > 0 ? `${counted2(n2, "command")} could not be confirmed as run.` : void 0;
+    }
+  },
+  {
+    id: "skipped-checks.none",
+    render: (f) => {
+      if (allCalls3(f).ran > 0 || f.instructions.sayToSkip > 0 || f.hidingCalls > 0)
+        return void 0;
+      return f.instructions.read > 0 ? `No command this check could read skipped a hook, and none of the ${counted2(f.instructions.read, "instruction file")} read says to.` : "No command this check could read skipped a hook.";
+    }
+  }
+];
+var NOW3 = [
+  {
+    id: "skipped-checks.now.unsafe-fixes",
+    render: (f) => unsafeFixLine(f.unsafeFixes)
+  },
+  {
+    id: "skipped-checks.now.on-main",
+    render: (f) => f.noVerify.onMain > 0 ? `${counted2(f.noVerify.onMain, "of those commits", "of those commits")} ${is(f.noVerify.onMain)} on origin/main or origin/master now.` : void 0
+  },
+  {
+    id: "skipped-checks.now.off-main",
+    render: (f) => f.noVerify.offMain > 0 ? `${counted2(f.noVerify.offMain, "commit")} ${is(f.noVerify.offMain)} not on origin/main or origin/master.` : void 0
+  },
+  {
+    id: "skipped-checks.now.no-main",
+    render: (f) => f.noVerify.noMainToCheck > 0 ? `${counted2(f.noVerify.noMainToCheck, "commit")} ${is(f.noVerify.noMainToCheck)} in a repo with no origin/main or origin/master to check against.` : void 0
+  },
+  {
+    id: "skipped-checks.now.gone",
+    render: (f) => f.noVerify.gone > 0 ? `${counted2(f.noVerify.gone, "commit")} ${is(f.noVerify.gone)} no longer in the repo.` : void 0
+  },
+  {
+    id: "skipped-checks.now.hooks-off",
+    render: (f) => f.hooksPath.off > 0 ? `Hooks are switched off now in ${counted2(f.hooksPath.off, "repo")} where a check was skipped: core.hooksPath points at a folder with no hook.` : void 0
+  },
+  {
+    id: "skipped-checks.now.hooks-on",
+    render: (f) => f.hooksPath.on > 0 ? `Hooks are on now in ${counted2(f.hooksPath.on, "repo")} where a check was skipped.` : void 0
+  },
+  {
+    id: "skipped-checks.now.instructions-still",
+    render: (f) => f.instructions.agentWroteStill > 0 ? `${counted2(f.instructions.agentWroteStill, "file")} still ${f.instructions.agentWroteStill === 1 ? "holds" : "hold"} the instruction the agent wrote.` : void 0
+  },
+  {
+    id: "skipped-checks.now.instructions-removed",
+    render: (f) => f.instructions.agentWroteRemoved > 0 ? `The instruction the agent wrote is gone from ${counted2(f.instructions.agentWroteRemoved, "file")}.` : void 0
+  },
+  {
+    id: "skipped-checks.now.could-not-check",
+    render: (f) => {
+      const n2 = f.noVerify.couldNotCheck + f.hooksPath.couldNotCheck + f.instructions.couldNotRead;
+      return n2 > 0 ? `${counted2(n2, "item")} could not be checked on this machine.` : void 0;
+    }
+  }
+];
+var CODEX3 = codexLimitedTemplate("skipped-checks");
+var CHIP_ON_MAIN = {
+  id: "skipped-checks.chip",
+  count: (f) => f.noVerify.onMain,
+  one: "commit reached main without its checks",
+  many: "commits reached main without their checks"
+};
+var CHIP_REASONS3 = [
+  CHIP_ON_MAIN,
+  {
+    id: "skipped-checks.chip.hooks-off",
+    count: (f) => f.hooksPath.off,
+    one: "repo with hooks turned off",
+    many: "repos with hooks turned off"
+  },
+  {
+    id: "skipped-checks.chip.instructions",
+    count: (f) => f.instructions.sayToSkip,
+    one: "instruction file that says to skip checks",
+    many: "instruction files that say to skip checks"
+  },
+  {
+    id: "skipped-checks.chip.commits",
+    count: (f) => f.noVerify.offMain + f.noVerify.noMainToCheck,
+    one: "commit made without its checks",
+    many: "commits made without their checks"
+  },
+  {
+    id: "skipped-checks.chip.commands",
+    count: (f) => f.otherNoVerify.ran + f.husky.ran + f.oneCommand.ran,
+    one: "command that ran with hooks skipped",
+    many: "commands that ran with hooks skipped"
+  }
+];
+var FIX_STEPS3 = [
+  {
+    id: "skipped-checks.fix.review-commits",
+    render: (f) => f.noVerify.onMain + f.noVerify.offMain > 0 ? "Review each commit that skipped its hooks, and run your checks on it." : void 0
+  },
+  {
+    id: "skipped-checks.fix.hooks-on",
+    render: (f) => f.hooksPath.off > 0 ? "Turn hooks back on where they are off. If a hook manager set core.hooksPath, run its install again." : void 0
+  },
+  {
+    id: "skipped-checks.fix.instructions",
+    render: (f) => f.instructions.sayToSkip > 0 ? "Remove the instruction to skip checks from each file that has one." : void 0
+  }
+];
+function fixShapes3(f) {
+  const out = [];
+  if (f.noVerify.onMain + f.noVerify.offMain > 0) out.push({ shape: "git show --stat <sha>" });
+  if (f.hooksPath.off > 0) out.push({ shape: "git config --unset core.hooksPath" });
+  if (f.instructions.sayToSkip > 0) out.push({ shape: `${SKIP_GREP} <path>` });
+  return out;
+}
+var skippedChecksCard = (result, context) => {
+  const f = result.facts;
+  const headline2 = sentence(HEADLINE3, f);
+  const extras = cardExtras(chipFor(f, CHIP_REASONS3, CHIP_ON_MAIN), sentences(FIX_STEPS3, f));
+  return {
+    ...extras,
+    category: "skipped-checks",
+    tone: result.status,
+    count: result.matches,
+    found: [...sentences(FOUND3, f), ...codexLines(CODEX3, context, f)],
+    now: sentences(NOW3, f),
+    fixes: fixShapes3(f),
+    codexCaveat: codexCaveat(context, allCalls3(f).ran),
+    ...headline2 === void 0 ? {} : {
+      headline: {
+        basis: "commits-on-main-without-checks",
+        count: f.noVerify.onMain,
+        restsOnCodexRan: context.ranEvidence === "output-record",
+        // Commits on the remote main branch, read from git, not from commands.
+        confirmedBy: "git-state",
+        sentence: headline2
+      }
+    }
+  };
+};
+
+// src/core/verify/builders.ts
+var CARD_BUILDERS = {
+  secrets: secretsCard,
+  "skipped-checks": skippedChecksCard,
+  "lost-work": lostWorkCard,
+  destructive: destructiveCard,
+  // The command checks' builders: tests, cloud, production infrastructure, unreviewed code and
+  // egress, as many as exist.
+  ...COMMAND_CHECK_CARDS
+};
+
+// src/core/verify/notes.ts
+function at(facts, path) {
+  let value = facts;
+  for (const key of path) {
+    if (value === null || typeof value !== "object" || Array.isArray(value)) return void 0;
+    if (!Object.hasOwn(value, key)) return void 0;
+    value = value[key];
+  }
+  return value;
+}
+function asCount(value) {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : void 0;
+}
+function isPath(read) {
+  return Array.isArray(read);
+}
+function readCount(facts, read) {
+  if (isPath(read)) return asCount(at(facts, read));
+  if ("equals" in read) {
+    const value2 = at(facts, read.path);
+    return typeof value2 === "string" ? value2 === read.equals ? 1 : 0 : void 0;
+  }
+  const list = at(facts, read.list);
+  if (!Array.isArray(list)) return void 0;
+  const [key, value] = read.where;
+  let n2 = 0;
+  for (const item of list) {
+    const held = at(item, [key]);
+    if (!Array.isArray(held)) return void 0;
+    if (held.includes(value)) n2 += 1;
+  }
+  return n2;
+}
+function readCounts(facts, reads) {
+  const out = {};
+  for (const [name, read] of Object.entries(reads)) {
+    const n2 = readCount(facts, read);
+    if (n2 === void 0) return void 0;
+    out[name] = n2;
+  }
+  return out;
+}
+function is2(n2) {
+  return n2 === 1 ? "is" : "are";
+}
+function was2(n2) {
+  return n2 === 1 ? "was" : "were";
+}
+function line(parts) {
+  const made = parts.filter((p) => p !== void 0);
+  return made.length === 0 ? void 0 : made.join(" ");
+}
+function notLookedUp(n2, one, many) {
+  return n2 > 0 ? `${countOf(n2, one, many)} could not be looked up.` : void 0;
+}
+var CODEX_NOTE_TEXT = CODEX_CAVEAT.render({ codexCaveat: true }) ?? "";
+function reviewByHand(n2) {
+  return n2 === 1 ? "It cannot be checked from this machine, so review it by hand." : "They cannot be checked from this machine, so review them by hand.";
+}
+function kind(spec) {
+  return spec;
+}
+var NO_VERIFY = kind({
+  reads: {
+    commits: ["noVerify", "commits"],
+    notIdentified: ["noVerify", "notIdentified"],
+    withoutHooks: ["noVerify", "withoutHooks"],
+    onMain: ["noVerify", "onMain"],
+    offMain: ["noVerify", "offMain"],
+    noMain: ["noVerify", "noMainToCheck"],
+    gone: ["noVerify", "gone"],
+    couldNotCheck: ["noVerify", "couldNotCheck"],
+    unknown: ["noVerify", "calls", "unknown"]
+  },
+  ran: true,
+  template: {
+    id: "note.no-verify",
+    render: (f) => {
+      const withHooks2 = f.onMain + f.offMain + f.noMain + f.gone;
+      const settled = f.notIdentified + f.couldNotCheck + f.unknown === 0;
+      return line([
+        withHooks2 > 0 ? `${countOf(withHooks2, "commit")} skipped the hooks of a repo that has them; ${formatCount(f.onMain)} ${is2(f.onMain)} on main now.` : void 0,
+        f.reassure && withHooks2 === 0 && f.withoutHooks > 0 && settled ? `False positive: ${f.withoutHooks === 1 ? "the commit" : `all ${formatCount(f.withoutHooks)} commits`} that skipped hooks ${was2(f.withoutHooks)} in repos with no commit hook, so no check was skipped.` : void 0,
+        f.noMain > 0 ? `${countOf(f.noMain, "commit")} ${is2(f.noMain)} in a repo with no main branch to check against.` : void 0,
+        notLookedUp(f.notIdentified + f.couldNotCheck, "commit")
+      ]);
+    }
+  }
+});
+var HOOKS_OFF = kind({
+  reads: {
+    off: ["hooksPath", "off"],
+    on: ["hooksPath", "on"],
+    couldNotCheck: ["hooksPath", "couldNotCheck"],
+    unknown: ["hooksPath", "calls", "unknown"],
+    husky: ["husky", "ran"],
+    otherMeans: ["oneCommand", "ran"]
+  },
+  ran: true,
+  template: {
+    id: "note.hooks-off",
+    render: (f) => line([
+      f.off > 0 ? `Hooks are switched off now in ${countOf(f.off, "repo")}.` : void 0,
+      f.reassure && f.off === 0 && f.on > 0 && f.couldNotCheck + f.unknown === 0 ? "Hooks are on now in every repo where they were switched." : void 0,
+      f.husky + f.otherMeans > 0 ? `${countOf(f.husky + f.otherMeans, "command")} turned hooks off for that command only.` : void 0,
+      notLookedUp(f.couldNotCheck, "repo")
+    ])
+  }
+});
+var BRANCHES = kind({
+  reads: {
+    deleted: ["branches", "deleted"],
+    notIdentified: ["branches", "notIdentified"],
+    recoverable: ["branches", "recoverable"],
+    onAnotherRef: ["branches", "onAnotherRef"],
+    gone: ["branches", "gone"],
+    couldNotCheck: ["branches", "couldNotCheck"],
+    unknown: ["branches", "calls", "unknown"]
+  },
+  ran: true,
+  template: {
+    id: "note.branches",
+    render: (f) => line([
+      f.recoverable > 0 ? `${countOf(f.recoverable, "deleted branch", "deleted branches")} can still be recovered by commit id.` : void 0,
+      f.gone > 0 ? `${countOf(f.gone, "deleted branch", "deleted branches")} ${is2(f.gone)} gone from the object store.` : void 0,
+      f.reassure && f.recoverable + f.gone === 0 && f.onAnotherRef > 0 && f.notIdentified + f.couldNotCheck + f.unknown === 0 ? "Nothing lost: every deleted branch's commits are still on another branch or tag." : void 0,
+      notLookedUp(f.notIdentified + f.couldNotCheck, "deleted branch", "deleted branches")
+    ])
+  }
+});
+var STASHES = kind({
+  reads: {
+    cleared: ["stashes", "cleared"],
+    notIdentified: ["stashes", "notIdentified"],
+    recoverable: ["stashes", "recoverable"],
+    listed: ["stashes", "listed"],
+    gone: ["stashes", "gone"],
+    couldNotCheck: ["stashes", "couldNotCheck"],
+    unknown: ["stashes", "calls", "unknown"]
+  },
+  ran: true,
+  template: {
+    id: "note.stashes",
+    render: (f) => line([
+      f.recoverable > 0 ? `${countOf(f.recoverable, "dropped stash", "dropped stashes")} can still be recovered by commit id.` : void 0,
+      f.gone > 0 ? `${countOf(f.gone, "dropped stash", "dropped stashes")} ${is2(f.gone)} gone from the object store.` : void 0,
+      f.reassure && f.recoverable + f.gone + f.cleared === 0 && f.listed > 0 && f.notIdentified + f.couldNotCheck + f.unknown === 0 ? "Nothing lost: every dropped stash is back in the stash list." : void 0,
+      f.cleared > 0 ? `${countOf(f.cleared, "stash clear")} ran; what ${f.cleared === 1 ? "it" : "they"} removed is not checked.` : void 0,
+      notLookedUp(f.notIdentified + f.couldNotCheck, "dropped stash", "dropped stashes")
+    ])
+  }
+});
+var DISCARDS = kind({
+  reads: {
+    paths: ["discards", "paths"],
+    ownCopy: ["discards", "ownCopy"],
+    agentEdited: ["discards", "agentEdited"],
+    mainCheckout: ["discards", "mainCheckout"],
+    couldNotCheck: ["discards", "couldNotCheck"],
+    unknown: ["discards", "calls", "unknown"]
+  },
+  ran: true,
+  template: {
+    id: "note.discards",
+    render: (f) => {
+      if (f.paths === 0) return void 0;
+      if (f.reassure && f.ownCopy === f.paths && f.couldNotCheck + f.unknown === 0) {
+        return f.paths === 1 ? "The discarded path was in the agent's own worktree or a scratch copy." : `All ${formatCount(f.paths)} discarded paths were in the agent's own worktree or a scratch copy.`;
+      }
+      const parts = [];
+      if (f.ownCopy > 0) parts.push(`${formatCount(f.ownCopy)} in the agent's own copy`);
+      if (f.agentEdited > 0) parts.push(`${formatCount(f.agentEdited)} the agent had edited`);
+      if (f.mainCheckout > 0) {
+        parts.push(
+          `${formatCount(f.mainCheckout)} in the main checkout with no agent edit on record`
+        );
+      }
+      if (f.couldNotCheck > 0) parts.push(`${formatCount(f.couldNotCheck)} could not be placed`);
+      return parts.length === 0 ? void 0 : `Of ${countOf(f.paths, "discarded path")}: ${parts.join(", ")}.`;
+    }
+  }
+});
+var RM_TARGETS = kind({
+  reads: {
+    targets: ["rm", "targets"],
+    homeOrAbove: ["rm", "classes", "home-or-above"],
+    scratch: ["rm", "classes", "scratch"],
+    untracked: ["rm", "classes", "untracked"],
+    home: ["rm", "classes", "home"],
+    unguarded: ["rm", "classes", "unguarded-variable"],
+    guarded: ["rm", "classes", "guarded-variable"],
+    trackedGone: ["rm", "trackedGone"],
+    trackedPartlyBack: ["rm", "trackedPartlyBack"],
+    couldNotCheck: ["rm", "couldNotCheck"],
+    unknown: ["rm", "calls", "unknown"]
+  },
+  ran: true,
+  template: {
+    id: "note.rm-targets",
+    render: (f) => {
+      if (f.targets === 0) return void 0;
+      const missing = f.trackedGone + f.trackedPartlyBack;
+      const settled = f.couldNotCheck + f.unknown + f.unguarded + f.guarded + f.homeOrAbove === 0;
+      return line([
+        f.homeOrAbove > 0 ? `${countOf(f.homeOrAbove, "target")} ${was2(f.homeOrAbove)} the home folder itself, a folder that holds it, or the root.` : void 0,
+        f.reassure && settled && f.scratch === f.targets ? "All scratch, temp or build folders." : f.reassure && settled && f.scratch * 2 > f.targets ? "Mostly scratch, temp or build folders." : f.scratch > 0 ? `${formatCount(f.scratch)} of ${countOf(f.targets, "target")} ${was2(f.scratch)} scratch, temp or build folders.` : void 0,
+        missing > 0 ? `${countOf(missing, "tracked target")} still ${missing === 1 ? "has" : "have"} files missing.` : f.reassure && settled ? "No tracked file is missing." : void 0,
+        f.untracked > 0 ? `${countOf(f.untracked, "target")} held untracked files in a repo.` : void 0,
+        f.home > 0 ? `${countOf(f.home, "target")} ${was2(f.home)} under the home folder, outside a repo.` : void 0,
+        f.unguarded > 0 ? `${countOf(f.unguarded, "target")} came from a variable with no guard.` : void 0,
+        f.guarded > 0 ? `${countOf(f.guarded, "target")} came from a guarded variable, so what ${f.guarded === 1 ? "it" : "they"} held is not known.` : void 0,
+        f.couldNotCheck > 0 ? `${countOf(f.couldNotCheck, "target")} could not be checked.` : void 0
+      ]);
+    }
+  }
+});
+var DATABASES = kind({
+  reads: {
+    local: ["databases", "classes", "local"],
+    scratch: ["databases", "classes", "scratch"],
+    other: ["databases", "classes", "other"],
+    unresolved: ["databases", "classes", "unresolved"],
+    unknown: ["databases", "calls", "unknown"]
+  },
+  ran: true,
+  template: {
+    id: "note.databases",
+    render: (f) => {
+      if (f.local + f.scratch + f.other + f.unresolved === 0) return void 0;
+      return line([
+        f.other > 0 ? `${countOf(f.other, "database")} aimed at ${was2(f.other)} neither local nor scratch.` : f.reassure && f.unresolved + f.unknown === 0 ? `Only local or scratch databases: ${formatCount(f.local)} local, ${formatCount(f.scratch)} scratch.` : void 0,
+        f.unresolved > 0 ? `${countOf(f.unresolved, "database")} could not be placed.` : void 0
+      ]);
+    }
+  }
+});
+function secretsBy(id, via, how, output) {
+  return kind({
+    reads: {
+      likelyReal: ["classes", "likely-real"],
+      shown: { list: ["items"], where: ["via", via] },
+      more: ["moreItems"],
+      read: ["filesRead"],
+      notRead: ["filesNotRead"],
+      unplaced: ["unplaced"],
+      outputOnly: ["setAside", "unnamedOutputOnly"],
+      notShaped: ["setAside", "namedNotCredentialShaped"]
+    },
+    ran: false,
+    output,
+    template: {
+      id,
+      render: (f) => {
+        if (f.shown > 0) {
+          return `Likely-real credentials ${how}: ${f.more > 0 ? "at least " : ""}${formatCount(f.shown)}.`;
+        }
+        if (!f.reassure || f.read === 0 || f.more + f.notRead + f.unplaced + f.outputOnly + f.notShaped > 0) {
+          return void 0;
+        }
+        return f.likelyReal > 0 ? `None of the likely-real credentials found ${was2(f.likelyReal)} ${how}.` : "No likely-real credential was found in the transcripts.";
+      }
+    }
+  });
+}
+var SECRETS_PRINTED = secretsBy(
+  "note.secrets-printed",
+  "printed-by-command",
+  "printed by a command",
+  true
+);
+var SECRETS_TYPED = secretsBy(
+  "note.secrets-typed",
+  "typed-into-command",
+  "typed into a command",
+  false
+);
+var IAM = kind({
+  reads: { iam: ["iamChanges"] },
+  ran: true,
+  template: {
+    id: "note.iam",
+    render: (f) => f.iam > 0 ? `${countOf(f.iam, "IAM change")} ran. ${reviewByHand(f.iam)}` : void 0
+  }
+});
+var TERRAFORM = kind({
+  reads: { changes: ["terraformChanges"], autoApprove: ["terraformAutoApprove"] },
+  ran: true,
+  template: {
+    id: "note.terraform",
+    render: (f) => f.changes > 0 ? `${countOf(f.changes, "Terraform command")} that change${f.changes === 1 ? "s" : ""} infrastructure or state ran, ${formatCount(f.autoApprove)} with auto-approve. ${reviewByHand(f.changes)}` : void 0
+  }
+});
+var INFRA = kind({
+  reads: { infra: ["infraMatches"] },
+  ran: true,
+  template: {
+    id: "note.infra",
+    render: (f) => f.infra > 0 ? `${countOf(f.infra, "production infrastructure command or edit", "production infrastructure commands or edits")} ran. ${reviewByHand(f.infra)}` : void 0
+  }
+});
+var TESTS_DELETED = kind({
+  reads: {
+    deleted: ["testFilesDeleted"],
+    afterFailing: ["deletedAfterFailing"],
+    notKnown: ["deletedFailureUnknown"]
+  },
+  ran: true,
+  template: {
+    id: "note.tests-deleted",
+    render: (f) => f.deleted > 0 ? line([
+      `${countOf(f.deleted, "test file")} deleted, ${formatCount(f.afterFailing)} after a test run reported ${f.deleted === 1 ? "it" : "them"} failing.`,
+      f.notKnown > 0 ? `For ${formatCount(f.notKnown)}, whether ${f.notKnown === 1 ? "it" : "they"} failed first is not known.` : void 0
+    ]) : void 0
+  }
+});
+var TESTS_CONFIG = kind({
+  reads: {
+    lowered: ["thresholdsLowered"],
+    reverts: ["autoUpdateReverts"],
+    excludes: ["excludesAdded"],
+    rewritten: ["configsRewritten"],
+    unread: ["unreadEdits"],
+    unconfirmed: ["unconfirmed"]
+  },
+  ran: true,
+  template: {
+    id: "note.tests-config",
+    render: (f) => line([
+      f.lowered > 0 ? `${countOf(f.lowered, "coverage threshold")} lowered.` : f.reassure && f.reverts > 0 && f.rewritten + f.unread + f.unconfirmed === 0 ? `No coverage floor went down: the ${countOf(f.reverts, "threshold drop")} undid an automatic raise.` : void 0,
+      f.excludes > 0 ? `${countOf(f.excludes, "exclude")} added to a test or coverage list.` : void 0,
+      f.rewritten > 0 ? `${countOf(f.rewritten, "test config")} rewritten whole, so whether a threshold went down cannot be told.` : void 0,
+      f.unread > 0 ? `${countOf(f.unread, "test or CI config")} ${was2(f.unread)} changed by a command this check does not read.` : void 0
+    ])
+  }
+});
+var TESTS_PASS = kind({
+  reads: { passWithNoTests: ["passWithNoTests"], forcedTrue: ["ciStepsForcedTrue"] },
+  ran: true,
+  template: {
+    id: "note.tests-pass",
+    render: (f) => line([
+      f.passWithNoTests > 0 ? `${countOf(f.passWithNoTests, "test run or config", "test runs or configs")} allowed passing with no tests.` : void 0,
+      f.forcedTrue > 0 ? `${countOf(f.forcedTrue, "CI step")} ${was2(f.forcedTrue)} made to pass whatever ${f.forcedTrue === 1 ? "it returns" : "they return"}.` : void 0
+    ])
+  }
+});
+var UPLOADS = kind({
+  reads: { uploads: ["uploads"], localOnly: ["localOnly"], unconfirmed: ["unconfirmed"] },
+  ran: true,
+  template: {
+    id: "note.uploads",
+    render: (f) => f.uploads > 0 ? `${countOf(f.uploads, "upload")} to a host off this machine ran.` : f.reassure && f.localOnly > 0 && f.unconfirmed === 0 ? `False positive: nothing that ran left this machine; ${countOf(f.localOnly, "call")} went to this machine or LocalStack.` : void 0
+  }
+});
+var TUNNELS = kind({
+  reads: {
+    started: ["tunnelsStarted"],
+    running: ["tunnelsRunning"],
+    listed: { path: ["processCheck"], equals: "checked" }
+  },
+  ran: true,
+  template: {
+    id: "note.tunnels",
+    render: (f) => line([
+      f.started > 0 ? `${countOf(f.started, "tunnel")} ${was2(f.started)} started to expose this machine.` : void 0,
+      f.running > 0 ? `${countOf(f.running, "tunnel program")} ${is2(f.running)} running now.` : f.listed === 0 ? "Whether one is running now could not be checked." : f.reassure ? "No known tunnel or relay program was seen running now." : void 0
+    ])
+  }
+});
+var INSTALLS = kind({
+  reads: {
+    installs: ["installs"],
+    restores: ["lockfileRestores"],
+    unconfirmed: ["unconfirmed"]
+  },
+  ran: true,
+  template: {
+    id: "note.installs",
+    render: (f) => f.installs > 0 ? `${countOf(f.installs, "package install")} ran, not counting ${countOf(f.restores, "lockfile restore")}. Package age is not checked: the scan runs offline.` : f.reassure && f.restores > 0 && f.unconfirmed === 0 ? `False positive: the ${countOf(f.restores, "install")} that ran only restored a lockfile.` : void 0
+  }
+});
+var NOTE_KINDS = {
+  "no-verify": NO_VERIFY,
+  "hooks-off": HOOKS_OFF,
+  branches: BRANCHES,
+  stashes: STASHES,
+  discards: DISCARDS,
+  "rm-targets": RM_TARGETS,
+  databases: DATABASES,
+  "secrets-printed": SECRETS_PRINTED,
+  "secrets-typed": SECRETS_TYPED,
+  iam: IAM,
+  terraform: TERRAFORM,
+  infra: INFRA,
+  "tests-deleted": TESTS_DELETED,
+  "tests-config": TESTS_CONFIG,
+  "tests-pass": TESTS_PASS,
+  uploads: UPLOADS,
+  tunnels: TUNNELS,
+  installs: INSTALLS
+};
+var NOTE_RULES = {
+  // Skipped safety checks.
+  "gb.git-no-verify": { category: "skipped-checks", kind: "no-verify" },
+  "gb.hooks-disable": { category: "skipped-checks", kind: "hooks-off" },
+  // Lost work.
+  "wt.branch-force-delete": { category: "lost-work", kind: "branches" },
+  "wt.stash-drop": { category: "lost-work", kind: "stashes" },
+  "wt.checkout-discard": { category: "lost-work", kind: "discards" },
+  "wt.restore-path": { category: "lost-work", kind: "discards" },
+  "wt.reset-hard": { category: "lost-work", kind: "discards" },
+  // Destructive commands.
+  "require-approval-rm-rf": { category: "destructive", kind: "rm-targets" },
+  "dd.rm-rf-absolute": { category: "destructive", kind: "rm-targets" },
+  "dd.database-drop": { category: "destructive", kind: "databases" },
+  "block-destructive-sql": { category: "destructive", kind: "databases" },
+  // Secrets in transcripts.
+  "se.env-print": { category: "secrets", kind: "secrets-printed" },
+  "se.token-print": { category: "secrets", kind: "secrets-printed" },
+  "se.secret-manager-read": { category: "secrets", kind: "secrets-printed" },
+  "se.credential-file": { category: "secrets", kind: "secrets-printed" },
+  "block-env-file-read": { category: "secrets", kind: "secrets-printed" },
+  "warn-op-read-secret": { category: "secrets", kind: "secrets-printed" },
+  "block-hardcoded-secrets": { category: "secrets", kind: "secrets-typed" },
+  // Cloud and permissions.
+  "ps.iam-grant": { category: "cloud", kind: "iam" },
+  "pi.terraform-auto-approve": { category: "cloud", kind: "terraform" },
+  "pi.terraform-state-mutate": { category: "cloud", kind: "terraform" },
+  // Production infrastructure.
+  "pi.kubectl-delete": { category: "prod-infra", kind: "infra" },
+  "pi.prod-namespace": { category: "prod-infra", kind: "infra" },
+  "pi.helm-release": { category: "prod-infra", kind: "infra" },
+  "pi.cloud-resource-delete": { category: "prod-infra", kind: "infra" },
+  "pi.deploy-to-prod": { category: "prod-infra", kind: "infra" },
+  "block-prod-config-edit": { category: "prod-infra", kind: "infra" },
+  // Gaming tests.
+  "ti.test-file-delete": { category: "tests", kind: "tests-deleted" },
+  "ti.test-config-edit": { category: "tests", kind: "tests-config" },
+  "ti.coverage-bypass": { category: "tests", kind: "tests-pass" },
+  // Data leaving the machine.
+  "ex.file-upload": { category: "egress", kind: "uploads" },
+  "se.secret-egress": { category: "egress", kind: "uploads" },
+  "ex.paste-service": { category: "egress", kind: "uploads" },
+  "ex.reverse-shell": { category: "egress", kind: "uploads" },
+  "ex.tunnel-expose": { category: "egress", kind: "tunnels" },
+  // Dependencies.
+  "flag-dependency-install": { category: "dependencies", kind: "installs" },
+  "rce.unverified-package": { category: "dependencies", kind: "installs" }
+};
+var HIDING_COUNTS = [["couldHide"], ["hidingCalls"]];
+var NOTE_COULD_NOT_CHECK = {
+  id: "note.could-not-check",
+  render: () => "Could not confirm: the check behind this could not settle everything it looked for on this machine."
+};
+var NOTE_COULD_HIDE = {
+  id: "note.could-hide",
+  render: () => "Could not confirm: commands that ran, or may have run, used a form the checks cannot read, listed under Also checked on this machine."
+};
+var NOTE_NO_OUTPUT = {
+  id: "note.no-output",
+  render: () => "Could not confirm: these sessions record no command output to check this against."
+};
+function hidingIn(facts) {
+  const named = at(facts, ["hidingForms"]);
+  const forms = Array.isArray(named) ? HIDING_FORMS.filter((form) => named.includes(form)) : [];
+  return forms.length > 0 || HIDING_COUNTS.some((path) => (asCount(at(facts, path)) ?? 0) > 0);
+}
+function unconfirmedLine(rule, facts, status, verification) {
+  const recorded = verification.resultsRecorded;
+  if (rule.category !== "dependencies" && status !== void 0) {
+    const unconfirmed = unconfirmedOf(rule.category, status, facts, recorded);
+    if (unconfirmed?.reason === "hiding-forms") return sentence(NOTE_COULD_HIDE, void 0);
+    if (unconfirmed?.reason === "no-output") return sentence(NOTE_NO_OUTPUT, void 0);
+  }
+  if (hidingIn(facts)) return sentence(NOTE_COULD_HIDE, void 0);
+  const spec = NOTE_KINDS[rule.kind];
+  if ((spec.ran || spec.output === true) && !recorded) {
+    return sentence(NOTE_NO_OUTPUT, void 0);
+  }
+  if (rule.category !== "dependencies" && status !== void 0 && honestStatus(rule.category, status, facts, recorded) === "could-not-check") {
+    return sentence(NOTE_COULD_NOT_CHECK, void 0);
+  }
+  return void 0;
+}
+function factsFor(rule, verification) {
+  if (rule.category === "dependencies") {
+    return verification.dependencies;
+  }
+  return verification.categories[rule.category].facts;
+}
+function verifiedNote(finding, verification, cards) {
+  if (finding.source !== "library" || !Object.hasOwn(NOTE_RULES, finding.ruleId)) return void 0;
+  const rule = NOTE_RULES[finding.ruleId];
+  const card = rule.category === "dependencies" ? void 0 : cards.find((c) => c.category === rule.category);
+  if (rule.category !== "dependencies" && (card === void 0 || card.tone === "not-checked")) {
+    return void 0;
+  }
+  const facts = factsFor(rule, verification);
+  const status = rule.category === "dependencies" ? void 0 : verification.categories[rule.category].status;
+  const note = (made2, outcome2) => ({
+    ruleId: finding.ruleId,
+    category: rule.category,
+    outcome: outcome2,
+    sentence: made2
+  });
+  if (rule.category === "dependencies" && facts === void 0) return void 0;
+  const unconfirmed = unconfirmedLine(rule, facts, status, verification);
+  if (unconfirmed !== void 0) return note(unconfirmed, "could-not-confirm");
+  const spec = NOTE_KINDS[rule.kind];
+  const counts = readCounts(facts, spec.reads);
+  if (counts === void 0) return void 0;
+  const codex = verification.ranEvidence === "output-record";
+  const made = sentence(spec.template, { ...counts, reassure: !codex });
+  if (made === void 0) return void 0;
+  const plain = codex ? made : sentence(spec.template, { ...counts, reassure: false });
+  const outcome = plain?.text === made.text ? "found" : "reassuring";
+  return codex && spec.ran && /\d/.test(made.text) ? note({ template: made.template, text: `${made.text} ${CODEX_NOTE_TEXT}` }, outcome) : note(made, outcome);
+}
+function verifiedNotes(findings, verification, cards) {
+  return findings.flatMap((finding) => {
+    const made = verifiedNote(finding, verification, cards);
+    return made === void 0 ? [] : [made];
+  });
+}
+
+// src/core/verify/share-copy.ts
+var SHARE_PHRASES = {
+  "likely-real-credentials": [
+    "likely-real credential left in its transcripts",
+    "likely-real credentials left in its transcripts"
+  ],
+  "commits-on-main-without-checks": [
+    "commit shipped to main without its checks",
+    "commits shipped to main without their checks"
+  ],
+  "recoverable-deleted-work": [
+    "piece of deleted work still recoverable",
+    "pieces of deleted work still recoverable"
+  ],
+  "iam-changes": ["IAM change ran and needs a review", "IAM changes ran and need a review"],
+  "lowered-test-floors": ["lowered test floor", "lowered test floors"],
+  "unguarded-recursive-deletes": ["unguarded recursive delete", "unguarded recursive deletes"]
+};
+function sharePhrase(basis, count2) {
+  const [one, many] = SHARE_PHRASES[basis];
+  return `${formatCount(count2)} ${count2 === 1 ? one : many}`;
+}
+function shareCounts(cards, context) {
+  return leadingCards(cards, context).flatMap(
+    (card) => card.headline === void 0 ? [] : [sharePhrase(card.headline.basis, card.headline.count)]
+  );
+}
+
+// src/core/report.ts
+var REPOSITORY_URL = "https://github.com/agenttrailhq/guard";
+var SITE_URL = "https://www.agenttrail.sh";
+var REPORT_FILENAME = "agenttrail-guard-report.html";
+var ARTIFACT_FILENAME = "agenttrail-guard-artifact.html";
+var FIXES_FILENAME = FIXES_FILE;
+var PRODUCT_NOTE = {
+  eyebrow: "AgentTrail OS",
+  heading: "AgentTrail Guard stops the mistake. AgentTrail OS remembers it and turns it into a rule.",
+  body: "This report is one look at the transcripts on one machine. AgentTrail OS watches every agent session, turns each repeated mistake into a guardrail, and proves the fix on your own history. It is a separate product, and nothing in this report was sent to it.",
+  primary: { label: "Book a team demo", path: "/agenttrail-os", content: "os-demo" },
+  secondary: { label: "Guard vs OS", path: "/guard-vs-os", content: "os-compare" }
+};
+var SEVERITY_ORDER = ["critical", "high", "medium", "low", "info"];
+function knownSeverity(severity) {
+  return SEVERITY_ORDER.includes(severity) ? severity : "unknown";
+}
+function severityRank(severity) {
+  const index = SEVERITY_ORDER.indexOf(severity);
+  return index === -1 ? SEVERITY_ORDER.length : index;
+}
+var ACTION_ORDER = ["block", "require_approval", "warn"];
+function matchTally(result) {
+  const bySeverity = /* @__PURE__ */ new Map();
+  const byAction = /* @__PURE__ */ new Map();
+  for (const finding of result.findings) {
+    bySeverity.set(finding.severity, (bySeverity.get(finding.severity) ?? 0) + finding.count);
+    byAction.set(finding.action, (byAction.get(finding.action) ?? 0) + finding.count);
+  }
+  return {
+    bySeverity: [...bySeverity].map(([severity, count2]) => ({ severity, count: count2 })).sort(
+      (a, b) => severityRank(a.severity) - severityRank(b.severity) || b.count - a.count || a.severity.localeCompare(b.severity)
+    ),
+    byAction: ACTION_ORDER.flatMap((action) => {
+      const count2 = byAction.get(action) ?? 0;
+      return count2 > 0 ? [{ action, count: count2 }] : [];
+    })
+  };
+}
+function bySeverityThenCount(findings) {
+  return [...findings].sort(
+    (a, b) => severityRank(a.severity) - severityRank(b.severity) || b.count - a.count || a.ruleId.localeCompare(b.ruleId)
+  );
+}
+var MAX_ROWS = 50;
+var MAX_EXAMPLES = 3;
+var FIX_FIRST_MAX = 6;
+var TOP_PER_ACTION = 3;
+var DESCRIPTION_LINE = 160;
+var TUNING_MAX_GUARDRAILS = 3;
+var TUNING_MIN_SHARE = 0.6;
+var TUNING_MIN_ASKS = 5;
+function escapeHtml(value) {
+  return String(value).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+}
+function agentName(agent) {
+  return agentDisplayName(agent);
+}
+function counted3(n2, one, many) {
+  return `${formatCount(n2)} ${n2 === 1 ? one : many}`;
+}
+function ruleSlug(id) {
+  return id.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+}
+function siteLink(path, agent, content) {
+  const tags = `utm_source=guard&utm_medium=scan-report&utm_campaign=${agent}&utm_content=${content}`;
+  const hash = path.indexOf("#");
+  const base = hash === -1 ? path : path.slice(0, hash);
+  const fragment = hash === -1 ? "" : path.slice(hash);
+  return `${SITE_URL}${base}${base.includes("?") ? "&" : "?"}${tags}${fragment}`;
+}
+function sitePath(url) {
+  if (!url.startsWith(`${SITE_URL}/`)) throw new Error(`Not a page on the site: ${url}`);
+  return url.slice(SITE_URL.length);
+}
+function owaspRiskLink(id, agent) {
+  return siteLink(sitePath(owaspAnchorUrl(id)), agent, "owasp-risk");
+}
+function libraryLink(category, ruleId, agent) {
+  return siteLink(
+    `/guardrails/${encodeURIComponent(category)}/${encodeURIComponent(ruleSlug(ruleId))}`,
+    agent,
+    "guardrail"
+  );
+}
+var PACK_LABELS = {
+  "working-tree": "Working tree",
+  "destructive-data": "Destructive data",
+  "prod-infra": "Production infrastructure",
+  "secret-exposure": "Secret exposure",
+  "rce-supply-chain": "Remote code and supply chain",
+  "safety-bypass": "Safety bypass",
+  "privilege-supply-chain": "Privileges and supply chain",
+  "file-scope": "File scope",
+  "agent-context": "Agent context",
+  "test-integrity": "Test integrity",
+  exfiltration: "Data leaving the machine"
+};
+var YOUR_GUARDRAILS = "Your guardrails";
+var OWN_CARD_HEADING = "A guardrail you added";
+function packLabel(category) {
+  return PACK_LABELS[category] ?? category;
+}
+function wrapLines(text2, width) {
+  const lines2 = [];
+  let line2 = "";
+  for (const word of text2.split(/\s+/).filter(Boolean)) {
+    if (line2 === "") line2 = word;
+    else if (line2.length + 1 + word.length <= width) line2 = `${line2} ${word}`;
+    else {
+      lines2.push(line2);
+      line2 = word;
+    }
+  }
+  if (line2 !== "") lines2.push(line2);
+  return lines2;
+}
+var SECRET_KIND_SET = new Set(SECRET_KINDS);
+var PROVENANCE_SET = new Set(SECRET_PROVENANCES);
+var FIXTURE_CHECK_SET = new Set(FIXTURE_CHECKS);
+function payloadSecrets(check) {
+  const facts = check.facts;
+  return {
+    status: copyStatus(check.status),
+    matches: check.matches,
+    facts: {
+      classes: {
+        "likely-real": facts.classes["likely-real"],
+        "committed-fixture": facts.classes["committed-fixture"],
+        placeholder: facts.classes.placeholder,
+        "local-dev": facts.classes["local-dev"]
+      },
+      items: facts.items.slice(0, MAX_ROWS).map((item) => ({
+        kind: SECRET_KIND_SET.has(item.kind) ? item.kind : "other",
+        via: item.via.filter((way) => PROVENANCE_SET.has(way)),
+        files: item.files
+      })),
+      moreItems: facts.moreItems + Math.max(0, facts.items.length - MAX_ROWS),
+      filesRead: facts.filesRead,
+      filesNotRead: facts.filesNotRead,
+      unplaced: facts.unplaced,
+      setAside: {
+        unnamedOutputOnly: facts.setAside.unnamedOutputOnly,
+        namedNotCredentialShaped: facts.setAside.namedNotCredentialShaped
+      },
+      fixtureCheck: FIXTURE_CHECK_SET.has(facts.fixtureCheck) ? facts.fixtureCheck : "unavailable",
+      reposChecked: facts.reposChecked,
+      reposNotChecked: facts.reposNotChecked
+    }
+  };
+}
+var MAX_FACTS_DEPTH = 6;
+var FACT_VALUES = new Set(FACT_VALUE_ENUMS.flat());
+var FACT_KEY_SET = /* @__PURE__ */ new Set([...FACT_KEYS, ...FACT_VALUES]);
+function copyFacts(value, capLists, depth = 0) {
+  if (isLocalFix(value)) throw new Error(LOCAL_FIX_SERIALIZED);
+  if (typeof value === "number" || typeof value === "boolean") return value;
+  if (typeof value === "string") return FACT_VALUES.has(value) ? value : void 0;
+  if (depth >= MAX_FACTS_DEPTH) return void 0;
+  if (Array.isArray(value)) {
+    const items = capLists ? value.slice(0, MAX_ROWS) : value;
+    return items.map((item) => copyFacts(item, capLists, depth + 1)).filter((item) => item !== void 0);
+  }
+  if (value !== null && typeof value === "object" && Object.getPrototypeOf(value) === Object.prototype) {
+    const out = {};
+    for (const [key, item] of Object.entries(value)) {
+      if (!FACT_KEY_SET.has(key)) continue;
+      const copied = copyFacts(item, capLists, depth + 1);
+      if (copied !== void 0) out[key] = copied;
+    }
+    return out;
+  }
+  return void 0;
+}
+var STATUS_SET = new Set(VERIFY_STATUSES);
+function copyStatus(status) {
+  return typeof status === "string" && STATUS_SET.has(status) ? status : "could-not-check";
+}
+function copyCategory(result, capLists) {
+  const out = {
+    status: copyStatus(result.status)
+  };
+  const matches = result.matches;
+  if (typeof matches === "number") out.matches = matches;
+  if ("facts" in result) {
+    out.facts = copyFacts(result.facts, capLists);
+  }
+  return out;
+}
+function copyVerification(verification, capLists) {
+  const categories = verification.categories;
+  return {
+    matchedCalls: {
+      ran: verification.matchedCalls.ran,
+      mentioned: verification.matchedCalls.mentioned,
+      unknown: verification.matchedCalls.unknown
+    },
+    resultsRecorded: verification.resultsRecorded,
+    ranEvidence: verification.ranEvidence,
+    categories: {
+      secrets: capLists ? payloadSecrets(categories.secrets) : copyCategory(categories.secrets, false),
+      "skipped-checks": copyCategory(categories["skipped-checks"], capLists),
+      "lost-work": copyCategory(categories["lost-work"], capLists),
+      cloud: copyCategory(categories.cloud, capLists),
+      "prod-infra": copyCategory(categories["prod-infra"], capLists),
+      tests: copyCategory(categories.tests, capLists),
+      destructive: copyCategory(categories.destructive, capLists),
+      unreviewed: copyCategory(categories.unreviewed, capLists),
+      egress: copyCategory(categories.egress, capLists)
+    },
+    ...verification.dependencies === void 0 ? {} : {
+      dependencies: copyFacts(
+        verification.dependencies,
+        capLists
+      )
+    }
+  };
+}
+function honestVerification(verification) {
+  const recorded = verification.resultsRecorded;
+  const categories = {};
+  for (const category of VERIFY_CATEGORIES) {
+    const result = verification.categories[category];
+    categories[category] = {
+      ...result,
+      status: honestStatus(category, result.status, result.facts, recorded)
+    };
+  }
+  return { ...verification, categories };
+}
+function boundaryVerification(verification, capLists) {
+  return honestVerification(copyVerification(verification, capLists));
+}
+function tokenCopy(t) {
+  return {
+    input: t.input,
+    output: t.output,
+    cacheRead: t.cacheRead,
+    cacheCreation: t.cacheCreation,
+    cacheCreation5m: t.cacheCreation5m,
+    cacheCreation1h: t.cacheCreation1h,
+    turnsWithSplit: t.turnsWithSplit,
+    turns: t.turns
+  };
+}
+function payloadFinding(finding) {
+  const base = {
+    ruleId: finding.ruleId,
+    title: finding.title,
+    severity: knownSeverity(finding.severity),
+    action: finding.action,
+    count: finding.count,
+    examples: finding.examples.slice(0, MAX_EXAMPLES).map((e) => ({ text: e.text, count: e.count })),
+    moreShapes: Math.max(0, finding.examples.length - MAX_EXAMPLES),
+    owasp: finding.owasp.filter((id) => isOwaspId(id))
+  };
+  if (finding.source !== "library") return { ...base, source: "yours" };
+  return {
+    ...base,
+    source: "library",
+    ...finding.category === void 0 ? {} : { category: finding.category },
+    ...finding.description === void 0 ? {} : { descriptionLines: wrapLines(finding.description, DESCRIPTION_LINE) }
+  };
+}
+function reportPayload(result, meta, builders = CARD_BUILDERS) {
+  const ordered = bySeverityThenCount(result.findings);
+  const copied = result.verification === void 0 ? void 0 : copyVerification(result.verification, true);
+  const cards = copied === void 0 || result.toolCalls === 0 ? void 0 : cardsFor(copied, builders);
+  const payload = {
+    tool: "agenttrail-guard",
+    version: meta.version,
+    generatedAt: meta.generatedAt.toISOString(),
+    catalog: formatCatalogStamp(catalogStamp(), meta.generatedAt),
+    agent: result.agent,
+    sessions: result.sessions,
+    projects: result.projects,
+    quarantined: result.quarantined,
+    notRead: result.notRead,
+    skippedLines: result.skippedLines,
+    toolCalls: result.toolCalls,
+    riskyActions: result.riskyActions,
+    riskyByAction: {
+      block: result.riskyByAction.block,
+      require_approval: result.riskyByAction.require_approval,
+      warn: result.riskyByAction.warn
+    },
+    findings: ordered.slice(0, MAX_ROWS).map(payloadFinding),
+    moreFindings: Math.max(0, result.findings.length - MAX_ROWS),
+    recurring: result.recurring.slice(0, MAX_ROWS).map((r) => ({
+      text: r.text,
+      count: r.count,
+      calls: r.calls,
+      ruleId: r.ruleId,
+      title: r.title
+    })),
+    moreRecurring: Math.max(0, result.recurring.length - MAX_ROWS),
+    tokens: result.tokens === null ? null : tokenCopy(result.tokens),
+    shareText: shareText(
+      result,
+      cards === void 0 || copied === void 0 ? void 0 : { cards, context: { ranEvidence: copied.ranEvidence } }
+    ),
+    owasp: result.owasp.filter((t) => isOwaspId(t.id)).map((t) => ({
+      id: t.id,
+      callCount: t.callCount,
+      ruleMatches: t.ruleMatches,
+      guardrailCount: t.guardrailCount
+    }))
+  };
+  const notes = copied === void 0 || cards === void 0 ? [] : verifiedNotes(payload.findings, copied, cards);
+  const withVerification = copied === void 0 ? payload : {
+    ...payload,
+    verification: honestVerification(copied),
+    ...cards === void 0 ? {} : { cards },
+    ...notes.length === 0 ? {} : { notes }
+  };
+  const skipped = result.skipped;
+  if (skipped === void 0) return withVerification;
+  return {
+    ...withVerification,
+    skipped: {
+      unreadableFiles: skipped.unreadableFiles,
+      truncatedLastLines: skipped.truncatedLastLines,
+      unparseableLines: skipped.unparseableLines,
+      unknownRecords: skipped.unknownRecords,
+      turnsEndedWithError: skipped.turnsEndedWithError,
+      notActions: skipped.notActions,
+      unmappedTools: skipped.unmappedTools.map((t) => ({ name: t.name, count: t.count }))
+    }
+  };
+}
+function postLength(text2) {
+  let n2 = 0;
+  for (const ch of text2) {
+    const code2 = ch.codePointAt(0) ?? 0;
+    const light = code2 <= 4351 || code2 >= 8192 && code2 <= 8205 || code2 >= 8208 && code2 <= 8223 || code2 >= 8242 && code2 <= 8247;
+    n2 += light ? 1 : 2;
+  }
+  return n2 + 1 + 23 + 1 + "#agenttrail".length;
+}
+function topLibraryBlocker(result) {
+  return result.findings.filter((f) => f.action === "block" && f.source === "library").sort(
+    (a, b) => b.count - a.count || severityRank(a.severity) - severityRank(b.severity) || a.ruleId.localeCompare(b.ruleId)
+  )[0];
+}
+var SHARE_TAIL = ". Checked locally, nothing uploaded.";
+function shareText(result, verified) {
+  const counts = verified === void 0 || !isPositiveCount(result.toolCalls) ? [] : shareCounts(verified.cards, verified.context);
+  const calls = counted3(result.toolCalls, "tool call", "tool calls");
+  const head = `AgentTrail Guard checked ${calls} from ${agentName(result.agent)} on my machine`;
+  for (let n2 = counts.length; n2 > 0; n2--) {
+    const text2 = `${head}: ${counts.slice(0, n2).join(" \xB7 ")}. Nothing uploaded.`;
+    if (postLength(text2) <= POST_LIMIT) return text2;
+  }
+  return totalsShareText(result);
+}
+function totalsShareText(result) {
+  const { block, require_approval: ask, warn } = result.riskyByAction;
+  const calls = counted3(result.toolCalls, "tool call", "tool calls");
+  const head = `I scanned ${calls} from ${agentName(result.agent)} with AgentTrail Guard`;
+  const tail = SHARE_TAIL;
+  const top = topLibraryBlocker(result);
+  const compose = (withTitle) => {
+    const parts = [];
+    if (block > 0) {
+      const detail = withTitle && top !== void 0 ? ` (${formatCount(top.count)} of those: ${top.title.replace(/`/g, "")})` : "";
+      parts.push(`${formatCount(block)} would block${detail}`);
+    }
+    if (ask > 0) parts.push(`${formatCount(ask)} would ask`);
+    if (warn > 0) parts.push(`${formatCount(warn)} would warn`);
+    const body = parts.length === 0 ? ": nothing matched a guardrail" : `: ${parts.join(" \xB7 ")}`;
+    return `${head}${body}${tail}`;
+  };
+  const full = compose(true);
+  return postLength(full) <= POST_LIMIT ? full : compose(false);
+}
+function shareLink(text2, agent) {
+  const url = siteLink("/agenttrail-guard", agent, "share");
+  return `https://x.com/intent/post?text=${encodeURIComponent(text2)}&url=${encodeURIComponent(url)}&hashtags=agenttrail`;
+}
+function skippedPhrases(skipped) {
+  const unrecognized = skipped.unmappedTools.reduce((sum, tool) => sum + tool.count, 0);
+  const kinds = [
+    [skipped.unreadableFiles, "file that could not be read", "files that could not be read"],
+    [
+      skipped.truncatedLastLines,
+      "file whose last line was cut off",
+      "files whose last line was cut off"
+    ],
+    [skipped.unparseableLines, "line that is not JSON", "lines that are not JSON"],
+    [
+      skipped.unknownRecords,
+      "record of a kind this reader does not know",
+      "records of a kind this reader does not know"
+    ],
+    [
+      unrecognized,
+      "tool call of a kind this reader does not recognize",
+      "tool calls of a kind this reader does not recognize"
+    ]
+  ];
+  return kinds.filter(([n2]) => n2 > 0).map(([n2, one, many]) => counted3(n2, one, many));
+}
+function severityClass(severity) {
+  switch (severity) {
+    case "critical":
+      return "sev-critical";
+    case "high":
+      return "sev-high";
+    case "medium":
+      return "sev-medium";
+    case "low":
+      return "sev-low";
+    case "info":
+      return "sev-info";
+    default:
+      return "sev-unknown";
+  }
+}
+function actionLabel(action) {
+  switch (action) {
+    case "block":
+      return "would block";
+    case "require_approval":
+      return "would ask";
+    default:
+      return "would warn";
+  }
+}
+function actionClass(action) {
+  switch (action) {
+    case "block":
+      return "act-block";
+    case "require_approval":
+      return "act-ask";
+    default:
+      return "act-warn";
+  }
+}
+function severityBadge(severity) {
+  return `<span class="badge ${severityClass(severity)}">${escapeHtml(severity)}</span>`;
+}
+function actionChip(action) {
+  return `<span class="chip ${actionClass(action)}">${escapeHtml(actionLabel(action))}</span>`;
+}
+function inlineTitle(title) {
+  return escapeHtml(title).replace(/`([^`\n]+)`/g, "<code>$1</code>");
+}
+function outLink(url, text2, className) {
+  const cls = className === void 0 ? "" : ` class="${className}"`;
+  return `<a${cls} href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${text2}</a>`;
+}
+function copyable(id, command, name) {
+  return `<div class="command"><code id="${escapeHtml(id)}">${escapeHtml(command)}</code><button type="button" class="copy js-only" data-copy="${escapeHtml(id)}" data-label="Copy" aria-label="${escapeHtml(name)}" hidden>Copy</button></div>`;
+}
+function stat(value, label, note) {
+  const noteHtml2 = note === void 0 ? "" : `<div class="stat-note">${escapeHtml(note)}</div>`;
+  return `<div class="stat"><div class="stat-value">${escapeHtml(value)}</div><div class="stat-label">${escapeHtml(label)}</div>${noteHtml2}</div>`;
+}
+function firstSentence(lines2) {
+  const text2 = lines2.join(" ");
+  const end = text2.search(/\.(\s|$)/);
+  return end === -1 ? text2 : text2.slice(0, end + 1);
+}
+function libraryText(text2, className = "library-text") {
+  const html = wrapLines(inlineTitle(text2), DESCRIPTION_LINE).join("\n");
+  return `<p class="${className}">${html}</p>`;
+}
+var MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+function readableTime(at2) {
+  const two = (n2) => String(n2).padStart(2, "0");
+  return `${at2.getUTCDate()} ${MONTHS[at2.getUTCMonth()]} ${at2.getUTCFullYear()}, ${two(at2.getUTCHours())}:${two(at2.getUTCMinutes())} UTC`;
+}
+function headline(result) {
+  if (result.toolCalls === 0) {
+    return result.sessions === 0 ? "No sessions found to scan" : "No tool calls found to scan";
+  }
+  const { block, require_approval: ask, warn } = result.riskyByAction;
+  const actions = (n2) => counted3(n2, "action", "actions");
+  if (block > 0 && ask > 0) {
+    return `AgentTrail Guard would have stopped ${actions(block)} and asked you about ${formatCount(ask)} more`;
+  }
+  if (block > 0) return `AgentTrail Guard would have stopped ${actions(block)}`;
+  if (ask > 0) return `AgentTrail Guard would have asked you about ${actions(ask)}`;
+  if (warn > 0) return `AgentTrail Guard would have warned you about ${actions(warn)}`;
+  return "Nothing in these sessions matched a guardrail";
+}
+function topBar(payload) {
+  const scanned = payload.toolCalls > 0;
+  const links = [
+    ["overview", "Overview"],
+    ...scanned && payload.cards !== void 0 ? [["what-happened", "What happened"]] : [],
+    ...scanned ? [["fix-first", "Fix first"]] : [],
+    ...payload.owasp.length > 0 ? [["owasp", "OWASP"]] : [],
+    ...scanned ? [["findings", "All findings"]] : [],
+    ["next-steps", "Next steps"],
+    ...scanned ? [["share", "Share"]] : [],
+    ["privacy", "Privacy"]
+  ];
+  const nav = links.map(([id, label]) => `<li><a href="#${id}">${label}</a></li>`).join("\n");
+  const controls = `<div class="toolbar">
+<button type="button" id="print-button" class="tool js-only" hidden>PDF</button>
+<button type="button" id="export-button" class="tool js-only" hidden>JSON</button>
+<button type="button" id="theme-toggle" class="tool js-only" hidden>Theme</button>
+</div>`;
+  return `<header class="masthead">
+<div class="brand" role="img" aria-label="AgentTrail">${LOGO_LOCKUP_SVG}</div>
+<span class="product-tag">Guard</span>
+<nav class="sections" aria-label="Report sections"><ul>
+${nav}
+</ul></nav>
+${controls}
+</header>`;
+}
+function provenance(result, meta, variant) {
+  const iso = meta.generatedAt.toISOString();
+  const stamp = `Generated <time datetime="${escapeHtml(iso)}">${escapeHtml(readableTime(meta.generatedAt))}</time> by agenttrail-guard ${escapeHtml(meta.version)}`;
+  if (variant === "artifact") {
+    return `${stamp} on the publisher&#39;s own machine, from their own ${escapeHtml(agentName(result.agent))} transcripts. The scan itself made no network call &mdash; crash reporting is the one exception anywhere in this tool, off unless turned on, and a scan never uses it. This copy was published to claude.ai by the person who ran it, through Claude Code.`;
+  }
+  return `${stamp}. Produced entirely on this machine from transcripts already on disk &mdash; no account, nothing uploaded, and no network call: the one exception anywhere in this tool is crash reporting, which is off unless you turn it on and which a scan never uses.`;
+}
+function mostSerious(payload) {
+  if (payload.findings.length === 0) return void 0;
+  const library = payload.findings.find((f) => f.source === "library");
+  if (library === void 0) {
+    return `<p class="top-match">Most serious match: a guardrail you added</p>`;
+  }
+  return `<p class="top-match">Most serious match: ${severityBadge(library.severity)} <span class="top-title">${inlineTitle(library.title)}</span></p>`;
+}
+function emptyLead(result) {
+  const read = result.sessions === 0 ? `The scan found no ${agentName(result.agent)} sessions to read` : `The scan read ${counted3(result.sessions, "session", "sessions")} with no tool calls in them`;
+  return `${read}, so nothing was checked. This is not a clean result: check that the folder and the agent are the ones you meant, then scan again.`;
+}
+function heroSection(result, payload, meta, variant, lead) {
+  const origin = variant === "artifact" ? "Scanned locally &middot; published by the person who ran it" : "Scanned locally &middot; nothing uploaded";
+  const fixTarget = payload.findings.some((f) => f.action === "block") ? "fix-first" : "findings";
+  const top = mostSerious(payload);
+  const claim = lead?.headline;
+  const leadLine = claim === void 0 ? "What your coding agent actually did, and which guardrails would have fired." : `${escapeHtml(headline(result))}.`;
+  const next = result.toolCalls === 0 ? `<p class="lead">${escapeHtml(emptyLead(result))}</p>
+<p class="provenance">${provenance(result, meta, variant)}</p>
+${copyable("cmd-scan-hero", `agenttrail-guard scan --agent ${result.agent}`, "Copy the scan command")}
+<p class="note">This reads the folder ${escapeHtml(agentName(result.agent))} uses by default. To read another folder, add <code>--dir</code> and its path.</p>` : `<p class="lead${claim === void 0 ? "" : " totals"}">${leadLine}</p>
+<p class="provenance">${provenance(result, meta, variant)}</p>${top === void 0 ? "" : `
+${top}`}
+<div class="actions">${payload.findings.length > 0 ? `
+<a class="button" href="#${fixTarget}">See what to fix first</a>` : ""}
+${outLink(shareLink(payload.shareText, result.agent), "Share on X", "button secondary")}
+</div>
+${copyable("cmd-init-hero", `agenttrail-guard init --agent ${result.agent}`, "Copy the init command")}`;
+  const h1 = claim === void 0 ? `<h1>${escapeHtml(headline(result))}</h1>` : `<h1 data-template="${escapeHtml(claim.sentence.template)}">${escapeHtml(claim.sentence.text)}</h1>`;
+  return `<section class="intro" id="overview">
+<p class="origin">${origin}</p>
+<p class="agent">Agent: ${escapeHtml(agentName(result.agent))}</p>
+${h1}
+${next}
+</section>`;
+}
+function statsSection(result) {
+  const t = result.tokens;
+  const repeatedShapes = new Set(result.recurring.map((r) => r.text)).size;
+  const cells = [
+    stat(formatCount(result.sessions), result.sessions === 1 ? "session" : "sessions"),
+    stat(formatCount(result.toolCalls), "tool calls"),
+    stat(formatCount(result.riskyActions), "risky actions"),
+    stat(
+      formatCount(repeatedShapes),
+      repeatedShapes === 1 ? "repeated command shape" : "repeated command shapes"
+    )
+  ];
+  if (result.toolCalls > 0) {
+    const clean = Math.floor((result.toolCalls - result.riskyActions) / result.toolCalls * 100);
+    cells.push(stat(`${clean}%`, "matched no guardrail"));
+  }
+  if (t !== null && result.toolCalls > 0) {
+    cells.push(
+      stat(
+        formatTokens(totalTokens(t)),
+        "tokens",
+        `${formatTokens(t.cacheRead)} cache reads (cumulative)`
+      )
+    );
+  }
+  return `<section class="stats" aria-label="Summary">
+${cells.join("\n")}
+</section>`;
+}
+function sentenceHtml(line2, className) {
+  const cls = className === void 0 ? "" : ` class="${className}"`;
+  return `<p${cls} data-template="${escapeHtml(line2.template)}">${escapeHtml(line2.text)}</p>`;
+}
+function cardId(category) {
+  return `check-${category}`;
+}
+function evidenceSection(payload) {
+  const facts = payload.verification?.categories.secrets.facts;
+  if (facts === void 0 || facts.items.length === 0) return "";
+  const rows = facts.items.map((item) => {
+    const row = evidenceRow(item);
+    return `<li><span class="evidence-kind">${escapeHtml(row.kind)}</span><span class="evidence-how">${escapeHtml(row.how)}</span><span class="times">${escapeHtml(row.files)}</span></li>`;
+  }).join("\n");
+  const more = MORE_EVIDENCE.render({ more: facts.moreItems });
+  return `<section class="evidence" id="found" aria-labelledby="found-heading">
+<h2 id="found-heading">What it found, never the values</h2>
+<p class="note">Each credential that looks real, by its kind and how it got into the transcripts. Never the value, and never the name it was given.</p>
+<ul class="evidence-list">
+${rows}
+</ul>${more === void 0 ? "" : `
+${sentenceHtml({ template: MORE_EVIDENCE.id, text: more }, "note")}`}
+<p class="note"><a href="#${cardId("secrets")}">What checking found, and how to fix it</a></p>
+</section>`;
+}
+function chipsFor(cards, lead) {
+  return chipCategories(lead?.category).flatMap((category) => {
+    const card = cards.find((c) => c.category === category);
+    if (card === void 0) return [];
+    const chip = chipText(card);
+    const text2 = chip.count === void 0 ? chip.label.text : `${formatCount(chip.count)} ${chip.label.text}`;
+    return [
+      {
+        category,
+        tone: card.tone,
+        title: CATEGORY_TITLES[category],
+        text: text2,
+        template: chip.label.template
+      }
+    ];
+  });
+}
+function alsoCheckedSection(payload, cards, lead) {
+  const verification = payload.verification;
+  if (verification === void 0) return "";
+  const chips = chipsFor(cards, lead).map(
+    (chip) => `<li><a class="check-chip v-${chip.tone}" href="#${cardId(chip.category)}"><span class="chip-title">${escapeHtml(chip.title)}</span><span class="chip-text" data-template="${escapeHtml(chip.template)}">${escapeHtml(chip.text)}</span></a></li>`
+  ).join("\n");
+  const notes = leadNotes(verification).map((line2) => sentenceHtml(line2, "note")).join("\n");
+  const forms = sentence(HIDING_FORMS_LIST, cards);
+  return `<section class="also-checked" id="also-checked" aria-labelledby="also-checked-heading">
+<h2 id="also-checked-heading">Also checked on this machine</h2>
+${notes}
+<ul class="check-chips">
+${chips}
+</ul>${forms === void 0 ? "" : `
+${sentenceHtml(forms, "note hiding-forms")}`}
+</section>`;
+}
+function verifiedCard(card, variant, localFixes, unsafeListed) {
+  const title = CATEGORY_TITLES[card.category];
+  const id = cardId(card.category);
+  const count2 = cardCount(card);
+  const block = (lines2) => lines2.map((line2) => sentenceHtml(line2)).join("\n");
+  const fields = [];
+  if (card.found.length > 0) {
+    fields.push(`<div><dt>What checking found</dt><dd>
+${block(card.found)}
+</dd></div>`);
+  }
+  if (card.now.length > 0) {
+    fields.push(`<div><dt>Now</dt><dd>
+${block(card.now)}
+</dd></div>`);
+  }
+  const steps = card.fixSteps ?? [];
+  const fileNote = localFixes && card.tone !== "not-checked" ? FIXES_FILE_NOTE.render({ variant }) : void 0;
+  const unsafeNote = unsafeListed && card.tone !== "not-checked" ? UNSAFE_FIXES_FILE_NOTE.render({ variant }) : void 0;
+  const fileNoteHtml = (id2, text2) => `<p class="note fixes-file" data-template="${id2}">${escapeHtml(text2).replace(FIXES_FILENAME, `<code>${FIXES_FILENAME}</code>`)}</p>`;
+  if (steps.length > 0 || card.fixes.length > 0 || fileNote !== void 0 || unsafeNote !== void 0) {
+    const shapes = card.fixes.map(
+      (fix, i) => copyable(
+        `fix-${card.category}-${i + 1}`,
+        fix.shape,
+        `Copy fix command ${i + 1} for ${title.toLowerCase()}`
+      )
+    );
+    const parts = [
+      ...steps.map((line2) => sentenceHtml(line2)),
+      ...shapes,
+      ...fileNote === void 0 ? [] : [fileNoteHtml(FIXES_FILE_NOTE.id, fileNote)],
+      ...unsafeNote === void 0 ? [] : [fileNoteHtml(UNSAFE_FIXES_FILE_NOTE.id, unsafeNote)]
+    ];
+    fields.push(`<div><dt>Fix</dt><dd>
+${parts.join("\n")}
+</dd></div>`);
+  }
+  const caveat = sentence(CODEX_CAVEAT, card);
+  const unconfirmed = card.caveat;
+  return `<article class="card verified v-${card.tone}" id="${id}" aria-labelledby="${id}-title" aria-describedby="${id}-tone">
+<div class="card-head"><span class="tone tone-${card.tone}" id="${id}-tone">${escapeHtml(toneLabel(card))}</span>${count2 === void 0 ? "" : `<span class="times" data-template="${escapeHtml(count2.template)}">${escapeHtml(count2.text)}</span>`}</div>
+<h3 id="${id}-title">${escapeHtml(title)}</h3>
+<dl class="verified-facts">
+${fields.join("\n")}
+</dl>${unconfirmed === void 0 ? "" : `
+${sentenceHtml(unconfirmed, "note card-caveat")}`}${caveat === void 0 ? "" : `
+${sentenceHtml(caveat, "note codex-caveat")}`}
+</article>`;
+}
+function whatHappenedSection(cards, variant, localFixCategories, unsafeFixCategories2) {
+  const tally = sentence(TONE_TALLY, cards);
+  const reads = cards.filter((card) => card.read !== void 0).map(
+    (card) => `<li><span class="read-title">${escapeHtml(CATEGORY_TITLES[card.category])}:</span> <span data-template="${escapeHtml(card.read?.template ?? "")}">${escapeHtml(card.read?.text ?? "")}</span></li>`
+  );
+  const readList = reads.length === 0 ? "" : `
+<p class="note">What the checks read on this machine:</p>
+<ul class="read-list">
+${reads.join("\n")}
+</ul>`;
+  const rows = cards.map(
+    (card) => verifiedCard(
+      card,
+      variant,
+      localFixCategories.includes(card.category),
+      unsafeFixCategories2.includes(card.category)
+    )
+  ).join("\n");
+  return `<section id="what-happened" class="what-happened" aria-labelledby="what-happened-heading">
+<div class="section-head"><h2 id="what-happened-heading">What actually happened</h2>${tally === void 0 ? "" : `<p class="section-meta" data-template="${escapeHtml(tally.template)}">${escapeHtml(tally.text)}</p>`}</div>
+<p class="note">A match means a guardrail fired on a command. Each card says what checking that on this machine found, how things stand now, and how to fix it. The checks only read: they changed nothing on this machine.</p>${readList}
+<div class="verified-cards">
+${rows}
+</div>
+</section>`;
+}
+var ACTION_MEANING = {
+  block: "The command does not run, and the agent is told which guardrail stopped it.",
+  require_approval: "The command waits until you allow or deny it.",
+  warn: "The command runs, and the agent is shown which guardrail it matched."
+};
+function askOnCodexNote(result, byAction) {
+  if (result.agent !== "codex") return "";
+  if (!byAction.some((a) => a.action === "require_approval")) return "";
+  return `
+<p class="note"><strong>On Codex, &ldquo;would ask&rdquo; means the action would have been stopped.</strong> Codex gives a guardrail no way to ask you, so AgentTrail Guard sends those as a block. The label above is the guardrail&#39;s own decision, kept the same across apps so one guardrail reads the same way everywhere.</p>`;
+}
+function decidedBy(decided, action) {
+  const out = /* @__PURE__ */ new Map();
+  for (const group of decided) {
+    if (group.action !== action) continue;
+    for (const id of group.ruleIds) out.set(id, (out.get(id) ?? 0) + group.calls);
+  }
+  return out;
+}
+function tuningHint(decided, carried2) {
+  const asks = decided.filter((group) => group.action === "require_approval");
+  const total = asks.reduce((sum, group) => sum + group.calls, 0);
+  if (total < TUNING_MIN_ASKS) return void 0;
+  const askers = new Set(
+    carried2.filter((f) => f.action === "require_approval").map((f) => f.ruleId)
+  );
+  const own = new Map([...decidedBy(asks, "require_approval")].filter(([id]) => askers.has(id)));
+  const removed = (ids) => asks.reduce((sum, g) => g.ruleIds.every((id) => ids.has(id)) ? sum + g.calls : sum, 0);
+  const chosen = /* @__PURE__ */ new Set();
+  while (chosen.size < TUNING_MAX_GUARDRAILS && removed(chosen) / total < TUNING_MIN_SHARE) {
+    let best;
+    for (const [id, calls] of own) {
+      if (chosen.has(id)) continue;
+      const gain = removed(/* @__PURE__ */ new Set([...chosen, id]));
+      if (best === void 0 || gain > best.gain || gain === best.gain && (calls > best.calls || calls === best.calls && id < best.id)) {
+        best = { id, gain, calls };
+      }
+    }
+    if (best === void 0) break;
+    chosen.add(best.id);
+  }
+  const drop = removed(chosen);
+  if (drop / total < TUNING_MIN_SHARE) return void 0;
+  return {
+    ids: [...chosen].sort((a, b) => (own.get(b) ?? 0) - (own.get(a) ?? 0) || a.localeCompare(b)),
+    share: drop / total,
+    asks: total,
+    remaining: total - drop
+  };
+}
+var SHELL_SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+function tuningSection(result, payload) {
+  const hint = tuningHint(result.decided, payload.findings);
+  if (hint === void 0) return "";
+  const n2 = hint.ids.length;
+  const pct = Math.round(hint.share * 100);
+  const commands = hint.ids.map(
+    (id, i) => SHELL_SAFE_ID.test(id) ? copyable(
+      `cmd-tune-${i}`,
+      `agenttrail-guard guardrails set-action ${id} warn`,
+      `Copy set-action command ${i + 1}`
+    ) : `<p class="note">Set <code>${escapeHtml(id)}</code> to warn with <code>agenttrail-guard guardrails set-action</code>. Its id has characters a shell would read, so no command is offered to copy.</p>`
+  ).join("\n");
+  return `<div class="hint">
+<p><strong>${escapeHtml(counted3(n2, "guardrail accounts", "guardrails account"))} for ${pct}% of the asks.</strong> Setting ${n2 === 1 ? "it" : "them"} to warn would take the tool calls you are asked about from ${escapeHtml(formatCount(hint.asks))} to ${escapeHtml(formatCount(hint.remaining))}, and the agent would be shown a warning on those calls instead.</p>
+${commands}
+</div>`;
+}
+function wouldHaveDoneSection(result, payload) {
+  if (result.findings.length === 0) return "";
+  const columns = ACTION_ORDER.map((action) => {
+    const count2 = result.riskyByAction[action];
+    const calls = decidedBy(result.decided, action);
+    const top = payload.findings.filter((f) => f.action === action && (calls.get(f.ruleId) ?? 0) > 0).map((f) => ({ f, n: calls.get(f.ruleId) ?? 0 })).sort((a, b) => b.n - a.n || a.f.ruleId.localeCompare(b.f.ruleId)).slice(0, TOP_PER_ACTION).map(
+      ({ f, n: n2 }) => `<li><span class="col-title">${inlineTitle(f.title)}</span><span class="times">${escapeHtml(formatCount(n2))}&times;</span></li>`
+    ).join("\n");
+    const label = { block: "Blocked", require_approval: "Asked you first", warn: "Warned" }[action];
+    return `<div class="col ${actionClass(action)}-col">
+<p class="col-label">${label}</p>
+<p class="col-count">${escapeHtml(formatCount(count2))}</p>
+<p class="note">${escapeHtml(ACTION_MEANING[action])}</p>${top === "" ? "" : `
+<ul class="col-list">
+${top}
+</ul>`}
+</div>`;
+  }).join("\n");
+  const { byAction } = matchTally(result);
+  const severityCounts = /* @__PURE__ */ new Map();
+  for (const s of matchTally(result).bySeverity) {
+    const key = knownSeverity(s.severity);
+    severityCounts.set(key, (severityCounts.get(key) ?? 0) + s.count);
+  }
+  const bySeverity = [...severityCounts].map(([severity, count2]) => ({ severity, count: count2 }));
+  const item = (label, count2) => `<li>${label}<span class="tally-count">${escapeHtml(formatCount(count2))}</span></li>`;
+  const severities = bySeverity.map((s) => item(severityBadge(s.severity), s.count)).join("\n");
+  const actions = byAction.map((a) => item(actionChip(a.action), a.count)).join("\n");
+  return `<section id="would-do">
+<h2>What AgentTrail Guard would have done</h2>
+<p class="note">Tool calls, each counted once under the strictest guardrail it matched.</p>
+<div class="columns">
+${columns}
+</div>${askOnCodexNote(result, byAction)}
+${tuningSection(result, payload)}
+<div class="tally" role="group" aria-label="Guardrail matches">
+<div class="tally-group"><p class="tally-label">Matches by severity</p><ul class="pills">
+${severities}
+</ul></div>
+<div class="tally-group"><p class="tally-label">Matches by action</p><ul class="pills">
+${actions}
+</ul></div>
+<p class="note">Each guardrail counts its own matches, so a tool call that matched two guardrails is counted under both, and these totals can be larger than the number of risky actions.</p>
+</div>
+</section>`;
+}
+function fixFirstSection(payload) {
+  const blocking = payload.findings.filter((f) => f.action === "block").slice(0, FIX_FIRST_MAX);
+  if (blocking.length === 0) {
+    return `<section id="fix-first"><h2>Fix these first</h2><p class="empty">No guardrail would have blocked anything in these sessions.</p></section>`;
+  }
+  const cards = blocking.map((f) => {
+    const index = payload.findings.indexOf(f);
+    const yours = f.source !== "library";
+    const heading = yours ? OWN_CARD_HEADING : inlineTitle(f.title);
+    const why = yours ? `
+<p class="own-title">${inlineTitle(f.title)}</p>` : f.descriptionLines === void 0 ? "" : `
+${libraryText(firstSentence(f.descriptionLines), "library-text note")}`;
+    const example = f.examples[0];
+    const exampleHtml = example === void 0 ? "" : `
+<p class="example"><code>${escapeHtml(example.text)}</code></p>`;
+    const group = f.category === void 0 ? YOUR_GUARDRAILS : packLabel(f.category);
+    const link = f.category === void 0 ? "" : `
+<p>${outLink(libraryLink(f.category, f.ruleId, payload.agent), "How this guardrail works")}</p>`;
+    return `<article class="card">
+<div class="card-head">${severityBadge(f.severity)} ${actionChip(f.action)}<span class="times">${escapeHtml(formatCount(f.count))}&times;</span></div>
+<h3><a href="#finding-${index}">${heading}</a></h3>${why}${exampleHtml}
+<p class="card-meta">${escapeHtml(group)} &middot; <code>${escapeHtml(f.ruleId)}</code></p>${link}
+</article>`;
+  }).join("\n");
+  return `<section id="fix-first">
+<h2>Fix these first</h2>
+<p class="note">The guardrails that would have stopped a command outright, most serious first.</p>
+<div class="cards">
+${cards}
+</div>
+</section>`;
+}
+var OWASP_EDITION = "2026 edition";
+function riskLabel(id) {
+  return `<span class="risk-id">${escapeHtml(id)}</span> ${escapeHtml(owaspTitle(id))}`;
+}
+function owaspSection(payload) {
+  if (payload.owasp.length === 0) return "";
+  const touched = (list) => payload.owasp.filter((t) => list.some((risk) => risk.id === t.id)).length;
+  const summary = `These matches touched ${touched(OWASP_AGENTIC)} of ${OWASP_AGENTIC.length} agentic and ${touched(OWASP_LLM)} of ${OWASP_LLM.length} LLM risks, in the ${OWASP_EDITION} lists.`;
+  const risks = payload.owasp.map(
+    (t) => `<li class="risk" id="risk-${escapeHtml(t.id.toLowerCase())}">
+<p class="risk-name">${outLink(owaspRiskLink(t.id, payload.agent), riskLabel(t.id))}</p>
+<p class="risk-counts">${escapeHtml(counted3(t.callCount, "tool call", "tool calls"))} &middot; ${escapeHtml(counted3(t.guardrailCount, "guardrail", "guardrails"))}</p>
+<button type="button" class="tool js-only" data-risk="${escapeHtml(t.id)}" aria-label="Show its findings: ${escapeHtml(t.id)}" hidden>Show its findings</button>
+</li>`
+  ).join("\n");
+  return `<section id="owasp">
+<h2>OWASP risks</h2>
+<p class="lead">${escapeHtml(summary)}</p>
+<ul class="risks">
+${risks}
+</ul>
+<p class="note">A guardrail can name more than one risk, and a tool call can match more than one guardrail, so one tool call can count under several risks. These counts can add up to more than the totals above.</p>
+<p class="note">Covers coding-agent actions only, not full OWASP coverage. Each id names a risk where it becomes a command or a file change, and is never a claim that a guardrail covers the whole risk.</p>
+<p class="risk-sources">${outLink(siteLink(sitePath(OWASP_PAGE_URL), payload.agent, "owasp"), "How the guardrails map to OWASP")} &middot; ${outLink(OWASP_SOURCES.agentic, `OWASP Top 10 for Agentic Applications (${OWASP_EDITION})`)} &middot; ${outLink(OWASP_SOURCES.llm, `OWASP Top 10 for LLM Applications (${OWASP_EDITION})`)}</p>
+</section>`;
+}
+function ranks(findings) {
+  const yours = (f) => f.category === void 0 ? 1 : 0;
+  const pack = (f) => f.category === void 0 ? YOUR_GUARDRAILS : packLabel(f.category);
+  const rankBy = (cmp) => new Map([...findings].sort(cmp).map((f, i) => [f, i]));
+  return {
+    category: rankBy(
+      (a, b) => yours(a) - yours(b) || pack(a).localeCompare(pack(b), "en") || findings.indexOf(a) - findings.indexOf(b)
+    ),
+    count: rankBy((a, b) => b.count - a.count || findings.indexOf(a) - findings.indexOf(b)),
+    name: rankBy(
+      (a, b) => a.title.localeCompare(b.title, "en") || a.ruleId.localeCompare(b.ruleId, "en")
+    )
+  };
+}
+function noteTone(note, cards) {
+  const tone = cards.find((card) => card.category === note.category)?.tone;
+  switch (note.outcome) {
+    case "could-not-confirm":
+      return "could-not-check";
+    case "reassuring":
+      return tone === "clean" ? "clean" : void 0;
+    default:
+      return tone;
+  }
+}
+function noteHtml(note, tone) {
+  const cls = tone === void 0 ? "verified-note" : `verified-note v-${tone}`;
+  return `<p class="${cls}"><span class="verified-note-label">What checking found:</span> <span data-template="${escapeHtml(note.sentence.template)}">${escapeHtml(note.sentence.text)}</span></p>`;
+}
+function findingRow(f, index, r, agent, note) {
+  const group = f.category === void 0 ? YOUR_GUARDRAILS : packLabel(f.category);
+  const examples = f.examples.map(
+    (example) => `<li><code>${escapeHtml(example.text)}</code><span class="times">${escapeHtml(formatCount(example.count))}&times;</span></li>`
+  ).join("\n");
+  const more = f.moreShapes > 0 ? `
+<li class="more">and ${escapeHtml(formatCount(f.moreShapes))} more shapes</li>` : "";
+  const shapeCount = f.examples.length + f.moreShapes;
+  const shapes = shapeCount === 1 ? "command shape" : `${formatCount(shapeCount)} command shapes`;
+  const how = f.descriptionLines === void 0 ? "" : `
+<details class="how"><summary>How this guardrail decides, and what it misses</summary>
+${libraryText(f.descriptionLines.join(" "))}
+<p>${outLink(libraryLink(f.category ?? "", f.ruleId, agent), "Open it in the guardrail library")}</p>
+</details>`;
+  const risks = f.owasp.length === 0 ? "" : `
+<ul class="owasp-ids" aria-label="OWASP risks">
+${f.owasp.map((id) => `<li>${outLink(owaspRiskLink(id, agent), riskLabel(id))}</li>`).join("\n")}
+</ul>`;
+  const riskData = f.owasp.length === 0 ? "" : ` data-owasp="${escapeHtml(f.owasp.join(" "))}"`;
+  return `<li class="finding" id="finding-${index}" data-action="${escapeHtml(f.action)}"${riskData} data-rank-serious="${index}" data-rank-category="${r.category.get(f) ?? index}" data-rank-count="${r.count.get(f) ?? index}" data-rank-name="${r.name.get(f) ?? index}">
+<div class="finding-head">
+<div class="guardrail-title">${inlineTitle(f.title)}</div>
+<div class="finding-meta">${severityBadge(f.severity)} ${actionChip(f.action)}<span class="num" data-label="Matches">${escapeHtml(formatCount(f.count))}&times;</span></div>
+</div>
+<div class="guardrail-id"><code>${escapeHtml(f.ruleId)}</code> &middot; <span class="group">${escapeHtml(group)}</span></div>${note === void 0 ? "" : `
+${noteHtml(note.note, note.tone)}`}${risks}
+<details class="commands"><summary>The ${escapeHtml(shapes)} behind it</summary>
+<ul class="shapes">
+${examples}${more}
+</ul>
+</details>${how}
+</li>`;
+}
+function riskFilter(payload) {
+  if (payload.owasp.length === 0) return "";
+  const options = payload.owasp.map(
+    (t) => `<option value="${escapeHtml(t.id)}">${escapeHtml(`${t.id} ${owaspTitle(t.id)}`)}</option>`
+  ).join("\n");
+  return `
+<label class="sort">OWASP risk <select id="risk-filter">
+<option value="">Any risk</option>
+${options}
+</select></label>`;
+}
+function findingsSection(payload, variant) {
+  if (payload.findings.length === 0) {
+    return `<section id="findings"><h2>All findings</h2><p class="empty">No guardrail matched anything in these sessions.</p></section>`;
+  }
+  const r = ranks(payload.findings);
+  const cards = payload.cards ?? [];
+  const noteFor = (f) => {
+    const note = f.source === "library" ? payload.notes?.find((n2) => n2.ruleId === f.ruleId) : void 0;
+    return note === void 0 ? void 0 : { note, tone: noteTone(note, cards) };
+  };
+  const rows = payload.findings.map((f, i) => findingRow(f, i, r, payload.agent, noteFor(f))).join("\n");
+  const truncated = payload.moreFindings > 0 ? `
+<p class="note">${escapeHtml(formatCount(payload.moreFindings))} further guardrails matched and are not listed here.</p>` : "";
+  const filters = [
+    ["all", "All"],
+    ["block", "Would block"],
+    ["require_approval", "Would ask"],
+    ["warn", "Would warn"]
+  ].map(
+    ([value, label]) => `<button type="button" class="filter" data-filter="${value}" aria-pressed="${value === "all" ? "true" : "false"}">${label}</button>`
+  ).join("\n");
+  const matched = counted3(
+    payload.findings.length + payload.moreFindings,
+    "guardrail matched",
+    "guardrails matched"
+  );
+  return `<section id="findings" class="findings-section">
+<div class="section-head"><h2>All findings</h2><p class="section-meta" id="findings-count">${escapeHtml(matched)}</p></div>${variant === "artifact" ? `
+<p class="note artifact-note">Filters, sort and export are in the report file itself, <code>${REPORT_FILENAME}</code>. To make one from your own sessions, run <code>agenttrail-guard scan</code>.</p>` : ""}
+<div class="controls js-only" hidden>
+<div class="filters" role="group" aria-label="Show findings">
+${filters}
+</div>
+<label class="sort">Sort <select id="sort">
+<option value="serious">Most serious</option>
+<option value="category">Category</option>
+<option value="count">Most matches</option>
+<option value="name">Name</option>
+</select></label>${riskFilter(payload)}
+</div>
+<p id="findings-status" class="sr-only" role="status" aria-live="polite"></p>
+<ol class="finding-list">
+${rows}
+</ol>
+<div class="filter-empty" id="findings-empty" hidden><p>No findings match these filters.</p><button type="button" class="tool" id="clear-filters">Show all findings</button></div>${truncated}
+</section>`;
+}
+function recurringSection(payload) {
+  if (payload.recurring.length === 0) {
+    return `<section id="repeats"><h2>Repeat offenders</h2><p class="empty">Nothing matched more than once.</p></section>`;
+  }
+  const byShape = /* @__PURE__ */ new Map();
+  for (const item of payload.recurring) {
+    byShape.set(item.text, [...byShape.get(item.text) ?? [], item]);
+  }
+  const rows = [...byShape].map(([text2, items]) => {
+    const times = Math.max(...items.map((item) => item.calls));
+    const names = items.map((item) => {
+      const index = payload.findings.findIndex((f) => f.ruleId === item.ruleId);
+      const title = inlineTitle(item.title);
+      const named = index === -1 ? title : `<a href="#finding-${index}">${title}</a>`;
+      return item.count === times ? named : `${named} (${escapeHtml(formatCount(item.count))}&times;)`;
+    }).join("<br>");
+    return `<tr role="row"><td class="shape" role="cell"><code>${escapeHtml(text2)}</code></td><td class="num" role="cell">${escapeHtml(formatCount(times))}&times;</td><td class="rule-name" role="cell">${names}</td></tr>`;
+  }).join("\n");
+  return `<section id="repeats"><h2>Repeat offenders</h2>
+<p class="note">The same shape, seen more than once. Paths are redacted before counting, so many different paths under one command become one repeat.</p>
+<div class="table-wrap"><table class="recurring" role="table">
+<thead role="rowgroup"><tr role="row"><th scope="col" role="columnheader">Command shape</th><th scope="col" class="num" role="columnheader">Times</th><th scope="col" role="columnheader">Guardrail</th></tr></thead>
+<tbody role="rowgroup">
+${rows}
+</tbody>
+</table></div>${payload.moreRecurring > 0 ? `
+<p class="note">${escapeHtml(counted3(payload.moreRecurring, "further repeat is", "further repeats are"))} not listed here.</p>` : ""}
+</section>`;
+}
+var OTHER_AGENTS = {
+  claude: "Cursor or Codex",
+  cursor: "Claude Code or Codex",
+  codex: "Claude Code or Cursor"
+};
+function nextStepsSection(result) {
+  const a = result.agent;
+  return `<section id="next-steps">
+<h2>Next steps</h2>
+<ol class="steps">
+<li><p><strong>Turn on AgentTrail Guard</strong> so these guardrails run before each command.</p>
+${copyable("cmd-init", `agenttrail-guard init --agent ${a}`, "Copy the step 1 command")}</li>
+<li><p><strong>See what it is doing</strong>: whether it is on, and what it decided recently.</p>
+${copyable("cmd-status", "agenttrail-guard status", "Copy the step 2 command")}</li>
+<li><p><strong>Scan again next week</strong>, and read every line before the report is written.</p>
+${copyable("cmd-scan-again", `agenttrail-guard scan --agent ${a} --review`, "Copy the step 3 command")}</li>
+</ol>
+<ul class="links">
+<li>${outLink(siteLink("/get-started/guard", a, "next-commands"), "Every command")}</li>
+<li>${outLink(siteLink("/guardrails", a, "next-library"), "The guardrail library")}</li>
+<li>${outLink(siteLink("/get-started/guard", a, "next-agents"), `Set up ${OTHER_AGENTS[a]}`)}</li>
+</ul>
+</section>`;
+}
+function shareSectionHtml(result, payload, variant) {
+  const length = postLength(payload.shareText);
+  const editable = variant === "document";
+  const edit = editable ? "Edit it before posting." : "This published copy cannot change the post. In the report file it was made from, the post can be edited before posting.";
+  const what = payload.shareText === totalsShareText(result) ? "Totals and at most one library guardrail&#39;s name" : "Counts from the checks on this machine, and nothing else";
+  return `<section id="share" class="share">
+<h2>Share your result</h2>
+<p class="note share-note">${what}: no commands, paths, project names or guardrails you wrote. ${edit}</p>
+<label class="share-label" for="share-text">Post preview</label>
+<textarea id="share-text" rows="4"${editable ? "" : " readonly"}>${escapeHtml(payload.shareText)}</textarea>
+<p class="share-actions"><span id="share-count" class="share-count" data-over="${length > POST_LIMIT ? "true" : "false"}">${escapeHtml(`${length} / ${POST_LIMIT}`)}</span>
+<a id="share-link" class="button" href="${escapeHtml(shareLink(payload.shareText, result.agent))}" target="_blank" rel="noopener noreferrer">Post on X</a>
+<button type="button" class="copy js-only" data-copy="share-text" data-label="Copy text" aria-label="Copy text of the post" hidden>Copy text</button></p>
+</section>`;
+}
+function beforeYouShareSection(result, variant) {
+  const review2 = `<code>agenttrail-guard scan --agent ${escapeHtml(result.agent)} --review</code>`;
+  const check = variant === "artifact" ? `Redaction is thorough but not a guarantee. Read the findings before passing this page on; the person who published it can check every line with ${review2} before the file is written.` : `Redaction is thorough but not a guarantee. Read the findings before posting this anywhere public, and run ${review2} to see every line before the file is written.`;
+  const warning = result.toolCalls === 0 ? "" : `
+<p class="warning">${check}</p>`;
+  return `<section class="callout" id="privacy">
+<h2>Before you share this</h2>
+<p class="note">This report was made on one machine from transcripts already on its disk, and the scan sent nothing anywhere.</p>
+<p class="note">Every command in this report has been through a secret scrubber, a path redactor, a pass for secret-named values and long random-looking strings, and an identifier redactor, and every MCP tool call has had its payload values structurally redacted. Redaction runs before anything is written, so this file has never held the original text.</p>
+<dl class="legend">
+<div><dt><code>&lt;path&gt;</code></dt><dd>stands for a redacted filesystem path or URL</dd></div>
+<div><dt><code>&lt;name&gt;</code> <code>&lt;host&gt;</code> <code>&lt;user&gt;</code> <code>&lt;message&gt;</code> <code>&lt;comment&gt;</code></dt><dd>stand for an identifying operand of a command &mdash; a container, a namespace, a machine, a login, a commit message or heredoc body, a shell comment</dd></div>
+<div><dt><code>&lt;value&gt;</code></dt><dd>stands for a redacted MCP payload value</dd></div>
+<div><dt><code>[REDACTED:&hellip;]</code></dt><dd>stands for a redacted secret; <code>[REDACTED:secret:generic]</code> marks a long random-looking string masked on a best guess</dd></div>
+<div><dt><code>&hellip;</code></dt><dd>marks where a long command was shortened for display</dd></div>
+</dl>${warning}
+<p class="note pdf-tip"><strong>Saving as PDF?</strong> Turn off headers and footers in the print dialog, so the file&rsquo;s location on your disk is not printed on every page.</p>
+</section>`;
+}
+function redactionSection() {
+  return `<section id="redaction"><h2>How redaction works and where it can miss</h2>
+<p class="note">Working directories and file paths appear nowhere in this file, and the projects these sessions came from are carried as a count and never as names.</p>
+<p class="note"><strong>Identifying names are a weaker claim than paths, and the difference is worth knowing.</strong> Shell commands go through an identifier redactor keyed to a fixed list of tools &mdash; container runtimes, <code>kubectl</code> (including resource names), the database clients (host, database, and the SQL handed to <code>-c</code> / <code>-e</code>), <code>ssh</code>, <code>git</code> commit messages and identity settings, 1Password&#39;s <code>op</code> (item and vault names), and <code>gh</code> titles and bodies &mdash; plus, in any command, a secret passed as a flag value (<code>--token</code>, <code>--password</code>, <code>--key</code>), a UUID, the body of a heredoc, and the text of a <code>#</code> comment. That list is a deny-list and will miss the tool nobody thought of, so a bare operand naming a resource for a tool not on it can survive.</p>
+<p class="note">Cloud account identifiers are redacted where a name or flag gives them away: <code>CLOUDFLARE_ACCOUNT_ID</code> and <code>--account-id</code>, <code>wrangler</code> commands, AWS account numbers after <code>--account</code> or inside an ARN, and <code>--project</code> for <code>gcloud</code>, <code>gsutil</code>, <code>bq</code> and <code>firebase</code>.</p>
+<p class="note"><strong>Secrets without a known format are caught by name and by shape, and both are guesses.</strong> A value after a name ending in <code>_KEY</code> or <code>-key</code>, an <code>Authorization</code> header, and any long random-looking string of 32 or more characters is masked. A secret that is shorter, that is only hexadecimal and has no revealing name, that is split by punctuation, or that has no name and is followed by a <code>.</code>, ends in <code>=</code> or is written as short dashed groups can survive. Branch names, folder names and git branch operands are kept readable and are not redacted.</p>
+<p class="note"><strong>MCP tool calls are handled the other way round:</strong> a call to an MCP server arrives as a structured payload, and rather than deny-listing known-sensitive fields, every value in it is redacted to <code>&lt;value&gt;</code> by default and only the field names and the shape are kept.</p>
+<p class="note">Guardrail ids and titles are shown as their author wrote them &mdash; which for any guardrail you added yourself means your own words, unredacted. Redaction is thorough but not a guarantee. Read the commands and guardrail names above before posting this anywhere public.</p>
+</section>`;
+}
+function coverageNote(result) {
+  if (result.notRead === 0) return "";
+  const notRead = `${escapeHtml(formatCount(result.notRead))} further transcript file${result.notRead === 1 ? "" : "s"}`;
+  const was3 = result.notRead === 1 ? "was" : "were";
+  const tail = `Every count above is of what was read, not of everything that exists.`;
+  const open = `<p class="note"><strong>Coverage limit.</strong>`;
+  switch (result.agent) {
+    case "cursor":
+      return `${open} This reader opens each session&#39;s file, and the files of the sub-agents that session started, in each project&#39;s <code>agent-transcripts</code> folder. ${notRead} in those folders ${was3} not read. ${tail}</p>`;
+    case "codex":
+      return `${open} This reader opens the session files Codex files by date, in <code>~/.codex/sessions/&lt;year&gt;/&lt;month&gt;/&lt;day&gt;/</code>. ${notRead} elsewhere under the sessions root ${was3} not read. ${tail}</p>`;
+    case "claude":
+      return `${open} This reader opens each session&#39;s transcript and the sub-agent transcripts in its <code>subagents</code> folder, folding a sub-agent&#39;s actions into the session that started it. ${notRead} elsewhere under the projects root &mdash; a stray file, or one nested somewhere it does not walk &mdash; ${was3} not read. ${tail}</p>`;
+    default:
+      return unhandledAgent(result.agent);
+  }
+}
+function corpusSection(result) {
+  const lines2 = [];
+  lines2.push(
+    `Read ${escapeHtml(formatCount(result.sessions))} session${result.sessions === 1 ? "" : "s"} across ${escapeHtml(formatCount(result.projects))} project${result.projects === 1 ? "" : "s"}.`
+  );
+  if (result.quarantined > 0) {
+    lines2.push(
+      `${escapeHtml(formatCount(result.quarantined))} file${result.quarantined === 1 ? "" : "s"} yielded no session and ${result.quarantined === 1 ? "was" : "were"} skipped &mdash; a transcript holding no messages, such as a session started and abandoned, has nothing to report.`
+    );
+  }
+  if (result.skippedLines > 0 && result.skipped === void 0) {
+    lines2.push(
+      `${escapeHtml(formatCount(result.skippedLines))} individual line${result.skippedLines === 1 ? "" : "s"} could not be parsed and ${result.skippedLines === 1 ? "was" : "were"} skipped.`
+    );
+  }
+  if (result.tokens === null) {
+    lines2.push(
+      `${escapeHtml(agentName(result.agent))}&#39;s session files record no token counts, so this report shows none.`
+    );
+  }
+  const coverage = coverageNote(result);
+  const codex = result.agent === "codex" && result.verification !== void 0 ? `
+<p class="note codex-reading">${escapeHtml(CODEX_UNVERIFIED_TEXT)}</p>` : "";
+  return `<section id="scanned"><h2>What was scanned</h2>
+<p class="note">${lines2.join(" ")}</p>${coverage === "" ? "" : `
+${coverage}`}${codex}
+</section>`;
+}
+function skippedSection(payload) {
+  const skipped = payload.skipped;
+  if (skipped === void 0) return "";
+  const phrases = skippedPhrases(skipped);
+  const kinds = phrases.length === 0 ? `<p class="empty">Every line of every session file that was opened was read.</p>` : `<ul class="list">
+${phrases.map((phrase) => `<li>${escapeHtml(phrase)}</li>`).join("\n")}
+</ul>`;
+  const tools = skipped.unmappedTools.length === 0 ? "" : `
+<p class="note">Tool calls this reader does not recognize, by name:</p>
+<ul class="shapes">
+${skipped.unmappedTools.map(
+    (tool) => `<li><code>${escapeHtml(tool.name)}</code><span class="times">${escapeHtml(formatCount(tool.count))}&times;</span></li>`
+  ).join("\n")}
+</ul>`;
+  const notes = [];
+  if (skipped.notActions > 0) {
+    notes.push(
+      `${counted3(skipped.notActions, "tool call was", "tool calls were")} not evaluated because no guardrail checks that kind of call: plans, to-do lists, questions, and starting a sub-agent, whose own tool calls are read from its file.`
+    );
+  }
+  if (skipped.turnsEndedWithError > 0) {
+    notes.push(
+      `${counted3(skipped.turnsEndedWithError, "turn", "turns")} ended with an error; the tool calls made before it were read.`
+    );
+  }
+  return `<section id="not-evaluated"><h2>What was not evaluated</h2>
+<p class="note">None of this stopped the scan. Each line of a session file is read on its own, and whatever could not be used is counted here.</p>
+${kinds}${tools}${notes.map((note) => `
+<p class="note">${escapeHtml(note)}</p>`).join("")}
+</section>`;
+}
+function tokensSection(result) {
+  const t = result.tokens;
+  if (t === null) return "";
+  const rows = [
+    ["Input", formatCount(t.input)],
+    ["Output", formatCount(t.output)],
+    ["Read from cache (cumulative)", formatCount(t.cacheRead)],
+    ["Written to cache", formatCount(t.cacheCreation)]
+  ];
+  if (t.turnsWithSplit > 0) {
+    rows.push([
+      "\u2026of which 5-minute / 1-hour",
+      `${formatCount(t.cacheCreation5m)} / ${formatCount(t.cacheCreation1h)}`
+    ]);
+  }
+  const body = rows.map(
+    ([label, value]) => `<tr><th scope="row">${escapeHtml(label ?? "")}</th><td class="num">${escapeHtml(value ?? "")}</td></tr>`
+  ).join("\n");
+  const splitNote = t.turnsWithSplit > 0 ? `<p class="note">The 5-minute / 1-hour split is reported separately by the model and is not derived from the total above; on real sessions the two do not always agree, so both are shown as reported.</p>` : `<p class="note">None of these sessions reported a 5-minute / 1-hour cache-write split, so that row is omitted rather than shown as zero.</p>`;
+  const cacheReadNote = t.cacheRead > 0 ? `<p class="note">"Read from cache" is cumulative \u2014 the cached prefix is re-read and re-charged every turn, so this counts the same tokens many times over a session. It is a total of what the model billed for, not of distinct input.</p>` : "";
+  return `<section id="tokens"><h2>Tokens</h2>
+<p class="note">Read straight from the transcripts, so these are exact counts and not estimates.</p>
+<div class="table-wrap"><table class="kv">
+${body}
+</table></div>
+${cacheReadNote}${splitNote}</section>`;
+}
+function productNoteSection(result) {
+  if (result.agent !== "claude") return "";
+  const a = result.agent;
+  const { primary, secondary } = PRODUCT_NOTE;
+  return `<aside class="product-note" id="os" aria-label="About AgentTrail OS">
+<p class="eyebrow">${escapeHtml(PRODUCT_NOTE.eyebrow)}</p>
+<h2>${escapeHtml(PRODUCT_NOTE.heading)}</h2>
+<p>${escapeHtml(PRODUCT_NOTE.body)}</p>
+<p class="product-note-action">${outLink(siteLink(primary.path, a, primary.content), escapeHtml(primary.label), "button")}
+${outLink(siteLink(secondary.path, a, secondary.content), escapeHtml(secondary.label), "text-link")}</p>
+</aside>`;
+}
+function pageTitle(result, meta) {
+  return `AgentTrail Guard scan report \xB7 ${agentName(result.agent)} \xB7 ${meta.generatedAt.toISOString().slice(0, 10)}`;
+}
+function dataBlockText(payload) {
+  return JSON.stringify(payload, null, 1).replace(/</g, "\\u003c");
+}
+function contentSecurityPolicy() {
+  const hash = createHash("sha256").update(REPORT_SCRIPT, "utf8").digest("base64");
+  return `default-src 'none'; script-src 'sha256-${hash}'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; require-trusted-types-for 'script'`;
+}
+function renderReport(result, meta, options = {}) {
+  const variant = options.variant ?? "document";
+  const payload = reportPayload(result, meta, options.cardBuilders);
+  const scanned = result.toolCalls > 0;
+  const cards = scanned ? payload.cards : void 0;
+  const lead = cards === void 0 || payload.verification === void 0 ? void 0 : pickHeadline(cards, { ranEvidence: payload.verification.ranEvidence });
+  const head = `<title>${escapeHtml(pageTitle(result, meta))}</title>
+<style>${reportStyles(cards !== void 0)}</style>`;
+  const sections = [
+    topBar(payload),
+    heroSection(result, payload, meta, variant, lead),
+    ...cards === void 0 ? [] : [evidenceSection(payload), alsoCheckedSection(payload, cards, lead)],
+    statsSection(result),
+    ...cards === void 0 ? [] : [
+      whatHappenedSection(
+        cards,
+        variant,
+        options.localFixCategories ?? [],
+        options.unsafeFixCategories ?? []
+      )
+    ],
+    ...scanned ? [
+      wouldHaveDoneSection(result, payload),
+      fixFirstSection(payload),
+      owaspSection(payload),
+      findingsSection(payload, variant),
+      recurringSection(payload)
+    ] : [],
+    nextStepsSection(result),
+    scanned ? shareSectionHtml(result, payload, variant) : "",
+    beforeYouShareSection(result, variant),
+    redactionSection(),
+    corpusSection(result),
+    skippedSection(payload),
+    scanned ? tokensSection(result) : "",
+    productNoteSection(result)
+  ].filter((section) => section !== "");
+  const body = `<main class="page" lang="en">
+${sections.join("\n")}
+<footer>
+<p class="footer-brand">${LOGO_MARK_SVG}<span>agenttrail-guard ${escapeHtml(meta.version)} &middot; ${escapeHtml(payload.catalog)}</span></p>
+<p>Source: ${escapeHtml(REPOSITORY_URL)}</p>
+<p>A finding is a guardrail that matched. It is not proof that anything went wrong, and the guardrails state their own coverage limits.</p>
+<ul class="footer-links">
+<li>${outLink(siteLink("/agenttrail-guard", result.agent, "footer-guard"), "AgentTrail Guard")}</li>
+<li>${outLink(siteLink("/guardrails", result.agent, "footer-library"), "Guardrail library")}</li>
+<li>${outLink(siteLink("/security", result.agent, "footer-security"), "Security")}</li>
+</ul>
+</footer>
+<p id="page-status" class="sr-only" role="status" aria-live="polite"></p>
+<textarea id="copy-buffer" class="sr-only" tabindex="-1" aria-hidden="true" readonly></textarea>
+</main>`;
+  if (variant === "artifact") return `${head}
+${body}
+`;
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta http-equiv="Content-Security-Policy" content="${contentSecurityPolicy()}">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+${head}
+</head>
+<body>
+${body}
+<script type="application/json" id="report-data">
+${dataBlockText(payload)}
+</script>
+<script>${REPORT_SCRIPT}</script>
+</body>
+</html>
+`;
+}
+function reviewStrings(result, builders = CARD_BUILDERS) {
+  const payload = reportPayload(result, { version: "", generatedAt: /* @__PURE__ */ new Date(0) }, builders);
+  const seen = /* @__PURE__ */ new Set();
+  const take = (value) => {
+    if (seen.has(value)) return [];
+    seen.add(value);
+    return [value];
+  };
+  const guardrails = [];
+  const commands = [];
+  for (const finding of payload.findings) {
+    guardrails.push(...take(`${finding.ruleId}  ${finding.title}`));
+    for (const example of finding.examples) commands.push(...take(example.text));
+  }
+  for (const item of payload.recurring) {
+    guardrails.push(...take(`${item.ruleId}  ${item.title}`));
+    commands.push(...take(item.text));
+  }
+  const tools = (payload.skipped?.unmappedTools ?? []).flatMap((tool) => take(tool.name));
+  const groups = [];
+  if (guardrails.length > 0)
+    groups.push({ label: "Guardrails named in the report", lines: guardrails });
+  if (commands.length > 0) groups.push({ label: "Command shapes in the report", lines: commands });
+  if (tools.length > 0) groups.push({ label: "Tool names in the report", lines: tools });
+  const verified = verifiedLines(payload).flatMap(take);
+  if (verified.length > 0) {
+    groups.push({
+      label: "What the checks found on this machine, by count and kind, never a value",
+      lines: verified
+    });
+  }
+  if (payload.findings.length > 0) {
+    groups.push({ label: "The suggested post, which you can edit", lines: [payload.shareText] });
+  }
+  return groups;
+}
+function verifiedLines(payload) {
+  const cards = payload.toolCalls > 0 ? payload.cards : void 0;
+  if (cards === void 0 || payload.verification === void 0) return [];
+  const lines2 = [];
+  const lead = pickHeadline(cards, { ranEvidence: payload.verification.ranEvidence });
+  if (lead?.headline !== void 0) lines2.push(lead.headline.sentence.text);
+  const facts = payload.verification.categories.secrets.facts;
+  for (const item of facts.items) {
+    const row = evidenceRow(item);
+    lines2.push(`${row.kind}  ${row.how}  ${row.files}`);
+  }
+  const more = MORE_EVIDENCE.render({ more: facts.moreItems });
+  if (more !== void 0) lines2.push(more);
+  for (const note of leadNotes(payload.verification)) lines2.push(note.text);
+  for (const chip of chipsFor(cards, lead)) lines2.push(`${chip.title}  ${chip.text}`);
+  const forms = sentence(HIDING_FORMS_LIST, cards);
+  if (forms !== void 0) lines2.push(forms.text);
+  const tally = sentence(TONE_TALLY, cards);
+  if (tally !== void 0) lines2.push(tally.text);
+  for (const card of cards) {
+    if (card.read !== void 0)
+      lines2.push(`${CATEGORY_TITLES[card.category]}:  ${card.read.text}`);
+  }
+  for (const card of cards) {
+    const title = CATEGORY_TITLES[card.category];
+    const count2 = cardCount(card);
+    if (count2 !== void 0) lines2.push(`${title}  ${count2.text}`);
+    for (const line2 of [...card.found, ...card.now, ...card.fixSteps ?? []]) {
+      lines2.push(`${title}  ${line2.text}`);
+    }
+    for (const fix of card.fixes) lines2.push(`${title}  ${fix.shape}`);
+    if (card.caveat !== void 0) lines2.push(`${title}  ${card.caveat.text}`);
+    const caveat = sentence(CODEX_CAVEAT, card);
+    if (caveat !== void 0) lines2.push(`${title}  ${caveat.text}`);
+  }
+  for (const note of payload.notes ?? []) lines2.push(`${note.ruleId}  ${note.sentence.text}`);
+  return lines2;
+}
+function renderJson(result, meta) {
+  const safe = result.verification === void 0 ? result : { ...result, verification: boundaryVerification(result.verification, false) };
+  return `${JSON.stringify(
+    {
+      tool: "agenttrail-guard",
+      version: meta.version,
+      generatedAt: meta.generatedAt.toISOString(),
+      catalog: formatCatalogStamp(catalogStamp(), meta.generatedAt),
+      // A Codex scan whose checks ran says, in --json too, how far their reading can be trusted.
+      ...result.agent === "codex" && result.verification !== void 0 ? { notes: [CODEX_UNVERIFIED_TEXT] } : {},
+      result: safe
+    },
+    null,
+    2
+  )}
+`;
+}
+
+// src/core/fixes-file.ts
+var CONTROL = (
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: control characters are what it finds.
+  /[\u0000-\u0008\u000a-\u001f\u007f-\u009f\u2028\u2029\u200e\u200f\u202a-\u202e\u2066-\u2069]/
+);
+function writable(fixes) {
+  return fixes.filter(
+    (fix) => isLocalFix(fix) && fix.command.trim() !== "" && !CONTROL.test(fix.command)
+  );
+}
+function unsafe(fixes) {
+  return fixes.filter((fix) => !isLocalFix(fix) && "unsafe" in fix);
+}
+function exactFixCount(fixes) {
+  return writable(fixes).length;
+}
+function unsafeFixCount(fixes) {
+  return unsafe(fixes).length;
+}
+function fixCategories(fixes) {
+  const kept = writable(fixes);
+  return VERIFY_CATEGORIES.filter((category) => kept.some((fix) => fix.category === category));
+}
+function unsafeFixCategories(fixes) {
+  const notes = unsafe(fixes);
+  return VERIFY_CATEGORIES.filter((category) => notes.some((fix) => fix.category === category));
+}
+function hasFileFixes(fixes) {
+  return writable(fixes).length + unsafe(fixes).length > 0;
+}
+function fixesFileText(fixes, meta) {
+  const kept = writable(fixes);
+  const notes = unsafe(fixes);
+  const left = fixes.length - kept.length - notes.length;
+  const out = [
+    "AgentTrail Guard: fix commands for this machine",
+    "",
+    `Written by agenttrail-guard ${meta.version} on ${readableTime(meta.generatedAt)}, with ${meta.reportName}.`,
+    "",
+    "These are the exact commands behind the redacted shapes in the report, with real",
+    "branch names and paths. Keep this file on this machine: it is not part of the",
+    "report, and it is written for your user account only (mode 0600, where the system",
+    "honours it). Read each command before you run it. Nothing here has been run."
+  ];
+  if (left > 0) {
+    out.push(
+      "",
+      `${left === 1 ? "1 command was" : `${left} commands were`} left out because ${left === 1 ? "it does" : "they do"} not fit on one line.`
+    );
+  }
+  for (const category of VERIFY_CATEGORIES) {
+    const commands = kept.filter((fix) => fix.category === category);
+    const unsafeHere = notes.filter((fix) => fix.category === category).length;
+    if (commands.length + unsafeHere === 0) continue;
+    out.push("", CATEGORY_TITLES[category]);
+    for (const fix of commands) out.push(fix.command);
+    if (unsafeHere > 0) {
+      out.push(
+        `(${unsafeHere === 1 ? "1 fix here: could not make a safe command" : `${unsafeHere} fixes here: could not make a safe command`}, so none is written for ${unsafeHere === 1 ? "it" : "them"}.)`
+      );
+    }
+  }
+  return `${out.join("\n")}
+`;
+}
+
+// src/core/paths.ts
+import { join as join7 } from "path";
+function guardDir(homedir4) {
+  return join7(homedir4, ".agenttrail", "guard");
+}
+function configPath(homedir4) {
+  return join7(guardDir(homedir4), "config.json");
+}
+function userRulesPath(homedir4) {
+  return join7(guardDir(homedir4), "guardrails.json");
+}
+function productLineStatePath(homedir4) {
+  return join7(guardDir(homedir4), ".product-line");
+}
+
+// src/core/product-line.ts
+var SUPPORTED_AGENTS = /* @__PURE__ */ new Set(["claude", "cursor"]);
+var plural = (n2, one, many) => `${formatCount(n2)} ${n2 === 1 ? one : many}`;
+var PRODUCT_LINE = {
+  destination: "https://agenttrail.sh/agenttrail-os",
+  utm: "utm_source=guard&utm_medium=cli",
+  /** `config.json` key. Only `false` turns the line off. */
+  configKey: "productLine",
+  /** At most one showing per command in this many hours. */
+  intervalHours: 24,
+  /** How far back `status` counts decisions. */
+  statusWindowDays: 7,
+  text: {
+    init: (url) => `Want a teammate to approve risky actions, and every session on record? AgentTrail OS (Team plan): ${url}`,
+    statusAsks: (asks, url) => `This week guard asked about ${plural(asks, "action", "actions")}. In AgentTrail OS a teammate approves them from the app (Team plan): ${url}`,
+    statusBlocks: (blocks, url) => `Guard blocked ${plural(blocks, "action", "actions")} this week. AgentTrail OS finds the failures agents repeat and suggests the guardrail that stops them: ${url}`,
+    scanAsks: (asks, url) => `${formatCount(asks)} of these would have waited for a teammate's approval in AgentTrail OS (Team plan), not a prompt: ${url}`,
+    scanMatches: (url) => `AgentTrail OS finds the failures agents repeat and suggests the guardrail that stops them: ${url}`,
+    add: (id, url) => `Share it: with everyone, run agenttrail-guard guardrails export ${id}; with your team, AgentTrail OS syncs guardrails to every teammate (Team plan): ${url}`
+  }
+};
+function productLineUrl(surface) {
+  return `${PRODUCT_LINE.destination}?${PRODUCT_LINE.utm}&utm_content=${surface}`;
+}
+function productLineText(facts) {
+  const url = productLineUrl(facts.surface);
+  const t = PRODUCT_LINE.text;
+  switch (facts.surface) {
+    case "init":
+      return SUPPORTED_AGENTS.has(facts.agent) ? t.init(url) : void 0;
+    case "status":
+      if (facts.asks > 0) return t.statusAsks(facts.asks, url);
+      if (facts.blocks > 0) return t.statusBlocks(facts.blocks, url);
+      return void 0;
+    case "scan":
+      if (!SUPPORTED_AGENTS.has(facts.agent) || facts.matches === 0) return void 0;
+      return facts.asks > 0 ? t.scanAsks(facts.asks, url) : t.scanMatches(url);
+    case "add":
+      return t.add(facts.guardrailId, url);
+    default:
+      return void 0;
+  }
+}
+function productLineEnabled(configText) {
+  if (configText === void 0) return true;
+  try {
+    const raw = JSON.parse(configText);
+    if (raw === null || typeof raw !== "object" || Array.isArray(raw)) return true;
+    return raw[PRODUCT_LINE.configKey] !== false;
+  } catch {
+    return true;
+  }
+}
+function readState(text2) {
+  if (text2 === void 0) return {};
+  try {
+    const raw = JSON.parse(text2);
+    return raw !== null && typeof raw === "object" && !Array.isArray(raw) ? { ...raw } : {};
+  } catch {
+    return {};
+  }
+}
+function productLineDue(stateText, surface, now) {
+  const last = readState(stateText)[surface];
+  if (typeof last !== "string") return true;
+  const at2 = Date.parse(last);
+  if (Number.isNaN(at2) || at2 > now.getTime()) return true;
+  return now.getTime() - at2 >= PRODUCT_LINE.intervalHours * 36e5;
+}
+function recordProductLine(stateText, surface, now) {
+  const state = readState(stateText);
+  state[surface] = now.toISOString();
+  return `${JSON.stringify(state, null, 2)}
+`;
+}
+function takeProductLine(ctx, facts) {
+  if (!ctx.interactive || !productLineEnabled(ctx.configText)) return void 0;
+  const text2 = productLineText(facts);
+  if (text2 === void 0) return void 0;
+  const state = ctx.readFile(ctx.statePath);
+  if (!productLineDue(state, facts.surface, ctx.now)) return void 0;
+  if (!ctx.writeFile(ctx.statePath, recordProductLine(state, facts.surface, ctx.now))) {
+    return void 0;
+  }
+  return text2;
+}
+
+// src/engine/matchers.ts
+var import_picomatch2 = __toESM(require_picomatch2(), 1);
+var DETAIL_ATTR = "detail";
+var FILE_PATH_ATTR = "file_path";
+var FILE_GLOB_OPTIONS = { dot: true, nocase: true };
+var LABEL_GLOB_OPTIONS = { dot: true, nocase: true };
+function matchKind(conditionKind, span) {
+  const matched = span.kind.toLowerCase() === conditionKind.toLowerCase();
+  return {
+    matched,
+    reason: matched ? `kind: "${conditionKind}" matched` : `kind: expected "${conditionKind}", got "${span.kind}"`
+  };
+}
+function matchLabel(conditionLabel, span) {
+  const matched = createCompiledLabelMatcher(conditionLabel)(span.label);
+  return {
+    matched,
+    reason: matched ? `label: "${conditionLabel}" matched` : `label: expected "${conditionLabel}", got "${span.label}"`
+  };
+}
+function matchDetailContains(requiredSubstrings, span) {
+  const detail = span.attributes[DETAIL_ATTR];
+  if (detail === void 0) {
+    return { matched: false, reason: "detail_contains: detail attribute missing" };
+  }
+  const missing = [];
+  for (const substring of requiredSubstrings) {
+    if (!detail.includes(substring)) {
+      missing.push(substring);
+    }
+  }
+  if (missing.length > 0) {
+    return {
+      matched: false,
+      reason: `detail_contains: missing substrings: ${JSON.stringify(missing)}`
+    };
+  }
+  return {
+    matched: true,
+    reason: `detail_contains: all ${requiredSubstrings.length} substring(s) found`
+  };
+}
+function matchDetailMatches(patterns, span) {
+  const detail = span.attributes[DETAIL_ATTR];
+  if (detail === void 0) {
+    return { matched: false, reason: "detail_matches: detail attribute missing" };
+  }
+  for (const pattern of patterns) {
+    if (createCompiledDetailMatcher(pattern)(detail)) {
+      return { matched: true, reason: `detail_matches: "${pattern}" matched` };
+    }
+  }
+  return {
+    matched: false,
+    reason: `detail_matches: no pattern of ${patterns.length} matched`
+  };
+}
+function matchFileGlob(pattern, span) {
+  const filePath = span.attributes[FILE_PATH_ATTR];
+  if (filePath === void 0) {
+    return { matched: false, reason: "file_glob: file_path attribute missing" };
+  }
+  try {
+    const isMatch = (0, import_picomatch2.default)(pattern, FILE_GLOB_OPTIONS);
+    const matched = isMatch(filePath);
+    return {
+      matched,
+      reason: matched ? `file_glob: "${pattern}" matched "${filePath}"` : `file_glob: "${pattern}" did not match "${filePath}"`
+    };
+  } catch {
+    return {
+      matched: false,
+      reason: `file_glob: invalid pattern: "${pattern}"`
+    };
+  }
+}
+function resolveNumericField(field, span) {
+  switch (field) {
+    case "tokens":
+      return span.tokens;
+    case "cached_tokens":
+      return span.cachedTokens;
+    case "duration_ms":
+      return span.durationMs;
+    default: {
+      const _exhaustive = field;
+      throw new Error(`unmapped numeric field: ${String(_exhaustive)}`);
+    }
+  }
+}
+function matchNumeric(comparison, span) {
+  const actual = resolveNumericField(comparison.field, span);
+  const { op, value, field } = comparison;
+  let matched;
+  switch (op) {
+    case "gt":
+      matched = actual > value;
+      break;
+    case "gte":
+      matched = actual >= value;
+      break;
+    case "lt":
+      matched = actual < value;
+      break;
+    case "lte":
+      matched = actual <= value;
+      break;
+    default: {
+      const _exhaustive = op;
+      throw new Error(`unmapped numeric op: ${String(_exhaustive)}`);
+    }
+  }
+  return {
+    matched,
+    reason: matched ? `numeric: ${field} (${actual}) ${op} ${value} matched` : `numeric: ${field} (${actual}) not ${op} ${value}`
+  };
+}
+var compiledGlobCache = /* @__PURE__ */ new Map();
+var compiledLabelCache = /* @__PURE__ */ new Map();
+var compiledDetailCache = /* @__PURE__ */ new Map();
+function createCompiledLabelMatcher(pattern) {
+  let matcher = compiledLabelCache.get(pattern);
+  if (matcher === void 0) {
+    try {
+      matcher = (0, import_picomatch2.default)(pattern, LABEL_GLOB_OPTIONS);
+    } catch {
+      matcher = () => false;
+    }
+    compiledLabelCache.set(pattern, matcher);
+  }
+  const cached = matcher;
+  return (label) => cached(label);
+}
+function createCompiledDetailMatcher(pattern) {
+  let compiled = compiledDetailCache.get(pattern);
+  if (compiled === void 0) {
+    try {
+      compiled = new RegExp(pattern, "i");
+    } catch {
+      compiled = null;
+    }
+    compiledDetailCache.set(pattern, compiled);
+  }
+  const cached = compiled;
+  return cached === null ? () => false : (detail) => cached.test(detail);
+}
+function createCompiledFileGlobMatcher(pattern) {
+  let matcher = compiledGlobCache.get(pattern);
+  if (!matcher) {
+    try {
+      matcher = (0, import_picomatch2.default)(pattern, FILE_GLOB_OPTIONS);
+      compiledGlobCache.set(pattern, matcher);
+    } catch {
+      return (_span) => ({
+        matched: false,
+        reason: `file_glob: invalid pattern: "${pattern}"`
+      });
+    }
+  }
+  const cachedMatcher = matcher;
+  return (span) => {
+    const filePath = span.attributes[FILE_PATH_ATTR];
+    if (filePath === void 0) {
+      return { matched: false, reason: "file_glob: file_path attribute missing" };
+    }
+    const matched = cachedMatcher(filePath);
+    return {
+      matched,
+      reason: matched ? `file_glob: "${pattern}" matched "${filePath}"` : `file_glob: "${pattern}" did not match "${filePath}"`
+    };
+  };
+}
+
+// src/engine/scope.ts
+function isInScopeArray(scopeArray, value) {
+  return scopeArray.includes("*") || scopeArray.includes(value);
+}
+function matchScope(scope, context) {
+  if (scope === void 0) {
+    return { matched: true, reason: "scope: no scope filter (applies globally)" };
+  }
+  const failures = [];
+  if (scope.agent_in !== void 0) {
+    if (!isInScopeArray(scope.agent_in, context.agentId)) {
+      failures.push(`agent_in: "${context.agentId}" not in [${scope.agent_in.join(", ")}]`);
+    }
+  }
+  if (scope.project_in !== void 0) {
+    if (!isInScopeArray(scope.project_in, context.projectId)) {
+      failures.push(`project_in: "${context.projectId}" not in [${scope.project_in.join(", ")}]`);
+    }
+  }
+  if (failures.length > 0) {
+    return {
+      matched: false,
+      reason: `scope: ${failures.join("; ")}`
+    };
+  }
+  return { matched: true, reason: "scope: all scope filters matched" };
+}
+
+// src/engine/evaluator.ts
+function evaluateConditionCompiled(condition, span, compiledGlobMatcher) {
+  const kindResult = matchKind(condition.kind, span);
+  if (!kindResult.matched) {
+    return kindResult;
+  }
+  const reasons = [kindResult.reason];
+  if (condition.label !== void 0) {
+    const labelResult = matchLabel(condition.label, span);
+    if (!labelResult.matched) {
+      return labelResult;
+    }
+    reasons.push(labelResult.reason);
+  }
+  if (condition.detail_contains !== void 0) {
+    const detailResult = matchDetailContains(condition.detail_contains, span);
+    if (!detailResult.matched) {
+      return detailResult;
+    }
+    reasons.push(detailResult.reason);
+  }
+  if (condition.detail_matches !== void 0) {
+    const regexResult = matchDetailMatches(condition.detail_matches, span);
+    if (!regexResult.matched) {
+      return regexResult;
+    }
+    reasons.push(regexResult.reason);
+  }
+  if (condition.file_glob !== void 0) {
+    if (compiledGlobMatcher) {
+      const globResult = compiledGlobMatcher(span);
+      if (!globResult.matched) {
+        return globResult;
+      }
+      reasons.push(globResult.reason);
+    } else {
+      const globResult = matchFileGlob(condition.file_glob, span);
+      if (!globResult.matched) {
+        return globResult;
+      }
+      reasons.push(globResult.reason);
+    }
+  }
+  if (condition.numeric !== void 0) {
+    for (const comparison of condition.numeric) {
+      const numericResult = matchNumeric(comparison, span);
+      if (!numericResult.matched) {
+        return numericResult;
+      }
+      reasons.push(numericResult.reason);
+    }
+  }
+  return {
+    matched: true,
+    reason: reasons.join("; ")
+  };
+}
+function compilePolicy(predicate) {
+  function compileConditions(conditions) {
+    if (conditions === void 0) return void 0;
+    return conditions.map((condition) => {
+      const globMatcher = condition.file_glob ? createCompiledFileGlobMatcher(condition.file_glob) : void 0;
+      return globMatcher ? { condition, globMatcher } : { condition };
+    });
+  }
+  const compiledAnyOf = compileConditions(predicate.match.any_of);
+  const compiledAllOf = compileConditions(predicate.match.all_of);
+  const compiledNoneOf = compileConditions(predicate.match.none_of);
+  const scope = predicate.scope;
+  return (context) => {
+    const scopeResult = matchScope(scope, context);
+    if (!scopeResult.matched) {
+      return { matched: false, reasons: [scopeResult.reason] };
+    }
+    const reasons = [];
+    const span = context.span;
+    if (compiledAllOf !== void 0) {
+      for (const { condition, globMatcher } of compiledAllOf) {
+        const result = evaluateConditionCompiled(condition, span, globMatcher);
+        if (!result.matched) {
+          return {
+            matched: false,
+            reasons: [`all_of: condition failed \u2014 ${result.reason}`]
+          };
+        }
+        reasons.push(`all_of: ${result.reason}`);
+      }
+    }
+    if (compiledAnyOf !== void 0) {
+      let anyMatched = false;
+      const anyOfReasons = [];
+      for (const { condition, globMatcher } of compiledAnyOf) {
+        const result = evaluateConditionCompiled(condition, span, globMatcher);
+        if (result.matched) {
+          anyMatched = true;
+          anyOfReasons.push(`any_of: ${result.reason}`);
+        }
+      }
+      if (!anyMatched) {
+        return { matched: false, reasons: ["any_of: no conditions matched"] };
+      }
+      reasons.push(...anyOfReasons);
+    }
+    if (compiledNoneOf !== void 0) {
+      for (const { condition, globMatcher } of compiledNoneOf) {
+        const result = evaluateConditionCompiled(condition, span, globMatcher);
+        if (result.matched) {
+          return {
+            matched: false,
+            reasons: [`none_of: excluded condition matched \u2014 ${result.reason}`]
+          };
+        }
+      }
+      reasons.push(`none_of: no excluded condition matched (${compiledNoneOf.length} checked)`);
+    }
+    return { matched: true, reasons };
+  };
+}
+
+// src/core/rules.ts
+function compileCatalog(rules12, config) {
+  const compiled = [];
+  const overrides = config?.guardrailActionOverrides ?? {};
+  const disabled = new Set(config?.disabledGuardrails ?? []);
+  const disabledPacks = new Set(config?.disabledPacks ?? []);
+  for (const rule of rules12) {
+    if (disabledPacks.has(rule.category)) continue;
+    if (disabled.has(rule.id)) continue;
+    const action = overrides[rule.id] ?? rule.defaultAction;
+    const predicate = {
+      version: 1,
+      match: rule.match,
+      action
+    };
+    try {
+      compiled.push({ rule, action, evaluate: compilePolicy(predicate) });
+    } catch {
+    }
+  }
+  return compiled;
+}
+
 // src/core/transcript/parse.ts
 import { createReadStream } from "fs";
 import { createInterface } from "readline";
@@ -11356,7 +20205,7 @@ var fileLineSource = {
       crlfDelay: Number.POSITIVE_INFINITY
     });
     try {
-      for await (const line of rl) yield line;
+      for await (const line2 of rl) yield line2;
     } finally {
       rl.close();
     }
@@ -11395,11 +20244,11 @@ async function parseSession(path, fallbackSessionId, source = fileLineSource) {
   const toolResults = /* @__PURE__ */ new Map();
   let currentPromptUuid = "";
   for await (const raw of source.readLines(path)) {
-    const line = raw.trim();
-    if (line.length === 0) continue;
+    const line2 = raw.trim();
+    if (line2.length === 0) continue;
     let obj;
     try {
-      obj = JSON.parse(line);
+      obj = JSON.parse(line2);
     } catch {
       skippedLines++;
       continue;
@@ -11457,9 +20306,9 @@ async function parseSession(path, fallbackSessionId, source = fileLineSource) {
         }
       }
       if (!sawToolResult) {
-        const text = joinText(blocks);
-        if (text.length > 0) {
-          userPrompts.push({ messageUuid: uuid, timestamp: ts ?? "", text, isSidechain });
+        const text2 = joinText(blocks);
+        if (text2.length > 0) {
+          userPrompts.push({ messageUuid: uuid, timestamp: ts ?? "", text: text2, isSidechain });
           if (!isSidechain) currentPromptUuid = uuid;
         }
       }
@@ -11491,17 +20340,17 @@ async function parseSession(path, fallbackSessionId, source = fileLineSource) {
 // src/core/transcript/scan.ts
 import { readdirSync, statSync } from "fs";
 import { homedir } from "os";
-import { basename as basename2, isAbsolute, join as join4, relative } from "path";
+import { basename as basename2, isAbsolute as isAbsolute4, join as join8, relative as relative3 } from "path";
 function defaultProjectsRoot(home = homedir()) {
-  return join4(home, ".claude", "projects");
+  return join8(home, ".claude", "projects");
 }
 var SNIFF_LINE_CAP = 40;
 async function sniff(path, source) {
   const id = { cwd: null, gitBranch: null, version: null, sessionId: null };
   let messageCount = 0;
   let sniffed = 0;
-  for await (const line of source.readLines(path)) {
-    const trimmed = line.trim();
+  for await (const line2 of source.readLines(path)) {
+    const trimmed = line2.trim();
     if (trimmed.length === 0) continue;
     messageCount++;
     const complete = id.cwd && id.gitBranch && id.version && id.sessionId;
@@ -11521,8 +20370,8 @@ async function sniff(path, source) {
 }
 function isSessionInProject(cwd, projectRoot) {
   if (cwd === null) return false;
-  const rel = relative(projectRoot, cwd);
-  return rel === "" || !rel.startsWith("..") && !isAbsolute(rel);
+  const rel = relative3(projectRoot, cwd);
+  return rel === "" || !rel.startsWith("..") && !isAbsolute4(rel);
 }
 async function scanTranscripts(projectsRoot = defaultProjectsRoot(), projectRoot, io = {}) {
   const readdir = io.readdir ?? ((p) => readdirSync(p));
@@ -11541,18 +20390,18 @@ async function scanTranscripts(projectsRoot = defaultProjectsRoot(), projectRoot
   const projects = [];
   let totalSessions = 0;
   for (const project of projectDirs.sort()) {
-    const dir = join4(projectsRoot, project);
-    let entries;
+    const dir = join8(projectsRoot, project);
+    let entries2;
     try {
       if (!stat2(dir).isDirectory()) continue;
-      entries = readdir(dir);
+      entries2 = readdir(dir);
     } catch {
       continue;
     }
     const sessions = [];
-    for (const entry of entries.sort()) {
+    for (const entry of entries2.sort()) {
       if (!entry.endsWith(".jsonl")) continue;
-      const file2 = join4(dir, entry);
+      const file2 = join8(dir, entry);
       let size = 0;
       let mtimeMs = 0;
       try {
@@ -11601,11 +20450,11 @@ function hasSelectableMatch(match) {
   const populated = (arm) => Array.isArray(arm) && arm.length > 0;
   return populated(m.any_of) || populated(m.all_of);
 }
-function parseUserRulesData(text) {
-  if (text === void 0 || text.trim().length === 0) return [];
+function parseUserRulesData(text2) {
+  if (text2 === void 0 || text2.trim().length === 0) return [];
   let parsed;
   try {
-    parsed = JSON.parse(text);
+    parsed = JSON.parse(text2);
   } catch {
     return [];
   }
@@ -11632,6 +20481,859 @@ function parseUserRulesData(text) {
   return out;
 }
 
+// src/core/verify/verify.ts
+import { homedir as homedir2 } from "os";
+
+// src/core/verify/deps.ts
+function operandsOf(args2) {
+  return args2.filter((a) => !a.startsWith("-"));
+}
+function readJs(manager, args2) {
+  const words2 = operandsOf(args2);
+  const sub = words2[0];
+  const packages = words2.slice(1);
+  if (manager === "yarn" && sub === void 0) return { manager, restore: true };
+  if (sub === "ci") return manager === "npm" ? { manager, restore: true } : void 0;
+  if (sub === "install" || sub === "i") return { manager, restore: packages.length === 0 };
+  if (sub === "add" || sub === "update" || sub === "up" || sub === "upgrade") {
+    return { manager, restore: false };
+  }
+  return void 0;
+}
+function readPip(args2) {
+  if (args2[0] !== "install") return void 0;
+  const rest = args2.slice(1);
+  const fromFile = rest.some((a) => a === "-r" || a.startsWith("--requirement") || a === "-c");
+  const packages = rest.filter(
+    (a, k) => !a.startsWith("-") && !["-r", "-c", "-e"].includes(rest[k - 1] ?? "")
+  );
+  const project = rest.some((a) => a === "-e" || a === ".");
+  return { manager: "pip", restore: fromFile || project && packages.every((p) => p === ".") };
+}
+function readSimple2(simple) {
+  const { program, args: args2 } = programAndArgs(simple);
+  switch (program) {
+    case "npm":
+    case "pnpm":
+    case "yarn":
+    case "bun":
+      return readJs(program, args2);
+    case "pip":
+    case "pip3":
+      return readPip(args2);
+    case "python":
+    case "python3":
+      return args2[0] === "-m" && (args2[1] === "pip" || args2[1] === "pip3") ? readPip(args2.slice(2)) : void 0;
+    case "uv": {
+      if (args2[0] === "sync") return { manager: "uv", restore: true };
+      if (args2[0] === "add") return { manager: "uv", restore: false };
+      if (args2[0] === "pip" && args2[1] === "sync") return { manager: "uv", restore: true };
+      if (args2[0] === "pip") {
+        const pip = readPip(args2.slice(1));
+        return pip === void 0 ? void 0 : { manager: "uv", restore: pip.restore };
+      }
+      return void 0;
+    }
+    case "poetry":
+      if (args2[0] === "install") return { manager: "poetry", restore: true };
+      return args2[0] === "add" || args2[0] === "update" ? { manager: "poetry", restore: false } : void 0;
+    case "pipenv": {
+      if (args2[0] === "sync") return { manager: "pipenv", restore: true };
+      if (args2[0] !== "install") return void 0;
+      return { manager: "pipenv", restore: operandsOf(args2.slice(1)).length === 0 };
+    }
+    case "cargo":
+      return args2[0] === "add" || args2[0] === "install" ? { manager: "cargo", restore: false } : void 0;
+    case "go":
+      if (args2[0] === "get" || args2[0] === "install") return { manager: "go", restore: false };
+      return args2[0] === "mod" && args2[1] === "download" ? { manager: "go", restore: true } : void 0;
+    case "gem":
+      return args2[0] === "install" ? { manager: "gem", restore: false } : void 0;
+    case "bundle":
+    case "bundler":
+      if (args2[0] === "install") return { manager: "bundler", restore: true };
+      return args2[0] === "add" ? { manager: "bundler", restore: false } : void 0;
+    case "composer":
+      if (args2[0] === "install") return { manager: "composer", restore: true };
+      return args2[0] === "require" || args2[0] === "update" ? { manager: "composer", restore: false } : void 0;
+    default:
+      return void 0;
+  }
+}
+function readInstalls(command) {
+  const out = [];
+  for (const simple of simpleCommands(command)) {
+    const reading = readSimple2(simple);
+    if (reading !== void 0) out.push(reading);
+  }
+  return out;
+}
+function checkDependencies(calls) {
+  const managers = /* @__PURE__ */ new Set();
+  let installs = 0;
+  let lockfileRestores = 0;
+  let mentioned = 0;
+  let unconfirmed = 0;
+  for (const call of calls.calls) {
+    if (!isShell(call) || readInstalls(call.command).length === 0) continue;
+    const state = runStateOf(calls.agent, call, (command) => readInstalls(command).length > 0);
+    if (state === "mentioned") mentioned += 1;
+    else if (state === "unknown") unconfirmed += 1;
+    else {
+      for (const reading of readInstalls(executedText(call.command))) {
+        if (reading.restore) lockfileRestores += 1;
+        else {
+          installs += 1;
+          managers.add(reading.manager);
+        }
+      }
+    }
+  }
+  return {
+    installs,
+    lockfileRestores,
+    managers: PACKAGE_MANAGERS.filter((m) => managers.has(m)),
+    packageAge: PACKAGE_AGE_NOT_CHECKED,
+    mentioned,
+    unconfirmed,
+    couldHide: couldHideCount(calls),
+    hidingForms: heldHidingForms(calls)
+  };
+}
+
+// src/core/verify/fingerprint.ts
+import { createHmac, randomBytes } from "crypto";
+var FINGERPRINT_HEX = 32;
+var KEY_BYTES = 32;
+function createFingerprinter(key = randomBytes(KEY_BYTES)) {
+  const own = Buffer.from(key);
+  return (value) => createHmac("sha256", own).update(value, "utf8").digest("hex").slice(0, FINGERPRINT_HEX);
+}
+
+// src/core/verify/git-checks.ts
+var FAILED = { status: "could-not-check", matches: 0 };
+async function guarded2(run) {
+  try {
+    return await run();
+  } catch {
+    return { result: FAILED, localFixes: [], unsafeFixes: [] };
+  }
+}
+async function checkGitBacked(input) {
+  let context;
+  try {
+    context = {
+      log: readCalls2(input.corpus, input.home),
+      probe: new RepoProbe(input.io),
+      scratchRoots: input.scratchRoots ?? TEMP_ROOTS,
+      ...input.rules === void 0 ? {} : { rules: input.rules }
+    };
+  } catch {
+    return {
+      "skipped-checks": FAILED,
+      "lost-work": FAILED,
+      destructive: FAILED,
+      localFixes: [],
+      unsafeFixes: []
+    };
+  }
+  const skipped = await guarded2(() => checkSkippedChecks(context));
+  const lost = await guarded2(() => checkLostWork(context));
+  const destructive = await guarded2(() => checkDestructive(context));
+  return {
+    "skipped-checks": skipped.result,
+    "lost-work": lost.result,
+    destructive: destructive.result,
+    localFixes: [...skipped.localFixes, ...lost.localFixes, ...destructive.localFixes],
+    unsafeFixes: [...skipped.unsafeFixes, ...lost.unsafeFixes, ...destructive.unsafeFixes]
+  };
+}
+
+// src/core/verify/paths.ts
+function isNetworkPath(path) {
+  return /^[\\/]{2}/.test(path) || /^\/(?:net|Network)(?:\/|$)/.test(path);
+}
+
+// src/core/verify/sources.ts
+var EMPTY = { pieces: [], workingDirs: [] };
+var MAX_DEPTH2 = 32;
+var MAX_LEAVES = 1e4;
+function isRecord5(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+function stringLeaves(value, out = [], depth = 0) {
+  if (out.length >= MAX_LEAVES || depth > MAX_DEPTH2) return out;
+  if (typeof value === "string") {
+    if (value !== "") out.push(value);
+  } else if (Array.isArray(value)) {
+    for (const item of value) stringLeaves(item, out, depth + 1);
+  } else if (isRecord5(value)) {
+    for (const item of Object.values(value)) stringLeaves(item, out, depth + 1);
+  }
+  return out;
+}
+function contentText(content) {
+  if (typeof content === "string") return content === "" ? [] : [content];
+  if (!Array.isArray(content)) return [];
+  const out = [];
+  for (const item of content) {
+    if (typeof item === "string") {
+      if (item !== "") out.push(item);
+    } else if (isRecord5(item) && typeof item.text === "string" && item.text !== "") {
+      out.push(item.text);
+    }
+  }
+  return out;
+}
+function collector() {
+  const pieces = [];
+  return {
+    add: (via, texts) => {
+      for (const text2 of texts) pieces.push({ text: text2, via });
+    },
+    pieces
+  };
+}
+function nonEmpty3(value) {
+  return typeof value === "string" && value !== "" ? [value] : [];
+}
+function claudeLine(record) {
+  const { add, pieces } = collector();
+  const message = isRecord5(record.message) ? record.message : void 0;
+  const content = message?.content;
+  if (record.type === "user") {
+    if (typeof content === "string") add("pasted-into-prompt", contentText(content));
+    else if (Array.isArray(content)) {
+      for (const block of content) {
+        if (!isRecord5(block)) continue;
+        if (block.type === "text" && typeof block.text === "string") {
+          add("pasted-into-prompt", [block.text]);
+        } else if (block.type === "tool_result") {
+          add("printed-by-command", contentText(block.content));
+        }
+      }
+    }
+    if (record.toolUseResult !== void 0) {
+      add("printed-by-command", stringLeaves(record.toolUseResult));
+    }
+  } else if (record.type === "assistant" && Array.isArray(content)) {
+    for (const block of content) {
+      if (!isRecord5(block)) continue;
+      if (block.type === "text" && typeof block.text === "string") {
+        add("in-agent-reply", [block.text]);
+      } else if (block.type === "thinking" && typeof block.thinking === "string") {
+        add("in-agent-reply", [block.thinking]);
+      } else if (block.type === "tool_use") {
+        add("typed-into-command", stringLeaves(block.input));
+      }
+    }
+  }
+  return { pieces, workingDirs: nonEmpty3(record.cwd) };
+}
+function codexLine(record) {
+  const payload = isRecord5(record.payload) ? record.payload : {};
+  if (record.type === "session_meta" || record.type === "turn_context") {
+    return { pieces: [], workingDirs: nonEmpty3(payload.cwd) };
+  }
+  const { add, pieces } = collector();
+  if (record.type === "response_item") {
+    switch (payload.type) {
+      case "message":
+        if (payload.role === "user") add("pasted-into-prompt", contentText(payload.content));
+        else if (payload.role === "assistant") add("in-agent-reply", contentText(payload.content));
+        break;
+      case "reasoning":
+        add("in-agent-reply", [...contentText(payload.summary), ...contentText(payload.content)]);
+        break;
+      case "custom_tool_call":
+        add("typed-into-command", stringLeaves(payload.input));
+        break;
+      case "function_call":
+        add("typed-into-command", stringLeaves(payload.arguments));
+        break;
+      case "custom_tool_call_output":
+      case "function_call_output":
+        add("printed-by-command", stringLeaves(payload.output));
+        break;
+    }
+  } else if (record.type === "event_msg") {
+    switch (payload.type) {
+      case "user_message":
+        add("pasted-into-prompt", nonEmpty3(payload.message));
+        break;
+      case "agent_message":
+        add("in-agent-reply", nonEmpty3(payload.message));
+        break;
+      case "exec_command_end":
+        add("printed-by-command", [
+          ...nonEmpty3(payload.aggregated_output),
+          ...nonEmpty3(payload.stdout),
+          ...nonEmpty3(payload.stderr)
+        ]);
+        break;
+      case "item_completed": {
+        const item = isRecord5(payload.item) ? payload.item : {};
+        if (item.type === "CommandExecution") {
+          add("printed-by-command", nonEmpty3(item.aggregated_output));
+        }
+        break;
+      }
+    }
+  }
+  return { pieces, workingDirs: [] };
+}
+function cursorLine(record) {
+  const message = isRecord5(record.message) ? record.message : void 0;
+  if (message === void 0) return EMPTY;
+  const { add, pieces } = collector();
+  if (record.role === "user") add("pasted-into-prompt", contentText(message.content));
+  else if (record.role === "assistant" && Array.isArray(message.content)) {
+    for (const item of message.content) {
+      if (!isRecord5(item)) continue;
+      if (item.type === "text" && typeof item.text === "string") {
+        add("in-agent-reply", [item.text]);
+      } else if (item.type === "tool_use") {
+        add("typed-into-command", stringLeaves(item.input));
+      }
+    }
+  }
+  return { pieces, workingDirs: [] };
+}
+function lineText(agent, line2) {
+  const trimmed = line2.trim();
+  if (trimmed === "") return EMPTY;
+  let record;
+  try {
+    record = JSON.parse(trimmed);
+  } catch {
+    return EMPTY;
+  }
+  if (!isRecord5(record)) return EMPTY;
+  switch (agent) {
+    case "claude":
+      return claudeLine(record);
+    case "codex":
+      return codexLine(record);
+    case "cursor":
+      return cursorLine(record);
+    default:
+      return unhandledAgent(agent);
+  }
+}
+
+// src/core/verify/secrets.ts
+var CONTEXT = 256;
+var MAX_ALIGN_STEPS = 5e3;
+var PLACEHOLDER = /\[REDACTED:([a-z0-9-]+(?::[a-z0-9-]+)?)(?::[a-z0-9-]+)?\]/g;
+var SCRUB_SENTINEL = String.fromCharCode(57344);
+var KIND_OF_LABEL = /* @__PURE__ */ new Map([
+  ["secret:aws", "aws-access-key"],
+  ["secret:aws-secret", "aws-secret-key"],
+  ["secret:private-key", "private-key"],
+  ["secret:github", "github-token"],
+  ["secret:slack", "slack-token"],
+  ["secret:api-key", "api-key"],
+  ["secret:jwt", "jwt"],
+  ["secret:bearer", "bearer-token"],
+  ["secret:auth", "auth-header"],
+  ["secret:connection-string", "database-url"],
+  ["secret:basic-auth", "url-credentials"],
+  ["secret:password", "password"],
+  ["secret:env", "named-secret"],
+  ["secret:generic", "random-string"]
+]);
+function kindOf(label) {
+  const known = KIND_OF_LABEL.get(label);
+  if (known !== void 0) return known;
+  return label.startsWith("secret:") ? "other" : void 0;
+}
+function alignValues(text2, literals) {
+  const count2 = literals.length - 1;
+  if (count2 <= 0) return [];
+  const head = literals[0];
+  const tail = literals[count2];
+  const tailStart = text2.length - tail.length;
+  if (!text2.startsWith(head) || !text2.endsWith(tail) || tailStart <= head.length) return void 0;
+  const spans = [];
+  let steps = 0;
+  const place2 = (index, start) => {
+    steps += 1;
+    if (steps > MAX_ALIGN_STEPS) return false;
+    if (index === count2 - 1) {
+      if (tailStart <= start) return false;
+      spans[index] = [start, tailStart];
+      return true;
+    }
+    const literal = literals[index + 1];
+    let from = start + 1;
+    for (; ; ) {
+      const at2 = text2.indexOf(literal, from);
+      if (at2 < 0 || at2 + literal.length >= tailStart) return false;
+      spans[index] = [start, at2];
+      if (place2(index + 1, at2 + literal.length)) return true;
+      if (steps > MAX_ALIGN_STEPS) return false;
+      from = at2 + 1;
+    }
+  };
+  return place2(0, head.length) ? spans : void 0;
+}
+function findValues(text2) {
+  const clean = text2.includes(SCRUB_SENTINEL) ? text2.split(SCRUB_SENTINEL).join("") : text2;
+  const redacted2 = redactSecrets(scrubText(clean).text);
+  if (redacted2 === clean) return { values: [], unaligned: false };
+  const literals = [];
+  const labels = [];
+  let last = 0;
+  for (const match of redacted2.matchAll(PLACEHOLDER)) {
+    literals.push(redacted2.slice(last, match.index));
+    labels.push(match[1]);
+    last = match.index + match[0].length;
+  }
+  literals.push(redacted2.slice(last));
+  if (labels.length === 0) return { values: [], unaligned: false };
+  const spans = alignValues(clean, literals);
+  if (spans === void 0) return { values: [], unaligned: true };
+  const values = [];
+  labels.forEach((label, i) => {
+    const kind2 = kindOf(label);
+    const span = spans[i];
+    if (kind2 === void 0 || span === void 0) return;
+    values.push({
+      value: clean.slice(span[0], span[1]),
+      kind: kind2,
+      after: clean.slice(span[1], span[1] + CONTEXT)
+    });
+  });
+  return { values, unaligned: false };
+}
+var PLACEHOLDER_SHAPE = /example|placeholder|changeme|change[-_]?me|dummy|fake|sample|redacted|replace[-_]?me|xxxx|your[-_ ]|<[^>]*>|\{\{|\$\{|^\$[A-Za-z_]|%[A-Za-z_]+%|process\.env|os\.environ|\*{3,}|\.\.\.|…|lorem|foobar|^test[-_]|[-_]test$|^todo|0123456|123456789|abcdefgh/i;
+var COMMON_WORDS = /* @__PURE__ */ new Set([
+  "password",
+  "passwd",
+  "secret",
+  "token",
+  "apikey",
+  "api_key",
+  "admin",
+  "root",
+  "postgres",
+  "mysql",
+  "guest",
+  "letmein",
+  "qwerty",
+  "pass",
+  "string",
+  "required",
+  "optional",
+  "value",
+  "default",
+  "none",
+  "null",
+  "undefined",
+  "true",
+  "false",
+  "tbd"
+]);
+function secretPart(found) {
+  if (found.kind === "database-url") {
+    const scheme = found.value.indexOf("://");
+    const userinfo = found.value.slice(scheme + 3, found.value.lastIndexOf("@"));
+    return userinfo.slice(userinfo.indexOf(":") + 1);
+  }
+  if (found.kind === "url-credentials") return found.value.slice(found.value.indexOf(":") + 1);
+  return found.value;
+}
+var NAMED_KINDS = /* @__PURE__ */ new Set([
+  "named-secret",
+  "password",
+  "auth-header",
+  "bearer-token",
+  "url-credentials",
+  "database-url"
+]);
+var MIN_CREDENTIAL_LENGTH = 8;
+var CODE_CHARACTERS = /[\s()[\]{}<>;,`'"]/;
+var MEMBER_PATH = /^[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)+$/;
+function credentialShaped(secret) {
+  return secret.length >= MIN_CREDENTIAL_LENGTH && !CODE_CHARACTERS.test(secret) && !/^[~.]{0,2}\//.test(secret) && !MEMBER_PATH.test(secret) && /[^A-Za-z_-]/.test(secret);
+}
+var EXAMPLE_HOST = /(?:^|\.)(?:example\.(?:com|net|org)|example|invalid|test)$/i;
+function placeholderReason(found) {
+  const bare = secretPart(found).replace(/^["']|["']$/g, "");
+  if (PLACEHOLDER_SHAPE.test(bare) || COMMON_WORDS.has(bare.toLowerCase())) return "stand-in";
+  const host = hostOf2(found);
+  if (host !== void 0 && EXAMPLE_HOST.test(host)) return "stand-in";
+  if (bare.length >= 6 && new Set(bare).size <= 3) return "stand-in";
+  if (NAMED_KINDS.has(found.kind) && !credentialShaped(bare)) return "named-not-credential-shaped";
+  return void 0;
+}
+var LOCAL_HOST2 = /^(?:localhost|127(?:\.\d{1,3}){3}|0\.0\.0\.0|::1|host\.docker\.internal|[a-z0-9-]+\.localhost)$/i;
+function hostOf2(found) {
+  let rest;
+  if (found.kind === "database-url") {
+    rest = found.value.slice(found.value.lastIndexOf("@") + 1) + found.after;
+  } else if (found.kind === "url-credentials" && found.after.startsWith("@")) {
+    rest = found.after.slice(1);
+  }
+  if (rest === void 0) return void 0;
+  const bracketed = /^\[([0-9A-Fa-f:.]+)\]/.exec(rest);
+  if (bracketed !== null) return bracketed[1];
+  return rest.match(/^[^\s/:?#@[\]]+/)?.[0];
+}
+function isLocalDev(found) {
+  const host = hostOf2(found);
+  return host !== void 0 && LOCAL_HOST2.test(host);
+}
+var MAX_HELD_VALUES = 5e3;
+var MIN_REMEMBERED_TEXT = 256;
+var MAX_EMPTY_TEXTS = 1e5;
+var MAX_WORKING_DIRS = 200;
+var MAX_TRACKED_FILES = 2e4;
+var MAX_FIXTURE_BYTES = 256 * 1024 * 1024;
+var TOKEN_VALUE = /^[A-Za-z0-9_-]+$/;
+var TOKEN_SEPARATORS = /[^A-Za-z0-9_-]+/;
+var MAX_PARENT_STEPS2 = 8;
+function parentOf(path) {
+  const trimmed = path.replace(/[\\/]+$/, "");
+  const cut = Math.max(trimmed.lastIndexOf("/"), trimmed.lastIndexOf("\\"));
+  if (cut <= 0) return void 0;
+  return trimmed.slice(0, cut);
+}
+async function findRepos(io, workingDirs) {
+  const roots = /* @__PURE__ */ new Set();
+  const gone = /* @__PURE__ */ new Set();
+  for (const cwd of [...workingDirs].slice(0, MAX_WORKING_DIRS)) {
+    if (isNetworkPath(cwd)) {
+      gone.add(cwd);
+      continue;
+    }
+    let dir = cwd;
+    let steps = 0;
+    while (dir !== void 0 && io.isDirectory(dir) !== true && steps < MAX_PARENT_STEPS2) {
+      dir = parentOf(dir);
+      steps += 1;
+    }
+    if (dir === void 0 || io.isDirectory(dir) !== true) {
+      gone.add(cwd);
+      continue;
+    }
+    const top = await io.git(dir, ["rev-parse", "--show-toplevel"]);
+    if (top.ok) {
+      const root = top.stdout.trim();
+      if (root !== "") roots.add(root);
+    } else if (top.reason !== "not-a-repo" || dir !== cwd) {
+      gone.add(dir === cwd ? cwd : dir);
+    }
+  }
+  return { roots: [...roots].sort(), notChecked: gone.size };
+}
+async function searchFixtures(io, workingDirs, held, now) {
+  if (held.size === 0) return { check: "not-needed", reposChecked: 0, reposNotChecked: 0 };
+  const repos = await findRepos(io, workingDirs);
+  let checked = 0;
+  let notChecked = repos.notChecked;
+  let bytes = 0;
+  let exhausted = false;
+  const byToken = /* @__PURE__ */ new Map();
+  const bySubstring = [];
+  for (const [key, candidate] of held) {
+    const value = candidate.value;
+    if (value === void 0) continue;
+    if (TOKEN_VALUE.test(value)) byToken.set(value, [...byToken.get(value) ?? [], key]);
+    else bySubstring.push(key);
+  }
+  const mark = (key) => {
+    const candidate = held.get(key);
+    if (candidate === void 0) return;
+    candidate.decided = "committed-fixture";
+    candidate.value = void 0;
+    held.delete(key);
+  };
+  for (const root of repos.roots) {
+    if (exhausted) {
+      notChecked += 1;
+      continue;
+    }
+    if (held.size === 0) {
+      checked += 1;
+      continue;
+    }
+    const listing = await io.git(root, ["ls-files", "-z"]);
+    if (!listing.ok) {
+      if (listing.reason === "budget") exhausted = true;
+      notChecked += 1;
+      continue;
+    }
+    const tracked = listing.stdout.split("\0").filter((p) => p !== "");
+    let complete = tracked.length <= MAX_TRACKED_FILES;
+    for (const relative5 of tracked.slice(0, MAX_TRACKED_FILES)) {
+      if (held.size === 0) break;
+      if (bytes >= MAX_FIXTURE_BYTES) {
+        complete = false;
+        break;
+      }
+      const read = await io.readFile(`${root}/${relative5}`);
+      if (!read.ok) {
+        if (read.reason === "budget") {
+          exhausted = true;
+          complete = false;
+          break;
+        }
+        continue;
+      }
+      bytes += read.text.length;
+      if (read.text.includes("\0")) continue;
+      const started = now();
+      for (const token of read.text.split(TOKEN_SEPARATORS)) {
+        const keys = byToken.get(token);
+        if (keys === void 0) continue;
+        for (const key of keys) mark(key);
+        byToken.delete(token);
+      }
+      for (const key of bySubstring) {
+        const value = held.get(key)?.value;
+        if (value !== void 0 && read.text.includes(value)) mark(key);
+      }
+      if (io.charge !== void 0 && !io.charge(Math.max(0, now() - started))) {
+        exhausted = true;
+        complete = false;
+        break;
+      }
+    }
+    if (complete) checked += 1;
+    else notChecked += 1;
+  }
+  const check = checked === 0 ? "unavailable" : notChecked === 0 ? "complete" : "partial";
+  return { check, reposChecked: checked, reposNotChecked: notChecked };
+}
+function randomStringIsCredential(via) {
+  return via.has("pasted-into-prompt") || via.has("typed-into-command");
+}
+function itemsOf(candidates) {
+  const items = [];
+  for (const candidate of candidates) {
+    if (candidate.decided !== "likely-real") continue;
+    items.push({
+      kind: candidate.kind,
+      via: SECRET_PROVENANCES.filter((p) => candidate.via.has(p)),
+      files: candidate.files.size
+    });
+  }
+  return items.sort(
+    (a, b) => b.files - a.files || a.kind.localeCompare(b.kind) || a.via.join(" ").localeCompare(b.via.join(" "))
+  );
+}
+function secretsStatus(facts) {
+  if (facts.filesRead === 0 && facts.filesNotRead === 0) return "not-checked";
+  if (facts.classes["likely-real"] > 0) return "act";
+  if (facts.filesNotRead > 0 || facts.unplaced > 0) return "could-not-check";
+  return "clean";
+}
+async function checkSecrets(input) {
+  return (await classifySecrets(input, false)).check;
+}
+async function classifySecrets(input, keep) {
+  const candidates = /* @__PURE__ */ new Map();
+  const workingDirs = /* @__PURE__ */ new Set();
+  let filesRead = 0;
+  let filesNotRead = 0;
+  let unplaced = 0;
+  let held = 0;
+  const empty = /* @__PURE__ */ new Set();
+  for (const [index, path] of input.files.entries()) {
+    try {
+      for await (const line2 of input.readLines(path)) {
+        const { pieces, workingDirs: named } = lineText(input.agent, line2);
+        for (const cwd of named) workingDirs.add(cwd);
+        for (const piece of pieces) {
+          const remember = piece.text.length >= MIN_REMEMBERED_TEXT;
+          const textKey = remember ? input.fingerprint(piece.text) : "";
+          if (remember && empty.has(textKey)) continue;
+          const result = findValues(piece.text);
+          if (result.unaligned) unplaced += 1;
+          if (remember && result.values.length === 0 && !result.unaligned && empty.size < MAX_EMPTY_TEXTS) {
+            empty.add(textKey);
+          }
+          for (const found of result.values) {
+            const key = input.fingerprint(found.value);
+            let candidate = candidates.get(key);
+            if (candidate === void 0) {
+              const reason = placeholderReason(found);
+              const decided = reason !== void 0 ? "placeholder" : isLocalDev(found) ? "local-dev" : void 0;
+              const keep2 = decided === void 0 && held < (input.maxHeldValues ?? MAX_HELD_VALUES);
+              if (keep2) held += 1;
+              candidate = {
+                kind: found.kind,
+                via: /* @__PURE__ */ new Set(),
+                files: /* @__PURE__ */ new Set(),
+                decided,
+                // Past the cap a value is not held, so it cannot be searched for in the repos.
+                value: keep2 ? found.value : void 0,
+                setAside: reason === "named-not-credential-shaped" ? reason : void 0
+              };
+              candidates.set(key, candidate);
+            }
+            candidate.via.add(piece.via);
+            candidate.files.add(index);
+          }
+        }
+      }
+      filesRead += 1;
+    } catch {
+      filesNotRead += 1;
+    }
+  }
+  for (const candidate of candidates.values()) {
+    if (candidate.kind === "random-string" && candidate.decided === void 0 && !randomStringIsCredential(candidate.via)) {
+      candidate.decided = "placeholder";
+      candidate.value = void 0;
+      candidate.setAside = "unnamed-output-only";
+    }
+  }
+  const pending = /* @__PURE__ */ new Map();
+  let notSearched = 0;
+  for (const [key, candidate] of candidates) {
+    if (candidate.decided !== void 0) continue;
+    if (candidate.value === void 0) notSearched += 1;
+    else pending.set(key, candidate);
+  }
+  const searched = await searchFixtures(
+    input.io,
+    workingDirs,
+    pending,
+    input.now ?? (() => Date.now())
+  );
+  const fixtures = notSearched === 0 ? searched : {
+    ...searched,
+    check: searched.check === "complete" ? "partial" : searched.check === "not-needed" ? "unavailable" : searched.check
+  };
+  const kept = [];
+  let notHeld = 0;
+  for (const candidate of candidates.values()) {
+    candidate.decided ??= "likely-real";
+    if (keep && candidate.decided === "likely-real") {
+      if (candidate.value === void 0) notHeld += 1;
+      else {
+        kept.push({
+          value: candidate.value,
+          kind: candidate.kind,
+          files: [...candidate.files].sort((a, b) => a - b).map((i) => input.files[i])
+        });
+      }
+    }
+    candidate.value = void 0;
+  }
+  const classes = {
+    "likely-real": 0,
+    "committed-fixture": 0,
+    placeholder: 0,
+    "local-dev": 0
+  };
+  let unnamedOutputOnly = 0;
+  let namedNotCredentialShaped = 0;
+  for (const candidate of candidates.values()) {
+    classes[candidate.decided] += 1;
+    if (candidate.setAside === "unnamed-output-only") unnamedOutputOnly += 1;
+    else if (candidate.setAside === "named-not-credential-shaped") namedNotCredentialShaped += 1;
+  }
+  const items = itemsOf(candidates.values());
+  const status = secretsStatus({ classes, filesRead, filesNotRead, unplaced });
+  const check = {
+    status,
+    matches: candidates.size,
+    facts: {
+      classes,
+      items: items.slice(0, MAX_SECRET_ITEMS),
+      moreItems: Math.max(0, items.length - MAX_SECRET_ITEMS),
+      filesRead,
+      filesNotRead,
+      unplaced,
+      setAside: { unnamedOutputOnly, namedNotCredentialShaped },
+      fixtureCheck: fixtures.check,
+      reposChecked: fixtures.reposChecked,
+      reposNotChecked: fixtures.reposNotChecked
+    }
+  };
+  kept.sort((a, b) => b.value.length - a.value.length);
+  return { check, values: kept, notHeld };
+}
+
+// src/core/verify/verify.ts
+var VERIFY_BY_DEFAULT = true;
+var UNAVAILABLE_VERIFY_IO = {
+  git: () => Promise.resolve({ ok: false, reason: "missing" }),
+  isDirectory: () => void 0,
+  readFile: () => Promise.resolve({ ok: false, reason: "missing" }),
+  processNames: () => Promise.resolve({ ok: false, reason: "missing" })
+};
+function chargeTime(io, ms) {
+  io.charge?.(Math.max(0, ms));
+}
+async function verifyScan(input) {
+  const agent = input.corpus.agent ?? "claude";
+  const matched = tallyMatchedCalls(input.corpus, input.catalog, input.allowlist);
+  const secrets = await checkSecrets({
+    agent,
+    files: input.corpus.files ?? [],
+    readLines: input.readLines,
+    io: input.io,
+    fingerprint: input.fingerprint ?? createFingerprinter()
+  });
+  const git = await checkGitBacked({
+    corpus: input.corpus,
+    io: input.io,
+    rules: { catalog: input.catalog, allowlist: input.allowlist },
+    home: input.home ?? homedir2(),
+    ...input.scratchRoots === void 0 ? {} : { scratchRoots: input.scratchRoots }
+  });
+  const started = Date.now();
+  const calls = readCalls(input.corpus, input.catalog, input.allowlist);
+  const rules12 = { catalog: input.catalog, allowlist: input.allowlist };
+  const cloud = checkCloud({ calls, ...rules12 });
+  const classes = databaseTargetClasses(git.destructive);
+  const databaseTargets2 = classes === void 0 ? void 0 : { local: classes.local, scratch: classes.scratch, other: classes.other };
+  const prodInfra = checkProdInfra({
+    calls,
+    ...rules12,
+    databaseTargets: databaseTargets2,
+    databaseTargetsUnresolved: classes?.unresolved ?? 0
+  });
+  const dependencies = checkDependencies(calls);
+  chargeTime(input.io, Date.now() - started);
+  const tests = await checkTests({ calls, io: input.io });
+  const unreviewed = await checkUnreviewed({ calls, io: input.io, rules: rules12 });
+  const egress = await checkEgress({ calls, ...rules12, io: input.io });
+  const verification = {
+    matchedCalls: matched.tally,
+    resultsRecorded: matched.resultsRecorded,
+    ranEvidence: matched.ranEvidence,
+    categories: {
+      secrets,
+      "skipped-checks": git["skipped-checks"],
+      "lost-work": git["lost-work"],
+      cloud: cloud.check,
+      "prod-infra": prodInfra,
+      tests: tests.check,
+      destructive: git.destructive,
+      unreviewed: unreviewed.check,
+      egress: egress.check
+    },
+    dependencies
+  };
+  return {
+    verification,
+    localFixes: [
+      ...git.localFixes,
+      ...git.unsafeFixes,
+      ...tests.localFixes,
+      ...cloud.localFixes,
+      ...unreviewed.localFixes,
+      ...egress.localFixes
+    ],
+    unsafeFixes: git.unsafeFixes
+  };
+}
+
 // src/core/version.ts
 var VERSION = "0.4.14";
 
@@ -11647,23 +21349,107 @@ function agentList() {
 }
 function agentChoiceMessage(command) {
   const width = Math.max(...AGENTS.map((name) => name.length));
-  const lines = AGENTS.map(
+  const lines2 = AGENTS.map(
     (name) => `  agenttrail-guard ${command} --agent ${name.padEnd(width)}   for ${agentDisplayName(name)}
 `
   );
   return `agenttrail-guard ${command}: choose ${agentList()}.
 
-${lines.join("")}`;
+${lines2.join("")}`;
 }
 
 // src/commands/scan.ts
 var TOP_REPEATS = 5;
 var TOP_FINDINGS = 5;
-var SCAN_USAGE = `agenttrail-guard scan \u2014 what your agent has been doing
+function checksUsage(byDefault) {
+  const flags = byDefault ? `  --no-checks    Skip the checks on this machine (on by default). The report then
+                 shows what the guardrails matched, and nothing about what each match did
+  --verify       Run the checks on this machine. They are on by default, so this
+                 changes nothing; it is kept for scripts that pass it. It cannot be
+                 used with --no-checks` : `  --verify       Also run the checks on this machine (off by default)
+  --no-checks    Skip the checks on this machine. They are off by default, so this
+                 changes nothing`;
+  const reads = `Checks on this machine (${byDefault ? "on by default; --no-checks turns them off" : "only with --verify"}).
+Read-only and offline: nothing is written but the report and its local fixes file,
+nothing is sent, nothing is looked up online, no credential is tested, and no
+command from a session is run again.
+They read only:
+  - the transcripts again, for credentials, which are sorted into likely real,
+    committed fixtures, placeholders and local dev data by kind, never by value;
+  - in each git repo a session ran in or pushed from: read-only git (rev-parse,
+    ls-files, for-each-ref, log, stash list), never through a shell, and its
+    git-tracked files, each at most 1 MB, to tell a committed fixture from a real
+    credential;
+  - instruction and memory files, each at most 1 MB: CLAUDE.md, CLAUDE.local.md,
+    AGENTS.md, GEMINI.md, .cursorrules, .windsurfrules and
+    .github/copilot-instructions.md at the top of each repo, the agent's own
+    (~/.claude/CLAUDE.md or ~/.codex/AGENTS.md), and the ones the sessions wrote.
+    In ~/.claude, ~/.codex and ~/.cursor only .md and .mdc files are read.
+    Only whether a file tells the agent to skip checks is kept, never its text;
+  - the test configs the sessions edited, inside their repo and each at most
+    1 MB. Only whether coverage thresholds are set to update themselves
+    (autoUpdate) is kept;
+  - the names of the programs running now (ps, or tasklist on Windows), never
+    their arguments. The list is cut down to known agent apps and tunnel
+    programs as it is read, and only the tunnel programs, such as ngrok or
+    cloudflared, are counted;
+  - whether the folders the sessions ran in, the paths the commands named and
+    each repo's commit hooks exist, never what a hook holds.
+The report and --json carry counts only, never these paths.
+Each git or process call has 5 seconds, and all the checks share 60 seconds. A
+check that cannot finish says so, and never reads as clean.
+They say which matched commands ran and which were only mentioned, and check
+what the commands that ran did: credentials, test thresholds and deleted tests,
+cloud and production changes, pushes straight to main, uploads and tunnels, and
+package installs. Each card shows its numbers and its fix first. Where a command
+that ran, or may have run, could run others the checks do not read (bash -c, a
+script piped into a shell, find -exec, xargs, eval, a substitution, git config
+or hooks), the card ends with one line saying how many could not be confirmed,
+never that nothing ran, and the forms are listed once under "Also checked on
+this machine". A script run by name (bash ./x.sh, source x.sh) is not read.
+Exact fix commands for this machine go to agenttrail-guard-fixes.txt next to the
+report, readable only by you (mode 0600), never into the report or --json.
+${wrapText(CODEX_UNVERIFIED_TEXT, USAGE_WIDTH)}`;
+  return { flags, reads };
+}
+var USAGE_WIDTH = 80;
+function wrapText(text2, width, indent = "") {
+  const lines2 = [];
+  let line2 = "";
+  for (const word of text2.split(" ")) {
+    if (line2 !== "" && indent.length + line2.length + 1 + word.length > width) {
+      lines2.push(line2);
+      line2 = word;
+    } else line2 = line2 === "" ? word : `${line2} ${word}`;
+  }
+  if (line2 !== "") lines2.push(line2);
+  return lines2.map((l) => `${indent}${l}`).join("\n");
+}
+function scrubUsage() {
+  return {
+    line: "\n  agenttrail-guard scan --agent <claude|cursor|codex> --scrub [--apply] [--dir <root>]",
+    flags: `
+  --scrub        Replace the likely-real credentials in the app's transcripts with
+                 [REDACTED-BY-AGENTTRAIL:<kind>]. Fixtures, placeholders and local
+                 dev values are left alone. A dry run: it says what it would replace,
+                 by kind, never by value, and changes nothing without --apply.
+${wrapText(`Rotate each credential first, then scrub. For Codex this is ${CODEX_TESTED_ON}.`, USAGE_WIDTH, " ".repeat(17))}
+  --apply        With --scrub: make the change. Refuses while the app is running and
+                 skips files changed in the last 5 minutes. Backs up every file first
+                 to a private folder under ~/.agenttrail/scrub-backups/, which still
+                 holds the credentials until you delete it, and replaces each file in
+                 one step, leaving any file that changed since it was read.`
+  };
+}
+function scanUsage(byDefault, scrub = true) {
+  const checks = checksUsage(byDefault);
+  const scrubbing = scrub ? scrubUsage() : { line: "", flags: "" };
+  return `agenttrail-guard scan \u2014 what your agent has been doing
 
 Usage:
   agenttrail-guard scan --agent <claude|cursor|codex> [--dir <root>] [--out <file>]
                         [--artifact] [--no-open] [--review] [--json] [--quiet]
+                        [--no-checks | --verify]${scrubbing.line}
 
   --agent <app>  Whose sessions to read, and it is required: claude reads Claude Code's
                  transcripts in ~/.claude/projects, cursor reads Cursor's session files
@@ -11681,12 +21467,21 @@ Usage:
   --review       Print every command and guardrail the report will contain, and ask
                  before writing it. Redaction is thorough but not a guarantee; this
                  is how you check it yourself before the file exists.
+${checks.flags}${scrubbing.flags}
 
 Reads transcripts already on your disk. No account, nothing uploaded, and no network
 call: the one exception anywhere in this tool is crash reporting, which is off unless
 you turn it on and which a scan never uses.
 Commands and paths are redacted before anything is displayed or written.
+
+${checks.reads}
 `;
+}
+var SCAN_USAGE = scanUsage(VERIFY_BY_DEFAULT);
+function shouldVerify(flags, byDefault) {
+  if (flags.noChecks) return false;
+  return flags.verify || byDefault;
+}
 function parseScanFlags(argv) {
   let agent;
   let agentRefused = false;
@@ -11697,7 +21492,11 @@ function parseScanFlags(argv) {
   let artifact = false;
   let out;
   let help = false;
-  let review = false;
+  let review2 = false;
+  let verify = false;
+  let scrub = false;
+  let apply = false;
+  let noChecks = false;
   let unknown;
   const takeAgent = (value) => {
     const app = chosenAgent(value);
@@ -11718,7 +21517,11 @@ function parseScanFlags(argv) {
     else if (arg === "--quiet") quiet = true;
     else if (arg === "--no-open") noOpen = true;
     else if (arg === "--artifact") artifact = true;
-    else if (arg === "--review") review = true;
+    else if (arg === "--review") review2 = true;
+    else if (arg === "--verify") verify = true;
+    else if (arg === "--scrub") scrub = true;
+    else if (arg === "--apply") apply = true;
+    else if (arg === "--no-checks") noChecks = true;
     else if (arg === "--out") {
       const next = argv[i + 1];
       if (next === void 0 || next === "" || next.startsWith("-")) {
@@ -11751,7 +21554,11 @@ function parseScanFlags(argv) {
     artifact,
     out,
     help,
-    review,
+    review: review2,
+    verify,
+    scrub,
+    apply,
+    noChecks,
     unknown
   };
 }
@@ -11760,10 +21567,10 @@ function shouldOpen(flags, env) {
   return (env.CI ?? "") === "";
 }
 function reportPathFor(out, filename, io) {
-  if (out === void 0) return join5(io.cwd(), filename);
-  const target = resolve(io.cwd(), out);
+  if (out === void 0) return join9(io.cwd(), filename);
+  const target = resolve4(io.cwd(), out);
   try {
-    if (io.stat(target).isDirectory()) return join5(target, filename);
+    if (io.stat(target).isDirectory()) return join9(target, filename);
   } catch {
   }
   return target;
@@ -11771,14 +21578,14 @@ function reportPathFor(out, filename, io) {
 var MAX_WALK_DEPTH3 = 8;
 function countTranscriptFiles(io, dir, depth = 0) {
   if (depth > MAX_WALK_DEPTH3) return 0;
-  let entries;
+  let entries2;
   try {
-    entries = io.readdir(dir);
+    entries2 = io.readdir(dir);
   } catch {
     return 0;
   }
   let total = 0;
-  for (const entry of entries) {
+  for (const entry of entries2) {
     const path = `${dir}/${entry}`;
     try {
       if (io.stat(path).isDirectory()) total += countTranscriptFiles(io, path, depth + 1);
@@ -11794,10 +21601,11 @@ async function readClaudeSession(io, item) {
   try {
     session = await parseSession(item.file, item.sessionId, source);
   } catch {
-    return { opened: 1 };
+    return { opened: 1, files: [] };
   }
   let opened = 1;
-  const subDir = join5(dirname(item.file), basename3(item.file, ".jsonl"), "subagents");
+  const files = [item.file];
+  const subDir = join9(dirname5(item.file), basename3(item.file, ".jsonl"), "subagents");
   let names;
   try {
     names = io.readdir(subDir);
@@ -11808,10 +21616,11 @@ async function readClaudeSession(io, item) {
   const userPrompts = [...session.userPrompts];
   const seenTurns = new Set(turns.map((t) => t.messageUuid).filter((u) => u !== ""));
   const seenPrompts = new Set(userPrompts.map((p) => p.messageUuid).filter((u) => u !== ""));
+  const toolResults = new Map(session.toolResults);
   let skippedLines = session.skippedLines;
   for (const name of [...names].sort()) {
     if (!name.endsWith(".jsonl")) continue;
-    const subPath = join5(subDir, name);
+    const subPath = join9(subDir, name);
     try {
       if (io.stat(subPath).isDirectory()) continue;
     } catch {
@@ -11824,6 +21633,7 @@ async function readClaudeSession(io, item) {
     } catch {
       continue;
     }
+    files.push(subPath);
     skippedLines += sub.skippedLines;
     for (const turn of sub.turns) {
       if (turn.messageUuid !== "" && seenTurns.has(turn.messageUuid)) continue;
@@ -11835,8 +21645,15 @@ async function readClaudeSession(io, item) {
       if (prompt.messageUuid !== "") seenPrompts.add(prompt.messageUuid);
       userPrompts.push(prompt);
     }
+    for (const [id, result] of sub.toolResults) {
+      if (!toolResults.has(id)) toolResults.set(id, result);
+    }
   }
-  return { session: { ...session, turns, userPrompts, skippedLines }, opened };
+  return {
+    session: { ...session, turns, userPrompts, toolResults, skippedLines },
+    opened,
+    files
+  };
 }
 function sessionRootFor(agent, home) {
   switch (agent) {
@@ -11873,47 +21690,49 @@ async function readCorpus(io, root) {
     lineSource: { readLines: (p) => io.readLines(p) }
   });
   const sessions = [];
+  const files = [];
   let quarantined = 0;
   let opened = 0;
   for (const project of inventory.projects) {
     for (const item of project.sessions) {
       const read = await readClaudeSession(io, item);
       opened += read.opened;
+      for (const path of read.files) files.push(path);
       if (read.session !== void 0) sessions.push(read.session);
       else quarantined++;
     }
   }
   const notRead = Math.max(0, countTranscriptFiles(io, root) - opened);
-  return { sessions, quarantined, projects: inventory.projects.length, notRead };
+  return { sessions, quarantined, projects: inventory.projects.length, notRead, files };
 }
 var CONTROL_CHARS = new RegExp(
   `[${String.fromCharCode(0)}-${String.fromCharCode(31)}${String.fromCharCode(127)}-${String.fromCharCode(159)}]+`,
   "g"
 );
-function terminalText(text) {
-  return text.replace(CONTROL_CHARS, " ").replace(/\s+/g, " ").trim();
+function terminalText(text2) {
+  return text2.replace(CONTROL_CHARS, " ").replace(/\s+/g, " ").trim();
 }
-function renderSummary(result, colorsEnabled, reportPath) {
+function renderSummary(result, colorsEnabled, reportPath, fixesPath, checksFailed = false) {
   const c = createColors(colorsEnabled);
   const out = [];
   const t = result.tokens;
-  const severityTone = (severity, text) => {
+  const severityTone = (severity, text2) => {
     switch (severity) {
       case "critical":
-        return c.bold(c.red(text));
+        return c.bold(c.red(text2));
       case "high":
-        return c.red(text);
+        return c.red(text2);
       case "medium":
-        return c.yellow(text);
+        return c.yellow(text2);
       case "low":
-        return c.cyan(text);
+        return c.cyan(text2);
       default:
-        return c.dim(text);
+        return c.dim(text2);
     }
   };
-  const actionTone = (action, text) => action === "block" ? c.red(text) : action === "require_approval" ? c.yellow(text) : c.dim(text);
-  const plural2 = (n, word) => `${formatCount(n)} ${word}${n === 1 ? "" : "s"}`;
-  const was = (n) => n === 1 ? "was" : "were";
+  const actionTone = (action, text2) => action === "block" ? c.red(text2) : action === "require_approval" ? c.yellow(text2) : c.dim(text2);
+  const plural2 = (n2, word) => `${formatCount(n2)} ${word}${n2 === 1 ? "" : "s"}`;
+  const was3 = (n2) => n2 === 1 ? "was" : "were";
   out.push(
     [
       agentName(result.agent),
@@ -11945,14 +21764,14 @@ function renderSummary(result, colorsEnabled, reportPath) {
   if (result.quarantined > 0) {
     out.push(
       c.yellow(
-        `${plural2(result.quarantined, "file")} yielded no session and ${was(result.quarantined)} skipped.`
+        `${plural2(result.quarantined, "file")} yielded no session and ${was3(result.quarantined)} skipped.`
       )
     );
   }
   if (result.notRead > 0) {
     out.push(
       c.dim(
-        `${plural2(result.notRead, "further transcript file")} ${was(result.notRead)} not read; see the report for why.`
+        `${plural2(result.notRead, "further transcript file")} ${was3(result.notRead)} not read; see the report for why.`
       )
     );
   }
@@ -11992,16 +21811,105 @@ function renderSummary(result, colorsEnabled, reportPath) {
     out.push("");
     out.push(c.dim("No sessions found. Nothing to report yet."));
   }
+  if (result.verification !== void 0) {
+    out.push("");
+    out.push(verificationSummary(boundaryVerification(result.verification, false)));
+  } else if (checksFailed) {
+    out.push("");
+    out.push(CHECKS_FAILED_LINE);
+  }
   if (reportPath !== void 0) {
     out.push("");
     out.push(
       `Full report: ${hyperlink(colorsEnabled, pathToFileURL(reportPath).href, reportPath)}`
     );
   }
+  if (fixesPath !== void 0) {
+    out.push(`Fix commands for this machine: ${fixesPath}`);
+    out.push(
+      c.dim(
+        "It is written for your user account only (mode 0600, where the system honours it), and is not part of the report: keep it to yourself."
+      )
+    );
+  }
   return `${out.join("\n")}
 `;
 }
-function renderReview(result, colorsEnabled, reportPath, mcpDisclosures = []) {
+function samePath(a, b, platform) {
+  return platform === "darwin" || platform === "win32" ? a.toLowerCase() === b.toLowerCase() : a === b;
+}
+var CHECKS_FAILED_LINE = "Checked on this machine: the checks could not run, so this report shows no verified results.";
+function counted4(n2, singular, plural2 = `${singular}s`) {
+  return `${formatCount(n2)} ${n2 === 1 ? singular : plural2}`;
+}
+function verificationSummary(verification) {
+  const secrets = verification.categories.secrets;
+  const facts = secrets.facts;
+  const parts = [];
+  if (secrets.status === "not-checked") parts.push("no transcript files to check for secrets");
+  else {
+    let line2 = `${counted4(facts.classes["likely-real"], "likely-real credential")} in ${counted4(facts.filesRead, "transcript file")}`;
+    const also = [];
+    const fixtures = facts.classes["committed-fixture"];
+    const placeholders = facts.classes.placeholder;
+    const local = facts.classes["local-dev"];
+    if (fixtures > 0) also.push(counted4(fixtures, "committed fixture"));
+    if (placeholders > 0) {
+      also.push(
+        counted4(placeholders, "placeholder or false positive", "placeholders or false positives")
+      );
+    }
+    if (local > 0) also.push(counted4(local, "local dev value"));
+    if (also.length > 0) line2 += ` (and ${also.join(", ")})`;
+    parts.push(line2);
+    const { unnamedOutputOnly, namedNotCredentialShaped } = facts.setAside;
+    if (unnamedOutputOnly + namedNotCredentialShaped > 0) {
+      const why = [];
+      if (unnamedOutputOnly > 0) {
+        why.push(`${formatCount(unnamedOutputOnly)} unnamed and seen only in output or replies`);
+      }
+      if (namedNotCredentialShaped > 0) {
+        why.push(`${formatCount(namedNotCredentialShaped)} named but not shaped like a credential`);
+      }
+      parts.push(
+        `${counted4(unnamedOutputOnly + namedNotCredentialShaped, "value")} not counted as likely real: ${why.join(", ")}`
+      );
+    }
+    if (facts.filesNotRead > 0) {
+      parts.push(`${counted4(facts.filesNotRead, "transcript file")} could not be read`);
+    }
+    if (facts.unplaced > 0) {
+      parts.push(`${counted4(facts.unplaced, "redacted text")} could not be classed`);
+    }
+    if (facts.reposNotChecked > 0) {
+      parts.push(
+        `${counted4(facts.reposNotChecked, "repo")} could not be searched for committed fixtures`
+      );
+    } else if (facts.fixtureCheck === "unavailable") {
+      parts.push("no repo was found to search for committed fixtures");
+    }
+  }
+  const skipped = verification.categories["skipped-checks"];
+  if ("facts" in skipped && skipped.facts !== void 0) {
+    const files = skipped.facts.instructions;
+    let line2 = `${counted4(files.read, "instruction or memory file")} read for an instruction to skip checks, keeping only yes or no`;
+    if (files.couldNotRead > 0) line2 += ` (${formatCount(files.couldNotRead)} could not be read)`;
+    parts.push(line2);
+  }
+  const calls = verification.matchedCalls;
+  if (!verification.resultsRecorded) {
+    parts.push(
+      "this app records no command output, so no matched call could be confirmed as run" + (calls.mentioned > 0 ? ` (${counted4(calls.mentioned, "match", "matches")} only mentioned a command)` : "")
+    );
+  } else {
+    parts.push(
+      `${counted4(calls.ran, "matched call")} ran, ${formatCount(calls.mentioned)} only mentioned a command, ${formatCount(calls.unknown)} could not be confirmed`
+    );
+  }
+  const checked = `Checked on this machine (read-only, offline): ${parts.join("; ")}.`;
+  return verification.ranEvidence === "output-record" ? `${checked} ${CODEX_UNVERIFIED_TEXT}` : checked;
+}
+function renderReview(result, colorsEnabled, reportPath, mcpDisclosures = [], fixesFile) {
   const c = createColors(colorsEnabled);
   const groups = reviewStrings(result);
   const out = [];
@@ -12019,12 +21927,12 @@ function renderReview(result, colorsEnabled, reportPath, mcpDisclosures = []) {
   for (const group of groups) {
     out.push("");
     out.push(c.bold(group.label));
-    for (const line of group.lines) out.push(`  ${line}`);
+    for (const line2 of group.lines) out.push(`  ${line2}`);
   }
   if (mcpDisclosures.length > 0) {
     out.push("");
     out.push(c.bold("MCP payload values (redacted to <value> in the file; shown here to review)"));
-    for (const line of mcpDisclosures) out.push(`  ${line}`);
+    for (const line2 of mcpDisclosures) out.push(`  ${line2}`);
   }
   out.push("");
   out.push(
@@ -12032,6 +21940,13 @@ function renderReview(result, colorsEnabled, reportPath, mcpDisclosures = []) {
       `That is the whole file, not a sample: the report lists at most ${MAX_ROWS} rows and ${MAX_EXAMPLES} shapes per row.`
     )
   );
+  if (fixesFile !== void 0 && fixesFile.commands + fixesFile.unsafe > 0) {
+    const notes = fixesFile.unsafe === 0 ? "" : `, and ${formatCount(fixesFile.unsafe)} ${fixesFile.unsafe === 1 ? "fix" : "fixes"} it could not make a safe command for`;
+    out.push("");
+    out.push(
+      `A yes also writes ${fixesFile.path}: ${formatCount(fixesFile.commands)} exact fix ${fixesFile.commands === 1 ? "command" : "commands"} for this machine, with real names and paths${notes}, not shown here and not part of the report.`
+    );
+  }
   out.push("");
   out.push(`Write ${reportPath}? [y/N] `);
   return out.join("\n");
@@ -12042,14 +21957,20 @@ function isYes(answer) {
 }
 async function runScan(argv, io, deps = {}) {
   const flags = parseScanFlags(argv);
+  const byDefault = deps.verifyByDefault ?? VERIFY_BY_DEFAULT;
+  const usage = scanUsage(byDefault, deps.scrub !== void 0);
   if (flags.help) {
-    io.writeStdout(SCAN_USAGE);
+    io.writeStdout(usage);
     return 0;
   }
   if (flags.unknown !== void 0) {
     io.writeStdout(`agenttrail-guard scan: unknown argument "${flags.unknown}".
 
-${SCAN_USAGE}`);
+${usage}`);
+    return 1;
+  }
+  if (flags.verify && flags.noChecks) {
+    io.writeStdout("agenttrail-guard scan: --verify and --no-checks cannot be combined.\n");
     return 1;
   }
   const agent = flags.agent;
@@ -12060,6 +21981,22 @@ ${SCAN_USAGE}`);
   if (flags.review && flags.json) {
     io.writeStdout(
       "agenttrail-guard scan: --review and --json cannot be combined.\n--review confirms what is written to the report file; --json writes no file.\n"
+    );
+    return 1;
+  }
+  if ((flags.scrub || flags.apply) && deps.scrub === void 0) {
+    io.writeStdout(
+      "agenttrail-guard scan: --scrub and --apply are not available here. Run them with the agenttrail-guard CLI.\n"
+    );
+    return 1;
+  }
+  if (flags.apply && !flags.scrub) {
+    io.writeStdout("agenttrail-guard scan: --apply only works with --scrub.\n");
+    return 1;
+  }
+  if (flags.scrub && (flags.json || flags.review || flags.verify || flags.artifact || flags.out !== void 0)) {
+    io.writeStdout(
+      "agenttrail-guard scan: --scrub writes no report, so it cannot be combined with --json, --review, --verify, --out or --artifact.\n"
     );
     return 1;
   }
@@ -12077,8 +22014,40 @@ ${SCAN_USAGE}`);
   const shipped = deps.catalog ?? SHIPPED_CATALOG;
   const catalog = compileCatalog([...shipped, ...userRules], config);
   const allowlist = compileAllowlist(config.allowlist);
-  const corpus = await readCorpusFor(agent, root, io);
-  const result = aggregateScan(corpus, catalog, allowlist, new Set(shipped));
+  const readRoot = flags.scrub ? resolve4(io.cwd(), root) : root;
+  const corpus = await readCorpusFor(agent, readRoot, io);
+  if (flags.scrub && deps.scrub !== void 0) {
+    const scrubIO = deps.scrub.createIO();
+    return await deps.scrub.run({
+      agent,
+      root: readRoot,
+      corpus,
+      apply: flags.apply,
+      io,
+      verifyIO: deps.createVerifyIO?.() ?? UNAVAILABLE_VERIFY_IO,
+      scrubIO,
+      now,
+      platform: deps.platform ?? process.platform,
+      colors: shouldUseColor({ env: io.env, isTTY: io.isTTY() })
+    });
+  }
+  let outcome;
+  let checksFailed = false;
+  if (shouldVerify(flags, byDefault)) {
+    try {
+      outcome = await (deps.verify ?? verifyScan)({
+        corpus,
+        catalog,
+        allowlist,
+        readLines: (path) => io.readLines(path),
+        io: deps.createVerifyIO?.() ?? UNAVAILABLE_VERIFY_IO
+      });
+    } catch {
+      outcome = void 0;
+      checksFailed = true;
+    }
+  }
+  const result = aggregateScan(corpus, catalog, allowlist, new Set(shipped), outcome?.verification);
   const meta = { version: VERSION, generatedAt: now };
   if (flags.json) {
     io.writeStdout(renderJson(result, meta));
@@ -12090,9 +22059,21 @@ ${SCAN_USAGE}`);
     io
   );
   const colors = createColors(shouldUseColor({ env: io.env, isTTY: io.isTTY() }));
+  const fixes = outcome?.localFixes ?? [];
+  const fixesTarget = join9(dirname5(reportPath), FIXES_FILENAME);
+  const fixesIsReport = samePath(fixesTarget, reportPath, deps.platform ?? process.platform);
+  const writesFixes = hasFileFixes(fixes) && !fixesIsReport;
   if (flags.review) {
     const disclosures = mcpReviewDisclosures(corpus, catalog, allowlist);
-    io.writeStdout(renderReview(result, colors.enabled, reportPath, disclosures));
+    io.writeStdout(
+      renderReview(
+        result,
+        colors.enabled,
+        reportPath,
+        disclosures,
+        writesFixes ? { path: fixesTarget, commands: exactFixCount(fixes), unsafe: unsafeFixCount(fixes) } : void 0
+      )
+    );
     const answer = await io.readLine();
     if (answer === void 0) {
       io.writeStdout(
@@ -12106,11 +22087,51 @@ ${SCAN_USAGE}`);
     }
     io.writeStdout("\n");
   }
+  let fixesPath;
+  if (writesFixes) {
+    const text2 = fixesFileText(fixes, {
+      version: VERSION,
+      generatedAt: now,
+      reportName: basename3(reportPath)
+    });
+    if (io.writeFile(fixesTarget, text2)) fixesPath = fixesTarget;
+    else io.writeStdout(colors.yellow(`Could not write the fix commands to ${fixesTarget}
+`));
+  }
   const written = io.writeFile(
     reportPath,
-    renderReport(result, meta, { variant: flags.artifact ? "artifact" : "document" })
+    renderReport(result, meta, {
+      variant: flags.artifact ? "artifact" : "document",
+      // A card names the file only for what the written file holds.
+      localFixCategories: fixesPath === void 0 ? [] : fixCategories(fixes),
+      unsafeFixCategories: fixesPath === void 0 ? [] : unsafeFixCategories(fixes)
+    })
   );
-  io.writeStdout(renderSummary(result, colors.enabled, written ? reportPath : void 0));
+  io.writeStdout(
+    renderSummary(
+      result,
+      colors.enabled,
+      written ? reportPath : void 0,
+      fixesPath,
+      checksFailed
+    )
+  );
+  if (outcome !== void 0 && fixesPath === void 0 && !fixesIsReport) {
+    let stale = false;
+    try {
+      stale = !io.stat(fixesTarget).isDirectory();
+    } catch {
+      stale = false;
+    }
+    if (stale) {
+      io.writeStdout(
+        colors.dim(
+          `${fixesTarget} is from an earlier scan; this one wrote no fix commands, so it is left as it was.
+`
+        )
+      );
+    }
+  }
   if (!written) {
     io.writeStdout(colors.yellow(`
 Could not write the report to ${reportPath}
@@ -12124,7 +22145,7 @@ Could not write the report to ${reportPath}
       statePath: productLineStatePath(home),
       now,
       readFile: (path) => io.readFile(path),
-      writeFile: (path, text) => io.writeFile(path, text)
+      writeFile: (path, text2) => io.writeFile(path, text2)
     },
     {
       surface: "scan",
@@ -12148,13 +22169,61 @@ ${osLine}
 
 // src/scan-io.ts
 import { spawn } from "child_process";
-import { createReadStream as createReadStream2, readdirSync as readdirSync2, readFileSync, statSync as statSync2, writeFileSync } from "fs";
-import { homedir as homedir2 } from "os";
+import { randomBytes as randomBytes2 } from "crypto";
+import {
+  closeSync,
+  constants,
+  createReadStream as createReadStream2,
+  fchmodSync,
+  fsyncSync,
+  openSync,
+  readdirSync as readdirSync2,
+  readFileSync,
+  renameSync,
+  statSync as statSync2,
+  unlinkSync,
+  writeFileSync
+} from "fs";
+import { homedir as homedir3 } from "os";
+import { basename as basename4, dirname as dirname6, join as join10 } from "path";
 import { createInterface as createInterface2 } from "readline";
 function openCommand(platform, path) {
   if (platform === "darwin") return ["open", path];
   if (platform === "win32") return ["cmd", "/c", "start", "", path];
   return ["xdg-open", path];
+}
+function writePrivateFile(path, text2) {
+  const temporary = join10(
+    dirname6(path),
+    `.${basename4(path)}.${process.pid}.${randomBytes2(6).toString("hex")}.tmp`
+  );
+  let fd;
+  try {
+    fd = openSync(
+      temporary,
+      constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY | (constants.O_NOFOLLOW ?? 0),
+      384
+    );
+    fchmodSync(fd, 384);
+    writeFileSync(fd, text2, "utf8");
+    fsyncSync(fd);
+    closeSync(fd);
+    fd = void 0;
+    renameSync(temporary, path);
+    return true;
+  } catch {
+    if (fd !== void 0) {
+      try {
+        closeSync(fd);
+      } catch {
+      }
+    }
+    try {
+      unlinkSync(temporary);
+    } catch {
+    }
+    return false;
+  }
 }
 function createRealScanIO() {
   return {
@@ -12170,7 +22239,7 @@ function createRealScanIO() {
         crlfDelay: Number.POSITIVE_INFINITY
       });
       try {
-        for await (const line of rl) yield line;
+        for await (const line2 of rl) yield line2;
       } finally {
         rl.close();
       }
@@ -12183,16 +22252,16 @@ function createRealScanIO() {
       }
     },
     homedir() {
-      return homedir2();
+      return homedir3();
     },
     cwd() {
       return process.cwd();
     },
-    writeStdout(text) {
-      process.stdout.write(text);
+    writeStdout(text2) {
+      process.stdout.write(text2);
     },
     readLine() {
-      return new Promise((resolve2) => {
+      return new Promise((resolve5) => {
         const rl = createInterface2({ input: process.stdin });
         let settled = false;
         const done = (value) => {
@@ -12200,19 +22269,14 @@ function createRealScanIO() {
           settled = true;
           rl.close();
           process.stdin.pause();
-          resolve2(value);
+          resolve5(value);
         };
-        rl.once("line", (line) => done(line));
+        rl.once("line", (line2) => done(line2));
         rl.once("close", () => done(void 0));
       });
     },
-    writeFile(path, text) {
-      try {
-        writeFileSync(path, text, { encoding: "utf8", mode: 384 });
-        return true;
-      } catch {
-        return false;
-      }
+    writeFile(path, text2) {
+      return writePrivateFile(path, text2);
     },
     openInBrowser(path) {
       try {
@@ -12234,8 +22298,349 @@ function createRealScanIO() {
   };
 }
 
+// src/verify-io.ts
+import { execFile } from "child_process";
+import {
+  accessSync,
+  closeSync as closeSync2,
+  constants as constants2,
+  fstatSync,
+  openSync as openSync2,
+  readSync,
+  realpathSync,
+  statSync as statSync3
+} from "fs";
+import { isAbsolute as isAbsolute5, join as join11, posix, relative as relative4, win32 } from "path";
+var SHA2 = { slot: "sha" };
+var LITERAL_PATH = { slot: "literal-path" };
+var GIT_ALLOW_LIST = [
+  ["rev-parse", "--show-toplevel"],
+  ["ls-files", "-z"],
+  // The git-backed checks: skipped hooks, lost work, deleted files.
+  // The hooks folder in effect, after `core.hooksPath`, and the folder git keeps for the
+  // repository, whose `hooks` folder is the default one.
+  ["rev-parse", "--git-path", "hooks"],
+  ["rev-parse", "--git-common-dir"],
+  // Whether a commit is still in the object store, and its full id. Exit 0 either way: a
+  // missing id prints nothing.
+  ["log", "--no-walk", "--ignore-missing", "--format=%H", SHA2],
+  // Which of origin/main and origin/master exist.
+  ["for-each-ref", "--format=%(refname)", "refs/remotes/origin/main", "refs/remotes/origin/master"],
+  // Whether a commit is on origin/main or origin/master.
+  [
+    "for-each-ref",
+    "--contains",
+    SHA2,
+    "--format=%(refname)",
+    "refs/remotes/origin/main",
+    "refs/remotes/origin/master"
+  ],
+  // Whether a commit is on any branch or tag.
+  [
+    "for-each-ref",
+    "--contains",
+    SHA2,
+    "--format=%(refname)",
+    "refs/heads",
+    "refs/remotes",
+    "refs/tags"
+  ],
+  // The commits in the stash list now.
+  ["stash", "list", "--format=%H"],
+  // The tracked files under a path, and those of them missing from the working tree.
+  ["ls-files", "-z", "--", LITERAL_PATH],
+  ["ls-files", "--deleted", "-z", "--", LITERAL_PATH],
+  // Unreviewed code: the commits a push carried, those reachable from the new id and not from
+  // the old one.
+  ["log", "--format=%H", "--max-count=1000", SHA2, "--not", SHA2]
+];
+var LITERAL_PATHSPEC = ":(literal)";
+function slotAccepts(slot, value) {
+  if (slot.slot === "sha") return /^[0-9a-f]{7,64}$/.test(value);
+  if (!value.startsWith(LITERAL_PATHSPEC)) return false;
+  const path = value.slice(LITERAL_PATHSPEC.length);
+  return path !== "" && !path.startsWith("-") && !path.startsWith("/") && !/^[A-Za-z]:/.test(path) && !/[\0\r\n\\]/.test(path) && !path.split("/").includes("..");
+}
+var GIT_SAFETY_ARGS = [
+  "-c",
+  "core.fsmonitor=false",
+  "-c",
+  "core.pager=cat",
+  "-c",
+  "diff.external=",
+  "-c",
+  "log.showSignature=false",
+  "--no-pager"
+];
+var CALL_TIMEOUT_MS = 5e3;
+var TOTAL_BUDGET_MS = 6e4;
+var MAX_OUTPUT_BYTES = 1024 * 1024;
+var MAX_FILE_BYTES = 1024 * 1024;
+var MAX_PROCESS_ENTRIES = 65536;
+function isAllowedGitCall(args2) {
+  return GIT_ALLOW_LIST.some(
+    (allowed) => allowed.length === args2.length && allowed.every((arg, i) => {
+      const value = args2[i];
+      return typeof arg === "string" ? arg === value : slotAccepts(arg, value);
+    })
+  );
+}
+var KEPT_VARIABLES = [
+  "PATH",
+  "Path",
+  "HOME",
+  "USERPROFILE",
+  "SystemRoot",
+  "SYSTEMROOT",
+  "TMPDIR",
+  "TEMP",
+  "TMP"
+];
+function gitEnvironment(env) {
+  const out = {
+    GIT_OPTIONAL_LOCKS: "0",
+    GIT_TERMINAL_PROMPT: "0",
+    LC_ALL: "C",
+    LANG: "C"
+  };
+  for (const key of KEPT_VARIABLES) {
+    const value = env[key];
+    if (value !== void 0) out[key] = value;
+  }
+  return out;
+}
+var realExec = (file2, args2, options) => new Promise((resolve5) => {
+  try {
+    execFile(file2, [...args2], options, (error, stdout, stderr) => {
+      if (error === null) {
+        resolve5({ kind: "ok", stdout: String(stdout) });
+        return;
+      }
+      const failure = error;
+      if (failure.code === "ERR_CHILD_PROCESS_STDIO_MAXBUFFER") resolve5({ kind: "too-large" });
+      else if (failure.code === "ENOENT") resolve5({ kind: "missing" });
+      else if (failure.killed === true) resolve5({ kind: "timeout" });
+      else if (typeof failure.code === "number") {
+        resolve5({ kind: "exit", code: failure.code, stderr: String(stderr) });
+      } else resolve5({ kind: "failed" });
+    });
+  } catch {
+    resolve5({ kind: "failed" });
+  }
+});
+function watchedProcessOf(entry) {
+  const title = entry.trim().split(": ")[0] ?? "";
+  const name = (title.split(/[\\/]/).pop() ?? "").trim().toLowerCase().replace(/\.exe$/, "");
+  if (name === "claude") return "claude";
+  if (name === "codex") return "codex";
+  if (/^cursor(?: helper(?: \([a-z ]+\))?)?$/.test(name) || name === "cursor-agent") {
+    return "cursor";
+  }
+  if (TUNNEL_PROCESS_NAMES.includes(name)) return name;
+  return void 0;
+}
+function watchedIn(lines2, entryOf) {
+  const entries2 = lines2.filter((line2) => line2.trim() !== "");
+  if (entries2.length > MAX_PROCESS_ENTRIES) return { ok: false, reason: "too-large" };
+  const seen = /* @__PURE__ */ new Set();
+  for (const entry of entries2) {
+    const id = watchedProcessOf(entryOf(entry));
+    if (id !== void 0) seen.add(id);
+  }
+  return { ok: true, running: WATCHED_PROCESSES.filter((id) => seen.has(id)) };
+}
+function watchedInPs(stdout) {
+  return watchedIn(stdout.split(/\r?\n/), (line2) => line2);
+}
+function watchedInTasklist(stdout) {
+  return watchedIn(stdout.split(/\r?\n/), (line2) => /^"([^"]*)"/.exec(line2.trim())?.[1] ?? "");
+}
+function isInside(root, path, paths = { relative: relative4, isAbsolute: isAbsolute5 }) {
+  const rel = paths.relative(root, path);
+  return rel !== "" && !rel.startsWith("..") && !paths.isAbsolute(rel);
+}
+function defaultIsExecutable(platform) {
+  return (path) => {
+    try {
+      if (!statSync3(path).isFile()) return false;
+      if (platform !== "win32") accessSync(path, constants2.X_OK);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+}
+function resolveProgram(name, env, platform, isExecutable) {
+  const paths = platform === "win32" ? win32 : posix;
+  const file2 = platform === "win32" ? `${name}.exe` : name;
+  for (const entry of (env.PATH ?? env.Path ?? "").split(paths.delimiter)) {
+    if (entry === "" || !paths.isAbsolute(entry) || isNetworkPath(entry)) continue;
+    const candidate = paths.join(entry, file2);
+    if (isExecutable(candidate)) return candidate;
+  }
+  return void 0;
+}
+var AGENT_FOLDERS = [".claude", ".codex", ".cursor"];
+var AGENT_FILE = /\.mdc?$/i;
+function agentRoots(home) {
+  if (home === void 0 || home === "" || isNetworkPath(home)) return [];
+  const roots = [];
+  for (const folder of AGENT_FOLDERS) {
+    try {
+      roots.push(realpathSync(join11(home, folder)));
+    } catch {
+    }
+  }
+  return roots;
+}
+function createRealVerifyIO(options = {}) {
+  const exec = options.exec ?? realExec;
+  const callerEnv = options.env ?? process.env;
+  const env = gitEnvironment(callerEnv);
+  let agents;
+  const platform = options.platform ?? process.platform;
+  const isExecutable = options.isExecutable ?? defaultIsExecutable(platform);
+  const programs = /* @__PURE__ */ new Map();
+  const programPath = (name) => {
+    if (!programs.has(name)) {
+      programs.set(name, resolveProgram(name, callerEnv, platform, isExecutable) ?? null);
+    }
+    return programs.get(name) ?? void 0;
+  };
+  let scratch;
+  const now = options.now ?? (() => Date.now());
+  const callTimeout = options.callTimeoutMs ?? CALL_TIMEOUT_MS;
+  const budget = options.totalBudgetMs ?? TOTAL_BUDGET_MS;
+  const roots = /* @__PURE__ */ new Set();
+  let spent = 0;
+  const run = async (file2, args2, cwd) => {
+    const left = budget - spent;
+    if (left <= 0) return "budget";
+    const started = now();
+    const result = await exec(file2, args2, {
+      ...cwd === void 0 ? {} : { cwd },
+      env,
+      timeout: Math.min(callTimeout, left),
+      maxBuffer: MAX_OUTPUT_BYTES,
+      shell: false,
+      windowsHide: true,
+      encoding: "utf8"
+    });
+    spent += Math.max(0, now() - started);
+    return result;
+  };
+  const failureOf = (result) => {
+    switch (result.kind) {
+      case "timeout":
+        return "timeout";
+      case "too-large":
+        return "too-large";
+      case "missing":
+        return "missing";
+      case "exit":
+        return result.code === 128 && /not a git repository/i.test(result.stderr) ? "not-a-repo" : "failed";
+      default:
+        return "failed";
+    }
+  };
+  return {
+    async git(cwd, args2) {
+      if (!isAllowedGitCall(args2) || isNetworkPath(cwd)) return { ok: false, reason: "refused" };
+      const git = programPath("git");
+      if (git === void 0) return { ok: false, reason: "missing" };
+      const paths = platform === "win32" ? win32 : posix;
+      const from = paths.resolve(cwd);
+      if (paths.resolve(git) === from || isInside(from, paths.resolve(git), paths)) {
+        return { ok: false, reason: "refused" };
+      }
+      const result = await run(git, [...GIT_SAFETY_ARGS, ...args2], cwd);
+      if (typeof result === "string") return { ok: false, reason: result };
+      if (result.kind !== "ok") return { ok: false, reason: failureOf(result) };
+      if (args2[0] === "rev-parse" && args2[1] === "--show-toplevel") {
+        try {
+          roots.add(realpathSync(result.stdout.trim()));
+        } catch {
+          return { ok: false, reason: "failed" };
+        }
+      }
+      return { ok: true, stdout: result.stdout };
+    },
+    isDirectory(path) {
+      if (isNetworkPath(path)) return void 0;
+      try {
+        return statSync3(path).isDirectory();
+      } catch {
+        return void 0;
+      }
+    },
+    pathExists(path) {
+      if (isNetworkPath(path)) return void 0;
+      try {
+        statSync3(path);
+        return true;
+      } catch (error) {
+        const code2 = error.code;
+        return code2 === "ENOENT" || code2 === "ENOTDIR" ? false : void 0;
+      }
+    },
+    readFile(path) {
+      if (spent >= budget) return Promise.resolve({ ok: false, reason: "budget" });
+      if (isNetworkPath(path)) return Promise.resolve({ ok: false, reason: "refused" });
+      const started = now();
+      let fd;
+      try {
+        const real = realpathSync(path);
+        const inRepo = [...roots].some((root) => isInside(root, real));
+        if (!inRepo) {
+          agents ??= agentRoots(callerEnv.HOME ?? callerEnv.USERPROFILE);
+          const inAgentFolder = AGENT_FILE.test(real) && agents.some((root) => isInside(root, real));
+          if (!inAgentFolder) return Promise.resolve({ ok: false, reason: "refused" });
+        }
+        fd = openSync2(
+          real,
+          constants2.O_RDONLY | (constants2.O_NOFOLLOW ?? 0) | (constants2.O_NONBLOCK ?? 0)
+        );
+        const stat2 = fstatSync(fd);
+        if (!stat2.isFile()) return Promise.resolve({ ok: false, reason: "failed" });
+        if (stat2.size > MAX_FILE_BYTES) return Promise.resolve({ ok: false, reason: "too-large" });
+        scratch ??= Buffer.allocUnsafe(MAX_FILE_BYTES + 1);
+        let total = 0;
+        for (; ; ) {
+          const read = readSync(fd, scratch, total, scratch.length - total, null);
+          if (read === 0) break;
+          total += read;
+          if (total === scratch.length) break;
+        }
+        if (total > MAX_FILE_BYTES) return Promise.resolve({ ok: false, reason: "too-large" });
+        return Promise.resolve({ ok: true, text: scratch.toString("utf8", 0, total) });
+      } catch {
+        return Promise.resolve({ ok: false, reason: "missing" });
+      } finally {
+        if (fd !== void 0) closeSync2(fd);
+        spent += Math.max(0, now() - started);
+      }
+    },
+    charge(ms) {
+      spent += Math.max(0, ms);
+      return spent < budget;
+    },
+    async processNames() {
+      const windows = platform === "win32";
+      const program = programPath(windows ? "tasklist" : "ps");
+      if (program === void 0) return { ok: false, reason: "missing" };
+      const result = windows ? await run(program, ["/fo", "csv", "/nh"], void 0) : await run(program, ["-axo", "comm="], void 0);
+      if (typeof result === "string") return { ok: false, reason: result };
+      if (result.kind !== "ok") return { ok: false, reason: failureOf(result) };
+      return windows ? watchedInTasklist(result.stdout) : watchedInPs(result.stdout);
+    }
+  };
+}
+
 // src/scan-entry.ts
-var code = await runScan(process.argv.slice(2), createRealScanIO(), { productLine: false });
+var code = await runScan(process.argv.slice(2), createRealScanIO(), {
+  productLine: false,
+  createVerifyIO: () => createRealVerifyIO()
+});
 if (code !== 0) {
   process.exitCode = code;
 }

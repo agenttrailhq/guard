@@ -267,7 +267,10 @@ describe("quiet corpus — ordinary developer text stays byte-identical", () => 
   });
 });
 
-describe("idempotence and cost", () => {
+// The growth checks time work against itself, at two sizes. Under a loaded runner one can be
+// measured in a burst, or run past the default timeout: one retry, and room for the slow run.
+// The ratio and the backstop are unchanged.
+describe("idempotence and cost", { retry: 1, timeout: 300_000 }, () => {
   it.each([
     "ACMEVENDOR_KEY=9fQ2xLmB7vTzK1aWc4Yp8NsJ0eHuD3gR run",
     'curl -H "Authorization: Basic dXNlcjpwYXNzd29yZA" u',

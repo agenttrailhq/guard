@@ -7,7 +7,8 @@
  * written inside a comment" case below checks that.
  */
 
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
@@ -23,11 +24,28 @@ interface ParsedImport {
   readonly typeOnly: boolean;
 }
 
-/** Parse a source's import DECLARATIONS. Prose in a comment can never become one. */
+/**
+ * Parse a source's import DECLARATIONS, and its `export … from` declarations, which load the
+ * module they name exactly as an import does. Prose in a comment can never become one.
+ */
 function parseImports(source: string): ParsedImport[] {
   const sourceFile = ts.createSourceFile("x.ts", source, ts.ScriptTarget.Latest, false);
   const found: ParsedImport[] = [];
   for (const statement of sourceFile.statements) {
+    if (ts.isExportDeclaration(statement)) {
+      if (statement.moduleSpecifier === undefined) continue;
+      if (!ts.isStringLiteral(statement.moduleSpecifier)) continue;
+      const clause = statement.exportClause;
+      // `export type {…} from`, or a list where every specifier is `type`, is erased.
+      const typeOnly =
+        statement.isTypeOnly ||
+        (clause !== undefined &&
+          ts.isNamedExports(clause) &&
+          clause.elements.length > 0 &&
+          clause.elements.every((e) => e.isTypeOnly));
+      found.push({ specifier: statement.moduleSpecifier.text, typeOnly });
+      continue;
+    }
     if (!ts.isImportDeclaration(statement)) continue;
     if (!ts.isStringLiteral(statement.moduleSpecifier)) continue;
     const clause = statement.importClause;
@@ -55,16 +73,20 @@ function parseImports(source: string): ParsedImport[] {
  * Every module reachable from the hook entry by RELATIVE value import — exactly the set of
  * this package's own files that tsup inlines into the hook. Walking the graph rather
  * than globbing `src/` keeps the fence accurate as modules are added, and keeps it off
- * CLI-only files that never reach the hook bundle.
+ * CLI-only files that never reach the hook bundle. `read` lets a negative control walk an
+ * edited source without writing it to disk.
  */
-function hookBundleGraph(entry: string = HOOK_ENTRY): string[] {
+function hookBundleGraph(
+  entry: string = HOOK_ENTRY,
+  read: (file: string) => string = (file) => readFileSync(file, "utf8"),
+): string[] {
   const seen = new Set<string>();
   const queue = [entry];
   while (queue.length > 0) {
     const file = queue.pop();
     if (file === undefined || seen.has(file)) continue;
     seen.add(file);
-    for (const { specifier, typeOnly } of parseImports(readFileSync(file, "utf8"))) {
+    for (const { specifier, typeOnly } of parseImports(read(file))) {
       // A type-only import is erased at build time, so it adds nothing to the bundle.
       if (typeOnly || !specifier.startsWith(".")) continue;
       // Source is ESM-with-extension: `./config.js` is `config.ts` on disk.
@@ -256,6 +278,38 @@ describe("the hook can never gain the ability to spawn a process", () => {
     expect(hookBundleGraph()).not.toContain(scanIo);
   });
 
+  it("verify-io.ts is the third spawner, and it is outside the graph too", () => {
+    // `scan --verify` runs read-only `git` and lists process names through it.
+    const verifyIo = join(PKG_ROOT, "src", "verify-io.ts");
+    expect(readFileSync(verifyIo, "utf8")).toContain("node:child_process");
+    expect(hookBundleGraph()).not.toContain(verifyIo);
+  });
+
+  it("nothing under core/verify/ is in the hook graph", () => {
+    const verifyDir = join(PKG_ROOT, "src", "core", "verify");
+    expect(existsSync(verifyDir)).toBe(true);
+    expect(hookBundleGraph().filter((f) => f.startsWith(verifyDir))).toEqual([]);
+  });
+
+  it("scrub-io.ts writes files, starts no process, and is outside the graph", () => {
+    // `scan --scrub --apply` backs up and replaces transcripts through it, and nothing else.
+    const scrubIo = join(PKG_ROOT, "src", "scrub-io.ts");
+    const specifiers = parseImports(readFileSync(scrubIo, "utf8")).map((i) => i.specifier);
+    expect(specifiers).toContain("node:fs");
+    expect(specifiers).not.toContain("node:child_process");
+    expect(hookBundleGraph()).not.toContain(scrubIo);
+  });
+
+  it.each([
+    "scrub-io.ts",
+    "commands/scan-scrub.ts",
+    "core/scrub-transcripts.ts",
+  ])("%s, part of scan --scrub, is not in the hook graph", (module) => {
+    const file = join(PKG_ROOT, "src", ...module.split("/"));
+    expect(existsSync(file)).toBe(true);
+    expect(hookBundleGraph()).not.toContain(file);
+  });
+
   it("the scan command is outside the hook graph, not just its IO seam", () => {
     // `commands/scan.ts` pulls the colour helper and the HTML generator, and neither
     // belongs in the file Claude Code executes before every tool call.
@@ -295,8 +349,1294 @@ describe("the scan-only plugin bundle carries scan and nothing else", () => {
     expect(graph).not.toContain(file);
   });
 
+  it("carries verification, so the fences over this graph cover it", () => {
+    expect(graph).toContain(join(PKG_ROOT, "src", "verify-io.ts"));
+    expect(graph).toContain(join(PKG_ROOT, "src", "core", "verify", "verify.ts"));
+    expect(graph).toContain(join(PKG_ROOT, "src", "core", "verify", "secrets.ts"));
+  });
+
   it("reaches nothing under src/net/", () => {
     expect(graph.filter((f) => f.includes(`${join(PKG_ROOT, "src", "net")}`))).toEqual([]);
+  });
+});
+
+describe("only the scrub path can write a transcript", () => {
+  const SRC = join(PKG_ROOT, "src");
+  const SCRUB_IO = join(SRC, "scrub-io.ts");
+
+  /** The `node:fs` functions that change the file system. */
+  const FS_WRITERS = new Set([
+    "appendFileSync",
+    "chmodSync",
+    "copyFileSync",
+    "createWriteStream",
+    "fchmodSync",
+    "fsyncSync",
+    "mkdirSync",
+    "openSync",
+    "renameSync",
+    "rmSync",
+    "rmdirSync",
+    "unlinkSync",
+    "writeFileSync",
+    "writeSync",
+  ]);
+
+  /**
+   * The writing names a source value-imports, or re-exports, from `node:fs` or `fs`, plus any
+   * `fs/promises` import or re-export. An `export … from` loads the module exactly as an import
+   * does, so it is read the same way.
+   */
+  function fsWritersIn(source: string): string[] {
+    const sourceFile = ts.createSourceFile("x.ts", source, ts.ScriptTarget.Latest, false);
+    const found: string[] = [];
+    for (const statement of sourceFile.statements) {
+      const declaration =
+        ts.isImportDeclaration(statement) || ts.isExportDeclaration(statement)
+          ? statement
+          : undefined;
+      const specifier = declaration?.moduleSpecifier;
+      if (declaration === undefined || specifier === undefined || !ts.isStringLiteral(specifier)) {
+        continue;
+      }
+      const from = specifier.text;
+      if (/^(node:)?fs\/promises$/.test(from)) found.push(from);
+      if (!/^(node:)?fs$/.test(from)) continue;
+      const bindings = ts.isImportDeclaration(declaration)
+        ? declaration.importClause?.namedBindings
+        : declaration.exportClause;
+      if (bindings === undefined || !(ts.isNamedImports(bindings) || ts.isNamedExports(bindings))) {
+        // A namespace, default or `export *` of `fs` can reach every writer.
+        found.push(`${from} (whole module)`);
+        continue;
+      }
+      for (const element of bindings.elements) {
+        const name = (element.propertyName ?? element.name).text;
+        if (!element.isTypeOnly && FS_WRITERS.has(name)) found.push(name);
+      }
+    }
+    return found;
+  }
+
+  /** `fsWritersIn` for a file on disk. */
+  function fsWriters(file: string): string[] {
+    return fsWritersIn(readFileSync(file, "utf8"));
+  }
+
+  it("negative control: the detector finds a writer, a renamed writer and a namespace import", () => {
+    const probe = join(mkdtempSync(join(tmpdir(), "agenttrail-fs-probe-")), "probe.ts");
+    writeFileSync(
+      probe,
+      'import { readFileSync, renameSync as mv } from "node:fs";\nimport * as fs from "fs";\n',
+    );
+    expect(fsWriters(probe)).toEqual(["renameSync", "fs (whole module)"]);
+  });
+
+  it.each([
+    ['export { writeFileSync as put } from "node:fs";', ["writeFileSync"]],
+    ['export { renameSync } from "fs";', ["renameSync"]],
+    ['export * from "node:fs";', ["node:fs (whole module)"]],
+    ['export * as fs from "fs";', ["fs (whole module)"]],
+    ['export { writeFile } from "node:fs/promises";', ["node:fs/promises"]],
+  ])("negative control: the detector reads a re-export as an import: %s", (line, found) => {
+    expect(fsWritersIn(line)).toEqual(found);
+  });
+
+  it("a re-export is followed into the bundle graph, as an import is", () => {
+    expect(parseImports('export { x } from "./a.js";\nexport type { T } from "./b.js";\n')).toEqual(
+      [
+        { specifier: "./a.js", typeOnly: false },
+        { specifier: "./b.js", typeOnly: true },
+      ],
+    );
+  });
+
+  /** The scrub modules: the run, its seam, and the replacing. Only the CLI carries them. */
+  const SCRUB_MODULES = [
+    join(SRC, "commands", "scan-scrub.ts"),
+    SCRUB_IO,
+    join(SRC, "core", "scrub-transcripts.ts"),
+  ];
+  const SCAN_ENTRY = join(SRC, "scan-entry.ts");
+
+  it("the scan command does not import the scrub seam or run; only the CLI entry does", () => {
+    expect(hookBundleGraph(join(SRC, "commands", "scan.ts"))).not.toContain(SCRUB_IO);
+    expect(hookBundleGraph(join(SRC, "commands", "scan-scrub.ts"))).not.toContain(SCRUB_IO);
+    for (const module of SCRUB_MODULES) {
+      expect(existsSync(module)).toBe(true);
+      expect(hookBundleGraph(join(SRC, "commands", "scan.ts"))).not.toContain(module);
+      expect(hookBundleGraph(join(SRC, "cli.ts"))).toContain(module);
+    }
+  });
+
+  it("the plugin's scan bundle carries none of the scrub modules", () => {
+    const graph = hookBundleGraph(SCAN_ENTRY);
+    expect(SCRUB_MODULES.filter((module) => graph.includes(module))).toEqual([]);
+  });
+
+  it.each([
+    ["the entry", SCAN_ENTRY, 'import { runScrub } from "./commands/scan-scrub.js";'],
+    ["the entry", SCAN_ENTRY, 'import { createRealScrubIO } from "./scrub-io.js";'],
+    ["the entry", SCAN_ENTRY, 'export { scrubPlaceholder } from "./core/scrub-transcripts.js";'],
+    [
+      "the scan command",
+      join(SRC, "commands", "scan.ts"),
+      'import { runScrub } from "./scan-scrub.js";',
+    ],
+  ])("negative control: the scrub fence fails when %s loads one again: %s", (_where, file, line) => {
+    const graph = hookBundleGraph(SCAN_ENTRY, (f) => {
+      const source = readFileSync(f, "utf8");
+      return f === file ? `${line}\n${source}` : source;
+    });
+    expect(SCRUB_MODULES.filter((module) => graph.includes(module))).not.toEqual([]);
+  });
+
+  it("in the scan bundle, only scan-io.ts can change a file", () => {
+    // `scan-io.ts` writes the report. `verify-io.ts` imports `openSync` to read files, and is
+    // checked to open read-only below. Everything else `scan` runs is read-only; the scrub
+    // seam, which writes backups and replaces transcripts, is the CLI's alone.
+    const writers = hookBundleGraph(SCAN_ENTRY)
+      .filter((f) => fsWriters(f).length > 0)
+      .map((f) => relative(SRC, f));
+    expect(writers.sort()).toEqual(["scan-io.ts", "verify-io.ts"]);
+  });
+
+  it("in the CLI, the scrub seam is the one more module that can change a file", () => {
+    const writers = new Set(
+      hookBundleGraph(join(SRC, "cli.ts"))
+        .filter((f) => fsWriters(f).length > 0)
+        .map((f) => relative(SRC, f)),
+    );
+    expect(writers.has("scrub-io.ts")).toBe(true);
+    for (const module of ["commands/scan-scrub.ts", "core/scrub-transcripts.ts"]) {
+      expect(writers.has(module)).toBe(false);
+    }
+  });
+
+  /**
+   * A check of `verify-io.ts`'s source text, as a regression guard on top of the file itself,
+   * which writes nothing.
+   *
+   * What it guarantees: no direct write, renamed writer, re-export, unlisted local module,
+   * dynamic import, `require`, module route (`getBuiltinModule`, `createRequire`, bindings),
+   * `eval`, `Function`, `Reflect`, `.constructor`, `getOwnPropertyDescriptor`, `dlopen`, string
+   * or computed key (beyond the three the file uses, each pinned to its own function and count),
+   * `execFile` outside `realExec`, use of `realExec`, `exec`, `run` or `programPath` beyond the
+   * places and counts the real file has (`PINNED_STARTER_USES`), or `openSync` flag other than
+   * the read-only ones written out
+   * below; no import from `child_process`, `worker_threads`, `vm` or `cluster` but exactly
+   * `import { execFile } from "node:child_process"` (no rename, default or namespace import, and
+   * no other name), and no `import … = require(…)`; and no listed local module, or any module
+   * it loads, that loads `node:fs`, `child_process`, `worker_threads`, `vm` or `cluster`.
+   *
+   * What it does not: a reading of source text cannot be complete against deliberate
+   * obfuscation in general. It closes every route found by review so far, each with its edit as
+   * a negative control.
+   */
+  describe("verify-io.ts opens files read-only and writes nothing", () => {
+    const VERIFY_IO = join(SRC, "verify-io.ts");
+
+    /**
+     * The only flag expressions an `openSync` call in `verify-io.ts` may pass, written out, with
+     * whitespace removed before comparing. `constants.O_RDONLY`, optionally OR'ed with the
+     * read-safe `O_NOFOLLOW` and `O_NONBLOCK`, each guarded for platforms that lack it. Nothing
+     * computed, no variable and no string mode is accepted.
+     */
+    const ACCEPTED_OPEN_FLAGS = [
+      "constants.O_RDONLY",
+      "constants.O_RDONLY|(constants.O_NOFOLLOW??0)",
+      "constants.O_RDONLY|(constants.O_NONBLOCK??0)",
+      "constants.O_RDONLY|(constants.O_NOFOLLOW??0)|(constants.O_NONBLOCK??0)",
+    ];
+
+    /** What `verify-io.ts` may import from `node:fs`: reading, stat and descriptor handling. */
+    const READ_ONLY_FS_IMPORTS = new Set([
+      "accessSync",
+      "closeSync",
+      "constants",
+      "fstatSync",
+      "openSync",
+      "readSync",
+      "realpathSync",
+      "statSync",
+    ]);
+
+    /** Names of functions that write, in `node:fs`, its callback form and `fs/promises`. */
+    const WRITING_NAMES = [
+      "writeFileSync",
+      "writeFile",
+      "appendFileSync",
+      "appendFile",
+      "createWriteStream",
+      "writeSync",
+      "write",
+      "writev",
+      "ftruncateSync",
+      "ftruncate",
+      "truncateSync",
+      "truncate",
+      "renameSync",
+      "rename",
+      "copyFileSync",
+      "copyFile",
+      "cpSync",
+      "cp",
+      "mkdirSync",
+      "mkdir",
+      "mkdtempSync",
+      "mkdtemp",
+      "rmSync",
+      "rm",
+      "rmdirSync",
+      "rmdir",
+      "unlinkSync",
+      "unlink",
+      "chmodSync",
+      "chmod",
+      "fchmodSync",
+      "fchmod",
+      "lchmod",
+      "chownSync",
+      "chown",
+      "symlinkSync",
+      "symlink",
+      "linkSync",
+      "link",
+      "utimesSync",
+      "utimes",
+      "futimesSync",
+      "futimes",
+      "lutimes",
+      "lutimesSync",
+      "lchmodSync",
+      "lchown",
+      "lchownSync",
+      "fchown",
+      "fchownSync",
+      "fdatasync",
+      "fdatasyncSync",
+      "WriteStream",
+      // `fs.open` and `fs.promises.open` take a string mode that can write; only `openSync` with
+      // an accepted flag expression is allowed.
+      "open",
+    ];
+
+    /**
+     * Ways to reach a module, or run code, without an import the checks above can read: a
+     * property or call by one of these names fails the check.
+     */
+    const MODULE_ROUTES = new Set([
+      "getBuiltinModule",
+      "createRequire",
+      "binding",
+      "_linkedBinding",
+      "eval",
+      "Function",
+      // `Reflect.get`/`Reflect.apply` reach a property or call a function by a string argument.
+      "Reflect",
+      // `.constructor` of any function is the Function constructor, which runs a string as code.
+      "constructor",
+      // A property descriptor hands on a property, a writer included, by its name as a string.
+      "getOwnPropertyDescriptor",
+      "getOwnPropertyDescriptors",
+      // `process.dlopen` loads a native addon, which runs code of its own. `process["dlopen"]`
+      // and the other computed forms fail the key rules below.
+      "dlopen",
+    ]);
+
+    /**
+     * The names that start a program: `realExec` (which wraps `execFile`), the `exec` seam it is
+     * the default of, `run` (which calls `exec` within the budget), and `programPath` (which
+     * finds the program `run` is given). Each may be used only where the real file uses it, the
+     * pinned number of times: `realExec` and `options.exec` only as `exec`'s value, `exec` only
+     * inside `run`, `run` only inside `git` and `processNames`, and `programPath` only to find
+     * `git` there and `ps` or `tasklist` in `processNames`. A use anywhere else, or one more,
+     * fails, so the seam cannot start any other program.
+     */
+    const PINNED_STARTER_USES: Readonly<Record<string, number>> = {
+      "realExec in createRealVerifyIO, as exec's default": 1,
+      "exec in createRealVerifyIO, as exec's default": 1,
+      "exec in run, called": 1,
+      "run in git, called": 1,
+      "run in processNames, called": 2,
+      'programPath in git, called("git")': 1,
+      'programPath in processNames, called(windows?"tasklist":"ps")': 1,
+    };
+
+    /** The names `PINNED_STARTER_USES` pins. */
+    const STARTER_NAMES = new Set(["realExec", "exec", "run", "programPath"]);
+
+    /**
+     * How a starter name is used, as `PINNED_STARTER_USES` keys it, or `undefined` where the
+     * name is not a use: a declaration's own name, a key in an object or type, or the `exec`
+     * method of a regular expression literal.
+     */
+    function starterUse(node: ts.Identifier, file: ts.SourceFile): string | undefined {
+      const parent = node.parent;
+      if (isBindingName(node)) return undefined;
+      if (
+        (ts.isPropertyAssignment(parent) ||
+          ts.isPropertySignature(parent) ||
+          ts.isPropertyDeclaration(parent) ||
+          ts.isMethodDeclaration(parent) ||
+          ts.isMethodSignature(parent)) &&
+        parent.name === node
+      ) {
+        return undefined;
+      }
+      const property = ts.isPropertyAccessExpression(parent) && parent.name === node;
+      if (property && ts.isRegularExpressionLiteral(parent.expression) && node.text === "exec") {
+        return undefined;
+      }
+      const where = `${node.text} in ${enclosingFunction(node, file)}`;
+      // The value of `const exec = options.exec ?? realExec`, both sides of it.
+      const operand = property ? parent : node;
+      const choice = operand.parent;
+      if (
+        ts.isBinaryExpression(choice) &&
+        choice.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken &&
+        ts.isVariableDeclaration(choice.parent) &&
+        choice.parent.initializer === choice &&
+        choice.parent.name.getText(file) === "exec" &&
+        choice.getText(file).replace(/\s+/g, "") === "options.exec??realExec"
+      ) {
+        return `${where}, as exec's default`;
+      }
+      if (property) return `${where}, as a property of ${parent.expression.getText(file)}`;
+      if (ts.isCallExpression(parent) && parent.expression === node) {
+        if (node.text !== "programPath") return `${where}, called`;
+        const args = parent.arguments.map((a) => a.getText(file).replace(/\s+/g, "")).join(",");
+        return `${where}, called(${args})`;
+      }
+      return `${where}, as a value`;
+    }
+
+    /**
+     * Modules that start a process or run code. No listed local module may load one, and
+     * `verify-io.ts` loads exactly one thing from them: `import { execFile } from
+     * "node:child_process"` (`isTheExecFileImport`).
+     */
+    const PROCESS_MODULES = /^(node:)?(child_process|worker_threads|vm|cluster)$/;
+
+    /**
+     * Is `node` exactly `import { execFile } from "node:child_process"`: one named import,
+     * not renamed, not type-only, with no default or namespace binding?
+     */
+    function isTheExecFileImport(node: ts.ImportDeclaration): boolean {
+      const clause = node.importClause;
+      const bindings = clause?.namedBindings;
+      const only = bindings !== undefined && ts.isNamedImports(bindings) ? bindings.elements : [];
+      return (
+        ts.isStringLiteral(node.moduleSpecifier) &&
+        node.moduleSpecifier.text === "node:child_process" &&
+        clause !== undefined &&
+        !clause.isTypeOnly &&
+        clause.name === undefined &&
+        only.length === 1 &&
+        only[0]?.propertyName === undefined &&
+        only[0]?.isTypeOnly === false &&
+        only[0]?.name.text === "execFile"
+      );
+    }
+
+    /** Every reason an import from a process module is not the one `isTheExecFileImport` allows. */
+    function processImportProblems(node: ts.ImportDeclaration, from: string): string[] {
+      if (isTheExecFileImport(node)) return [];
+      if (from !== "node:child_process") return [`loads ${from}`];
+      const problems: string[] = [];
+      const clause = node.importClause;
+      const bindings = clause?.namedBindings;
+      if (clause?.name !== undefined) problems.push(`imports ${from} whole`);
+      if (bindings !== undefined && ts.isNamespaceImport(bindings)) {
+        problems.push(`imports ${from} as a namespace`);
+      }
+      if (bindings !== undefined && ts.isNamedImports(bindings)) {
+        for (const element of bindings.elements) {
+          const name = (element.propertyName ?? element.name).text;
+          if (element.propertyName !== undefined) problems.push(`renames ${name} from ${from}`);
+          if (name !== "execFile") problems.push(`imports ${name} from ${from}`);
+        }
+      }
+      // Anything else, such as a bare import, a type-only one or empty braces.
+      if (problems.length === 0) problems.push(`imports ${from} other than { execFile }`);
+      return problems;
+    }
+
+    /**
+     * The real file's own element accesses with a computed key, each pinned to the function it
+     * sits in and to how many times it appears there. The same text anywhere else, or once more,
+     * fails: the names are only names, so they must not be reused to index something else.
+     */
+    const PINNED_COMPUTED_ACCESS: Readonly<Record<string, { fn: string; count: number }>> = {
+      "args[i]": { fn: "isAllowedGitCall", count: 1 },
+      "env[key]": { fn: "gitEnvironment", count: 1 },
+      "out[key]": { fn: "gitEnvironment", count: 1 },
+    };
+
+    /** The named function a node sits in, or `(top)`. */
+    function enclosingFunction(node: ts.Node, file: ts.SourceFile): string {
+      for (let p = node.parent; p !== undefined; p = p.parent) {
+        if ((ts.isFunctionDeclaration(p) || ts.isMethodDeclaration(p)) && p.name !== undefined) {
+          return p.name.getText(file);
+        }
+        if (
+          ts.isVariableDeclaration(p) &&
+          p.initializer !== undefined &&
+          (ts.isArrowFunction(p.initializer) || ts.isFunctionExpression(p.initializer))
+        ) {
+          return p.name.getText(file);
+        }
+      }
+      return "(top)";
+    }
+
+    /**
+     * The local modules `verify-io.ts` may import. Each is checked below to import and re-export
+     * nothing from `node:fs`, so a writer cannot be handed to this file under another name.
+     */
+    const LOCAL_IMPORTS: Readonly<Record<string, string>> = {
+      // The command checks' process names: the tunnel programs the process list is cut to.
+      "./core/verify/command-facts.js": join(SRC, "core", "verify", "command-facts.ts"),
+      "./core/verify/paths.js": join(SRC, "core", "verify", "paths.ts"),
+      "./core/verify/types.js": join(SRC, "core", "verify", "types.ts"),
+    };
+
+    /** Names that must only ever be the `node:fs` import of the same name. */
+    const FS_ONLY_NAMES = new Set(["constants", "openSync"]);
+
+    /** Is `node` the name a declaration binds, rather than a use of a name? */
+    function isBindingName(node: ts.Identifier): boolean {
+      const parent = node.parent;
+      return (
+        ((ts.isVariableDeclaration(parent) ||
+          ts.isParameter(parent) ||
+          ts.isFunctionDeclaration(parent) ||
+          ts.isFunctionExpression(parent) ||
+          ts.isClassDeclaration(parent) ||
+          ts.isClassExpression(parent) ||
+          ts.isEnumDeclaration(parent) ||
+          ts.isBindingElement(parent) ||
+          ts.isImportClause(parent) ||
+          ts.isNamespaceImport(parent) ||
+          ts.isImportEqualsDeclaration(parent)) &&
+          parent.name === node) ||
+        (ts.isImportSpecifier(parent) && parent.name === node)
+      );
+    }
+
+    /** Every reason `source` is not read-only, per the rules above. Empty when it is. */
+    function readOnlyProblems(source: string): string[] {
+      const file = ts.createSourceFile("verify-io.ts", source, ts.ScriptTarget.Latest, true);
+      const problems: string[] = [];
+      let openCalls = 0;
+      // The `node:fs` import specifiers, so a binding of the same name elsewhere is caught.
+      const fsSpecifiers = new Set<ts.Node>();
+      const fsImported = new Set<string>();
+      const used = new Set<string>();
+      const pinnedSeen = new Map<string, number>();
+      const startersSeen = new Map<string, number>();
+      const visit = (node: ts.Node): void => {
+        // A name that starts a program: only where, and as often as, the real file uses it.
+        if (ts.isIdentifier(node) && STARTER_NAMES.has(node.text)) {
+          const use = starterUse(node, file);
+          if (use !== undefined) {
+            const seen = (startersSeen.get(use) ?? 0) + 1;
+            startersSeen.set(use, seen);
+            const allowed = PINNED_STARTER_USES[use];
+            if (allowed === undefined || seen > allowed) problems.push(`uses ${use}`);
+          }
+        }
+        // `execFile` starts a process: allowed only in its import and inside `realExec`.
+        if (
+          ts.isIdentifier(node) &&
+          node.text === "execFile" &&
+          !ts.isImportSpecifier(node.parent) &&
+          enclosingFunction(node, file) !== "realExec"
+        ) {
+          problems.push(`uses execFile in ${enclosingFunction(node, file)}`);
+        }
+        if (
+          ts.isExportDeclaration(node) &&
+          node.moduleSpecifier !== undefined &&
+          ts.isStringLiteral(node.moduleSpecifier)
+        ) {
+          // An `export … from` loads the module as an import does.
+          const from = node.moduleSpecifier.text;
+          if (/^(node:)?fs(\/promises)?$/.test(from)) problems.push(`re-exports from ${from}`);
+          if (PROCESS_MODULES.test(from)) problems.push(`re-exports from ${from}`);
+          if (from.startsWith(".") && LOCAL_IMPORTS[from] === undefined) {
+            problems.push(`imports local module ${from}`);
+          }
+        }
+        if (
+          ts.isImportDeclaration(node) &&
+          ts.isStringLiteral(node.moduleSpecifier) &&
+          node.moduleSpecifier.text.startsWith(".") &&
+          LOCAL_IMPORTS[node.moduleSpecifier.text] === undefined
+        ) {
+          problems.push(`imports local module ${node.moduleSpecifier.text}`);
+        }
+        // `import x = require(…)` loads a module without a call the checks below can read.
+        if (ts.isImportEqualsDeclaration(node)) problems.push("imports with import = require");
+        if (ts.isImportDeclaration(node) && ts.isStringLiteral(node.moduleSpecifier)) {
+          const from = node.moduleSpecifier.text;
+          // From a process module, only `import { execFile } from "node:child_process"`.
+          if (PROCESS_MODULES.test(from)) problems.push(...processImportProblems(node, from));
+          if (/^(node:)?fs\/promises$/.test(from)) problems.push(`imports ${from}`);
+          else if (/^(node:)?fs$/.test(from)) {
+            const bindings = node.importClause?.namedBindings;
+            if (node.importClause?.name !== undefined || bindings === undefined) {
+              problems.push(`imports ${from} whole`);
+            } else if (ts.isNamespaceImport(bindings)) {
+              problems.push(`imports ${from} as a namespace`);
+            } else {
+              for (const element of bindings.elements) {
+                const name = (element.propertyName ?? element.name).text;
+                if (element.propertyName !== undefined) problems.push(`renames ${name}`);
+                if (!READ_ONLY_FS_IMPORTS.has(name)) problems.push(`imports ${name}`);
+                fsSpecifiers.add(element.name);
+                fsImported.add(element.name.text);
+              }
+            }
+          }
+        }
+        if (ts.isIdentifier(node) && FS_ONLY_NAMES.has(node.text)) {
+          if (isBindingName(node)) {
+            if (!fsSpecifiers.has(node))
+              problems.push(`binds ${node.text} other than from node:fs`);
+          } else {
+            used.add(node.text);
+          }
+        }
+        if (ts.isIdentifier(node) && MODULE_ROUTES.has(node.text)) {
+          problems.push(`reaches ${node.text}`);
+        }
+        if (ts.isElementAccessExpression(node)) {
+          const key = node.argumentExpression;
+          if (ts.isStringLiteralLike(key) || ts.isTemplateExpression(key)) {
+            problems.push("indexes by a string key");
+          } else if (!ts.isNumericLiteral(key)) {
+            // A key that is not a numeric literal: only the real file's own accesses, in their
+            // own functions, as many times as there.
+            const text = node.getText(file).replace(/\s+/g, "");
+            const pinned = PINNED_COMPUTED_ACCESS[text];
+            const seen = (pinnedSeen.get(text) ?? 0) + 1;
+            pinnedSeen.set(text, seen);
+            if (
+              pinned === undefined ||
+              enclosingFunction(node, file) !== pinned.fn ||
+              seen > pinned.count
+            ) {
+              problems.push(`indexes by a computed key: ${node.getText(file)}`);
+            }
+          }
+        }
+        if (ts.isNewExpression(node)) {
+          const callee = node.expression;
+          const name = ts.isIdentifier(callee)
+            ? callee.text
+            : ts.isPropertyAccessExpression(callee)
+              ? callee.name.text
+              : undefined;
+          if (name !== undefined && WRITING_NAMES.includes(name)) problems.push(`calls ${name}`);
+        }
+        if (ts.isCallExpression(node)) {
+          const callee = node.expression;
+          if (callee.kind === ts.SyntaxKind.ImportKeyword) problems.push("imports dynamically");
+          const name = ts.isIdentifier(callee)
+            ? callee.text
+            : ts.isPropertyAccessExpression(callee)
+              ? callee.name.text
+              : undefined;
+          if (name !== undefined && WRITING_NAMES.includes(name)) problems.push(`calls ${name}`);
+          if (ts.isIdentifier(callee) && callee.text === "require") problems.push("calls require");
+          if (name === "openSync") {
+            openCalls += 1;
+            const [, flags, mode] = node.arguments;
+            const text = flags === undefined ? "" : flags.getText(file).replace(/\s+/g, "");
+            if (!ACCEPTED_OPEN_FLAGS.includes(text))
+              problems.push(`opens with ${text || "no flags"}`);
+            if (mode !== undefined || node.arguments.length !== 2) {
+              problems.push("passes openSync other than a path and flags");
+            }
+          }
+        } else if (
+          ts.isIdentifier(node) &&
+          node.text === "openSync" &&
+          !ts.isImportSpecifier(node.parent) &&
+          !(ts.isCallExpression(node.parent) && node.parent.expression === node)
+        ) {
+          problems.push("uses openSync other than by calling it");
+        }
+        ts.forEachChild(node, visit);
+      };
+      visit(file);
+      if (openCalls === 0) problems.push("never calls openSync");
+      // A name used here must resolve to the `node:fs` import, not to a global or nothing.
+      for (const name of used) {
+        if (!fsImported.has(name)) problems.push(`uses ${name} without importing it from node:fs`);
+      }
+      return problems;
+    }
+
+    /** The real source with its one `openSync` call's flags replaced by `flags`. */
+    function withOpenFlags(source: string, flags: string): string {
+      const file = ts.createSourceFile("verify-io.ts", source, ts.ScriptTarget.Latest, true);
+      let span: [number, number] | undefined;
+      const find = (node: ts.Node): void => {
+        if (
+          ts.isCallExpression(node) &&
+          ts.isIdentifier(node.expression) &&
+          node.expression.text === "openSync"
+        ) {
+          const arg = node.arguments[1] as ts.Expression;
+          span = [arg.getStart(file), arg.getEnd()];
+        }
+        ts.forEachChild(node, find);
+      };
+      find(file);
+      if (span === undefined) throw new Error("no openSync call");
+      return source.slice(0, span[0]) + flags + source.slice(span[1]);
+    }
+
+    const real = readFileSync(VERIFY_IO, "utf8");
+
+    it("the real file passes: read-only flags only, and no writing import or call", () => {
+      expect(readOnlyProblems(real)).toEqual([]);
+      // Its only import the bundle fence flags is openSync, which the rules above allow.
+      expect(fsWriters(VERIFY_IO)).toEqual(["openSync"]);
+    });
+
+    it.each(ACCEPTED_OPEN_FLAGS)("accepts exactly %s, with any spacing", (flags) => {
+      expect(readOnlyProblems(withOpenFlags(real, flags.replaceAll("|", " | ")))).toEqual([]);
+    });
+
+    it.each([
+      "constants.O_WRONLY",
+      "constants.O_RDWR",
+      "constants.O_RDONLY | constants.O_CREAT",
+      "constants.O_RDONLY | constants.O_APPEND",
+      "constants.O_RDONLY | constants.O_TRUNC",
+      "constants.O_RDONLY | constants.O_WRONLY",
+      "constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | constants.O_RDWR",
+      "flags",
+      "READ_FLAGS",
+      "readFlags()",
+      "constants.O_RDONLY | flags",
+      "constants.O_RDONLY | (constants.O_NOFOLLOW ?? constants.O_WRONLY)",
+      "0",
+      '"r"',
+      '"w"',
+      '"r+"',
+      '"a"',
+    ])("negative control: fails on openSync flags %s", (flags) => {
+      expect(readOnlyProblems(withOpenFlags(real, flags))).not.toEqual([]);
+    });
+
+    it("negative control: fails on a mode argument, or openSync used as a value", () => {
+      const withMode = withOpenFlags(real, "constants.O_RDONLY, 0o600");
+      expect(readOnlyProblems(withMode)).not.toEqual([]);
+      expect(readOnlyProblems(`${real}\nexport const opener = openSync;\n`)).not.toEqual([]);
+      const renamed = real.replace("  openSync,\n", "  openSync as open,\n");
+      expect(renamed).not.toBe(real);
+      expect(readOnlyProblems(renamed)).not.toEqual([]);
+    });
+
+    it.each(WRITING_NAMES)("negative control: fails when it imports or calls %s", (name) => {
+      const imported = `import { ${name} } from "node:fs";\n${real}`;
+      expect(readOnlyProblems(imported)).toContain(`imports ${name}`);
+      const called = `${real}\nexport function probe(): void {\n  ${name}("x");\n}\n`;
+      expect(readOnlyProblems(called)).toContain(`calls ${name}`);
+      const viaPromises = `${real}\nexport async function probe(): Promise<void> {\n  await promises.${name}("x");\n}\n`;
+      expect(readOnlyProblems(viaPromises)).toContain(`calls ${name}`);
+    });
+
+    it.each([
+      'import { writeFile } from "node:fs/promises";',
+      'import { readFile } from "fs/promises";',
+      'import * as fs from "node:fs";',
+      'import fs from "fs";',
+      'import { promises } from "node:fs";',
+    ])("negative control: fails on %s", (line) => {
+      expect(readOnlyProblems(`${line}\n${real}`)).not.toEqual([]);
+    });
+
+    /** The real source with `code` put on the line before its `openSync` call. */
+    function beforeOpen(code: string): string {
+      const at = real.indexOf("fd = openSync(");
+      if (at < 0) throw new Error("no openSync call");
+      return `${real.slice(0, at)}${code}\n        ${real.slice(at)}`;
+    }
+
+    // The three edits that passed the earlier form of this check, exactly as found.
+    it.each([
+      [
+        "V08: a local constants shadowing the import",
+        [
+          "// MUTANT: a local `constants` whose O_RDONLY is O_WRONLY | O_CREAT | O_TRUNC (macOS values).",
+          "const constants = { O_RDONLY: 0x601, O_NOFOLLOW: 0, O_NONBLOCK: 0 };",
+        ].join("\n"),
+      ],
+      [
+        "V09: a write reached by element access on a module from getBuiltinModule",
+        [
+          "// MUTANT: a write reached by element access on the module object.",
+          // biome-ignore lint/suspicious/noTemplateCurlyInString: source text for the mutant
+          'process.getBuiltinModule("node:fs")["writeFileSync"](`${real}.verified`, "x");',
+        ].join("\n"),
+      ],
+      [
+        "V10: a renamed writer and a promises open for writing, from getBuiltinModule",
+        [
+          "// MUTANT: a writer destructured under another name, and a promises open for writing.",
+          'const { appendFileSync: add, promises: p } = process.getBuiltinModule("node:fs");',
+          // biome-ignore lint/suspicious/noTemplateCurlyInString: source text for the mutant
+          'add(`${real}.verified`, "x");',
+          // biome-ignore lint/suspicious/noTemplateCurlyInString: source text for the mutant
+          'void p.open(`${real}.verified2`, "w");',
+        ].join("\n"),
+      ],
+    ])("negative control: fails on %s", (_name, code) => {
+      const mutated = beforeOpen(code);
+      expect(mutated).not.toBe(real);
+      expect(readOnlyProblems(mutated)).not.toEqual([]);
+    });
+
+    it.each([
+      [
+        "a local constants",
+        "const constants = { O_RDONLY: 0 };",
+        "binds constants other than from node:fs",
+      ],
+      [
+        "a parameter named constants",
+        "const f = (constants: { O_RDONLY: number }) => constants;",
+        "binds constants other than from node:fs",
+      ],
+      [
+        "a destructured constants",
+        "const { constants } = { constants: { O_RDONLY: 0 } };",
+        "binds constants other than from node:fs",
+      ],
+      [
+        "a local openSync",
+        "const openSync = (p: string, f: number) => f;",
+        "binds openSync other than from node:fs",
+      ],
+      [
+        "a function named openSync",
+        "function openSync(p: string, f: number): number { return f; }",
+        "binds openSync other than from node:fs",
+      ],
+      ["a dynamic import", 'void import("node:fs");', "imports dynamically"],
+      [
+        "process.getBuiltinModule",
+        'process.getBuiltinModule("node:fs");',
+        "reaches getBuiltinModule",
+      ],
+      ["module.createRequire", 'module.createRequire("/x")("node:fs");', "reaches createRequire"],
+      ["a bare createRequire", 'createRequire("/x")("node:fs");', "reaches createRequire"],
+      ["process.binding", 'process.binding("fs");', "reaches binding"],
+      ["process._linkedBinding", 'process._linkedBinding("fs");', "reaches _linkedBinding"],
+      ["eval", 'eval("1");', "reaches eval"],
+      ["new Function", 'new Function("return 1")();', "reaches Function"],
+      ["Function called", 'Function("return 1")();', "reaches Function"],
+      [
+        "a string-keyed element access",
+        'const k = globalThis["process"];',
+        "indexes by a string key",
+      ],
+      [
+        "a template-keyed element access",
+        "const k = globalThis[`process`];",
+        "indexes by a string key",
+      ],
+      ["new WriteStream", 'new WriteStream("x");', "calls WriteStream"],
+      ["a promises open", 'void promises.open("x", "w");', "calls open"],
+      ["lchown", 'lchown("x", 0, 0, () => {});', "calls lchown"],
+      ["fdatasync", "fdatasync(1, () => {});", "calls fdatasync"],
+    ])("negative control: fails on %s", (_name, code, problem) => {
+      expect(readOnlyProblems(beforeOpen(code))).toContain(problem);
+    });
+
+    it("negative control: fails when constants is used without the node:fs import", () => {
+      const without = real.replace("  constants,\n", "");
+      expect(without).not.toBe(real);
+      expect(readOnlyProblems(without)).toContain(
+        "uses constants without importing it from node:fs",
+      );
+    });
+
+    it("numeric element access stays allowed, and so do the real file's three computed keys", () => {
+      expect(readOnlyProblems(beforeOpen("const first = [1][0]; void first;"))).toEqual([]);
+      // `args[i]`, `env[key]` and `out[key]` are the real file's own accesses, allowed by name.
+      expect(readOnlyProblems(real)).toEqual([]);
+    });
+
+    it.each([
+      ["a key held in a variable", "const k = 'a'; const o = {}; void o[k as never];"],
+      ["a key built by joining", "const o = {}; void o[['a', 'b'].join('') as never];"],
+      ["an allowed name on another object", "const k = 'a'; void globalThis[k as never];"],
+    ])("negative control: fails on a computed key: %s", (_name, code) => {
+      const problems = readOnlyProblems(beforeOpen(code));
+      expect(problems.some((p) => p.startsWith("indexes by a computed key"))).toBe(true);
+    });
+
+    // The edits of the fourth review that passed the previous form of this check, as found.
+    it.each([
+      [
+        "B1: computed keys built by joining, to reach getBuiltinModule and a writer",
+        [
+          'const route = ["getBuilt", "inModule"].join("") as "getBuiltinModule";',
+          'const writer = ["write", "FileSync"].join("") as "writeFileSync";',
+          // biome-ignore lint/suspicious/noTemplateCurlyInString: source text for the mutant
+          'process[route]("node:fs")[writer](`${real}.verified`, "x");',
+        ].join("\n"),
+        "indexes by a computed key",
+      ],
+      [
+        "B2b: Reflect.get and Reflect.apply with the module typed loosely",
+        [
+          'const getModule = Reflect.get(process, "getBuiltinModule") as (id: string) => object;',
+          'const fsModule = getModule("node:fs");',
+          // biome-ignore lint/suspicious/noTemplateCurlyInString: source text for the mutant
+          'Reflect.apply(Reflect.get(fsModule, "appendFileSync"), fsModule, [`${real}.verified`, "x"]);',
+        ].join("\n"),
+        "reaches Reflect",
+      ],
+      [
+        "B3: the Function constructor reached through .constructor",
+        [
+          "const makeFn = (() => 0).constructor as (...args: string[]) => (p: string) => void;",
+          // biome-ignore lint/suspicious/noTemplateCurlyInString: source text for the mutant
+          'makeFn("p", \'process.getBuiltinModule("node:fs").writeFileSync(p, "x")\')(`${real}.verified`);',
+        ].join("\n"),
+        "reaches constructor",
+      ],
+    ])("negative control: fails on %s", (_name, code, problem) => {
+      const mutated = beforeOpen(code);
+      expect(mutated).not.toBe(real);
+      expect(readOnlyProblems(mutated).some((p) => p.startsWith(problem))).toBe(true);
+    });
+
+    // The edits of the fifth review that passed the previous form of this check, as found.
+    it.each([
+      [
+        "R1: the real file's computed-key names, reused in another function",
+        [
+          "type Fn = (...args: unknown[]) => Record<string, Fn>;",
+          "const env = process as unknown as Record<string, Fn>;",
+          'let key = ["getBuilt", "inModule"].join("");',
+          'const out = env[key]?.("node:fs") as Record<string, Fn>;',
+          'key = ["write", "FileSync"].join("");',
+          // biome-ignore lint/suspicious/noTemplateCurlyInString: source text for the mutant
+          'out[key]?.(`${real}.verified`, "x");',
+        ].join("\n"),
+        "indexes by a computed key",
+      ],
+      [
+        "R3: getOwnPropertyDescriptor with .call",
+        [
+          'const getModule = Object.getOwnPropertyDescriptor(process, "getBuiltinModule")?.value;',
+          'const fsModule = getModule.call(process, "node:fs");',
+          // biome-ignore lint/suspicious/noTemplateCurlyInString: source text for the mutant
+          'Object.getOwnPropertyDescriptor(fsModule, "appendFileSync")?.value.apply(fsModule, [`${real}.verified`, "x"]);',
+        ].join("\n"),
+        "reaches getOwnPropertyDescriptor",
+      ],
+      [
+        "R10: execFile called outside realExec, to start a program that writes",
+        // biome-ignore lint/suspicious/noTemplateCurlyInString: source text for the mutant
+        'execFile("/usr/bin/touch", [`${real}.verified`], () => {});',
+        "uses execFile in",
+      ],
+    ])("negative control: fails on %s", (_name, code, problem) => {
+      const mutated = beforeOpen(code);
+      expect(mutated).not.toBe(real);
+      expect(readOnlyProblems(mutated).some((p) => p.startsWith(problem))).toBe(true);
+    });
+
+    /** The real file's one import from a process module, exactly as the check allows it. */
+    const EXEC_IMPORT = 'import { execFile } from "node:child_process";';
+
+    /** The real source with its `execFile` import replaced by `line`. */
+    function withExecImport(line: string): string {
+      const replaced = real.replace(EXEC_IMPORT, line);
+      if (replaced === real) throw new Error("no execFile import");
+      return replaced;
+    }
+
+    /** `base` with `code` put on the line before its `openSync` call. */
+    function beforeOpenIn(base: string, code: string): string {
+      const at = base.indexOf("fd = openSync(");
+      if (at < 0) throw new Error("no openSync call");
+      return `${base.slice(0, at)}${code}\n        ${base.slice(at)}`;
+    }
+
+    it("the real file imports from a process module once, exactly as allowed", () => {
+      expect(real.split(EXEC_IMPORT)).toHaveLength(2);
+      expect(readOnlyProblems(real)).toEqual([]);
+    });
+
+    // The process-module edits that passed the previous form of this check, as found: each
+    // starts a program that writes, past an `execFile` check that read only that one name.
+    it.each([
+      [
+        "P1: execFile imported a second time under another name",
+        withExecImport('import { execFile, execFile as ef } from "node:child_process";'),
+        'ef("/usr/bin/touch", ["/tmp/x"], () => {});',
+        "renames execFile from node:child_process",
+      ],
+      [
+        "P2: execFileSync",
+        withExecImport('import { execFile, execFileSync } from "node:child_process";'),
+        'execFileSync("/usr/bin/touch", ["/tmp/x"]);',
+        "imports execFileSync from node:child_process",
+      ],
+      [
+        "P3: spawnSync",
+        withExecImport('import { execFile, spawnSync } from "node:child_process";'),
+        'spawnSync("/usr/bin/touch", ["/tmp/x"]);',
+        "imports spawnSync from node:child_process",
+      ],
+      [
+        "P4: a default import",
+        `import cp from "node:child_process";\n${real}`,
+        'cp.spawnSync("/usr/bin/touch", ["/tmp/x"]);',
+        "imports node:child_process whole",
+      ],
+      [
+        "P5: a namespace import",
+        `import * as cpn from "node:child_process";\n${real}`,
+        'cpn.spawn("/usr/bin/touch", ["/tmp/x"]);',
+        "imports node:child_process as a namespace",
+      ],
+      [
+        "P6: new Worker, from worker_threads",
+        `import { Worker } from "node:worker_threads";\n${real}`,
+        'new Worker("/tmp/x.js");',
+        "loads node:worker_threads",
+      ],
+    ])("negative control: fails on %s", (_name, base, code, problem) => {
+      const mutated = beforeOpenIn(base, code);
+      expect(mutated).not.toBe(real);
+      expect(readOnlyProblems(mutated)).toContain(problem);
+    });
+
+    /** Every use of a starter name in `source`, keyed as `PINNED_STARTER_USES` keys them. */
+    function starterUsesIn(source: string): Record<string, number> {
+      const file = ts.createSourceFile("verify-io.ts", source, ts.ScriptTarget.Latest, true);
+      const uses: Record<string, number> = {};
+      const visit = (node: ts.Node): void => {
+        if (ts.isIdentifier(node) && STARTER_NAMES.has(node.text)) {
+          const use = starterUse(node, file);
+          if (use !== undefined) uses[use] = (uses[use] ?? 0) + 1;
+        }
+        ts.forEachChild(node, visit);
+      };
+      visit(file);
+      return uses;
+    }
+
+    it("the real file uses each name that starts a program exactly where, and as often as, pinned", () => {
+      expect(starterUsesIn(real)).toEqual(PINNED_STARTER_USES);
+    });
+
+    /** The real source with `code` put on the line before `anchor`, inside its function. */
+    function withCodeAt(anchor: string, code: string): string {
+      if (real.split(anchor).length !== 2) throw new Error(`no single ${anchor}`);
+      return real.replace(anchor, `${code}\n    ${anchor}`);
+    }
+
+    /** Inside `git`, before it runs git; inside `run`, before it calls `exec`. */
+    const IN_GIT = "const result = await run(git,";
+    const IN_RUN = "const result = await exec(file,";
+    const OPTIONS =
+      '{ env: {}, timeout: 1000, maxBuffer: 1024, shell: false, windowsHide: true, encoding: "utf8" }';
+
+    // The edits that passed the previous form of this check, as found: each starts a program
+    // through the seam's own names, or loads native code, past a check that read only
+    // `execFile`.
+    it.each([
+      [
+        "Q1: realExec called outside run, with a writer",
+        beforeOpen(`void realExec("/usr/bin/touch", ["/tmp/x"], ${OPTIONS});`),
+        "uses realExec in readFile, called",
+      ],
+      [
+        "Q2: the exec seam called outside run, with a writer",
+        beforeOpen(`void exec("/usr/bin/touch", ["/tmp/x"], ${OPTIONS});`),
+        "uses exec in readFile, called",
+      ],
+      [
+        "Q3: process.dlopen of a native addon",
+        beforeOpen('process.dlopen({ exports: {} }, "/tmp/x.node");'),
+        "reaches dlopen",
+      ],
+      [
+        "Q4: programPath of another program",
+        beforeOpen('void programPath("touch");'),
+        'uses programPath in readFile, called("touch")',
+      ],
+      [
+        "Q5: realExec passed as a value",
+        beforeOpen("void [realExec].map((f) => f);"),
+        "uses realExec in readFile, as a value",
+      ],
+    ])("negative control: fails on %s", (_name, mutated, problem) => {
+      expect(mutated).not.toBe(real);
+      expect(readOnlyProblems(mutated)).toContain(problem);
+    });
+
+    it.each([
+      [
+        "run called outside git and processNames",
+        beforeOpen('void run("/usr/bin/touch", ["/tmp/x"], undefined);'),
+        "uses run in readFile, called",
+      ],
+      [
+        "run called once more inside git",
+        withCodeAt(IN_GIT, 'void run("/usr/bin/touch", ["/tmp/x"], cwd);'),
+        "uses run in git, called",
+      ],
+      [
+        "programPath finding another program inside git",
+        withCodeAt(IN_GIT, 'const other = programPath("touch");'),
+        'uses programPath in git, called("touch")',
+      ],
+      [
+        "exec called once more inside run",
+        withCodeAt(IN_RUN, `void exec("/usr/bin/touch", ["/tmp/x"], ${OPTIONS});`),
+        "uses exec in run, called",
+      ],
+      [
+        "the exec option called directly",
+        beforeOpen(`void options.exec?.("/usr/bin/touch", ["/tmp/x"], ${OPTIONS});`),
+        "uses exec in readFile, as a property of options",
+      ],
+      [
+        "realExec given another name",
+        beforeOpen("const start = realExec;"),
+        "uses realExec in readFile, as a value",
+      ],
+      [
+        "run called through call",
+        beforeOpen('void run.call(undefined, "/usr/bin/touch", ["/tmp/x"], undefined);'),
+        "uses run in readFile, as a value",
+      ],
+      [
+        "exec taken out of the options",
+        beforeOpen("const { exec: start } = options;"),
+        "uses exec in readFile, as a value",
+      ],
+      [
+        "process.dlopen by a string key",
+        beforeOpen('process["dlopen"]({ exports: {} }, "/tmp/x.node");'),
+        "indexes by a string key",
+      ],
+    ])("negative control: fails on a program started through the seam: %s", (_name, mutated, problem) => {
+      expect(mutated).not.toBe(real);
+      expect(readOnlyProblems(mutated)).toContain(problem);
+    });
+
+    it.each([
+      [
+        "execFile only, renamed",
+        withExecImport('import { execFile as run } from "node:child_process";'),
+        "renames execFile from node:child_process",
+      ],
+      [
+        "execFile from child_process without node:",
+        withExecImport('import { execFile } from "child_process";'),
+        "loads child_process",
+      ],
+      [
+        "another starter bound to the name execFile",
+        withExecImport('import { spawn as execFile } from "node:child_process";'),
+        "renames spawn from node:child_process",
+      ],
+      [
+        "a default import beside execFile",
+        withExecImport('import cp, { execFile } from "node:child_process";'),
+        "imports node:child_process whole",
+      ],
+      [
+        "execFile imported as a type",
+        withExecImport('import type { execFile } from "node:child_process";'),
+        "imports node:child_process other than { execFile }",
+      ],
+      [
+        "execFile marked as a type",
+        withExecImport('import { type execFile } from "node:child_process";'),
+        "imports node:child_process other than { execFile }",
+      ],
+      [
+        "a type beside execFile",
+        withExecImport('import { type ChildProcess, execFile } from "node:child_process";'),
+        "imports ChildProcess from node:child_process",
+      ],
+      [
+        "a type-only import",
+        `import type { ExecFileOptions } from "node:child_process";\n${real}`,
+        "imports ExecFileOptions from node:child_process",
+      ],
+      [
+        "a bare import",
+        `import "node:child_process";\n${real}`,
+        "imports node:child_process other than { execFile }",
+      ],
+      [
+        "an import with empty braces",
+        `import {} from "node:child_process";\n${real}`,
+        "imports node:child_process other than { execFile }",
+      ],
+      ["vm", `import { runInNewContext } from "node:vm";\n${real}`, "loads node:vm"],
+      ["cluster", `import cluster from "node:cluster";\n${real}`, "loads node:cluster"],
+      [
+        "worker_threads without node:",
+        `import { Worker } from "worker_threads";\n${real}`,
+        "loads worker_threads",
+      ],
+      [
+        "a re-export from child_process",
+        `${real}\nexport { spawn } from "node:child_process";\n`,
+        "re-exports from node:child_process",
+      ],
+      ["a re-export from vm", `${real}\nexport * from "node:vm";\n`, "re-exports from node:vm"],
+      [
+        "import = require",
+        `import cp = require("node:child_process");\n${real}`,
+        "imports with import = require",
+      ],
+    ])("negative control: fails on a process-module import: %s", (_name, mutated, problem) => {
+      expect(mutated).not.toBe(real);
+      expect(readOnlyProblems(mutated)).toContain(problem);
+    });
+
+    it("the real file's own computed keys pass only in their own functions, once each", () => {
+      expect(readOnlyProblems(real)).toEqual([]);
+      // One more `env[key]` inside gitEnvironment is one too many.
+      const twice = real.replace(
+        "    const value = env[key];",
+        "    void env[key];\n    const value = env[key];",
+      );
+      expect(twice).not.toBe(real);
+      expect(readOnlyProblems(twice).some((p) => p.startsWith("indexes by a computed key"))).toBe(
+        true,
+      );
+    });
+
+    /**
+     * Every reason the local modules `verify-io.ts` imports could hand it a writer: a local import
+     * that is not on the list, or a listed module, or any module it value-imports or re-exports
+     * in turn, that imports or re-exports from `node:fs`.
+     * `read` returns a listed module's source, so a test can give a changed one in memory.
+     */
+    function localModuleProblems(
+      source: string,
+      read: (path: string) => string = (path) => readFileSync(path, "utf8"),
+    ): string[] {
+      const problems: string[] = [];
+      for (const { specifier } of parseImports(source)) {
+        if (!specifier.startsWith(".")) continue;
+        const path = LOCAL_IMPORTS[specifier];
+        if (path === undefined) {
+          problems.push(`imports local module ${specifier}`);
+          continue;
+        }
+        // The listed module and every module it value-imports or re-exports in turn.
+        const seen = new Set<string>();
+        const queue = [path];
+        while (queue.length > 0) {
+          const file = queue.pop() as string;
+          if (seen.has(file)) continue;
+          seen.add(file);
+          const module = read(file);
+          const name = relative(SRC, file);
+          for (const writer of fsWritersIn(module)) problems.push(`${name} hands on ${writer}`);
+          for (const imported of parseImports(module)) {
+            if (/^(node:)?fs(\/promises)?$/.test(imported.specifier)) {
+              problems.push(`${name} loads ${imported.specifier}`);
+            }
+            if (PROCESS_MODULES.test(imported.specifier)) {
+              problems.push(`${name} loads ${imported.specifier}`);
+            }
+            if (!imported.typeOnly && imported.specifier.startsWith(".")) {
+              queue.push(join(dirname(file), imported.specifier.replace(/\.js$/, ".ts")));
+            }
+          }
+        }
+      }
+      return problems;
+    }
+
+    it("its local imports are the listed modules, and nothing they load loads node:fs", () => {
+      expect(localModuleProblems(real)).toEqual([]);
+      expect(
+        parseImports(real)
+          .map((i) => i.specifier)
+          .filter((s) => s.startsWith("."))
+          .sort(),
+      ).toEqual(Object.keys(LOCAL_IMPORTS).sort());
+    });
+
+    it("negative control, R11: a listed module re-exports a process starter", () => {
+      const PATHS = LOCAL_IMPORTS["./core/verify/paths.js"] as string;
+      for (const from of [
+        "node:child_process",
+        "child_process",
+        "node:worker_threads",
+        "node:vm",
+        "node:cluster",
+      ]) {
+        const changed = `${readFileSync(PATHS, "utf8")}\nexport { execFileSync as put } from "${from}";\n`;
+        const read = (path: string): string =>
+          path === PATHS ? changed : readFileSync(path, "utf8");
+        expect(localModuleProblems(real, read)).toContain(`core/verify/paths.ts loads ${from}`);
+      }
+    });
+
+    it("negative control, B4: a writer re-exported from a listed module, imported and called", () => {
+      const PATHS = LOCAL_IMPORTS["./core/verify/paths.js"] as string;
+      const pathsWithWriter = `${readFileSync(PATHS, "utf8")}\nexport { writeFileSync as put } from "node:fs";\n`;
+      const read = (path: string): string =>
+        path === PATHS ? pathsWithWriter : readFileSync(path, "utf8");
+      const verifyWithPut = beforeOpen(
+        // biome-ignore lint/suspicious/noTemplateCurlyInString: source text for the mutant
+        'put(`${real}.verified`, "x");',
+      ).replace(
+        'from "./core/verify/paths.js";',
+        'from "./core/verify/paths.js";\nimport { put } from "./core/verify/paths.js";',
+      );
+      expect(verifyWithPut).not.toBe(real);
+      expect(localModuleProblems(verifyWithPut, read)).toContain(
+        "core/verify/paths.ts hands on writeFileSync",
+      );
+      // The whole-bundle writer check sees the re-export too.
+      expect(fsWritersIn(pathsWithWriter)).toContain("writeFileSync");
+      // And verify-io.ts may not re-export from node:fs itself, nor import an unlisted module.
+      expect(readOnlyProblems(`${real}\nexport { writeFileSync } from "node:fs";\n`)).toContain(
+        "re-exports from node:fs",
+      );
+      expect(readOnlyProblems(`import { x } from "./core/other.js";\n${real}`)).toContain(
+        "imports local module ./core/other.js",
+      );
+    });
+
+    it("negative control: fails on require, and on a file that never opens", () => {
+      expect(readOnlyProblems(`${real}\nconst fs = require("node:fs");\n`)).toContain(
+        "calls require",
+      );
+      expect(readOnlyProblems('import { statSync } from "node:fs";\nstatSync("x");\n')).toEqual([
+        "never calls openSync",
+      ]);
+    });
+  });
+
+  it("the scrub command's own modules change no file", () => {
+    for (const module of ["commands/scan-scrub.ts", "core/scrub-transcripts.ts"]) {
+      expect(fsWriters(join(SRC, ...module.split("/")))).toEqual([]);
+    }
   });
 });
 

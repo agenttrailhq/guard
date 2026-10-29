@@ -43,11 +43,11 @@
  */
 
 import { unhandledAgent } from "./agent.js";
-import { codexSessionCalls } from "./codex-transcript/scan.js";
+import { codexSessionCalls, mapCodexSessionTool } from "./codex-transcript/scan.js";
 import { type EvaluatedCandidate, strictestCandidate } from "./cursor-emit.js";
 import type { CursorCandidates } from "./cursor-mapper.js";
 import type { CursorLineCounts } from "./cursor-transcript/parse.js";
-import { cursorSessionCalls } from "./cursor-transcript/scan.js";
+import { cursorSessionCalls, mapCursorSessionTool } from "./cursor-transcript/scan.js";
 import type { CompiledAllowlist } from "./evaluate.js";
 import { evaluateCall } from "./evaluate.js";
 import { mapToolCall, TRUNCATION_MARKER } from "./mapper.js";
@@ -60,9 +60,10 @@ import { redactSecrets } from "./redact-secrets.js";
 import type { CompiledRule } from "./rules.js";
 import { scrubText } from "./scrub.js";
 import { addUsage, EMPTY_TOKEN_TOTALS, type TokenTotals } from "./tokens.js";
-import type { ParsedSession } from "./transcript/transcript-types.js";
-import { toolCallsOf } from "./transcripts.js";
+import type { ParsedSession, ToolUse } from "./transcript/transcript-types.js";
+import { toolCallPayload, toolCallsOf } from "./transcripts.js";
 import type { AgentSource, GuardAction, GuardRule, MappedCall } from "./types.js";
+import type { Verification } from "./verify/types.js";
 
 /**
  * The four redactors, composed in the one order that is correct.
@@ -352,6 +353,11 @@ export interface ScanResult {
   readonly tokens: TokenTotals | null;
   /** What was read but not evaluated, by kind, for a reader that counts it. */
   readonly skipped?: ScanSkipped;
+  /**
+   * What `scan --verify` found when it checked the matches against this machine. Absent when
+   * verification did not run. Value-free: counts and fixed enums only (`verify/types.ts`).
+   */
+  readonly verification?: Verification;
 }
 
 /**
@@ -393,6 +399,11 @@ export interface ScanCorpus {
   readonly projects: number;
   /** What the reader could not use. The Cursor and Codex readers set it. */
   readonly skipped?: ReaderSkips;
+  /**
+   * Every transcript file the reader read to the end, as a path. Verification reads them again
+   * for what the parsed sessions do not keep. Never part of `ScanResult`.
+   */
+  readonly files?: readonly string[];
 }
 
 /** Nothing skipped. */
@@ -421,6 +432,25 @@ export function evaluateAction(
   });
   const [first, ...rest] = candidates;
   return strictestCandidate([evaluate(first), ...rest.map(evaluate)]);
+}
+
+/**
+ * What one tool use is evaluated as, for one app: the same mapping `aggregateScan` applies to
+ * the session the use came from. One or more, since one Codex shim call can hold several.
+ *
+ * A checked switch, like `sessionCallsFor`.
+ */
+export function toolUseCalls(agent: AgentSource, use: ToolUse): readonly SessionToolCall[] {
+  switch (agent) {
+    case "claude":
+      return [{ kind: "action", candidates: [mapToolCall(toolCallPayload(use))] }];
+    case "cursor":
+      return [mapCursorSessionTool(use)];
+    case "codex":
+      return mapCodexSessionTool(use);
+    default:
+      return unhandledAgent(agent);
+  }
 }
 
 /** Every tool call in a Claude Code session, each mapped as the hook maps it. */
@@ -501,6 +531,8 @@ export function aggregateScan(
    * them. Empty by default, so a caller that passes nothing gets no library text at all.
    */
   shipped: ReadonlySet<GuardRule> = new Set(),
+  /** What `scan --verify` found, carried onto the result as it is. */
+  verification?: Verification,
 ): ScanResult {
   // A corpus with no `agent` is Claude Code's: `readCorpus` predates the field and
   // every other reader stamps its own.
@@ -670,6 +702,7 @@ export function aggregateScan(
     // Withheld, not zeroed, when the records carry no counts: a total of 0 is a
     // measurement nobody made.
     tokens: capabilities.tokens ? tokens : null,
+    ...(verification === undefined ? {} : { verification }),
   };
   if (!capabilities.skips) return result;
 

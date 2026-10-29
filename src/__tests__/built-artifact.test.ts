@@ -35,6 +35,7 @@ import {
   mkdtempSync,
   readdirSync,
   readFileSync,
+  statSync,
   writeFileSync,
 } from "node:fs";
 import { homedir, tmpdir, userInfo } from "node:os";
@@ -46,6 +47,8 @@ import { NOT_CHECKED_MESSAGE } from "../commands/hook.js";
 import { silenceCommand } from "../commands/status.js";
 import { RELAY_INSTRUCTION } from "../core/cursor-emit.js";
 import { PRODUCT_NOTE } from "../core/report.js";
+import { decodedSurfaces } from "./html-text.js";
+import { writeCorpus } from "./verify-fixtures.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PKG_ROOT = join(HERE, "..", "..");
@@ -1168,29 +1171,60 @@ describe("scan, against the built binary", () => {
   });
 
   // ── The plugin's scan-only bundle, as the share-report skill runs it ──────────
-  const stripTimes = (path: string): string =>
-    readFileSync(path, "utf8").replace(/\d{4}-\d{2}-\d{2}T[\d:.]+Z/g, "<time>");
 
   it("the plugin's scan bundle writes the same page content as the CLI", () => {
     const { projects, work } = fixture();
     const fromBundle = join(work, "bundle.html");
     const fromCli = join(work, "cli.html");
+    // Both runs on one fixed clock, so every time the page prints (the generated time, the
+    // title's date, the data block, the guardrail library's age) is the same in both, whatever
+    // the minute or the day the test runs on.
+    const clock = {
+      cwd: work,
+      encoding: "utf8" as const,
+      env: { ...process.env, AGENTTRAIL_TEST_NOW: "2026-10-01T09:00:00.000Z" },
+    };
+    const fixedClock = ["--import", join(HERE, "preload", "fixed-clock.mjs")];
     const a = spawnSync(
       "node",
-      [SCAN_BUNDLE, "--agent", "claude", "--dir", projects, "--artifact", "--out", fromBundle],
-      { cwd: work, encoding: "utf8" },
+      [
+        ...fixedClock,
+        SCAN_BUNDLE,
+        "--agent",
+        "claude",
+        "--dir",
+        projects,
+        "--artifact",
+        "--out",
+        fromBundle,
+      ],
+      clock,
     );
     const b = spawnSync(
       "node",
-      [CLI_BUNDLE, "scan", "--agent", "claude", "--dir", projects, "--artifact", "--out", fromCli],
-      { cwd: work, encoding: "utf8" },
+      [
+        ...fixedClock,
+        CLI_BUNDLE,
+        "scan",
+        "--agent",
+        "claude",
+        "--dir",
+        projects,
+        "--artifact",
+        "--out",
+        fromCli,
+      ],
+      clock,
     );
     expect(a.status, a.stderr).toBe(0);
     expect(b.status, b.stderr).toBe(0);
-    const page = stripTimes(fromBundle);
+    const page = readFileSync(fromBundle, "utf8");
+    // The clock took: the page states the fixed time, not this run's.
+    expect(page).toContain("2026-10-01T09:00:00.000Z");
+    expect(page).toContain("1 Oct 2026, 09:00 UTC");
     expect(page.startsWith("<title>")).toBe(true);
     expect(page).not.toMatch(/<!doctype|<html\b|<head\b|<body\b/i);
-    expect(page).toBe(stripTimes(fromCli));
+    expect(page).toBe(readFileSync(fromCli, "utf8"));
   });
 
   it("the plugin's scan bundle takes a --review answer from stdin, as a terminal user gives it", () => {
@@ -1204,6 +1238,408 @@ describe("scan, against the built binary", () => {
     expect(r.status, r.stderr).toBe(0);
     expect(r.stdout).toContain("Review — everything this report will contain.");
     expect(readFileSync(out, "utf8").startsWith("<title>")).toBe(true);
+  });
+
+  it.each([
+    ["--scrub"],
+    ["--scrub", "--apply"],
+    ["--apply"],
+  ])("the plugin's scan bundle carries no scrub, and refuses %s", (...flags) => {
+    // The run is left out of the bundle, not only refused: none of its code is in the file.
+    const bundle = readFileSync(SCAN_BUNDLE, "utf8");
+    for (const name of [
+      "function runScrub(",
+      "function createRealScrubIO(",
+      "function scrubPlaceholder(",
+    ]) {
+      expect(bundle).not.toContain(name);
+      // The CLI carries it, so the names are the right ones to look for.
+      expect(readFileSync(CLI_BUNDLE, "utf8")).toContain(name);
+    }
+    const { projects, work } = fixture();
+    const transcript = join(
+      projects,
+      "-Users-priya-clients-acme-secret-client-app",
+      "built-1.jsonl",
+    );
+    const before = readFileSync(transcript, "utf8");
+    const r = spawnSync("node", [SCAN_BUNDLE, "--agent", "claude", "--dir", projects, ...flags], {
+      cwd: work,
+      encoding: "utf8",
+      env: { ...process.env, HOME: work },
+    });
+    expect(r.status).toBe(1);
+    expect(r.stdout).toBe(
+      "agenttrail-guard scan: --scrub and --apply are not available here. Run them with the agenttrail-guard CLI.\n",
+    );
+    expect(readFileSync(transcript, "utf8")).toBe(before);
+    expect(existsSync(join(work, ".agenttrail"))).toBe(false);
+  });
+
+  it("the plugin's scan bundle does not offer --scrub or --apply in its usage; the CLI does", () => {
+    const plugin = spawnSync("node", [SCAN_BUNDLE, "--help"], { encoding: "utf8" });
+    const unknown = spawnSync("node", [SCAN_BUNDLE, "--not-a-flag"], { encoding: "utf8" });
+    const cli = spawnSync("node", [CLI_BUNDLE, "scan", "--help"], { encoding: "utf8" });
+    expect(plugin.status).toBe(0);
+    expect(unknown.status).toBe(1);
+    expect(cli.status).toBe(0);
+    for (const usage of [plugin.stdout, unknown.stdout, cli.stdout]) {
+      expect(usage).toContain("--no-checks");
+    }
+    for (const flag of ["--scrub", "--apply", "scrub-backups"]) {
+      expect(plugin.stdout).not.toContain(flag);
+      expect(unknown.stdout).not.toContain(flag);
+      expect(cli.stdout).toContain(flag);
+    }
+  });
+
+  it("scan --verify, from both bundles: no network call, nothing in HOME, no value printed or written", () => {
+    // The verify path runs `git` in a real repo and reads the transcript again. Its token is
+    // assembled at runtime and made up.
+    const base = mkdtempSync(join(tmpdir(), "agenttrail-guard-verify-"));
+    const repo = join(base, "repo");
+    mkdirSync(repo, { recursive: true });
+    execFileSync("git", ["init", "-q"], { cwd: repo });
+    const token = `ghp${"_"}BUILTverify0aB1cD2eF3gH4iJ5kL6mN7oP8q`;
+    const projects = join(base, "projects", "-repo");
+    mkdirSync(projects, { recursive: true });
+    writeFileSync(
+      join(projects, "verify-1.jsonl"),
+      `${[
+        JSON.stringify({
+          type: "user",
+          uuid: "u1",
+          sessionId: "verify-1",
+          cwd: repo,
+          message: { role: "user", content: `deploy with ${token}` },
+        }),
+        JSON.stringify({
+          type: "assistant",
+          uuid: "a1",
+          sessionId: "verify-1",
+          cwd: repo,
+          message: {
+            role: "assistant",
+            content: [
+              {
+                type: "tool_use",
+                id: "t1",
+                name: "Bash",
+                input: { command: `rm -rf ${join(repo, "build")}` },
+              },
+            ],
+          },
+        }),
+        JSON.stringify({
+          type: "user",
+          uuid: "r1",
+          sessionId: "verify-1",
+          cwd: repo,
+          message: {
+            role: "user",
+            content: [{ type: "tool_result", tool_use_id: "t1", content: "" }],
+          },
+        }),
+      ].join("\n")}\n`,
+    );
+
+    for (const [bundle, prefix] of [
+      [CLI_BUNDLE, ["scan"]],
+      [SCAN_BUNDLE, []],
+    ] as const) {
+      const work = mkdtempSync(join(base, "work-"));
+      const home = scratchHome();
+      const log = join(work, "net.log");
+      writeFileSync(log, "");
+      const r = spawnSync(
+        "node",
+        [
+          "--import",
+          join(HERE, "preload", "net-recorder.mjs"),
+          bundle,
+          ...prefix,
+          "--agent",
+          "claude",
+          "--dir",
+          join(base, "projects"),
+          "--verify",
+          "--no-open",
+        ],
+        {
+          cwd: work,
+          encoding: "utf8",
+          env: { ...envWithHome(home), AGENTTRAIL_TEST_NET_LOG: log },
+        },
+      );
+      expect(r.status, r.stderr).toBe(0);
+      expect(readFileSync(log, "utf8")).toBe("");
+      expect(r.stdout).toContain(
+        "Checked on this machine (read-only, offline): 1 likely-real credential in 1 transcript file",
+      );
+      expect(r.stdout).toContain("1 matched call ran");
+      expect(`${r.stdout}${r.stderr}`).not.toContain("BUILTverify");
+      expect(readFileSync(join(work, "agenttrail-guard-report.html"), "utf8")).not.toContain(
+        "BUILTverify",
+      );
+      expect(readdirSync(home)).toEqual([]);
+    }
+  });
+
+  it("a plain scan verifies by default, from both bundles: no network call, nothing in HOME; --no-checks skips it", () => {
+    // The checks run with no flag at all. The repo, the transcript and its token are made up.
+    const base = mkdtempSync(join(tmpdir(), "agenttrail-guard-default-"));
+    // The repo folder and the IAM user carry names of their own, so either one printed or
+    // written anywhere is found.
+    const repoName = "builtREPOname";
+    const userName = "builtUSERname";
+    const repo = join(base, repoName);
+    mkdirSync(repo, { recursive: true });
+    execFileSync("git", ["init", "-q"], { cwd: repo });
+    const token = `ghp${"_"}BUILTdefault0aB1cD2eF3gH4iJ5kL6mN7oP8`;
+    const projects = join(base, "projects", `-${repoName}`);
+    mkdirSync(projects, { recursive: true });
+    writeFileSync(
+      join(projects, "default-1.jsonl"),
+      `${[
+        JSON.stringify({
+          type: "user",
+          uuid: "u1",
+          sessionId: "default-1",
+          cwd: repo,
+          message: { role: "user", content: `deploy with ${token}` },
+        }),
+        JSON.stringify({
+          type: "assistant",
+          uuid: "a1",
+          sessionId: "default-1",
+          cwd: repo,
+          message: {
+            role: "assistant",
+            content: [
+              {
+                type: "tool_use",
+                id: "t1",
+                name: "Bash",
+                input: { command: `aws iam create-access-key --user-name ${userName}` },
+              },
+            ],
+          },
+        }),
+        JSON.stringify({
+          type: "user",
+          uuid: "r1",
+          sessionId: "default-1",
+          cwd: repo,
+          message: {
+            role: "user",
+            content: [{ type: "tool_result", tool_use_id: "t1", content: "{}" }],
+          },
+        }),
+      ].join("\n")}\n`,
+    );
+
+    for (const [bundle, prefix] of [
+      [CLI_BUNDLE, ["scan"]],
+      [SCAN_BUNDLE, []],
+    ] as const) {
+      for (const skip of [false, true]) {
+        const work = mkdtempSync(join(base, "work-"));
+        const home = scratchHome();
+        const log = join(work, "net.log");
+        writeFileSync(log, "");
+        const r = spawnSync(
+          "node",
+          [
+            "--import",
+            join(HERE, "preload", "net-recorder.mjs"),
+            bundle,
+            ...prefix,
+            "--agent",
+            "claude",
+            "--dir",
+            join(base, "projects"),
+            "--no-open",
+            ...(skip ? ["--no-checks"] : []),
+          ],
+          {
+            cwd: work,
+            encoding: "utf8",
+            env: { ...envWithHome(home), AGENTTRAIL_TEST_NET_LOG: log },
+          },
+        );
+        expect(r.status, r.stderr).toBe(0);
+        expect(readFileSync(log, "utf8")).toBe("");
+        expect(readdirSync(home)).toEqual([]);
+        const report = readFileSync(join(work, "agenttrail-guard-report.html"), "utf8");
+        for (const name of ["BUILTdefault", repoName]) {
+          expect(`${r.stdout}${r.stderr}${report}`, name).not.toContain(name);
+        }
+        // What the scan prints names no IAM user. The page's command shapes are the
+        // redactor's, as without the checks.
+        expect(`${r.stdout}${r.stderr}`).not.toContain(userName);
+        if (skip) {
+          expect(r.stdout).not.toContain("Checked on this machine");
+          expect(decodedSurfaces(report).data).not.toContain("iamChanges");
+        } else {
+          expect(r.stdout).toContain(
+            "Checked on this machine (read-only, offline): 1 likely-real credential in 1 transcript file",
+          );
+          expect(decodedSurfaces(report).data).toContain("iamChanges");
+          // The exact review command, quoted part by part with the real user name, is for the
+          // local fixes file only. The page shows its redacted shape, with <user> in its place.
+          expect(report).not.toContain("'list-access-keys'");
+          expect(report).toContain("list-access-keys --user-name &lt;user&gt;");
+        }
+      }
+    }
+  });
+
+  it.each([
+    "codex",
+    "cursor",
+  ] as const)("scan --verify for %s, from both bundles: only the report is written, nothing else changes", async (agent) => {
+    // A real repo the sessions name, and synthetic sessions with a made-up token assembled here.
+    const base = mkdtempSync(join(tmpdir(), `agenttrail-guard-verify-${agent}-`));
+    const repo = join(base, "repo");
+    mkdirSync(repo, { recursive: true });
+    execFileSync("git", ["init", "-q"], { cwd: repo });
+    writeFileSync(join(repo, "tracked.txt"), "tracked\n");
+    execFileSync("git", ["add", "tracked.txt"], { cwd: repo });
+    const token = `ghp${"_"}BUILTagents0aB1cD2eF3gH4iJ5kL6mN7oP8q`;
+    const { root } = await writeCorpus(
+      agent,
+      [
+        [
+          { kind: "prompt", text: `deploy with ${token}` },
+          { kind: "call", command: `rm -rf ${join(repo, "build")}`, result: { text: "" } },
+        ],
+      ],
+      { cwd: repo },
+    );
+
+    /** Every file under `dir`, with its size, mtime and mode. */
+    const listing = (dir: string): string[] =>
+      readdirSync(dir, { recursive: true, withFileTypes: true })
+        .map((entry) => {
+          const path = join(entry.parentPath, entry.name);
+          const s = statSync(path);
+          return `${path} ${s.size} ${s.mtimeMs} ${s.mode}`;
+        })
+        .sort();
+    /** Every transcript file's bytes. */
+    const transcripts = (): string[] =>
+      readdirSync(root, { recursive: true, withFileTypes: true })
+        .filter((entry) => entry.isFile())
+        .map((entry) => readFileSync(join(entry.parentPath, entry.name), "utf8"))
+        .sort();
+    const repoBefore = listing(repo);
+    const indexBefore = statSync(join(repo, ".git", "index")).mtimeMs;
+    const transcriptsBefore = transcripts();
+
+    for (const [bundle, prefix] of [
+      [CLI_BUNDLE, ["scan"]],
+      [SCAN_BUNDLE, []],
+    ] as const) {
+      const work = mkdtempSync(join(base, "work-"));
+      const home = scratchHome();
+      const log = join(base, `net-${agent}-${prefix.length}.log`);
+      writeFileSync(log, "");
+      const r = spawnSync(
+        "node",
+        [
+          "--import",
+          join(HERE, "preload", "net-recorder.mjs"),
+          bundle,
+          ...prefix,
+          "--agent",
+          agent,
+          "--dir",
+          root,
+          "--verify",
+          "--no-open",
+        ],
+        {
+          cwd: work,
+          encoding: "utf8",
+          env: { ...envWithHome(home), AGENTTRAIL_TEST_NET_LOG: log },
+        },
+      );
+      expect(r.status, r.stderr).toBe(0);
+      expect(readFileSync(log, "utf8")).toBe("");
+      expect(r.stdout).toContain("Checked on this machine (read-only, offline)");
+      if (agent === "codex") {
+        // The page's one Codex wording, every point of it, from the built bundle.
+        expect(r.stdout.replace(/\s+/g, " ")).toContain(
+          "The Codex reading is limited and unverified: it is tested only on synthetic sessions built from Codex's documented rollout format, never on a real Codex session. A Codex call counted as ran may be one a hook blocked, ids a Codex command printed show as not identified, and no Codex-only finding leads the report.",
+        );
+      } else {
+        expect(r.stdout).toContain("this app records no command output");
+      }
+      expect(`${r.stdout}${r.stderr}`).not.toContain("BUILTagents");
+      // The work folder holds the report and nothing else: no fixes file, no temporary file.
+      expect(readdirSync(work)).toEqual(["agenttrail-guard-report.html"]);
+      expect(readFileSync(join(work, "agenttrail-guard-report.html"), "utf8")).not.toContain(
+        "BUILTagents",
+      );
+      expect(readdirSync(home)).toEqual([]);
+    }
+    // The repo, its index and the transcripts are exactly as they were.
+    expect(listing(repo)).toEqual(repoBefore);
+    expect(statSync(join(repo, ".git", "index")).mtimeMs).toBe(indexBefore);
+    expect(transcripts()).toEqual(transcriptsBefore);
+  });
+
+  it("scan --scrub, from the CLI: a dry run that writes nothing, sends nothing and prints no value", () => {
+    // Only the dry run here: `--apply` depends on which programs are running on the machine
+    // that runs the tests. The token is assembled at runtime and made up. The plugin's scan
+    // bundle carries no scrub, and its refusal is tested above.
+    const base = mkdtempSync(join(tmpdir(), "agenttrail-guard-scrub-"));
+    const token = `ghp${"_"}BUILTscrub0aB1cD2eF3gH4iJ5kL6mN7oP8qR9`;
+    const projects = join(base, "projects", "-repo");
+    mkdirSync(projects, { recursive: true });
+    const transcript = join(projects, "scrub-1.jsonl");
+    const text = `${JSON.stringify({
+      type: "user",
+      uuid: "u1",
+      sessionId: "scrub-1",
+      cwd: join(base, "gone"),
+      message: { role: "user", content: `deploy with ${token}` },
+    })}\n`;
+    writeFileSync(transcript, text);
+
+    for (const [bundle, prefix] of [[CLI_BUNDLE, ["scan"]]] as const) {
+      const work = mkdtempSync(join(base, "work-"));
+      const home = scratchHome();
+      const log = join(work, "net.log");
+      writeFileSync(log, "");
+      const r = spawnSync(
+        "node",
+        [
+          "--import",
+          join(HERE, "preload", "net-recorder.mjs"),
+          bundle,
+          ...prefix,
+          "--agent",
+          "claude",
+          "--dir",
+          join(base, "projects"),
+          "--scrub",
+        ],
+        {
+          cwd: work,
+          encoding: "utf8",
+          env: { ...envWithHome(home), AGENTTRAIL_TEST_NET_LOG: log },
+        },
+      );
+      expect(r.status, r.stderr).toBe(0);
+      expect(readFileSync(log, "utf8")).toBe("");
+      expect(r.stdout).toContain("Nothing is changed without --apply.");
+      expect(r.stdout).toContain("scrub-1.jsonl  1 replacement: 1 github-token");
+      expect(`${r.stdout}${r.stderr}`).not.toContain("BUILTscrub");
+      expect(readFileSync(transcript, "utf8")).toBe(text);
+      expect(readdirSync(home)).toEqual([]);
+      expect(readdirSync(work)).toEqual(["net.log"]);
+    }
   });
 
   it("the plugin's scan bundle makes no network call either", () => {

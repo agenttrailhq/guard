@@ -286,6 +286,8 @@ interface SessionRead {
   readonly readable: boolean;
   readonly unreadableFiles: number;
   readonly counts: CursorLineCounts;
+  /** The session's files that were read to the end. */
+  readonly files: readonly string[];
 }
 
 /** Read one session's files into one session, dated by the files' modification times. */
@@ -293,6 +295,7 @@ async function readSession(io: CursorTranscriptIO, found: FoundSession): Promise
   const turns: Turn[] = [];
   const userPrompts: UserPrompt[] = [];
   const times: number[] = [];
+  const files: string[] = [];
   let counts = NO_LINE_COUNTS;
   let unreadableFiles = 0;
 
@@ -308,6 +311,7 @@ async function readSession(io: CursorTranscriptIO, found: FoundSession): Promise
       for (const prompt of records.userPrompts) userPrompts.push(prompt);
       counts = addLineCounts(counts, records.counts);
       times.push(file.mtimeMs);
+      files.push(file.path);
     } catch {
       // What a file held is used only when it was read to the end.
       unreadableFiles++;
@@ -316,7 +320,7 @@ async function readSession(io: CursorTranscriptIO, found: FoundSession): Promise
 
   const readable = times.length > 0;
   if (!readable || (turns.length === 0 && userPrompts.length === 0)) {
-    return { session: undefined, readable, unreadableFiles, counts };
+    return { session: undefined, readable, unreadableFiles, counts, files };
   }
 
   return {
@@ -335,6 +339,7 @@ async function readSession(io: CursorTranscriptIO, found: FoundSession): Promise
     readable,
     unreadableFiles,
     counts,
+    files,
   };
 }
 
@@ -345,6 +350,7 @@ async function readSession(io: CursorTranscriptIO, found: FoundSession): Promise
  */
 export async function readCursorCorpus(root: string, io: CursorTranscriptIO): Promise<ScanCorpus> {
   const sessions: ParsedSession[] = [];
+  const files: string[] = [];
   let quarantined = 0;
   let projects = 0;
   let notRead = 0;
@@ -367,6 +373,7 @@ export async function readCursorCorpus(root: string, io: CursorTranscriptIO): Pr
       counts = addLineCounts(counts, result.counts);
       if (result.session !== undefined) {
         sessions.push(result.session);
+        for (const path of result.files) files.push(path);
         read++;
       } else if (result.readable) {
         quarantined++;
@@ -390,5 +397,6 @@ export async function readCursorCorpus(root: string, io: CursorTranscriptIO): Pr
     notRead,
     projects,
     skipped,
+    files,
   };
 }

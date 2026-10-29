@@ -50,13 +50,24 @@ import { createColors, hyperlink, shouldUseColor } from "../core/color.js";
 import { parseConfig } from "../core/config.js";
 import { defaultCursorProjectsRoot, readCursorCorpus } from "../core/cursor-transcript/scan.js";
 import { compileAllowlist } from "../core/evaluate.js";
+import {
+  exactFixCount,
+  type FileFix,
+  fixCategories,
+  fixesFileText,
+  hasFileFixes,
+  unsafeFixCategories,
+  unsafeFixCount,
+} from "../core/fixes-file.js";
 import { configPath, productLineStatePath, userRulesPath } from "../core/paths.js";
 import { takeProductLine } from "../core/product-line.js";
 import {
   ARTIFACT_FILENAME,
   actionLabel,
   agentName,
+  boundaryVerification,
   bySeverityThenCount,
+  FIXES_FILENAME,
   MAX_EXAMPLES,
   MAX_ROWS,
   matchTally,
@@ -80,9 +91,21 @@ import { defaultProjectsRoot, scanTranscripts } from "../core/transcript/scan.js
 import type { ParsedSession } from "../core/transcript/transcript-types.js";
 import type { AgentSource, GuardRule } from "../core/types.js";
 import { parseUserRulesData } from "../core/user-rules-data.js";
+import { CODEX_TESTED_ON, CODEX_UNVERIFIED_TEXT } from "../core/verify/copy.js";
+import type { Verification, VerifyIO } from "../core/verify/types.js";
+import {
+  UNAVAILABLE_VERIFY_IO,
+  VERIFY_BY_DEFAULT,
+  type VerifyInput,
+  type VerifyOutcome,
+  verifyScan,
+} from "../core/verify/verify.js";
 import { VERSION } from "../core/version.js";
 import type { ScanIO } from "../scan-io.js";
+import type { ScrubIO } from "../scrub-io.js";
 import { agentChoiceMessage, chosenAgent } from "./agent-choice.js";
+// Type only: the run arrives through `ScanDeps.scrub`, so a bundle without it carries no scrub.
+import type { ScrubRunInput } from "./scan-scrub.js";
 
 /** How many repeats the terminal summary lists. The report carries the rest. */
 const TOP_REPEATS = 5;
@@ -90,11 +113,116 @@ const TOP_REPEATS = 5;
 /** How many findings the terminal summary lists, most serious first. */
 const TOP_FINDINGS = 5;
 
-export const SCAN_USAGE = `agenttrail-guard scan — what your agent has been doing
+/**
+ * The lines of `scan`'s usage about the checks on this machine: whether they run by default,
+ * the flag that changes that, and exactly what they read. Built from `byDefault`, so the text
+ * always matches the switch it describes.
+ */
+function checksUsage(byDefault: boolean): { flags: string; reads: string } {
+  const flags = byDefault
+    ? `  --no-checks    Skip the checks on this machine (on by default). The report then
+                 shows what the guardrails matched, and nothing about what each match did
+  --verify       Run the checks on this machine. They are on by default, so this
+                 changes nothing; it is kept for scripts that pass it. It cannot be
+                 used with --no-checks`
+    : `  --verify       Also run the checks on this machine (off by default)
+  --no-checks    Skip the checks on this machine. They are off by default, so this
+                 changes nothing`;
+  const reads = `Checks on this machine (${byDefault ? "on by default; --no-checks turns them off" : "only with --verify"}).
+Read-only and offline: nothing is written but the report and its local fixes file,
+nothing is sent, nothing is looked up online, no credential is tested, and no
+command from a session is run again.
+They read only:
+  - the transcripts again, for credentials, which are sorted into likely real,
+    committed fixtures, placeholders and local dev data by kind, never by value;
+  - in each git repo a session ran in or pushed from: read-only git (rev-parse,
+    ls-files, for-each-ref, log, stash list), never through a shell, and its
+    git-tracked files, each at most 1 MB, to tell a committed fixture from a real
+    credential;
+  - instruction and memory files, each at most 1 MB: CLAUDE.md, CLAUDE.local.md,
+    AGENTS.md, GEMINI.md, .cursorrules, .windsurfrules and
+    .github/copilot-instructions.md at the top of each repo, the agent's own
+    (~/.claude/CLAUDE.md or ~/.codex/AGENTS.md), and the ones the sessions wrote.
+    In ~/.claude, ~/.codex and ~/.cursor only .md and .mdc files are read.
+    Only whether a file tells the agent to skip checks is kept, never its text;
+  - the test configs the sessions edited, inside their repo and each at most
+    1 MB. Only whether coverage thresholds are set to update themselves
+    (autoUpdate) is kept;
+  - the names of the programs running now (ps, or tasklist on Windows), never
+    their arguments. The list is cut down to known agent apps and tunnel
+    programs as it is read, and only the tunnel programs, such as ngrok or
+    cloudflared, are counted;
+  - whether the folders the sessions ran in, the paths the commands named and
+    each repo's commit hooks exist, never what a hook holds.
+The report and --json carry counts only, never these paths.
+Each git or process call has 5 seconds, and all the checks share 60 seconds. A
+check that cannot finish says so, and never reads as clean.
+They say which matched commands ran and which were only mentioned, and check
+what the commands that ran did: credentials, test thresholds and deleted tests,
+cloud and production changes, pushes straight to main, uploads and tunnels, and
+package installs. Each card shows its numbers and its fix first. Where a command
+that ran, or may have run, could run others the checks do not read (bash -c, a
+script piped into a shell, find -exec, xargs, eval, a substitution, git config
+or hooks), the card ends with one line saying how many could not be confirmed,
+never that nothing ran, and the forms are listed once under "Also checked on
+this machine". A script run by name (bash ./x.sh, source x.sh) is not read.
+Exact fix commands for this machine go to agenttrail-guard-fixes.txt next to the
+report, readable only by you (mode 0600), never into the report or --json.
+${wrapText(CODEX_UNVERIFIED_TEXT, USAGE_WIDTH)}`;
+  return { flags, reads };
+}
+
+/** The width `scan`'s usage is wrapped to. */
+const USAGE_WIDTH = 80;
+
+/**
+ * `text` wrapped at spaces to lines of at most `width` characters, each after `indent`, so a
+ * sentence shared with the page reads the same in the usage.
+ */
+function wrapText(text: string, width: number, indent = ""): string {
+  const lines: string[] = [];
+  let line = "";
+  for (const word of text.split(" ")) {
+    if (line !== "" && indent.length + line.length + 1 + word.length > width) {
+      lines.push(line);
+      line = word;
+    } else line = line === "" ? word : `${line} ${word}`;
+  }
+  if (line !== "") lines.push(line);
+  return lines.map((l) => `${indent}${l}`).join("\n");
+}
+
+/** The usage line and the flags of `--scrub`, which only the CLI carries. */
+function scrubUsage(): { line: string; flags: string } {
+  return {
+    line: "\n  agenttrail-guard scan --agent <claude|cursor|codex> --scrub [--apply] [--dir <root>]",
+    flags: `
+  --scrub        Replace the likely-real credentials in the app's transcripts with
+                 [REDACTED-BY-AGENTTRAIL:<kind>]. Fixtures, placeholders and local
+                 dev values are left alone. A dry run: it says what it would replace,
+                 by kind, never by value, and changes nothing without --apply.
+${wrapText(`Rotate each credential first, then scrub. For Codex this is ${CODEX_TESTED_ON}.`, USAGE_WIDTH, " ".repeat(17))}
+  --apply        With --scrub: make the change. Refuses while the app is running and
+                 skips files changed in the last 5 minutes. Backs up every file first
+                 to a private folder under ~/.agenttrail/scrub-backups/, which still
+                 holds the credentials until you delete it, and replaces each file in
+                 one step, leaving any file that changed since it was read.`,
+  };
+}
+
+/**
+ * `scan`'s usage, for one value of the verify-by-default switch. `scrub` says whether this
+ * build can scrub: the plugin's scanner cannot, so its usage leaves `--scrub` and `--apply` out.
+ */
+export function scanUsage(byDefault: boolean, scrub = true): string {
+  const checks = checksUsage(byDefault);
+  const scrubbing = scrub ? scrubUsage() : { line: "", flags: "" };
+  return `agenttrail-guard scan — what your agent has been doing
 
 Usage:
   agenttrail-guard scan --agent <claude|cursor|codex> [--dir <root>] [--out <file>]
                         [--artifact] [--no-open] [--review] [--json] [--quiet]
+                        [--no-checks | --verify]${scrubbing.line}
 
   --agent <app>  Whose sessions to read, and it is required: claude reads Claude Code's
                  transcripts in ~/.claude/projects, cursor reads Cursor's session files
@@ -112,12 +240,31 @@ Usage:
   --review       Print every command and guardrail the report will contain, and ask
                  before writing it. Redaction is thorough but not a guarantee; this
                  is how you check it yourself before the file exists.
+${checks.flags}${scrubbing.flags}
 
 Reads transcripts already on your disk. No account, nothing uploaded, and no network
 call: the one exception anywhere in this tool is crash reporting, which is off unless
 you turn it on and which a scan never uses.
 Commands and paths are redacted before anything is displayed or written.
+
+${checks.reads}
 `;
+}
+
+/** `scan`'s usage, as the CLI ships it. */
+export const SCAN_USAGE = scanUsage(VERIFY_BY_DEFAULT);
+
+/**
+ * Do the checks on this machine run? `--no-checks` says no, `--verify` says yes, and with
+ * neither the switch decides. The two together are refused before this is asked.
+ */
+export function shouldVerify(
+  flags: Pick<ScanFlags, "verify" | "noChecks">,
+  byDefault: boolean,
+): boolean {
+  if (flags.noChecks) return false;
+  return flags.verify || byDefault;
+}
 
 /** Parsed `scan` flags. */
 export interface ScanFlags {
@@ -140,6 +287,17 @@ export interface ScanFlags {
   readonly help: boolean;
   /** Show everything the report will contain and ask before writing it. */
   readonly review: boolean;
+  /**
+   * `--verify`: run the checks on this machine, read-only. While `VERIFY_BY_DEFAULT` is on it
+   * changes nothing.
+   */
+  readonly verify: boolean;
+  /** `--scrub`: replace likely-real credentials in the transcripts. A dry run alone. */
+  readonly scrub: boolean;
+  /** `--apply`: with `--scrub`, make the change. */
+  readonly apply: boolean;
+  /** `--no-checks`: skip the checks on this machine. */
+  readonly noChecks: boolean;
   /** The first unrecognized argument, if any. Named back to the user. */
   readonly unknown?: string | undefined;
 }
@@ -165,6 +323,10 @@ export function parseScanFlags(argv: readonly string[]): ScanFlags {
   let out: string | undefined;
   let help = false;
   let review = false;
+  let verify = false;
+  let scrub = false;
+  let apply = false;
+  let noChecks = false;
   let unknown: string | undefined;
 
   /** One `--agent` value. Refused unless it names the same app as any earlier one. */
@@ -189,6 +351,10 @@ export function parseScanFlags(argv: readonly string[]): ScanFlags {
     else if (arg === "--no-open") noOpen = true;
     else if (arg === "--artifact") artifact = true;
     else if (arg === "--review") review = true;
+    else if (arg === "--verify") verify = true;
+    else if (arg === "--scrub") scrub = true;
+    else if (arg === "--apply") apply = true;
+    else if (arg === "--no-checks") noChecks = true;
     else if (arg === "--out") {
       const next = argv[i + 1];
       // Same rule as `--dir`: a flag after it is a typo, not a file named `--json`.
@@ -226,6 +392,10 @@ export function parseScanFlags(argv: readonly string[]): ScanFlags {
     out,
     help,
     review,
+    verify,
+    scrub,
+    apply,
+    noChecks,
     unknown,
   };
 }
@@ -272,6 +442,29 @@ export interface ScanDeps {
    * (`scan-entry.ts`) passes it, so the line never lands in an agent's context.
    */
   readonly productLine?: boolean;
+  /**
+   * Makes the read-only seam `--verify` checks the machine through. The CLI entries pass the
+   * real one (`verify-io.ts`); with none, every check that needs the machine reads as
+   * could-not-check.
+   */
+  readonly createVerifyIO?: () => VerifyIO;
+  /** Runs the checks. For tests; production uses `verifyScan`. */
+  readonly verify?: (input: VerifyInput) => Promise<VerifyOutcome>;
+  /**
+   * `--scrub`: the seam it reads and writes transcripts through (`scrub-io.ts`) and the run
+   * itself (`scan-scrub.ts`). Only the CLI (`cli.ts`) passes them, so the plugin's scan bundle
+   * (`scan-entry.ts`) carries neither and refuses `--scrub` and `--apply`. Injected, not
+   * imported here or loaded with `import()`, which would put a second file beside that
+   * single-file bundle. `scan` alone never calls either.
+   */
+  readonly scrub?: {
+    readonly createIO: () => ScrubIO;
+    readonly run: (input: ScrubRunInput) => Promise<number>;
+  };
+  /** For tests: the platform the restore commands are written for. */
+  readonly platform?: string;
+  /** The verify-by-default switch. Production gets `VERIFY_BY_DEFAULT`; tests run both values. */
+  readonly verifyByDefault?: boolean;
 }
 
 /** Deepest directory nesting the file tally will descend. */
@@ -320,12 +513,13 @@ function countTranscriptFiles(io: ScanIO, dir: string, depth = 0): number {
  * as the Cursor reader folds a session's sub-agents. `opened` counts every file this
  * actually read (the main file plus each sub-agent file), so the coverage tally is honest.
  * `session` is absent when the main file could not be folded into a session (quarantined);
- * its sub-agents are then left to the not-read count.
+ * its sub-agents are then left to the not-read count. `files` lists the files that were folded
+ * into the session.
  */
 async function readClaudeSession(
   io: ScanIO,
   item: { readonly file: string; readonly sessionId: string },
-): Promise<{ session?: ParsedSession; opened: number }> {
+): Promise<{ session?: ParsedSession; opened: number; files: readonly string[] }> {
   const source = { readLines: (p: string) => io.readLines(p) };
 
   let session: ParsedSession;
@@ -334,9 +528,10 @@ async function readClaudeSession(
   } catch {
     // QuarantineError or any other read failure: the main file was attempted and yielded
     // no session. Count the one file; leave its sub-agents to the not-read count.
-    return { opened: 1 };
+    return { opened: 1, files: [] };
   }
   let opened = 1;
+  const files = [item.file];
 
   const subDir = join(dirname(item.file), basename(item.file, ".jsonl"), "subagents");
   let names: readonly string[];
@@ -351,6 +546,11 @@ async function readClaudeSession(
   const userPrompts = [...session.userPrompts];
   const seenTurns = new Set(turns.map((t) => t.messageUuid).filter((u) => u !== ""));
   const seenPrompts = new Set(userPrompts.map((p) => p.messageUuid).filter((u) => u !== ""));
+  // A sub-agent's calls have their results in its own file. They are folded in by tool-use id,
+  // so a call made inside a sub-agent is judged by its recorded result. The main file is read
+  // first and keeps its result for an id that appears twice; so does the earlier of two
+  // sub-agent files, in name order.
+  const toolResults = new Map(session.toolResults);
   let skippedLines = session.skippedLines;
 
   for (const name of [...names].sort()) {
@@ -368,6 +568,7 @@ async function readClaudeSession(
     } catch {
       continue; // a sub-agent file that yields no session adds nothing; it was still opened
     }
+    files.push(subPath);
     skippedLines += sub.skippedLines;
     // De-dup by message uuid so one turn's tokens and tool calls count once even if a main
     // transcript inlined the sub-agent, or a file is somehow read twice. A turn with no
@@ -382,9 +583,16 @@ async function readClaudeSession(
       if (prompt.messageUuid !== "") seenPrompts.add(prompt.messageUuid);
       userPrompts.push(prompt);
     }
+    for (const [id, result] of sub.toolResults) {
+      if (!toolResults.has(id)) toolResults.set(id, result);
+    }
   }
 
-  return { session: { ...session, turns, userPrompts, skippedLines }, opened };
+  return {
+    session: { ...session, turns, userPrompts, toolResults, skippedLines },
+    opened,
+    files,
+  };
 }
 
 /**
@@ -439,6 +647,7 @@ async function readCorpus(
   quarantined: number;
   projects: number;
   notRead: number;
+  files: string[];
 }> {
   const inventory = await scanTranscripts(root, undefined, {
     readdir: (p) => io.readdir(p),
@@ -447,6 +656,7 @@ async function readCorpus(
   });
 
   const sessions: ParsedSession[] = [];
+  const files: string[] = [];
   let quarantined = 0;
   // Every file the reader actually opened — main transcripts and the sub-agent files folded
   // into them — so the not-read tally below is against what was read, not just the sessions.
@@ -456,6 +666,7 @@ async function readCorpus(
     for (const item of project.sessions) {
       const read = await readClaudeSession(io, item);
       opened += read.opened;
+      for (const path of read.files) files.push(path);
       if (read.session !== undefined) sessions.push(read.session);
       else quarantined++;
     }
@@ -466,7 +677,7 @@ async function readCorpus(
   // in a report.
   const notRead = Math.max(0, countTranscriptFiles(io, root) - opened);
 
-  return { sessions, quarantined, projects: inventory.projects.length, notRead };
+  return { sessions, quarantined, projects: inventory.projects.length, notRead, files };
 }
 
 /**
@@ -495,6 +706,10 @@ export function renderSummary(
   result: ScanResult,
   colorsEnabled: boolean,
   reportPath: string | undefined,
+  /** The local fixes file, when one was written. */
+  fixesPath?: string,
+  /** The checks were asked for and could not run, so the report has no verified results. */
+  checksFailed = false,
 ): string {
   const c = createColors(colorsEnabled);
   const out: string[] = [];
@@ -612,14 +827,135 @@ export function renderSummary(
     out.push(c.dim("No sessions found. Nothing to report yet."));
   }
 
+  if (result.verification !== undefined) {
+    out.push("");
+    // From the same boundary copy the page and --json read, so the line says no more than they.
+    out.push(verificationSummary(boundaryVerification(result.verification, false)));
+  } else if (checksFailed) {
+    out.push("");
+    out.push(CHECKS_FAILED_LINE);
+  }
+
   if (reportPath !== undefined) {
     out.push("");
     out.push(
       `Full report: ${hyperlink(colorsEnabled, pathToFileURL(reportPath).href, reportPath)}`,
     );
   }
+  if (fixesPath !== undefined) {
+    out.push(`Fix commands for this machine: ${fixesPath}`);
+    out.push(
+      c.dim(
+        "It is written for your user account only (mode 0600, where the system honours it), and is not part of the report: keep it to yourself.",
+      ),
+    );
+  }
 
   return `${out.join("\n")}\n`;
+}
+
+/**
+ * Do two paths name the same file? On macOS and Windows, whose disks ignore case by default,
+ * paths that differ only in case do.
+ */
+export function samePath(a: string, b: string, platform: string): boolean {
+  return platform === "darwin" || platform === "win32"
+    ? a.toLowerCase() === b.toLowerCase()
+    : a === b;
+}
+
+/** The summary line when the checks were asked for and could not run. */
+export const CHECKS_FAILED_LINE =
+  "Checked on this machine: the checks could not run, so this report shows no verified results.";
+
+/** `n` and a noun, with the noun's plural when `n` is not 1. */
+function counted(n: number, singular: string, plural = `${singular}s`): string {
+  return `${formatCount(n)} ${n === 1 ? singular : plural}`;
+}
+
+/**
+ * The one line `--verify` adds to the terminal summary: what was checked, by count. Built only
+ * from the verification's counts and states, so it can carry no value and no name.
+ */
+export function verificationSummary(verification: Verification): string {
+  const secrets = verification.categories.secrets;
+  const facts = secrets.facts;
+  const parts: string[] = [];
+
+  if (secrets.status === "not-checked") parts.push("no transcript files to check for secrets");
+  else {
+    let line = `${counted(facts.classes["likely-real"], "likely-real credential")} in ${counted(facts.filesRead, "transcript file")}`;
+    const also: string[] = [];
+    const fixtures = facts.classes["committed-fixture"];
+    const placeholders = facts.classes.placeholder;
+    const local = facts.classes["local-dev"];
+    if (fixtures > 0) also.push(counted(fixtures, "committed fixture"));
+    if (placeholders > 0) {
+      also.push(
+        counted(placeholders, "placeholder or false positive", "placeholders or false positives"),
+      );
+    }
+    if (local > 0) also.push(counted(local, "local dev value"));
+    if (also.length > 0) line += ` (and ${also.join(", ")})`;
+    parts.push(line);
+    // Set aside by a rule that can under-count, so said in numbers rather than left out.
+    const { unnamedOutputOnly, namedNotCredentialShaped } = facts.setAside;
+    if (unnamedOutputOnly + namedNotCredentialShaped > 0) {
+      const why: string[] = [];
+      if (unnamedOutputOnly > 0) {
+        why.push(`${formatCount(unnamedOutputOnly)} unnamed and seen only in output or replies`);
+      }
+      if (namedNotCredentialShaped > 0) {
+        why.push(`${formatCount(namedNotCredentialShaped)} named but not shaped like a credential`);
+      }
+      parts.push(
+        `${counted(unnamedOutputOnly + namedNotCredentialShaped, "value")} not counted as likely real: ${why.join(", ")}`,
+      );
+    }
+    if (facts.filesNotRead > 0) {
+      parts.push(`${counted(facts.filesNotRead, "transcript file")} could not be read`);
+    }
+    if (facts.unplaced > 0) {
+      parts.push(`${counted(facts.unplaced, "redacted text")} could not be classed`);
+    }
+    if (facts.reposNotChecked > 0) {
+      parts.push(
+        `${counted(facts.reposNotChecked, "repo")} could not be searched for committed fixtures`,
+      );
+    } else if (facts.fixtureCheck === "unavailable") {
+      parts.push("no repo was found to search for committed fixtures");
+    }
+  }
+
+  // The instruction and memory files read on this machine, by count: what was read is said
+  // every time, and that only a yes or no was kept from each.
+  const skipped = verification.categories["skipped-checks"];
+  if ("facts" in skipped && skipped.facts !== undefined) {
+    const files = skipped.facts.instructions;
+    let line = `${counted(files.read, "instruction or memory file")} read for an instruction to skip checks, keeping only yes or no`;
+    if (files.couldNotRead > 0) line += ` (${formatCount(files.couldNotRead)} could not be read)`;
+    parts.push(line);
+  }
+
+  const calls = verification.matchedCalls;
+  if (!verification.resultsRecorded) {
+    parts.push(
+      "this app records no command output, so no matched call could be confirmed as run" +
+        (calls.mentioned > 0
+          ? ` (${counted(calls.mentioned, "match", "matches")} only mentioned a command)`
+          : ""),
+    );
+  } else {
+    parts.push(
+      `${counted(calls.ran, "matched call")} ran, ${formatCount(calls.mentioned)} only mentioned a command, ${formatCount(calls.unknown)} could not be confirmed`,
+    );
+  }
+
+  const checked = `Checked on this machine (read-only, offline): ${parts.join("; ")}.`;
+  // A Codex scan says, every time, how far its reading can be trusted, in the page's words.
+  return verification.ranEvidence === "output-record"
+    ? `${checked} ${CODEX_UNVERIFIED_TEXT}`
+    : checked;
 }
 
 /**
@@ -642,6 +978,8 @@ export function renderReview(
   colorsEnabled: boolean,
   reportPath: string,
   mcpDisclosures: readonly string[] = [],
+  /** The local fixes file a yes also writes, and how many exact commands it holds. */
+  fixesFile?: { readonly path: string; readonly commands: number; readonly unsafe: number },
 ): string {
   const c = createColors(colorsEnabled);
   const groups = reviewStrings(result);
@@ -684,6 +1022,17 @@ export function renderReview(
         `${MAX_ROWS} rows and ${MAX_EXAMPLES} shapes per row.`,
     ),
   );
+  // A yes writes the fixes file too, so the question says so before it is asked.
+  if (fixesFile !== undefined && fixesFile.commands + fixesFile.unsafe > 0) {
+    const notes =
+      fixesFile.unsafe === 0
+        ? ""
+        : `, and ${formatCount(fixesFile.unsafe)} ${fixesFile.unsafe === 1 ? "fix" : "fixes"} it could not make a safe command for`;
+    out.push("");
+    out.push(
+      `A yes also writes ${fixesFile.path}: ${formatCount(fixesFile.commands)} exact fix ${fixesFile.commands === 1 ? "command" : "commands"} for this machine, with real names and paths${notes}, not shown here and not part of the report.`,
+    );
+  }
   out.push("");
   out.push(`Write ${reportPath}? [y/N] `);
   return out.join("\n");
@@ -709,12 +1058,20 @@ export async function runScan(
   deps: ScanDeps = {},
 ): Promise<number> {
   const flags = parseScanFlags(argv);
+  const byDefault = deps.verifyByDefault ?? VERIFY_BY_DEFAULT;
+  // A build given no scrub (the plugin's scanner) neither runs nor offers `--scrub`.
+  const usage = scanUsage(byDefault, deps.scrub !== undefined);
   if (flags.help) {
-    io.writeStdout(SCAN_USAGE);
+    io.writeStdout(usage);
     return 0;
   }
   if (flags.unknown !== undefined) {
-    io.writeStdout(`agenttrail-guard scan: unknown argument "${flags.unknown}".\n\n${SCAN_USAGE}`);
+    io.writeStdout(`agenttrail-guard scan: unknown argument "${flags.unknown}".\n\n${usage}`);
+    return 1;
+  }
+  if (flags.verify && flags.noChecks) {
+    // One asks for the checks and the other skips them; neither is picked silently.
+    io.writeStdout("agenttrail-guard scan: --verify and --no-checks cannot be combined.\n");
     return 1;
   }
   // Required, and checked before anything is read: `cli.ts` hands `scan` its raw arguments,
@@ -732,6 +1089,27 @@ export async function runScan(
     io.writeStdout(
       "agenttrail-guard scan: --review and --json cannot be combined.\n" +
         "--review confirms what is written to the report file; --json writes no file.\n",
+    );
+    return 1;
+  }
+  if ((flags.scrub || flags.apply) && deps.scrub === undefined) {
+    // The plugin's scanner only reads: scrubbing changes transcripts, so it is the CLI's alone.
+    io.writeStdout(
+      "agenttrail-guard scan: --scrub and --apply are not available here. Run them with the agenttrail-guard CLI.\n",
+    );
+    return 1;
+  }
+  if (flags.apply && !flags.scrub) {
+    io.writeStdout("agenttrail-guard scan: --apply only works with --scrub.\n");
+    return 1;
+  }
+  if (
+    flags.scrub &&
+    (flags.json || flags.review || flags.verify || flags.artifact || flags.out !== undefined)
+  ) {
+    // `--scrub` writes no report, so the report's flags would do nothing; refused, not ignored.
+    io.writeStdout(
+      "agenttrail-guard scan: --scrub writes no report, so it cannot be combined with --json, --review, --verify, --out or --artifact.\n",
     );
     return 1;
   }
@@ -755,10 +1133,49 @@ export async function runScan(
   const catalog = compileCatalog([...shipped, ...userRules], config);
   const allowlist = compileAllowlist(config.allowlist);
 
-  const corpus: ScanCorpus = await readCorpusFor(agent, root, io);
+  // `--scrub` writes paths into its manifest and restore commands, so they must be absolute.
+  const readRoot = flags.scrub ? resolve(io.cwd(), root) : root;
+  const corpus: ScanCorpus = await readCorpusFor(agent, readRoot, io);
+  if (flags.scrub && deps.scrub !== undefined) {
+    const scrubIO = deps.scrub.createIO();
+    return await deps.scrub.run({
+      agent,
+      root: readRoot,
+      corpus,
+      apply: flags.apply,
+      io,
+      verifyIO: deps.createVerifyIO?.() ?? UNAVAILABLE_VERIFY_IO,
+      scrubIO,
+      now,
+      platform: deps.platform ?? process.platform,
+      colors: shouldUseColor({ env: io.env, isTTY: io.isTTY() }),
+    });
+  }
+  // The checks run unless `--no-checks` skips them, while `VERIFY_BY_DEFAULT` is on; with it
+  // off, only `--verify` runs them. The outcome's local fixes stay here, beside the result, for
+  // the local fixes file; they never enter `ScanResult`.
+  let outcome: VerifyOutcome | undefined;
+  let checksFailed = false;
+  if (shouldVerify(flags, byDefault)) {
+    try {
+      outcome = await (deps.verify ?? verifyScan)({
+        corpus,
+        catalog,
+        allowlist,
+        readLines: (path) => io.readLines(path),
+        io: deps.createVerifyIO?.() ?? UNAVAILABLE_VERIFY_IO,
+      });
+    } catch {
+      // The checks promise never to throw. If one does anyway, the scan still writes its page,
+      // without verification, and the summary says the checks could not run. The error itself
+      // is never printed: it could carry text from what was read, and an agent reads stdout.
+      outcome = undefined;
+      checksFailed = true;
+    }
+  }
   // The shipped rule OBJECTS, so a finding is labelled `library` by identity: a user rule
   // that reuses a shipped id is still the user's own rule.
-  const result = aggregateScan(corpus, catalog, allowlist, new Set(shipped));
+  const result = aggregateScan(corpus, catalog, allowlist, new Set(shipped), outcome?.verification);
   const meta: ReportMeta = { version: VERSION, generatedAt: now };
 
   if (flags.json) {
@@ -775,9 +1192,27 @@ export async function runScan(
   );
   const colors = createColors(shouldUseColor({ env: io.env, isTTY: io.isTTY() }));
 
+  // The exact fix commands go to their own local file, never into the report.
+  // An exact command, or a fix a check could not make safe, which the file lists as a note.
+  const fixes: readonly FileFix[] = outcome?.localFixes ?? [];
+  const fixesTarget = join(dirname(reportPath), FIXES_FILENAME);
+  // On a disk that ignores case, `--out AGENTTRAIL-GUARD-FIXES.TXT` names the fixes file too.
+  const fixesIsReport = samePath(fixesTarget, reportPath, deps.platform ?? process.platform);
+  const writesFixes = hasFileFixes(fixes) && !fixesIsReport;
+
   if (flags.review) {
     const disclosures = mcpReviewDisclosures(corpus, catalog, allowlist);
-    io.writeStdout(renderReview(result, colors.enabled, reportPath, disclosures));
+    io.writeStdout(
+      renderReview(
+        result,
+        colors.enabled,
+        reportPath,
+        disclosures,
+        writesFixes
+          ? { path: fixesTarget, commands: exactFixCount(fixes), unsafe: unsafeFixCount(fixes) }
+          : undefined,
+      ),
+    );
     const answer = await io.readLine();
     if (answer === undefined) {
       // End of input, not a decision. An unattended `scan --review` that exited 0 having
@@ -796,14 +1231,57 @@ export async function runScan(
     io.writeStdout("\n");
   }
 
+  // The fixes file is written first, so the report names it only once it exists. The report's
+  // cards carry redacted shapes.
+  let fixesPath: string | undefined;
+  if (writesFixes) {
+    const text = fixesFileText(fixes, {
+      version: VERSION,
+      generatedAt: now,
+      reportName: basename(reportPath),
+    });
+    if (io.writeFile(fixesTarget, text)) fixesPath = fixesTarget;
+    else io.writeStdout(colors.yellow(`Could not write the fix commands to ${fixesTarget}\n`));
+  }
+
   const written = io.writeFile(
     reportPath,
-    renderReport(result, meta, { variant: flags.artifact ? "artifact" : "document" }),
+    renderReport(result, meta, {
+      variant: flags.artifact ? "artifact" : "document",
+      // A card names the file only for what the written file holds.
+      localFixCategories: fixesPath === undefined ? [] : fixCategories(fixes),
+      unsafeFixCategories: fixesPath === undefined ? [] : unsafeFixCategories(fixes),
+    }),
   );
 
   // The summary is printed whether or not the file was written — it is the payoff, and
   // it must not depend on a writable working directory.
-  io.writeStdout(renderSummary(result, colors.enabled, written ? reportPath : undefined));
+  io.writeStdout(
+    renderSummary(
+      result,
+      colors.enabled,
+      written ? reportPath : undefined,
+      fixesPath,
+      checksFailed,
+    ),
+  );
+  // An older fixes file left next to the report is said, never deleted: its commands are from
+  // an earlier scan, and this one made none.
+  if (outcome !== undefined && fixesPath === undefined && !fixesIsReport) {
+    let stale = false;
+    try {
+      stale = !io.stat(fixesTarget).isDirectory();
+    } catch {
+      stale = false;
+    }
+    if (stale) {
+      io.writeStdout(
+        colors.dim(
+          `${fixesTarget} is from an earlier scan; this one wrote no fix commands, so it is left as it was.\n`,
+        ),
+      );
+    }
+  }
 
   if (!written) {
     io.writeStdout(colors.yellow(`\nCould not write the report to ${reportPath}\n`));

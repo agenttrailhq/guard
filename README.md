@@ -1,4 +1,4 @@
-<!-- cspell:words guardrails jsonl mjs bpnpm agenttrailhq backtesting hostnames inspectable -->
+<!-- cspell:words guardrails jsonl mjs bpnpm agenttrailhq backtesting hostnames inspectable tasklist doas nohup setsid ionice caffeinate gtimeout taskset chrt runuser bunx direnv pipenv awscli -->
 
 <div align="center">
 
@@ -361,13 +361,15 @@ to choose where, `--json` for JSON only). The report loads nothing from outside 
 The report opens with what Guard would have done: how many actions it would have blocked,
 asked you about, or warned on. It then lists the guardrails to fix first, the OWASP risks
 the matched guardrails name, every matched guardrail with filters (by action and by OWASP
-risk) and sort, repeated command shapes, next steps, and a suggested post that carries
-totals only. Each OWASP id shown is one the guardrail carries itself; the section covers
-coding-agent actions only, not full OWASP coverage. Its PDF and JSON buttons save the report
-as shown. One inline script runs the filters, copy buttons and exports. The page's
-Content-Security-Policy allows that script and blocks the page from loading or fetching
-anything. Links to agenttrail.sh carry UTM tags naming the report and the agent, and open
-only when you click them. The two OWASP lists are linked where OWASP publishes them.
+risk) and sort, repeated command shapes, next steps, and a suggested post. The post carries
+counts only: the verified counts that may lead the report, as many as fit, or otherwise the
+totals and at most one library guardrail's name. Each OWASP id shown is one the guardrail
+carries itself; the section covers coding-agent actions only, not full OWASP coverage. Its
+PDF and JSON buttons save the report as shown. One inline script runs the filters, copy
+buttons and exports. The page's Content-Security-Policy allows that script and blocks the
+page from loading or fetching anything. Links to agenttrail.sh carry UTM tags naming the
+report and the agent, and open only when you click them. The two OWASP lists are linked
+where OWASP publishes them.
 
 **A scan shows what would match now, not what was blocked then.** It applies today's
 guardrails and settings to past calls, so its results can differ from what Guard enforced
@@ -378,6 +380,135 @@ guarantee. Use `--review` and read the report before sharing it. The review outp
 include raw MCP values that the report itself redacts. Details:
 [Seeing what already happened](#seeing-what-already-happened).
 
+**`scan` also checks the matches against this machine, read-only and offline.** The checks
+run by default; `--no-checks` skips them. Nothing is written but the report and its local
+fixes file, nothing is sent, and no command from a session is run again. They read only:
+
+- the transcripts again;
+- in each git repo a session ran in: read-only `git` (`rev-parse`, `ls-files`,
+  `for-each-ref`, `log`, `stash list`), never through a shell, and the repo's git-tracked
+  files, each at most 1 MB;
+- instruction and memory files, each at most 1 MB: `CLAUDE.md`, `CLAUDE.local.md`,
+  `AGENTS.md`, `GEMINI.md`, `.cursorrules`, `.windsurfrules` and
+  `.github/copilot-instructions.md` at the top of each repo; the agent's own
+  (`~/.claude/CLAUDE.md` or `~/.codex/AGENTS.md`); and the ones the sessions wrote. In
+  `~/.claude`, `~/.codex` and `~/.cursor` only `.md` and `.mdc` files are read. Only whether
+  a file tells the agent to skip checks is kept, never its text;
+- the test configs the sessions edited, inside their repo and each at most 1 MB. Only
+  whether coverage thresholds are set to update themselves (`autoUpdate`) is kept;
+- the names of the programs running now (`ps`, or `tasklist` on Windows), never their
+  arguments. The list is cut down to known agent apps and tunnel programs as it is read, and
+  only the tunnel programs, such as `ngrok` or `cloudflared`, are counted;
+- whether the folders the sessions ran in, the paths the commands named and each repo's
+  commit hooks exist, never what a hook holds.
+
+The report and `--json` carry counts only, never these paths.
+
+**Every claim on a card comes from a check's result.** A matched command counts as ran only
+when the session recorded a result that shows it ran; one with no result either way may have
+run, and is not counted as ran. Where a command that ran, or may have run, uses a form the
+check does not read inside (a shell given a string to run or one this scan does not read,
+inline code or a piped script, `find -exec`, `xargs`, process substitution, a command
+substitution, `eval`, or git with its own `-c` settings, running a command it was given, or
+after a hook or its config was written, a quote left open, or a command of that check's kind
+behind a program it could not read), the card says **could not confirm** for that category,
+never none or clean.
+
+Each card shows its numbers and its fix first. A card that could not confirm everything ends
+with one line, in the same words on every card, saying how many commands that ran, or may
+have run, used such a form. The forms themselves are listed once, at the bottom of "Also
+checked on this machine", not on each card.
+
+The checks read past these wrappers before a program, with their options: `sudo`, `doas`,
+`env`, `command`, `exec`, `time`, `nice`, `ionice`, `nohup`, `setsid`, `caffeinate`, `stdbuf`,
+`timeout`, `gtimeout`, `chronic`, `unbuffer`, `taskset`, `chrt`, `flock`, `watch -x`,
+`runuser -u`, `npx`, `bunx` and `dotenv`; and these launchers, to the command they run:
+`aws-vault exec`, `op run`, `doppler run`, `mise exec --`, `direnv exec`, `uv run`,
+`uv tool run`, `bun x`, `poetry run`, `pipenv run`, `pdm run`, `bundle exec`, `pnpm exec` and
+`dlx`, `yarn exec` and `dlx`, and `npm exec`. `python -m awscli` reads as `aws`. Behind any
+other program no check reads, each later word that names a program a check reads
+(`my-wrapper git push origin main`) is read again from there with that check's own reading,
+and a command it finds makes the card say could not confirm, never counted and never clean.
+An `awk` script that calls `system()` or pipes to a command, and a `sed` script with its `e`
+command or flag, also make it say could not confirm. Some things stay out of reach: a wrapper
+that hides the program in a string (`su -c`, `env -S`, `nix-shell --run`) is read as a form
+the check cannot read, so the card says could not confirm without knowing what ran; and a
+command handed as one quoted string to a program no check reads, a command run inside a
+container, or a program reached only through a script file (`./deploy.sh`) is not read at all,
+so a card can read clean.
+
+Cursor's session files record no command output, so on Cursor
+a check of commands that ran that would read clean says could not confirm instead. The
+report leads with a verified count only when a recorded result backs it, and otherwise leads
+with the totals. A card that could not confirm never leads, with one exception: a count git
+itself confirms (commits on main without their checks, deleted work still recoverable) may
+lead, since what could not be read could only add to it, and its card still says it could
+not confirm all of it.
+
+**Codex: limited and unverified.** For Codex, the checks:
+
+- have been tested only on synthetic sessions built from Codex's documented rollout format,
+  never on a real Codex session;
+- count a call as ran when Codex recorded an output for it, which may include a call a hook
+  blocked: it is not yet known whether a blocked call leaves an output record;
+- show ids a Codex command printed as "not identified";
+- never give a Codex scan a verified headline: its report leads with the totals.
+
+On every Codex scan that runs the checks, the terminal summary, the report and each
+git-backed card say all four points, in the same words; so does `scan --help`. A Codex scan
+with `--no-checks` makes no claim about the checks.
+
+### Scrub credentials from transcripts
+
+A credential pasted into a prompt or printed by a command stays in the agent's transcript.
+`scan --scrub` replaces the ones that look real with `[REDACTED-BY-AGENTTRAIL:<kind>]`:
+
+```sh
+agenttrail-guard scan --agent claude --scrub           # dry run: says what it would replace
+agenttrail-guard scan --agent claude --scrub --apply   # makes the change
+```
+
+**Rotate the credential first, then scrub.** Taking it out of a transcript does not undo
+the exposure. Scrubbing runs from the CLI only: the Claude Code plugin's scanner leaves it
+out and refuses `--scrub` and `--apply`.
+
+- **What it replaces:** only values classed as likely real. A value that is also in a
+  git-tracked file of a repo the sessions ran in (a committed fixture), a placeholder, and
+  a credential for a database on this machine are left alone. Cursor's session files name
+  no working folder, so for Cursor no repo is searched and a fixture counts as likely real.
+- **Dry run by default.** Without `--apply` it lists each file with how many values of each
+  kind it would replace, never the values, and changes nothing.
+- **Close the agent first.** A running session keeps appending to its transcript.
+  `--apply` refuses while a process of that app is running, or when the list of running
+  programs cannot be read in full, and skips any file changed in the last 5 minutes. There
+  is no flag to override either. The first check goes by process name, so it cannot see an
+  agent running under a generic name such as `node`; the second check is there for that
+  case.
+- **Backup first.** Before changing any file, `--apply` copies every file it will change to
+  a new folder under `~/.agenttrail/scrub-backups/` (`0700`, files `0600`), with a manifest
+  and a restore command for each file. **The backup still holds the credentials:** delete
+  it once you have checked the scrubbed files. If any backup fails, nothing is changed. A
+  backup folder reached through a symbolic link is refused.
+  Each restore command is `cp -p --` with both paths absolute and quoted. For a path holding
+  a control character, a mark that reorders text on screen, or a character that shows as
+  nothing, no command is made: the output names the backup file to copy back by hand, and
+  shows each such character as `?`.
+- **One step per file.** Each file is written beside the original, checked against what was
+  read, and moved into place. A file that changed since it was read is left as it is.
+- **Lines stay as written.** Only the text inside JSON strings changes; every other byte of
+  the line is kept. A line that would not parse after the edit, or that holds a value in a
+  form this command does not edit, is left as it is and reported.
+- **Files it leaves alone, and says so:** a file that is not UTF-8, is over 256 MiB, is a
+  symbolic link, or has other names (hard links). A link is never followed or replaced.
+- **It fails rather than claim a clean run.** If any file the secrets check found a
+  likely-real value in is skipped, or still holds a value afterwards, the output names it
+  and `--apply` exits 1.
+- **Not scrubbed:** anything the app keeps outside its session files (its prompt history
+  and caches), your shell history, and the backup itself.
+- **Codex: limited and unverified.** For Codex, `--scrub` has been tested only on synthetic
+  session files built from Codex's documented rollout format, never on a real Codex
+  session, and the command says so each time it runs.
+
 ## The commands
 
 | Command | What it does |
@@ -385,7 +516,7 @@ include raw MCP values that the report itself redacts. Details:
 | `agenttrail-guard init --agent <claude\|cursor\|codex>` | Install the integration, seed settings, and demonstrate the engine. Safe to re-run. |
 | `agenttrail-guard status` | Inspect installation state, recent decisions, and settings that need attention. |
 | `agenttrail-guard guardrails` | List, inspect, customize, and validate guardrails. |
-| `agenttrail-guard scan --agent <claude\|cursor\|codex>` | Check past sessions and create a local HTML report. |
+| `agenttrail-guard scan --agent <claude\|cursor\|codex>` | Check past sessions and create a local HTML report. With `--scrub`, replace likely-real credentials in that agent's transcripts; a dry run unless you add `--apply`. |
 | `agenttrail-guard crash-report` | Manage opt-in crash reports. Off by default. |
 | `agenttrail-guard uninstall --agent <claude\|cursor\|codex>` | Remove that integration and keep your settings. |
 

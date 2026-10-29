@@ -1,3 +1,4 @@
+// cspell:words Workdirs
 /**
  * `scan --agent codex`: find Codex CLI's session files, read them into sessions, and say
  * what each tool call in them is evaluated as.
@@ -102,6 +103,9 @@ const APPLY_PATCH = "apply_patch";
 /** The property of `exec_command`'s argument that holds the command. */
 const CMD_KEY = "cmd";
 
+/** The key of the folder an `exec_command` call runs in. */
+const WORKDIR_KEY = "workdir";
+
 /** What a `tools.<fn>` call is written as, including the dot. */
 const TOOLS_PREFIX = "tools.";
 
@@ -126,6 +130,12 @@ export interface ShimCall {
   readonly fn: string;
   /** The `cmd` property of an object argument, unescaped. Absent when there is none. */
   readonly cmd?: string;
+  /**
+   * The `workdir` property of an object argument, unescaped: the folder the command ran in.
+   * Set only by `readShimWorkdirs`, for `scan --verify`, and absent when the call names none
+   * or names one that is not a string literal. It never makes a call unmapped.
+   */
+  readonly workdir?: string;
   /**
    * The single string argument, unescaped, for the form that takes one — `apply_patch`
    * carries the whole patch this way. Absent when the argument is an object or missing.
@@ -360,7 +370,11 @@ function readObjectLiteral(
  * scan carries on rather than treating the whole fragment as unreadable. `undefined` means
  * the fragment cannot be read at all.
  */
-function readShimCall(source: string, at: number): { call?: ShimCall; end: number } | undefined {
+function readShimCall(
+  source: string,
+  at: number,
+  withWorkdir = false,
+): { call?: ShimCall; end: number } | undefined {
   const nameStart = at + TOOLS_PREFIX.length;
   if (!isIdentStart(source.charCodeAt(nameStart))) return { end: nameStart };
   let i = nameStart + 1;
@@ -375,7 +389,16 @@ function readShimCall(source: string, at: number): { call?: ShimCall; end: numbe
   if (ch === "{") {
     const object = readObjectLiteral(source, argument, CMD_KEY);
     if (object === undefined) return undefined;
-    const call: ShimCall = object.value === undefined ? { fn } : { fn, cmd: object.value };
+    // The folder is read on its own: a `workdir` this cannot place leaves it out, and never
+    // makes the call unmapped.
+    const workdir = withWorkdir
+      ? readObjectLiteral(source, argument, WORKDIR_KEY)?.value
+      : undefined;
+    const call: ShimCall = {
+      fn,
+      ...(object.value === undefined ? {} : { cmd: object.value }),
+      ...(workdir === undefined ? {} : { workdir }),
+    };
     return { call, end: object.end };
   }
   if (ch === '"' || ch === "'") {
@@ -402,6 +425,20 @@ function readShimCall(source: string, at: number): { call?: ShimCall; end: numbe
  * Pure, and never throws.
  */
 export function readShimCalls(source: string): readonly ShimCall[] | undefined {
+  return scanShim(source, false);
+}
+
+/**
+ * The `workdir` each `tools.<fn>(…)` call in one shim fragment names, in the same order as
+ * `readShimCalls`, or `undefined` for a call that names none. `undefined` when the fragment
+ * cannot be read. For `scan --verify`, which needs the folder a command ran in.
+ */
+export function readShimWorkdirs(source: string): readonly (string | undefined)[] | undefined {
+  return scanShim(source, true)?.map((call) => call.workdir);
+}
+
+/** The scan behind `readShimCalls`, keeping each call's `workdir` too when asked. */
+function scanShim(source: string, withWorkdir: boolean): readonly ShimCall[] | undefined {
   if (source.length > MAX_SHIM_SOURCE) return undefined;
   const calls: ShimCall[] = [];
   let i = 0;
@@ -433,7 +470,7 @@ export function readShimCalls(source: string): readonly ShimCall[] | undefined {
       source.startsWith(TOOLS_PREFIX, i) &&
       (i === 0 || (!isIdentPart(source.charCodeAt(i - 1)) && source[i - 1] !== "."))
     ) {
-      const read = readShimCall(source, i);
+      const read = readShimCall(source, i, withWorkdir);
       if (read === undefined) return undefined;
       if (read.call !== undefined) calls.push(read.call);
       i = read.end;
@@ -603,7 +640,7 @@ function toSession(file: SessionFile, records: CodexFileRecords): ParsedSession 
     cwd: records.cwd,
     turns,
     userPrompts,
-    toolResults: new Map(),
+    toolResults: records.toolResults,
     firstTimestamp: records.firstTimestamp === "" ? stamp : records.firstTimestamp,
     lastTimestamp: records.lastTimestamp === "" ? stamp : records.lastTimestamp,
     skippedLines: records.counts.unparseableLines + records.counts.truncatedLastLines,
@@ -622,6 +659,7 @@ function toSession(file: SessionFile, records: CodexFileRecords): ParsedSession 
  */
 export async function readCodexCorpus(root: string, io: CodexTranscriptIO): Promise<ScanCorpus> {
   const sessions: ParsedSession[] = [];
+  const files: string[] = [];
   const workingDirectories = new Set<string>();
   let quarantined = 0;
   let counts = NO_LINE_COUNTS;
@@ -642,6 +680,7 @@ export async function readCodexCorpus(root: string, io: CodexTranscriptIO): Prom
       continue;
     }
     counts = addLineCounts(counts, records.counts);
+    files.push(file.path);
     const session = toSession(file, records);
     if (session === undefined) {
       quarantined++;
@@ -663,5 +702,6 @@ export async function readCodexCorpus(root: string, io: CodexTranscriptIO): Prom
     notRead,
     projects: workingDirectories.size,
     skipped,
+    files,
   };
 }

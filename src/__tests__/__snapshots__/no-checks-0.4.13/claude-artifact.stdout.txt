@@ -1,0 +1,18 @@
+Claude Code · 2 sessions · 9 risky actions · 2 recurring mistakes
+24.7K tokens (20.4K cache reads, cumulative — re-charged each turn)
+Matches  4 critical · 6 high · 2 medium
+         6 would block · 5 would ask · 1 would warn
+
+Top findings
+  critical  would block  3x  rm -rf against an absolute path  dd.rm-rf-absolute
+  critical  would block  1x  Block hard-coded secrets in commands  block-hardcoded-secrets
+  high      would ask    3x  Hold `rm -rf` for approval  require-approval-rm-rf
+  high      would warn   1x  Flag reading a .env file  block-env-file-read
+  high      would block  1x  Block git force-push  block-force-push
+  and 3 more in the report
+
+Top repeats
+  rm -rf <path>  3x  Hold `rm -rf` for approval
+  rm -rf <path>  3x  rm -rf against an absolute path
+
+Full report: <work>/agenttrail-guard-artifact.html

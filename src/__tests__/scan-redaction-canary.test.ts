@@ -28,7 +28,7 @@ import { type ReportMeta, renderJson, renderReport } from "../core/report.js";
 import { compileCatalog } from "../core/rules.js";
 import { aggregateScan, type ScanCorpus } from "../core/scan-report.js";
 import type { GuardRule } from "../core/types.js";
-import { decodeEntities } from "./html-text.js";
+import { decodedSurfaces } from "./html-text.js";
 import { RULE_ENV_FILE, session, toolUse, turn } from "./scan-fixtures.js";
 
 const META: ReportMeta = { version: "0.1.0", generatedAt: new Date("2026-09-08T09:00:00.000Z") };
@@ -251,40 +251,6 @@ describe("zero survivors — no planted token reaches either surface", () => {
     expect(HTML).toContain("git push origin main #&lt;comment&gt;");
   });
 });
-
-/**
- * Every form a string can take in the file, decoded: the page's text, every `href` with its
- * percent-encoding undone, and the data block parsed back from its JSON escapes.
- */
-function decodedSurfaces(html: string): Record<string, string> {
-  const block = html.match(
-    /<script type="application\/json" id="report-data">([\s\S]*?)<\/script>/,
-  );
-  const hrefs = [...html.matchAll(/\shref="([^"]*)"/g)].map((m) => decodeEntities(m[1] ?? ""));
-  const params = hrefs.flatMap((href) => {
-    try {
-      return [...new URL(href, "https://local.invalid").searchParams.values()];
-    } catch {
-      return [];
-    }
-  });
-  return {
-    text: decodeEntities(html),
-    hrefs: hrefs.map((h) => decodeURIComponent(h)).join("\n"),
-    params: params.join("\n"),
-    data: block === null ? "" : stringLeaves(JSON.parse(block[1] ?? "null")).join("\n"),
-  };
-}
-
-/** Every string in a parsed value, keys included, exactly as decoded. */
-function stringLeaves(node: unknown): string[] {
-  if (typeof node === "string") return [node];
-  if (Array.isArray(node)) return node.flatMap(stringLeaves);
-  if (node !== null && typeof node === "object") {
-    return Object.entries(node).flatMap(([k, v]) => [k, ...stringLeaves(v)]);
-  }
-  return [];
-}
 
 const ARTIFACT_HTML = renderReport(RESULT, META, { variant: "artifact" });
 
