@@ -1562,7 +1562,7 @@ ${parts.join("\n")}
  */
 export const SUMMARY_LIMITS = {
   happened: { sentences: 2, chars: 200 },
-  now: { sentences: 1, chars: 140 },
+  now: { sentences: 1, chars: 110 },
   fix: { sentences: 1, chars: 140 },
 } as const;
 
@@ -1591,14 +1591,17 @@ function firstLines(
 }
 
 /**
- * A card's short rows, taken from its own template sentences: the full lists stay behind the
- * card's expander, so every line on the card still comes from a check.
+ * A card's short rows, from its check's short templates (`CardView.summary`), or its first
+ * sentences where it has none: the full lists stay behind the card's expander, so every line on
+ * the card still comes from a check.
  */
 export function cardSummary(card: CardView): CardSummary {
+  // A card's own short templates, where its check has them; otherwise its first sentences.
+  const short = card.summary;
   return {
-    happened: firstLines(card.found, SUMMARY_LIMITS.happened),
-    now: firstLines(card.now, SUMMARY_LIMITS.now),
-    fix: firstLines(card.fixSteps ?? [], SUMMARY_LIMITS.fix),
+    happened: firstLines(short?.happened ?? card.found, SUMMARY_LIMITS.happened),
+    now: firstLines(short?.now ?? card.now, SUMMARY_LIMITS.now),
+    fix: firstLines(short?.fix ?? card.fixSteps ?? [], SUMMARY_LIMITS.fix),
   };
 }
 
@@ -1641,6 +1644,7 @@ function verifiedCard(card: CardView): string {
   };
   const codex = sentence(CODEX_CAVEAT, card);
   const extra =
+    card.summary !== undefined ||
     card.found.length > short.happened.length ||
     card.now.length > short.now.length ||
     (card.fixSteps ?? []).length > short.fix.length ||
@@ -2795,7 +2799,15 @@ function verifiedLines(payload: ReportPayload): string[] {
     const title = CATEGORY_TITLES[card.category];
     const count = cardCount(card);
     if (count !== undefined) lines.push(`${title}  ${count.text}`);
-    for (const line of [...card.found, ...card.now, ...(card.fixSteps ?? [])]) {
+    const short = cardSummary(card);
+    for (const line of [
+      ...short.happened,
+      ...short.now,
+      ...short.fix,
+      ...card.found,
+      ...card.now,
+      ...(card.fixSteps ?? []),
+    ]) {
       lines.push(`${title}  ${line.text}`);
     }
     for (const fix of card.fixes.slice(0, MAX_CARD_COMMANDS)) lines.push(`${title}  ${fix.shape}`);

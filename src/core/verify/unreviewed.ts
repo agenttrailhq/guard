@@ -41,8 +41,10 @@ import {
   type LocalFix,
   localFixCommand,
   type SentenceTemplate,
+  type SummaryTemplates,
   sentence,
   sentences,
+  summaryOf,
   type ToCard,
   type UnsafeFix,
 } from "./cards.js";
@@ -501,6 +503,20 @@ const UNREVIEWED_CHIP: SentenceTemplate<UnreviewedFacts> = {
     noun(f.commitsOnMain, "commit pushed straight to main", "commits pushed straight to main"),
 };
 
+/** The card's short rows. The full sentences above stay behind its expander. */
+export const UNREVIEWED_SUMMARY: SummaryTemplates<UnreviewedFacts> = {
+  happened: [
+    ...UNREVIEWED_FOUND.filter((t) => ["unreviewed.pushes", "unreviewed.none"].includes(t.id)),
+    when(
+      "unreviewed.short.not-checked",
+      (f) => f.pushesNotChecked > 0,
+      (f) => `${counted(f.pushesNotChecked, "push", "pushes")} could not be checked.`,
+    ),
+  ],
+  now: UNREVIEWED_NOW,
+  fix: UNREVIEWED_FIX_STEPS,
+};
+
 /** The card for the unreviewed-code check. */
 export const unreviewedCard: ToCard<"unreviewed"> = (result, context: CardContext) => {
   const f = result.facts;
@@ -510,6 +526,7 @@ export const unreviewedCard: ToCard<"unreviewed"> = (result, context: CardContex
     count: result.matches,
     found: sentences(UNREVIEWED_FOUND, f),
     now: sentences(UNREVIEWED_NOW, f),
+    summary: summaryOf(UNREVIEWED_SUMMARY, f),
     fixes: f.commitsOnMain > 0 ? [{ shape: "git log --oneline <from>..<to>" }] : [],
     fixSteps: sentences(UNREVIEWED_FIX_STEPS, f),
     chip: {

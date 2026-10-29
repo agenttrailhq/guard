@@ -51,8 +51,11 @@ import {
   type FixShape,
   type LocalFix,
   type SentenceTemplate,
+  type SummaryTemplates,
   sentence,
   sentences,
+  summaryOf,
+  summaryTemplates,
   type ToCard,
   type UnsafeFix,
 } from "./cards.js";
@@ -1107,6 +1110,82 @@ const FIX_STEPS: readonly T[] = [
   },
 ];
 
+/** The card's short rows. The full sentences above stay behind its expander. */
+const SUMMARY: SummaryTemplates<DestructiveFacts> = {
+  happened: [
+    ...FOUND.filter((t) => t.id === "destructive.rm"),
+    {
+      id: "destructive.short.home-or-above",
+      render: (f) =>
+        n(f, "home-or-above") > 0
+          ? `${counted(n(f, "home-or-above"), "target")} ${was(n(f, "home-or-above"))} the home folder, a folder above it, or the root.`
+          : undefined,
+    },
+    {
+      id: "destructive.short.unguarded",
+      render: (f) =>
+        n(f, "unguarded-variable") > 0
+          ? `${counted(n(f, "unguarded-variable"), "target")} ${was(n(f, "unguarded-variable"))} built from a variable with no \${VAR:?} guard.`
+          : undefined,
+    },
+    {
+      id: "destructive.short.databases",
+      render: (f) => {
+        const c = f.databases.classes;
+        const away = c.other + c.unresolved;
+        return away > 0
+          ? `${counted(away, "database")} ${was(away)} wiped on another machine, or on a host set elsewhere.`
+          : undefined;
+      },
+    },
+    ...FOUND.filter((t) => t.id === "destructive.none"),
+  ],
+  now: [
+    ...NOW.filter((t) => t.id === "destructive.now.tracked-gone"),
+    {
+      id: "destructive.short.now.partly-back",
+      render: (f) =>
+        f.rm.trackedPartlyBack > 0
+          ? `${counted(f.rm.trackedPartlyBack, "tracked target")} ${is(f.rm.trackedPartlyBack)} only partly back.`
+          : undefined,
+    },
+    ...NOW.filter(
+      (t) => t.id === "destructive.now.tracked-back" || t.id === "destructive.now.could-not-check",
+    ),
+  ],
+  fix: [
+    ...FIX_STEPS.filter((t) => t.id === "destructive.fix.restore"),
+    {
+      id: "destructive.short.fix.partly-back",
+      render: (f) =>
+        f.rm.trackedPartlyBack > 0
+          ? "Restore the missing files of each partly-back target, one by one."
+          : undefined,
+    },
+    {
+      id: "destructive.short.fix.guard",
+      render: (f) =>
+        n(f, "unguarded-variable") > 0
+          ? `Write a path built from a variable as \${VAR:?}/path, so an empty one stops the command.`
+          : undefined,
+    },
+    {
+      id: "destructive.short.fix.outside",
+      render: (f) =>
+        n(f, "untracked") + n(f, "home") + n(f, "other") > 0
+          ? "Check that each folder deleted outside scratch and build output was meant to go."
+          : undefined,
+    },
+    {
+      id: "destructive.short.fix.databases",
+      render: (f) =>
+        f.databases.classes.other + f.databases.classes.unresolved > 0
+          ? "Check that each database wiped on another machine was meant to be."
+          : undefined,
+    },
+  ],
+};
+
 /** The redacted fix shapes for what was found. */
 function fixShapes(f: DestructiveFacts): FixShape[] {
   const out: FixShape[] = [];
@@ -1126,6 +1205,7 @@ export const destructiveCard: ToCard<"destructive"> = (result, context: CardCont
     count: result.matches,
     found: [...sentences(FOUND, f), ...codexLines(CODEX, context, f)],
     now: sentences(NOW, f),
+    summary: summaryOf(SUMMARY, f),
     fixes: fixShapes(f),
     codexCaveat: codexCaveat(context, allCalls(f).ran),
     ...(headline === undefined
@@ -1152,4 +1232,5 @@ export const DESTRUCTIVE_TEMPLATES: readonly T[] = /* @__PURE__ */ (() => [
   CODEX,
   ...NOW,
   ...FIX_STEPS,
+  ...summaryTemplates(SUMMARY),
 ])();

@@ -30,8 +30,11 @@ import {
   type FixShape,
   type LocalFix,
   type SentenceTemplate,
+  type SummaryTemplates,
   sentence,
   sentences,
+  summaryOf,
+  summaryTemplates,
   type ToCard,
   type UnsafeFix,
 } from "./cards.js";
@@ -886,6 +889,73 @@ const FIX_STEPS: readonly T[] = [
   },
 ];
 
+/** The card's short rows. The full sentences above stay behind its expander. */
+const SUMMARY: SummaryTemplates<LostWorkFacts> = {
+  happened: [
+    {
+      id: "lost-work.short.deleted",
+      render: (f) => {
+        const parts: string[] = [];
+        if (f.branches.deleted > 0)
+          parts.push(`${counted(f.branches.deleted, "branch", "branches")} force-deleted`);
+        if (f.stashes.dropped > 0)
+          parts.push(`${counted(f.stashes.dropped, "stash", "stashes")} dropped`);
+        return parts.length > 0 ? `${parts.join(" and ")}.` : undefined;
+      },
+    },
+    {
+      id: "lost-work.short.discards",
+      render: (f) =>
+        f.discards.paths > 0
+          ? `Uncommitted changes to ${counted(f.discards.paths, "path")} were discarded.`
+          : undefined,
+    },
+    {
+      id: "lost-work.short.not-identified",
+      render: (f) => {
+        const n = f.branches.notIdentified + f.stashes.notIdentified + f.stashes.cleared;
+        return n > 0
+          ? `${counted(n, "deletion")} could not be looked up: no commit id was recorded.`
+          : undefined;
+      },
+    },
+    ...FOUND.filter((t) => t.id === "lost-work.none"),
+  ],
+  now: [
+    {
+      id: "lost-work.short.now.recoverable",
+      render: (f) =>
+        recoverable(f) > 0
+          ? `${counted(recoverable(f), "deleted branch or stash", "deleted branches or stashes")} can still be recovered by commit id.`
+          : undefined,
+    },
+    {
+      id: "lost-work.short.now.main-checkout",
+      render: (f) =>
+        f.discards.mainCheckout > 0
+          ? `${counted(f.discards.mainCheckout, "discarded path")} in a main checkout had no agent edit on record.`
+          : undefined,
+    },
+    {
+      id: "lost-work.short.now.gone",
+      render: (f) => {
+        const n = f.branches.gone + f.stashes.gone;
+        return n > 0
+          ? `${counted(n, "deleted branch or stash", "deleted branches or stashes")} ${is(n)} gone from the repo.`
+          : undefined;
+      },
+    },
+    {
+      id: "lost-work.short.now.safe",
+      render: (f) =>
+        f.branches.onAnotherRef + f.stashes.listed > 0
+          ? "What was deleted is still on another branch, tag or the stash list."
+          : undefined,
+    },
+  ],
+  fix: FIX_STEPS,
+};
+
 /** The redacted fix shapes for what was found. */
 function fixShapes(f: LostWorkFacts): FixShape[] {
   const out: FixShape[] = [];
@@ -907,6 +977,7 @@ export const lostWorkCard: ToCard<"lost-work"> = (result, context: CardContext):
     found: [...sentences(FOUND, f), ...codexLines(CODEX, context, f)],
     now: sentences(NOW, f),
     fixes: fixShapes(f),
+    summary: summaryOf(SUMMARY, f),
     codexCaveat: codexCaveat(context, allCalls(f).ran),
     ...(headline === undefined
       ? {}
@@ -934,4 +1005,5 @@ export const LOST_WORK_TEMPLATES: readonly T[] = /* @__PURE__ */ (() => [
   CODEX,
   ...NOW,
   ...FIX_STEPS,
+  ...summaryTemplates(SUMMARY),
 ])();

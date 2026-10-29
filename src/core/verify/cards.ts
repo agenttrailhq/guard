@@ -202,6 +202,47 @@ export interface CardView {
    * from `unconfirmed`, in the same words on every card.
    */
   readonly caveat?: CardSentence;
+  /**
+   * The card's short rows, from short templates of its own over the same facts
+   * (`summaryOf`). The full sentences above stay behind the card's expander.
+   */
+  readonly summary?: CardSummaryLines;
+}
+
+/** A card's short rows: What happened, Now and Fix. */
+export interface CardSummaryLines {
+  readonly happened: readonly CardSentence[];
+  readonly now: readonly CardSentence[];
+  readonly fix: readonly CardSentence[];
+}
+
+/**
+ * Short templates for each of a card's rows, tried in order: the first two that say something
+ * make What happened, and the first one Now and Fix.
+ */
+export interface SummaryTemplates<F> {
+  readonly happened: readonly SentenceTemplate<F>[];
+  readonly now: readonly SentenceTemplate<F>[];
+  readonly fix: readonly SentenceTemplate<F>[];
+}
+
+/** The short rows `templates` make from `facts`. */
+export function summaryOf<F>(templates: SummaryTemplates<F>, facts: F): CardSummaryLines {
+  return {
+    happened: sentences(templates.happened, facts).slice(0, 2),
+    now: sentences(templates.now, facts).slice(0, 1),
+    fix: sentences(templates.fix, facts).slice(0, 1),
+  };
+}
+
+/**
+ * The short templates of `templates` that are its own (their ids hold `.short.`), for the
+ * registries the tests read. A full template it reuses is registered with the full lists.
+ */
+export function summaryTemplates<F>(templates: SummaryTemplates<F>): SentenceTemplate<F>[] {
+  return [...templates.happened, ...templates.now, ...templates.fix].filter((t) =>
+    t.id.includes(".short."),
+  );
 }
 
 /**
@@ -463,6 +504,15 @@ function confirmedCard(built: CardView, facts: unknown, verification: Verificati
       ...lead,
       ...built.found.filter((line) => line.template !== COULD_NOT_CHECK_SENTENCE.id),
     ],
+    // The short rows lead with could not be checked too, whatever the card's own rows say.
+    ...(built.summary === undefined
+      ? {}
+      : {
+          summary: {
+            ...built.summary,
+            happened: [...lead, ...built.summary.happened].slice(0, 2),
+          },
+        }),
     ...(unconfirmed === undefined ? {} : { unconfirmed }),
     ...(caveat === undefined ? {} : { caveat }),
   };

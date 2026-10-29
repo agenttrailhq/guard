@@ -52,8 +52,10 @@ import {
   type LocalFix,
   localFixCommand,
   type SentenceTemplate,
+  type SummaryTemplates,
   sentence,
   sentences,
+  summaryOf,
   type ToCard,
   type UnsafeFix,
 } from "./cards.js";
@@ -645,6 +647,38 @@ function cloudShapes(f: CloudFacts): { shape: string }[] {
   return shapes;
 }
 
+/** The card's short rows. The full sentences above stay behind its expander. */
+export const CLOUD_SUMMARY: SummaryTemplates<CloudFacts> = {
+  happened: [
+    whenAny(
+      "cloud.short.iam",
+      (f) => f.iamChanges,
+      (n) => `${counted(n, "IAM change", "IAM changes")} ran.`,
+    ),
+    whenAny(
+      "cloud.short.other",
+      (f) => f.autoScalingChanges + f.s3Changes + f.terraformChanges,
+      (n, f) => {
+        const kinds = [
+          f.autoScalingChanges > 0 ? "Auto Scaling" : "",
+          f.s3Changes > 0 ? "S3" : "",
+          f.terraformChanges > 0 ? "Terraform" : "",
+        ].filter((k) => k !== "");
+        return `${counted(n, "other cloud change", "other cloud changes")} ran: ${kinds.join(", ")}.`;
+      },
+    ),
+    ...CLOUD_FOUND.filter((t) => t.id === "cloud.nothing"),
+  ],
+  now: [
+    whenAny(
+      "cloud.short.now.cannot-check",
+      changesOf,
+      () => "Cloud changes cannot be checked from this machine: each needs a person to review it.",
+    ),
+  ],
+  fix: CLOUD_FIX_STEPS,
+};
+
 /** The card for the cloud check. */
 export const cloudCard: ToCard<"cloud"> = (result, context: CardContext) => {
   const f = result.facts;
@@ -655,6 +689,7 @@ export const cloudCard: ToCard<"cloud"> = (result, context: CardContext) => {
     count: result.matches,
     found: sentences(CLOUD_FOUND, f),
     now: sentences(CLOUD_NOW, f),
+    summary: summaryOf(CLOUD_SUMMARY, f),
     fixes: cloudShapes(f),
     fixSteps: sentences(CLOUD_FIX_STEPS, f),
     chip: {

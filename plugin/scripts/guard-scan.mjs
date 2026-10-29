@@ -12780,6 +12780,13 @@ function chipFor(facts, reasons, fallback) {
   const count3 = reason.count(facts);
   return { count: count3, label: { template: reason.id, text: count3 === 1 ? reason.one : reason.many } };
 }
+function summaryOf(templates, facts) {
+  return {
+    happened: sentences(templates.happened, facts).slice(0, 2),
+    now: sentences(templates.now, facts).slice(0, 1),
+    fix: sentences(templates.fix, facts).slice(0, 1)
+  };
+}
 var NOT_CHECKED_SENTENCE = {
   id: "not-checked",
   render: () => "Not checked."
@@ -12900,6 +12907,13 @@ function confirmedCard(built, facts, verification) {
       ...lead,
       ...built.found.filter((line2) => line2.template !== COULD_NOT_CHECK_SENTENCE.id)
     ],
+    // The short rows lead with could not be checked too, whatever the card's own rows say.
+    ...built.summary === void 0 ? {} : {
+      summary: {
+        ...built.summary,
+        happened: [...lead, ...built.summary.happened].slice(0, 2)
+      }
+    },
     ...unconfirmed === void 0 ? {} : { unconfirmed },
     ...caveat === void 0 ? {} : { caveat }
   };
@@ -13484,6 +13498,36 @@ function cloudShapes(f) {
   if (f.terraformChanges > 0) shapes.push({ shape: "cd <folder> && terraform show" });
   return shapes;
 }
+var CLOUD_SUMMARY = {
+  happened: [
+    whenAny(
+      "cloud.short.iam",
+      (f) => f.iamChanges,
+      (n2) => `${counted(n2, "IAM change", "IAM changes")} ran.`
+    ),
+    whenAny(
+      "cloud.short.other",
+      (f) => f.autoScalingChanges + f.s3Changes + f.terraformChanges,
+      (n2, f) => {
+        const kinds = [
+          f.autoScalingChanges > 0 ? "Auto Scaling" : "",
+          f.s3Changes > 0 ? "S3" : "",
+          f.terraformChanges > 0 ? "Terraform" : ""
+        ].filter((k) => k !== "");
+        return `${counted(n2, "other cloud change", "other cloud changes")} ran: ${kinds.join(", ")}.`;
+      }
+    ),
+    ...CLOUD_FOUND.filter((t) => t.id === "cloud.nothing")
+  ],
+  now: [
+    whenAny(
+      "cloud.short.now.cannot-check",
+      changesOf,
+      () => "Cloud changes cannot be checked from this machine: each needs a person to review it."
+    )
+  ],
+  fix: CLOUD_FIX_STEPS
+};
 var cloudCard = (result, context) => {
   const f = result.facts;
   const headline2 = sentence(CLOUD_HEADLINE, f);
@@ -13493,6 +13537,7 @@ var cloudCard = (result, context) => {
     count: result.matches,
     found: sentences(CLOUD_FOUND, f),
     now: sentences(CLOUD_NOW, f),
+    summary: summaryOf(CLOUD_SUMMARY, f),
     fixes: cloudShapes(f),
     fixSteps: sentences(CLOUD_FIX_STEPS, f),
     chip: {
@@ -14039,6 +14084,25 @@ var EGRESS_CHIP_REASONS = [
     many: "tunnels started"
   }
 ];
+var EGRESS_SUMMARY = {
+  happened: [
+    when(
+      "egress.short.uploads",
+      (f) => f.uploads > 0,
+      (f) => `${counted(f.uploads, "upload", "uploads")} that ran sent data off this machine.`
+    ),
+    ...EGRESS_FOUND.filter((t) => ["egress.tunnels-started", "egress.none"].includes(t.id))
+  ],
+  now: [
+    when(
+      "egress.short.now.running",
+      (f) => f.tunnelsRunning > 0,
+      (f) => `${counted(f.tunnelsRunning, "tunnel or relay program is", "tunnel or relay programs are")} running now.`
+    ),
+    ...EGRESS_NOW.filter((t) => t.id !== "egress.running")
+  ],
+  fix: EGRESS_FIX_STEPS
+};
 var egressCard = (result, context) => {
   const f = result.facts;
   const card = {
@@ -14047,6 +14111,7 @@ var egressCard = (result, context) => {
     count: result.matches,
     found: sentences(EGRESS_FOUND, f),
     now: sentences(EGRESS_NOW, f),
+    summary: summaryOf(EGRESS_SUMMARY, f),
     fixes: f.tunnelsRunning > 0 ? [{ shape: "pgrep -lx <program>" }] : [],
     fixSteps: sentences(EGRESS_FIX_STEPS, f),
     chip: chipFor(f, EGRESS_CHIP_REASONS, EGRESS_CHIP),
@@ -14291,6 +14356,25 @@ var PROD_CHIP_REASONS = [
     many: "commands matched a production infrastructure guardrail"
   }
 ];
+var PROD_SUMMARY = {
+  happened: [
+    when2(
+      "prod.short.databases",
+      (f) => f.databaseCheck === "checked" && f.databaseTargets.other > 0,
+      (f) => `${counted(f.databaseTargets.other, "database command", "database commands")} that ran targeted a database beyond this machine.`
+    ),
+    when2(
+      "prod.short.infra",
+      (f) => f.infraMatches > 0,
+      (f) => `${counted(f.infraMatches, "command or edit", "commands or edits")} that ran matched a production infrastructure guardrail.`
+    ),
+    ...PROD_FOUND.filter(
+      (t) => ["prod.databases-unavailable", "prod.databases-none", "prod.infra-none"].includes(t.id)
+    )
+  ],
+  now: PROD_NOW,
+  fix: PROD_FIX_STEPS
+};
 var prodInfraCard = (result, context) => {
   const f = result.facts;
   const card = {
@@ -14299,6 +14383,7 @@ var prodInfraCard = (result, context) => {
     count: result.matches,
     found: sentences(PROD_FOUND, f),
     now: sentences(PROD_NOW, f),
+    summary: summaryOf(PROD_SUMMARY, f),
     fixes: [],
     fixSteps: sentences(PROD_FIX_STEPS, f),
     chip: chipFor(f, PROD_CHIP_REASONS, PROD_CHIP),
@@ -14844,6 +14929,55 @@ var TESTS_CHIP_REASONS = [
     many: "test configs or CI files rewritten whole"
   }
 ];
+var TESTS_SUMMARY = {
+  happened: [
+    ...TESTS_FOUND.filter(
+      (t) => ["tests.thresholds-lowered", "tests.ci-forced-true", "tests.pass-with-no-tests"].includes(
+        t.id
+      )
+    ),
+    whenAny2(
+      "tests.short.deleted-after-failing",
+      (f) => f.deletedAfterFailing,
+      (n2) => `${counted(n2, "test was", "tests were")} deleted after a run reported ${n2 === 1 ? "it" : "them"} failing.`
+    ),
+    ...TESTS_FOUND.filter((t) => ["tests.deleted", "tests.excludes-added"].includes(t.id)),
+    whenAny2(
+      "tests.short.reverts",
+      (f) => f.autoUpdateReverts,
+      (n2) => `${counted(n2, "edit", "edits")} set a threshold back after a coverage run with autoUpdate on.`
+    ),
+    whenAny2(
+      "tests.short.rewritten",
+      (f) => f.configsRewritten,
+      (n2) => `${counted(n2, "test config or CI file was", "test configs or CI files were")} rewritten whole, so the change is not known.`
+    ),
+    whenAny2(
+      "tests.short.unread",
+      (f) => f.unreadEdits,
+      (n2) => `${counted(n2, "command", "commands")} changed a test config or CI file in a way this check does not read.`
+    ),
+    {
+      id: "tests.short.nothing",
+      render: (f) => signals(f) === 0 && f.couldHide === 0 && f.unconfirmed === 0 && f.unreadEdits === 0 ? "Nothing that ran weakened a coverage threshold, a test exclude, a CI step or a test file." : void 0
+    }
+  ],
+  now: [
+    {
+      id: "tests.short.now.auto-update",
+      render: ({ autoUpdateNow: a }) => {
+        const read = a.on + a.off;
+        return read > 0 ? `Coverage autoUpdate is on in ${a.on} of the ${counted(read, "test config", "test configs")} that could be read.` : void 0;
+      }
+    },
+    whenAny2(
+      "tests.short.now.unread",
+      (f) => f.autoUpdateNow.unread,
+      (n2) => `${counted(n2, "test config", "test configs")} could not be read now.`
+    )
+  ],
+  fix: TESTS_FIX_STEPS
+};
 var testsCard = (result, context) => {
   const f = result.facts;
   const headline2 = sentence(TESTS_HEADLINE, f);
@@ -14854,6 +14988,7 @@ var testsCard = (result, context) => {
     count: result.matches,
     found: sentences(TESTS_FOUND, f),
     now: sentences(TESTS_NOW, f),
+    summary: summaryOf(TESTS_SUMMARY, f),
     fixes: [
       ...f.thresholdsLowered > 0 ? [{ shape: "git log -p -- <test config>" }] : [],
       ...f.testFilesDeleted > 0 ? [{ shape: "git log --diff-filter=D --oneline -- <test file>" }] : []
@@ -15159,6 +15294,18 @@ var UNREVIEWED_CHIP = {
   id: "unreviewed.chip",
   render: (f) => noun(f.commitsOnMain, "commit pushed straight to main", "commits pushed straight to main")
 };
+var UNREVIEWED_SUMMARY = {
+  happened: [
+    ...UNREVIEWED_FOUND.filter((t) => ["unreviewed.pushes", "unreviewed.none"].includes(t.id)),
+    when3(
+      "unreviewed.short.not-checked",
+      (f) => f.pushesNotChecked > 0,
+      (f) => `${counted(f.pushesNotChecked, "push", "pushes")} could not be checked.`
+    )
+  ],
+  now: UNREVIEWED_NOW,
+  fix: UNREVIEWED_FIX_STEPS
+};
 var unreviewedCard = (result, context) => {
   const f = result.facts;
   const card = {
@@ -15167,6 +15314,7 @@ var unreviewedCard = (result, context) => {
     count: result.matches,
     found: sentences(UNREVIEWED_FOUND, f),
     now: sentences(UNREVIEWED_NOW, f),
+    summary: summaryOf(UNREVIEWED_SUMMARY, f),
     fixes: f.commitsOnMain > 0 ? [{ shape: "git log --oneline <from>..<to>" }] : [],
     fixSteps: sentences(UNREVIEWED_FIX_STEPS, f),
     chip: {
@@ -16625,6 +16773,57 @@ var FIX_STEPS = [
     render: (f) => f.databases.classes.other + f.databases.classes.unresolved > 0 ? "Check that each database wiped on another machine, or whose host is set elsewhere, was meant to be." : void 0
   }
 ];
+var SUMMARY = {
+  happened: [
+    ...FOUND.filter((t) => t.id === "destructive.rm"),
+    {
+      id: "destructive.short.home-or-above",
+      render: (f) => n(f, "home-or-above") > 0 ? `${counted2(n(f, "home-or-above"), "target")} ${was(n(f, "home-or-above"))} the home folder, a folder above it, or the root.` : void 0
+    },
+    {
+      id: "destructive.short.unguarded",
+      render: (f) => n(f, "unguarded-variable") > 0 ? `${counted2(n(f, "unguarded-variable"), "target")} ${was(n(f, "unguarded-variable"))} built from a variable with no \${VAR:?} guard.` : void 0
+    },
+    {
+      id: "destructive.short.databases",
+      render: (f) => {
+        const c = f.databases.classes;
+        const away = c.other + c.unresolved;
+        return away > 0 ? `${counted2(away, "database")} ${was(away)} wiped on another machine, or on a host set elsewhere.` : void 0;
+      }
+    },
+    ...FOUND.filter((t) => t.id === "destructive.none")
+  ],
+  now: [
+    ...NOW.filter((t) => t.id === "destructive.now.tracked-gone"),
+    {
+      id: "destructive.short.now.partly-back",
+      render: (f) => f.rm.trackedPartlyBack > 0 ? `${counted2(f.rm.trackedPartlyBack, "tracked target")} ${is(f.rm.trackedPartlyBack)} only partly back.` : void 0
+    },
+    ...NOW.filter(
+      (t) => t.id === "destructive.now.tracked-back" || t.id === "destructive.now.could-not-check"
+    )
+  ],
+  fix: [
+    ...FIX_STEPS.filter((t) => t.id === "destructive.fix.restore"),
+    {
+      id: "destructive.short.fix.partly-back",
+      render: (f) => f.rm.trackedPartlyBack > 0 ? "Restore the missing files of each partly-back target, one by one." : void 0
+    },
+    {
+      id: "destructive.short.fix.guard",
+      render: (f) => n(f, "unguarded-variable") > 0 ? `Write a path built from a variable as \${VAR:?}/path, so an empty one stops the command.` : void 0
+    },
+    {
+      id: "destructive.short.fix.outside",
+      render: (f) => n(f, "untracked") + n(f, "home") + n(f, "other") > 0 ? "Check that each folder deleted outside scratch and build output was meant to go." : void 0
+    },
+    {
+      id: "destructive.short.fix.databases",
+      render: (f) => f.databases.classes.other + f.databases.classes.unresolved > 0 ? "Check that each database wiped on another machine was meant to be." : void 0
+    }
+  ]
+};
 function fixShapes(f) {
   const out = [];
   if (f.rm.trackedGone > 0) out.push({ shape: "git --literal-pathspecs restore -- <path>" });
@@ -16641,6 +16840,7 @@ var destructiveCard = (result, context) => {
     count: result.matches,
     found: [...sentences(FOUND, f), ...codexLines(CODEX, context, f)],
     now: sentences(NOW, f),
+    summary: summaryOf(SUMMARY, f),
     fixes: fixShapes(f),
     codexCaveat: codexCaveat(context, allCalls(f).ran),
     ...headline2 === void 0 ? {} : {
@@ -17179,6 +17379,55 @@ var FIX_STEPS2 = [
     render: (f) => f.discards.mainCheckout > 0 ? "Check whether the discarded paths held changes you still need. Git cannot bring them back, but an editor's local history may." : void 0
   }
 ];
+var SUMMARY2 = {
+  happened: [
+    {
+      id: "lost-work.short.deleted",
+      render: (f) => {
+        const parts = [];
+        if (f.branches.deleted > 0)
+          parts.push(`${counted2(f.branches.deleted, "branch", "branches")} force-deleted`);
+        if (f.stashes.dropped > 0)
+          parts.push(`${counted2(f.stashes.dropped, "stash", "stashes")} dropped`);
+        return parts.length > 0 ? `${parts.join(" and ")}.` : void 0;
+      }
+    },
+    {
+      id: "lost-work.short.discards",
+      render: (f) => f.discards.paths > 0 ? `Uncommitted changes to ${counted2(f.discards.paths, "path")} were discarded.` : void 0
+    },
+    {
+      id: "lost-work.short.not-identified",
+      render: (f) => {
+        const n2 = f.branches.notIdentified + f.stashes.notIdentified + f.stashes.cleared;
+        return n2 > 0 ? `${counted2(n2, "deletion")} could not be looked up: no commit id was recorded.` : void 0;
+      }
+    },
+    ...FOUND2.filter((t) => t.id === "lost-work.none")
+  ],
+  now: [
+    {
+      id: "lost-work.short.now.recoverable",
+      render: (f) => recoverable(f) > 0 ? `${counted2(recoverable(f), "deleted branch or stash", "deleted branches or stashes")} can still be recovered by commit id.` : void 0
+    },
+    {
+      id: "lost-work.short.now.main-checkout",
+      render: (f) => f.discards.mainCheckout > 0 ? `${counted2(f.discards.mainCheckout, "discarded path")} in a main checkout had no agent edit on record.` : void 0
+    },
+    {
+      id: "lost-work.short.now.gone",
+      render: (f) => {
+        const n2 = f.branches.gone + f.stashes.gone;
+        return n2 > 0 ? `${counted2(n2, "deleted branch or stash", "deleted branches or stashes")} ${is(n2)} gone from the repo.` : void 0;
+      }
+    },
+    {
+      id: "lost-work.short.now.safe",
+      render: (f) => f.branches.onAnotherRef + f.stashes.listed > 0 ? "What was deleted is still on another branch, tag or the stash list." : void 0
+    }
+  ],
+  fix: FIX_STEPS2
+};
 function fixShapes2(f) {
   const out = [];
   if (f.branches.recoverable > 0) out.push({ shape: "git branch recovered/<name> <sha>" });
@@ -17197,6 +17446,7 @@ var lostWorkCard = (result, context) => {
     found: [...sentences(FOUND2, f), ...codexLines(CODEX2, context, f)],
     now: sentences(NOW2, f),
     fixes: fixShapes2(f),
+    summary: summaryOf(SUMMARY2, f),
     codexCaveat: codexCaveat(context, allCalls2(f).ran),
     ...headline2 === void 0 ? {} : {
       headline: {
@@ -17352,6 +17602,65 @@ var FIX_FIXTURES = {
   render: (f) => f.classes["likely-real"] > 0 && f.classes["committed-fixture"] > 0 ? "If a committed fixture is a real secret, rotate it as well: removing the file does not remove it from the repo's history." : void 0
 };
 var SECRETS_FIX = [FIX_ROTATE, FIX_FIXTURES];
+function notCounted(f) {
+  const parts = [];
+  const fixtures = f.classes["committed-fixture"];
+  const placeholders = f.classes.placeholder;
+  const local = f.classes["local-dev"];
+  if (fixtures > 0) parts.push(countOf(fixtures, "committed fixture"));
+  if (placeholders > 0) parts.push(countOf(placeholders, "false positive"));
+  if (local > 0) parts.push(countOf(local, "local dev value"));
+  return parts;
+}
+function andJoined(parts) {
+  return parts.length <= 1 ? parts.join("") : `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}`;
+}
+var SECRETS_SUMMARY = {
+  happened: [
+    {
+      id: "secrets.short.likely-real",
+      render: (f) => {
+        const n2 = f.classes["likely-real"];
+        return n2 > 0 ? `${likelyReal(n2)} in ${countOf(f.filesRead, "transcript file")}.` : void 0;
+      }
+    },
+    {
+      id: "secrets.short.none",
+      render: (f) => f.classes["likely-real"] === 0 && f.filesRead > 0 ? `No likely-real credential in ${countOf(f.filesRead, "transcript file")}.` : void 0
+    },
+    {
+      id: "secrets.short.not-counted",
+      render: (f) => {
+        const parts = notCounted(f);
+        return parts.length > 0 ? `Not counted: ${andJoined(parts)}.` : void 0;
+      }
+    },
+    {
+      id: "secrets.short.unread",
+      render: (f) => f.filesNotRead > 0 ? `${countOf(f.filesNotRead, "transcript file")} could not be read.` : void 0
+    }
+  ],
+  now: [
+    {
+      id: "secrets.short.now.still-there",
+      render: (f) => {
+        const n2 = f.classes["likely-real"];
+        if (n2 === 0) return void 0;
+        return n2 === 1 ? "Still in the transcript files, in plain text." : `All ${formatCount(n2)} are still in the transcript files, in plain text.`;
+      }
+    },
+    {
+      id: "secrets.short.now.fixtures",
+      render: (f) => f.classes["committed-fixture"] > 0 ? "The committed fixtures are in git-tracked files, and so in the repos' history." : void 0
+    }
+  ],
+  fix: [
+    {
+      id: "secrets.short.fix.rotate",
+      render: (f) => f.classes["likely-real"] > 0 ? "Rotate each one with the service that issued it, then scrub the transcripts." : void 0
+    }
+  ]
+};
 var SECRETS_HEADLINE = {
   id: "secrets.headline",
   render: (f) => {
@@ -17396,6 +17705,7 @@ var secretsCard = (result) => {
     found: sentences(SECRETS_FOUND, facts),
     now: sentences(SECRETS_NOW, facts),
     fixSteps: sentences(SECRETS_FIX, facts),
+    summary: summaryOf(SECRETS_SUMMARY, facts),
     fixes: [],
     codexCaveat: false,
     ...headline2 === void 0 ? {} : {
@@ -18035,6 +18345,49 @@ var FIX_STEPS3 = [
     render: (f) => f.instructions.sayToSkip > 0 ? "Remove the instruction to skip checks from each file that has one." : void 0
   }
 ];
+function otherSkips(f) {
+  return f.otherNoVerify.ran + f.husky.ran + f.oneCommand.ran + f.hooksPath.calls.ran;
+}
+var SUMMARY3 = {
+  happened: [
+    {
+      id: "skipped-checks.short.commits",
+      render: (f) => withHooks(f) > 0 ? `${counted2(withHooks(f), "commit")} skipped the repo's commit hooks with --no-verify.` : void 0
+    },
+    {
+      id: "skipped-checks.short.instructions",
+      render: (f) => f.instructions.sayToSkip > 0 ? `${counted2(f.instructions.sayToSkip, "instruction or memory file")} ${f.instructions.sayToSkip === 1 ? "tells" : "tell"} the agent to skip checks.` : void 0
+    },
+    {
+      id: "skipped-checks.short.other",
+      render: (f) => otherSkips(f) > 0 ? `${counted2(otherSkips(f), "other command")} ran with hooks turned off.` : void 0
+    },
+    {
+      id: "skipped-checks.short.not-identified",
+      render: (f) => f.noVerify.notIdentified > 0 ? `${counted2(f.noVerify.notIdentified, "commit command")} with --no-verify could not be looked up.` : void 0
+    },
+    ...FOUND3.filter((t) => t.id === "skipped-checks.none")
+  ],
+  now: [
+    {
+      id: "skipped-checks.short.now.on-main",
+      render: (f) => f.noVerify.onMain > 0 ? `${counted2(f.noVerify.onMain, "of those commits", "of those commits")} ${is(f.noVerify.onMain)} on main now.` : void 0
+    },
+    {
+      id: "skipped-checks.short.now.hooks-off",
+      render: (f) => f.hooksPath.off > 0 ? `Hooks are off now in ${counted2(f.hooksPath.off, "repo")} where a check was skipped.` : void 0
+    },
+    {
+      id: "skipped-checks.short.now.instructions",
+      render: (f) => f.instructions.agentWroteStill > 0 ? `${counted2(f.instructions.agentWroteStill, "file")} still ${f.instructions.agentWroteStill === 1 ? "holds" : "hold"} the instruction the agent wrote.` : void 0
+    },
+    {
+      id: "skipped-checks.short.now.off-main",
+      render: (f) => f.noVerify.offMain > 0 ? `${counted2(f.noVerify.offMain, "commit")} ${is(f.noVerify.offMain)} not on main.` : void 0
+    }
+  ],
+  fix: FIX_STEPS3
+};
 function fixShapes3(f) {
   const out = [];
   if (f.noVerify.onMain + f.noVerify.offMain > 0) out.push({ shape: "git show --stat <sha>" });
@@ -18054,6 +18407,7 @@ var skippedChecksCard = (result, context) => {
     found: [...sentences(FOUND3, f), ...codexLines(CODEX3, context, f)],
     now: sentences(NOW3, f),
     fixes: fixShapes3(f),
+    summary: summaryOf(SUMMARY3, f),
     codexCaveat: codexCaveat(context, allCalls3(f).ran),
     ...headline2 === void 0 ? {} : {
       headline: {
@@ -19458,7 +19812,7 @@ ${parts.join("\n")}
 }
 var SUMMARY_LIMITS = {
   happened: { sentences: 2, chars: 200 },
-  now: { sentences: 1, chars: 140 },
+  now: { sentences: 1, chars: 110 },
   fix: { sentences: 1, chars: 140 }
 };
 function firstLines(lines2, limit) {
@@ -19474,10 +19828,11 @@ function firstLines(lines2, limit) {
   return out;
 }
 function cardSummary(card) {
+  const short = card.summary;
   return {
-    happened: firstLines(card.found, SUMMARY_LIMITS.happened),
-    now: firstLines(card.now, SUMMARY_LIMITS.now),
-    fix: firstLines(card.fixSteps ?? [], SUMMARY_LIMITS.fix)
+    happened: firstLines(short?.happened ?? card.found, SUMMARY_LIMITS.happened),
+    now: firstLines(short?.now ?? card.now, SUMMARY_LIMITS.now),
+    fix: firstLines(short?.fix ?? card.fixSteps ?? [], SUMMARY_LIMITS.fix)
   };
 }
 function vtoneLabel(card) {
@@ -19505,7 +19860,7 @@ function verifiedCard(card) {
     if (lines2.length > 0) more.push(`<h4>${label}</h4><p>${sentencesHtml(lines2)}</p>`);
   };
   const codex = sentence(CODEX_CAVEAT, card);
-  const extra = card.found.length > short.happened.length || card.now.length > short.now.length || (card.fixSteps ?? []).length > short.fix.length || card.read !== void 0 || card.caveat !== void 0 || codex !== void 0;
+  const extra = card.summary !== void 0 || card.found.length > short.happened.length || card.now.length > short.now.length || (card.fixSteps ?? []).length > short.fix.length || card.read !== void 0 || card.caveat !== void 0 || codex !== void 0;
   if (extra) {
     group("What checking found", card.found);
     group("Now", card.now);
@@ -20308,7 +20663,15 @@ function verifiedLines(payload) {
     const title = CATEGORY_TITLES[card.category];
     const count3 = cardCount(card);
     if (count3 !== void 0) lines2.push(`${title}  ${count3.text}`);
-    for (const line2 of [...card.found, ...card.now, ...card.fixSteps ?? []]) {
+    const short = cardSummary(card);
+    for (const line2 of [
+      ...short.happened,
+      ...short.now,
+      ...short.fix,
+      ...card.found,
+      ...card.now,
+      ...card.fixSteps ?? []
+    ]) {
       lines2.push(`${title}  ${line2.text}`);
     }
     for (const fix of card.fixes.slice(0, MAX_CARD_COMMANDS)) lines2.push(`${title}  ${fix.shape}`);
