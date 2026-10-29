@@ -4,6 +4,8 @@
 // cspell:words kubenscanary kubepodcanary sqlhostcanary sqldbcanary sqltablecanary
 // cspell:words gitbranchcanary baretokencanary barepwcanary barekeycanary deploybot
 // cspell:words slackcheck postgresql secretflag gitcomment
+// cspell:words DBLOGINCANARY DBGLUEDCANARY DBASSIGNCANARY PROFILECANARY INLINEPROFILECANARY
+// cspell:words FLAGPROFILECANARY dblogin dbglued dbassign awsexport awsinline awsflag awsinstance
 /**
  * The redaction canary corpus, as a standing regression.
  *
@@ -37,6 +39,8 @@ const META: ReportMeta = { version: "0.1.0", generatedAt: new Date("2026-09-08T0
 // checked-in credential-shaped string trips secret push-protection even when synthetic.
 const SLACK_TOKEN = `xoxb${"-"}SLACKCANARYtoken000000`;
 const AWS_KEY_ID = `AKIA${"AWSCANARY0123456"}`;
+// An AWS instance id's 17 hex digits, unique enough to grep for.
+const INSTANCE_HEX = "0dead0beef0cafe0f";
 
 /** One planted case: the command, the substrings that must vanish, and a matching rule. */
 interface Canary {
@@ -189,6 +193,49 @@ const CANARIES: readonly Canary[] = [
     tokens: ["SSHCANARY"],
     rule: bashRule("c.ssh", "ssh deploy@"),
   },
+  // ── Machine identifiers: a database login, an AWS profile and an AWS resource id ──
+  {
+    label: "database login after -U",
+    use: cmd("psql -h localhost -U DBLOGINCANARY -d app -c 'select 1'", "dblogin"),
+    tokens: ["DBLOGINCANARY"],
+    rule: bashRule("c.dblogin", "psql -h localhost"),
+  },
+  {
+    label: "database login glued to -u",
+    use: cmd("mysql -uDBGLUEDCANARY -e 'select 1'", "dbglued"),
+    tokens: ["DBGLUEDCANARY"],
+    rule: bashRule("c.dbglued", "mysql -u"),
+  },
+  {
+    label: "database login as --username=",
+    use: cmd("pg_dump --username=DBASSIGNCANARY app", "dbassign"),
+    tokens: ["DBASSIGNCANARY"],
+    rule: bashRule("c.dbassign", "pg_dump --username"),
+  },
+  {
+    label: "exported AWS profile",
+    use: cmd("export AWS_PROFILE=PROFILECANARY && aws sts get-caller-identity", "awsexport"),
+    tokens: ["PROFILECANARY"],
+    rule: bashRule("c.awsexport", "export AWS_PROFILE"),
+  },
+  {
+    label: "inline AWS profile",
+    use: cmd("AWS_PROFILE=INLINEPROFILECANARY aws s3 ls", "awsinline"),
+    tokens: ["INLINEPROFILECANARY"],
+    rule: bashRule("c.awsinline", "aws s3 ls"),
+  },
+  {
+    label: "AWS --profile flag",
+    use: cmd("aws ec2 describe-instances --profile FLAGPROFILECANARY", "awsflag"),
+    tokens: ["FLAGPROFILECANARY"],
+    rule: bashRule("c.awsflag", "aws ec2 describe-instances"),
+  },
+  {
+    label: "AWS instance id",
+    use: cmd(`aws ec2 stop-instances --instance-ids i-${INSTANCE_HEX}`, "awsinstance"),
+    tokens: [INSTANCE_HEX],
+    rule: bashRule("c.awsinstance", "aws ec2 stop-instances"),
+  },
 ];
 
 const CATALOG = compileCatalog([
@@ -244,7 +291,7 @@ describe("zero survivors — no planted token reaches either surface", () => {
     // Over-redaction to a wall of placeholders would also pass "zero survivors" while
     // making the report useless, so a few shapes are pinned as still-legible.
     expect(HTML).toContain("kubectl -n &lt;name&gt; get pods &lt;name&gt;");
-    expect(HTML).toContain("docker exec &lt;name&gt; psql -U app");
+    expect(HTML).toContain("docker exec &lt;name&gt; psql -U &lt;user&gt;");
     expect(HTML).toContain("ssh &lt;user&gt;@&lt;host&gt;");
     // The MCP payload keeps its keys and shape while every value is gone.
     expect(HTML).toContain("&quot;team&quot;:&quot;&lt;value&gt;&quot;");

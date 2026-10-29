@@ -24,6 +24,7 @@
  * Pure. No I/O.
  */
 
+import { redactMachineIdentifiers } from "../redact-identifiers.js";
 import type { RanEvidence, Verification, VerifyCategory, VerifyStatus } from "./types.js";
 import {
   type CategoryFactsMap,
@@ -717,19 +718,23 @@ export function localFixCommand(
   category: VerifyCategory,
   parts: readonly CommandPart[],
 ): LocalFix | UnsafeFix {
-  const argv: string[] = [];
+  const words: string[] = [];
   for (const part of parts) {
     if (typeof part === "string") {
-      argv.push(quoteArgument(part));
+      words.push(part);
       continue;
     }
     const value = safeValue(part);
     if (value === undefined) {
       return { category, unsafe: true, note: "could not make a safe command" };
     }
-    argv.push(quoteArgument(value));
+    words.push(value);
   }
-  return localFix(category, argv.join(" "));
+  // A database login, an AWS profile or an AWS resource id is replaced here as on the page.
+  // Every data word is within the safe set, so it holds no space and splits back one to one.
+  const redacted = redactMachineIdentifiers(words.join(" ")).split(" ");
+  const argv = redacted.length === words.length ? redacted : words;
+  return localFix(category, argv.map(quoteArgument).join(" "));
 }
 
 /** Is `value` a `LocalFix`? */
