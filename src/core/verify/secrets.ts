@@ -994,7 +994,7 @@ export function createSecretsCollector(options: CollectorOptions): SecretsCollec
 }
 
 /** Read `path` into `collector` line by line. `false` when the file could not be read. */
-async function collectFile(
+export async function collectFile(
   collector: SecretsCollector,
   path: string,
   readLines: (path: string) => AsyncIterable<string>,
@@ -1006,6 +1006,95 @@ async function collectFile(
     return true;
   } catch {
     return false;
+  }
+}
+
+/**
+ * What a collector gathered, as plain data, to hand from a worker thread to the main one. It
+ * holds values: it moves between threads of this process in memory and is never written.
+ */
+export interface CollectedPart {
+  readonly paths: readonly (readonly [string, number])[];
+  readonly done: readonly number[];
+  readonly unplaced: readonly (readonly [number, number])[];
+  readonly workingDirs: readonly string[];
+  readonly candidates: readonly (readonly [
+    string,
+    {
+      readonly kind: SecretKind;
+      readonly evidence: Evidence | undefined;
+      readonly via: readonly SecretProvenance[];
+      readonly files: readonly number[];
+      readonly decided: SecretClass | undefined;
+      readonly value: string | undefined;
+      readonly setAside: Candidate["setAside"];
+    },
+  ])[];
+}
+
+/** `collector`'s state, as plain data. */
+export function exportCollected(collector: SecretsCollector): CollectedPart {
+  const collected = COLLECTED.get(collector) as Collected;
+  return {
+    paths: [...collected.paths],
+    done: [...collected.done],
+    unplaced: [...collected.unplaced],
+    workingDirs: [...collected.workingDirs],
+    candidates: [...collected.candidates].map(([key, c]) => [
+      key,
+      {
+        kind: c.kind,
+        evidence: c.evidence,
+        via: [...c.via],
+        files: [...c.files],
+        decided: c.decided,
+        value: c.value,
+        setAside: c.setAside,
+      },
+    ]),
+  };
+}
+
+/**
+ * Add what another collector gathered, under the same fingerprint key, to `collector`. A
+ * value both saw is one value: its ways in and files are joined, and evidence either saw
+ * counts.
+ */
+export function mergeCollected(collector: SecretsCollector, part: CollectedPart): void {
+  const collected = COLLECTED.get(collector) as Collected;
+  const index = new Map<number, number>();
+  for (const [path, theirs] of part.paths) index.set(theirs, collector.file(path));
+  // Every index a part uses is one of its paths; `-1` is never one of the files a check is about.
+  const mine = (theirs: number): number => index.get(theirs) ?? -1;
+  for (const theirs of part.done) collector.read(mine(theirs));
+  for (const [theirs, count] of part.unplaced) {
+    const at = mine(theirs);
+    collected.unplaced.set(at, (collected.unplaced.get(at) ?? 0) + count);
+  }
+  for (const dir of part.workingDirs) collected.workingDirs.add(dir);
+  for (const [key, c] of part.candidates) {
+    const existing = collected.candidates.get(key);
+    if (existing === undefined) {
+      collected.candidates.set(key, {
+        kind: c.kind,
+        evidence: c.evidence,
+        via: new Set(c.via),
+        files: new Set(c.files.map(mine)),
+        decided: c.decided,
+        value: c.value,
+        setAside: c.setAside,
+      });
+      continue;
+    }
+    for (const via of c.via) existing.via.add(via);
+    for (const file of c.files) existing.files.add(mine(file));
+    if (existing.evidence === undefined && c.evidence !== undefined) {
+      existing.evidence = c.evidence;
+      existing.kind = c.kind;
+    }
+    existing.decided ??= c.decided;
+    existing.setAside ??= c.setAside;
+    existing.value ??= c.value;
   }
 }
 

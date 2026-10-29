@@ -40,7 +40,7 @@ import {
 } from "node:fs";
 import { homedir, tmpdir, userInfo } from "node:os";
 import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { OWASP_SOURCES } from "@agenttrail/guardrails/guardrails";
 import { beforeAll, describe, expect, it } from "vitest";
 import { NOT_CHECKED_MESSAGE } from "../commands/hook.js";
@@ -1700,5 +1700,61 @@ describe("hook runs in this file write only to their own scratch home", () => {
     expect(spooledCrashes(crash.home)).toHaveLength(1);
 
     expect(existsSync(join(homedir(), ".agenttrail"))).toBe(false);
+  });
+});
+
+describe("the secrets check's reading on worker threads, from the built bundles", () => {
+  /** Synthetic sessions, enough for more than one worker, each with values of every kind. */
+  async function manySessions(): Promise<{ root: string; files: readonly string[] }> {
+    const token = `ghp${"_"}WORKERS0aB1cD2eF3gH4iJ5kL6mN7oP8qR9sT0`;
+    const named = `k3Jd9Lq2${"Xw7Vn4Bz"}`;
+    const sessions = Array.from({ length: 24 }, (_, i) => [
+      { kind: "prompt" as const, text: `use ${token} for session ${i}` },
+      { kind: "call" as const, command: `export DEPLOY_TOKEN=${named}${i}`, result: { text: "" } },
+      {
+        kind: "call" as const,
+        command: "env",
+        result: { text: `id r9Ys3KnW8uS5jV6mC2bE4gG1kQ7tX9f${i}` },
+      },
+    ]);
+    const { root, corpus } = await writeCorpus("claude", sessions);
+    return { root, files: corpus.files ?? [] };
+  }
+
+  it.each([
+    ["cli.js", CLI_BUNDLE],
+    ["guard-scan.mjs", SCAN_BUNDLE],
+  ])("workers started from %s read every file, and find what one thread finds", async (_name, bundle) => {
+    const { files } = await manySessions();
+    const { collectInWorkers } = await import("../secrets-workers.js");
+    const { checkSecrets, exportCollected } = await import("../core/verify/secrets.js");
+    const { createFingerprinter } = await import("../core/verify/fingerprint.js");
+    const { UNAVAILABLE_VERIFY_IO } = await import("../core/verify/verify.js");
+    const { createRealScanIO } = await import("../scan-io.js");
+    const io = createRealScanIO();
+
+    const collector = await collectInWorkers(pathToFileURL(bundle), "claude", files, 3);
+    expect(exportCollected(collector).done).toHaveLength(files.length);
+
+    const base = {
+      agent: "claude" as const,
+      files,
+      readLines: (path: string) => io.readLines(path),
+      io: UNAVAILABLE_VERIFY_IO,
+      fingerprint: createFingerprinter(),
+    };
+    const threaded = await checkSecrets({ ...base, collector });
+    const single = await checkSecrets(base);
+    expect(threaded).toEqual(single);
+    expect(single.facts.classes["likely-real"]).toBeGreaterThan(0);
+  });
+
+  it("a worker that cannot start leaves its files to the check, which reads them itself", async () => {
+    const { files } = await manySessions();
+    const { collectInWorkers } = await import("../secrets-workers.js");
+    const { exportCollected } = await import("../core/verify/secrets.js");
+    const missing = pathToFileURL(join(tmpdir(), "agenttrail-no-such-bundle.mjs"));
+    const collector = await collectInWorkers(missing, "claude", files, 2);
+    expect(exportCollected(collector).done).toHaveLength(0);
   });
 });

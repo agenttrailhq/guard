@@ -41,6 +41,11 @@ export interface VerifyInput {
   /** Streams a transcript file's lines: the same reader `scan` uses. */
   readonly readLines: (path: string) => AsyncIterable<string>;
   readonly io: VerifyIO;
+  /**
+   * The seam the secrets check searches the repos through, with a time budget of its own,
+   * since it runs beside the other checks. Without it, the secrets check shares `io`.
+   */
+  readonly secretsIO?: VerifyIO;
   /** For tests. Production gets a fresh random key for every run. */
   readonly fingerprint?: Fingerprinter;
   /** The home folder, for `~` in commands. Production uses the user's. */
@@ -49,7 +54,7 @@ export interface VerifyInput {
    * What `scan` already collected for the secrets check while it read the transcripts. Files it
    * holds are not read again.
    */
-  readonly secretsCollector?: SecretsCollector;
+  readonly secretsCollector?: SecretsCollector | Promise<SecretsCollector>;
   /** For tests: folders whose contents are scratch. Production uses `TEMP_ROOTS`. */
   readonly scratchRoots?: readonly string[];
 }
@@ -102,15 +107,20 @@ function chargeTime(io: VerifyIO, ms: number): void {
 /** Run every check there is. Never throws. */
 export async function verifyScan(input: VerifyInput): Promise<VerifyOutcome> {
   const agent = input.corpus.agent ?? "claude";
+  // The secrets check starts first and, while its reading runs on worker threads, the other
+  // checks run here. It never throws.
+  const secretsPending = (async () => {
+    const collector = await input.secretsCollector;
+    return await checkSecrets({
+      agent,
+      files: input.corpus.files ?? [],
+      readLines: input.readLines,
+      io: input.secretsIO ?? input.io,
+      fingerprint: input.fingerprint ?? createFingerprinter(),
+      ...(collector === undefined ? {} : { collector }),
+    });
+  })();
   const matched = tallyMatchedCalls(input.corpus, input.catalog, input.allowlist);
-  const secrets = await checkSecrets({
-    agent,
-    files: input.corpus.files ?? [],
-    readLines: input.readLines,
-    io: input.io,
-    fingerprint: input.fingerprint ?? createFingerprinter(),
-    ...(input.secretsCollector === undefined ? {} : { collector: input.secretsCollector }),
-  });
   const git = await checkGitBacked({
     corpus: input.corpus,
     io: input.io,
@@ -145,6 +155,7 @@ export async function verifyScan(input: VerifyInput): Promise<VerifyOutcome> {
   const tests = await checkTests({ calls, io: input.io });
   const unreviewed = await checkUnreviewed({ calls, io: input.io, rules });
   const egress = await checkEgress({ calls, ...rules, io: input.io });
+  const secrets = await secretsPending;
 
   const verification: Verification = {
     matchedCalls: matched.tally,
