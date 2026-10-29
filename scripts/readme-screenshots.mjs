@@ -264,7 +264,7 @@ const REGIONS = `(() => {
     const rect = element.getBoundingClientRect();
     return { top: rect.top + scrollY, bottom: rect.bottom + scrollY };
   };
-  return { stats: box("section.stats"), cards: box("#what-happened") };
+  return { stats: box("#stats"), cards: box("#what-happened") };
 })()`;
 
 /** The clip for one part of the page. */
