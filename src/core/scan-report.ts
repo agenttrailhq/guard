@@ -62,7 +62,7 @@ import { scrubText } from "./scrub.js";
 import { addUsage, EMPTY_TOKEN_TOTALS, type TokenTotals } from "./tokens.js";
 import type { ParsedSession, ToolUse } from "./transcript/transcript-types.js";
 import { toolCallPayload, toolCallsOf } from "./transcripts.js";
-import type { AgentSource, GuardAction, GuardRule, MappedCall } from "./types.js";
+import type { AgentSource, GuardAction, GuardDecision, GuardRule, MappedCall } from "./types.js";
 import type { Verification } from "./verify/types.js";
 
 /**
@@ -416,6 +416,50 @@ const NO_READER_SKIPS: ReaderSkips = {
 };
 
 /**
+ * Decisions already made, per compiled catalog and allowlist, by what a mapped call is: its
+ * tool, command and file path, the only parts the span context is built from. The scan and
+ * each check evaluate the same calls again; a repeat is looked up rather than run against
+ * every rule. Kept in memory for the run only, and cleared when it grows past
+ * `MAX_CACHED_DECISIONS`.
+ */
+const DECISIONS = new WeakMap<
+  readonly CompiledRule[],
+  WeakMap<CompiledAllowlist, Map<string, GuardDecision>>
+>();
+
+/** Most decisions kept for one catalog and allowlist. */
+const MAX_CACHED_DECISIONS = 100_000;
+
+/** Longest command or path a decision is kept for; a longer one is evaluated each time. */
+const MAX_CACHED_INPUT = 16_384;
+
+/** The decision map for one catalog and allowlist. */
+function decisionCache(
+  catalog: readonly CompiledRule[],
+  allowlist: CompiledAllowlist,
+): Map<string, GuardDecision> {
+  let byAllowlist = DECISIONS.get(catalog);
+  if (byAllowlist === undefined) {
+    byAllowlist = new WeakMap();
+    DECISIONS.set(catalog, byAllowlist);
+  }
+  let decisions = byAllowlist.get(allowlist);
+  if (decisions === undefined) {
+    decisions = new Map();
+    byAllowlist.set(allowlist, decisions);
+  }
+  return decisions;
+}
+
+/** What a mapped call is, for the decision cache, or `undefined` when it is too long to keep. */
+function decisionKey(mapped: MappedCall): string | undefined {
+  const command = mapped.args.full_command;
+  const path = mapped.args.file_path;
+  if ((command?.length ?? 0) + (path?.length ?? 0) > MAX_CACHED_INPUT) return undefined;
+  return JSON.stringify([mapped.tool, command ?? null, path ?? null]);
+}
+
+/**
  * Evaluate one tool call's candidates and keep the strictest, as the hook does.
  *
  * Exported so a test can check that a session file's tool call and the same call as a hook
@@ -426,10 +470,19 @@ export function evaluateAction(
   allowlist: CompiledAllowlist,
   candidates: CursorCandidates,
 ): EvaluatedCandidate {
-  const evaluate = (mapped: MappedCall): EvaluatedCandidate => ({
-    mapped,
-    decision: evaluateCall(catalog, buildGuardSpanContext(mapped), mapped, allowlist),
-  });
+  const decisions = decisionCache(catalog, allowlist);
+  const evaluate = (mapped: MappedCall): EvaluatedCandidate => {
+    const key = decisionKey(mapped);
+    let decision = key === undefined ? undefined : decisions.get(key);
+    if (decision === undefined) {
+      decision = evaluateCall(catalog, buildGuardSpanContext(mapped), mapped, allowlist);
+      if (key !== undefined) {
+        if (decisions.size >= MAX_CACHED_DECISIONS) decisions.clear();
+        decisions.set(key, decision);
+      }
+    }
+    return { mapped, decision };
+  };
   const [first, ...rest] = candidates;
   return strictestCandidate([evaluate(first), ...rest.map(evaluate)]);
 }

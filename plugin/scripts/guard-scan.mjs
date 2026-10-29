@@ -9882,11 +9882,42 @@ var NO_READER_SKIPS = {
   turnsEndedWithError: 0,
   unreadableFiles: 0
 };
+var DECISIONS = /* @__PURE__ */ new WeakMap();
+var MAX_CACHED_DECISIONS = 1e5;
+var MAX_CACHED_INPUT = 16384;
+function decisionCache(catalog, allowlist) {
+  let byAllowlist = DECISIONS.get(catalog);
+  if (byAllowlist === void 0) {
+    byAllowlist = /* @__PURE__ */ new WeakMap();
+    DECISIONS.set(catalog, byAllowlist);
+  }
+  let decisions = byAllowlist.get(allowlist);
+  if (decisions === void 0) {
+    decisions = /* @__PURE__ */ new Map();
+    byAllowlist.set(allowlist, decisions);
+  }
+  return decisions;
+}
+function decisionKey(mapped) {
+  const command = mapped.args.full_command;
+  const path = mapped.args.file_path;
+  if ((command?.length ?? 0) + (path?.length ?? 0) > MAX_CACHED_INPUT) return void 0;
+  return JSON.stringify([mapped.tool, command ?? null, path ?? null]);
+}
 function evaluateAction(catalog, allowlist, candidates) {
-  const evaluate = (mapped) => ({
-    mapped,
-    decision: evaluateCall(catalog, buildGuardSpanContext(mapped), mapped, allowlist)
-  });
+  const decisions = decisionCache(catalog, allowlist);
+  const evaluate = (mapped) => {
+    const key = decisionKey(mapped);
+    let decision = key === void 0 ? void 0 : decisions.get(key);
+    if (decision === void 0) {
+      decision = evaluateCall(catalog, buildGuardSpanContext(mapped), mapped, allowlist);
+      if (key !== void 0) {
+        if (decisions.size >= MAX_CACHED_DECISIONS) decisions.clear();
+        decisions.set(key, decision);
+      }
+    }
+    return { mapped, decision };
+  };
   const [first, ...rest] = candidates;
   return strictestCandidate([evaluate(first), ...rest.map(evaluate)]);
 }
@@ -11830,7 +11861,29 @@ function segmentHidingForms(segment, command, gitConfigured, gitRunnableWritten,
   }
   return forms;
 }
+var READINGS = /* @__PURE__ */ new Map();
+var TRUSTING_READINGS = /* @__PURE__ */ new Map();
+var VIEWS = /* @__PURE__ */ new Map();
+var VIEWS_WITH_BODIES = /* @__PURE__ */ new Map();
+var MAX_CACHED_READINGS = 5e4;
+var MAX_CACHED_COMMAND = 16384;
+function remembered(cache, key, make) {
+  if (key.length > MAX_CACHED_COMMAND) return make();
+  const hit = cache.get(key);
+  if (hit !== void 0) return hit;
+  const made = make();
+  if (cache.size >= MAX_CACHED_READINGS) cache.clear();
+  cache.set(key, made);
+  return made;
+}
 function readCommand(command, trustWrites) {
+  return remembered(
+    trustWrites ? TRUSTING_READINGS : READINGS,
+    command,
+    () => readCommandOnce(command, trustWrites)
+  );
+}
+function readCommandOnce(command, trustWrites) {
   const parsed = parseShell(command);
   const regions = parsed.comments.map((c) => ({ ...c, kind: "doc" }));
   const segments = parsed.segments;
@@ -11907,6 +11960,9 @@ function simpleCommandsOf(command) {
   return simpleViews(command, true);
 }
 function simpleViews(text2, bodies) {
+  return remembered(bodies ? VIEWS_WITH_BODIES : VIEWS, text2, () => simpleViewsOnce(text2, bodies));
+}
+function simpleViewsOnce(text2, bodies) {
   const { segments } = parseShell(text2);
   const out = [];
   segments.forEach((segment, k) => {

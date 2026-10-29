@@ -1244,11 +1244,45 @@ interface Reading {
 }
 
 /**
+ * Readings and views already made, by command text. Every check reads the same commands; a
+ * repeat is looked up rather than parsed again. In memory for the run only, and cleared when
+ * a map grows past `MAX_CACHED_READINGS`. Callers treat what they get as read-only.
+ */
+const READINGS = new Map<string, Reading>();
+const TRUSTING_READINGS = new Map<string, Reading>();
+const VIEWS = new Map<string, SimpleCommandView[]>();
+const VIEWS_WITH_BODIES = new Map<string, SimpleCommandView[]>();
+
+/** Most entries kept in one of the maps above. */
+const MAX_CACHED_READINGS = 50_000;
+
+/** Longest command text kept in them; a longer one is read each time. */
+const MAX_CACHED_COMMAND = 16_384;
+
+/** `make()`, remembered under `key` in `cache` when the key is short enough. */
+function remembered<T>(cache: Map<string, T>, key: string, make: () => T): T {
+  if (key.length > MAX_CACHED_COMMAND) return make();
+  const hit = cache.get(key);
+  if (hit !== undefined) return hit;
+  const made = make();
+  if (cache.size >= MAX_CACHED_READINGS) cache.clear();
+  cache.set(key, made);
+  return made;
+}
+
+/**
  * Read a command. With `trustWrites`, a file the command writes is taken as never run by a
  * later command in it, so its printed text and heredocs are blanked whatever follows; that view
  * only tells a `may-run-written-file` call apart, and never decides `mentioned`.
  */
 function readCommand(command: string, trustWrites: boolean): Reading {
+  return remembered(trustWrites ? TRUSTING_READINGS : READINGS, command, () =>
+    readCommandOnce(command, trustWrites),
+  );
+}
+
+/** `readCommand`, without the cache. */
+function readCommandOnce(command: string, trustWrites: boolean): Reading {
   const parsed = parseShell(command);
   const regions: Region[] = parsed.comments.map((c) => ({ ...c, kind: "doc" as const }));
   const segments = parsed.segments;
@@ -1386,6 +1420,11 @@ export function simpleCommandsOf(command: string): SimpleCommandView[] {
 
 /** `simpleCommandsOf`, reading heredoc bodies only when `bodies` is set. */
 function simpleViews(text: string, bodies: boolean): SimpleCommandView[] {
+  return remembered(bodies ? VIEWS_WITH_BODIES : VIEWS, text, () => simpleViewsOnce(text, bodies));
+}
+
+/** `simpleViews`, without the cache. */
+function simpleViewsOnce(text: string, bodies: boolean): SimpleCommandView[] {
   const { segments } = parseShell(text);
   const out: SimpleCommandView[] = [];
   segments.forEach((segment, k) => {
