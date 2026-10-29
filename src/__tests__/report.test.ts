@@ -278,21 +278,27 @@ describe("the report is self-contained — nothing outside the file is loaded", 
         ),
       ].sort();
     const common = [
+      "/ footer-demo",
       "/ footer-home",
       "/about footer-about",
+      "/about footer-tour",
       "/agenttrail-guard footer-guard",
       "/agenttrail-os footer-os",
       "/blog footer-blog",
+      "/brand footer-brand",
       "/get-started/guard next-agents",
       "/get-started/guard next-commands",
       "/guard-vs-os footer-compare",
       "/guardrails footer-library",
       "/guardrails next-library",
+      "/legal/dpa footer-dpa",
+      "/legal/privacy footer-privacy",
+      "/legal/terms footer-terms",
       "/pricing footer-pricing",
       "/security footer-security",
       "/security/owasp footer-owasp",
       "/subprocessors footer-subprocessors",
-    ];
+    ].sort();
     expect(pages(CURSOR_HTML)).toEqual(common);
     expect(pages(CODEX_HTML)).toEqual(common);
     expect(pages(HTML)).toContain("/security/owasp owasp");
@@ -804,7 +810,8 @@ describe("the AgentTrail OS block", () => {
     for (const html of [CURSOR_HTML, CURSOR_ARTIFACT, CODEX_HTML, CODEX_ARTIFACT]) {
       expect(notes(html)).toBe(0);
       expect(html).not.toContain(escapeHtml(PRODUCT_NOTE.heading));
-      expect(html).not.toContain(PRODUCT_NOTE.primary.label);
+      // The site footer links to the demo too; the panel's own button is the one left out.
+      expect(html).not.toContain(`utm_content=${PRODUCT_NOTE.primary.content}`);
     }
   });
 

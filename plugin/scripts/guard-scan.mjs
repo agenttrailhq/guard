@@ -20515,9 +20515,9 @@ ${social(SOCIAL_LINKS.npm, "AgentTrail on npm", ICONS.npm)}
 </div>
 </div>
 <div class="sf-cols">
-${column("Product", [link("/agenttrail-guard", "footer-guard", "AgentTrail Guard"), link("/agenttrail-os", "footer-os", "AgentTrail OS"), link("/guard-vs-os", "footer-compare", "Guard vs OS"), link("/pricing", "footer-pricing", "Pricing")])}
-${column("Resources", [link("/about", "footer-about", "About"), link("/blog", "footer-blog", "Blog"), link("/guardrails", "footer-library", "Guardrail library"), link("/security/owasp", "footer-owasp", "OWASP Top 10")])}
-${column("Trust", [link("/security", "footer-security", "Security & Trust"), link("/subprocessors", "footer-subprocessors", "Subprocessors")])}
+${column("Product", [link("/agenttrail-guard", "footer-guard", "AgentTrail Guard"), link("/agenttrail-os", "footer-os", "AgentTrail OS"), link("/about#how-it-works", "footer-tour", "Product tour"), link("/guard-vs-os", "footer-compare", "Guard vs OS"), link("/pricing", "footer-pricing", "Pricing"), link("/#contact", "footer-demo", "Book a team demo")])}
+${column("Resources", [link("/about", "footer-about", "About"), link("/blog", "footer-blog", "Blog"), link("/guardrails", "footer-library", "Guardrail library"), link("/security/owasp", "footer-owasp", "OWASP Top 10"), link("/brand", "footer-brand", "Brand assets"), `<li>${outLink(SOCIAL_LINKS.github, "GitHub")}</li>`])}
+${column("Trust", [link("/security", "footer-security", "Security & Trust"), link("/subprocessors", "footer-subprocessors", "Subprocessors"), link("/legal/privacy", "footer-privacy", "Privacy Policy"), link("/legal/terms", "footer-terms", "Terms of Service"), link("/legal/dpa", "footer-dpa", "Data Processing Addendum")])}
 </div>
 </div>
 <div class="sf-bottom"><span>&copy; ${year} AgentTrail. All rights reserved.</span><a href="mailto:${SECURITY_EMAIL}">${SECURITY_EMAIL}</a></div>

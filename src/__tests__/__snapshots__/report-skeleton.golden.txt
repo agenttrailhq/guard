@@ -705,12 +705,12 @@ body
           nav ×2
             p
             ul
-              li ×4
+              li ×6
                 a
           nav
             p
             ul
-              li ×2
+              li ×5
                 a
       div.sf-bottom
         span
