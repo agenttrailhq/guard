@@ -1376,7 +1376,7 @@ function heroSection(
       ? "Scanned locally &middot; published by the person who ran it"
       : "Scanned locally &middot; nothing uploaded";
   const when = `<time datetime="${escapeHtml(meta.generatedAt.toISOString())}">${escapeHtml(readableTime(meta.generatedAt))}</time>`;
-  const metaRow = `<div class="hero-meta" id="hero-meta"><span class="hero-pill"><i class="dot"></i>${origin}</span><span class="hero-kicker"><span>AgentTrail Guard scan report</span><span class="sep" aria-hidden="true"> &middot; </span><span class="sr-only">, </span><span>${escapeHtml(agentName(result.agent))}</span><span class="sep sep-when" aria-hidden="true"> &middot; </span><span class="sr-only">, </span><span class="when">${when}</span></span></div>`;
+  const metaRow = `<div class="hero-meta" id="hero-meta"><span class="hero-pill"><i class="dot"></i>${origin}</span><span class="hero-kicker"><span>Scan report</span><span class="sep" aria-hidden="true"> &middot; </span><span class="sr-only">, </span><span>${escapeHtml(agentName(result.agent))}</span><span class="sep sep-when" aria-hidden="true"> &middot; </span><span class="sr-only">, </span><span class="when">${when}</span></span></div>`;
   if (result.toolCalls === 0) {
     return `<section class="hero" aria-label="Summary">
 <div class="hero-main">
