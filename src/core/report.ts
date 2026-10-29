@@ -1252,6 +1252,7 @@ const PROVENANCE_PRIORITY: readonly SecretProvenance[] = [
   "typed-into-command",
   "printed-by-command",
   "in-agent-reply",
+  "added-by-app",
 ];
 
 /** The one way a credential arrived that its row shows. */
@@ -1265,6 +1266,7 @@ const ARRIVED_IN: Readonly<Record<SecretProvenance, string>> = {
   "typed-into-command": "in a command the agent typed",
   "printed-by-command": "in a command's output",
   "in-agent-reply": "in an agent reply",
+  "added-by-app": "in text the app added to a prompt",
 };
 
 /** Kind labels whose first word is not a name, lower-cased mid-sentence. */
@@ -1275,8 +1277,10 @@ const GENERIC_KIND_START =
 function pluralKind(label: string, first: boolean): string {
   let text = label.replace(/^(?:A|An) /, "");
   if (!first && GENERIC_KIND_START.test(text)) text = text.charAt(0).toLowerCase() + text.slice(1);
-  if (first) text = text.charAt(0).toUpperCase() + text.slice(1);
-  const cut = text.indexOf(" with ");
+  // A brand written in lower case (npm) stays so, even first.
+  if (first && !/^npm\b/.test(text)) text = text.charAt(0).toUpperCase() + text.slice(1);
+  const cuts = [text.indexOf(" with "), text.indexOf(" (")].filter((at) => at !== -1);
+  const cut = cuts.length === 0 ? -1 : Math.min(...cuts);
   const head = cut === -1 ? text : text.slice(0, cut);
   const tail = cut === -1 ? "" : text.slice(cut);
   return `${/s$/.test(head) ? head : `${head}s`}${tail}`;
