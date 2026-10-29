@@ -56,8 +56,8 @@ import { VERSION } from "./core/version.js";
 import type { CursorFileIO } from "./cursor/cursor-io.js";
 import { createRealIO, type GuardIO } from "./io.js";
 import { createRealScanIO, type ScanIO } from "./scan-io.js";
+import { isScanWorker, readInWorkers, runScanWorker } from "./scan-workers.js";
 import { createRealScrubIO } from "./scrub-io.js";
-import { collectInWorkers, isSecretsWorker, runSecretsWorker } from "./secrets-workers.js";
 import { createRealSetupIO, type SetupIO } from "./setup-io.js";
 import { createRealVerifyIO } from "./verify-io.js";
 
@@ -188,7 +188,7 @@ export async function runCli(
   if (command === "scan") {
     return await runScan(argv.slice(1), scanIo ?? createRealScanIO(), {
       createVerifyIO: () => createRealVerifyIO(),
-      collectSecrets: (agent, files) => collectInWorkers(new URL(import.meta.url), agent, files),
+      readSessions: (input, onSession) => readInWorkers(new URL(import.meta.url), input, onSession),
       scrub: { createIO: () => createRealScrubIO(), run: runScrub },
     });
   }
@@ -239,10 +239,10 @@ export async function runCli(
   return 1;
 }
 
-// A worker thread `scan` started for the secrets check runs this same file: it reads its
-// transcripts and nothing else.
-if (isSecretsWorker()) {
-  await runSecretsWorker();
+// A worker thread `scan` started to read sessions runs this same file: it reads transcripts
+// and nothing else.
+if (isScanWorker()) {
+  await runScanWorker();
 } else {
   const code = await runCli(process.argv.slice(2), createRealIO());
   if (code !== 0) {

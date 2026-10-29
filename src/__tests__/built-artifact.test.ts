@@ -49,6 +49,7 @@ import { RELAY_INSTRUCTION } from "../core/cursor-emit.js";
 import { PRODUCT_NOTE, REPOSITORY_URL, SECURITY_EMAIL, SOCIAL_LINKS } from "../core/report.js";
 import { decodedSurfaces, joinCommandWords } from "./html-text.js";
 import { writeCorpus } from "./verify-fixtures.js";
+import { scan, writeGenerated } from "./workers-fixtures.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PKG_ROOT = join(HERE, "..", "..");
@@ -1706,58 +1707,47 @@ describe("hook runs in this file write only to their own scratch home", () => {
   });
 });
 
-describe("the secrets check's reading on worker threads, from the built bundles", () => {
-  /** Synthetic sessions, enough for more than one worker, each with values of every kind. */
-  async function manySessions(): Promise<{ root: string; files: readonly string[] }> {
-    const token = `ghp${"_"}WORKERS0aB1cD2eF3gH4iJ5kL6mN7oP8qR9sT0`;
-    const named = `k3Jd9Lq2${"Xw7Vn4Bz"}`;
-    const sessions = Array.from({ length: 24 }, (_, i) => [
-      { kind: "prompt" as const, text: `use ${token} for session ${i}` },
-      { kind: "call" as const, command: `export DEPLOY_TOKEN=${named}${i}`, result: { text: "" } },
-      {
-        kind: "call" as const,
-        command: "env",
-        result: { text: `id r9Ys3KnW8uS5jV6mC2bE4gG1kQ7tX9f${i}` },
-      },
-    ]);
-    const { root, corpus } = await writeCorpus("claude", sessions);
-    return { root, files: corpus.files ?? [] };
-  }
-
+describe("reading sessions on worker threads, from the built bundles", () => {
   it.each([
     ["cli.js", CLI_BUNDLE],
     ["guard-scan.mjs", SCAN_BUNDLE],
-  ])("workers started from %s read every file, and find what one thread finds", async (_name, bundle) => {
-    const { files } = await manySessions();
-    const { collectInWorkers } = await import("../secrets-workers.js");
-    const { checkSecrets, exportCollected } = await import("../core/verify/secrets.js");
-    const { createFingerprinter } = await import("../core/verify/fingerprint.js");
-    const { UNAVAILABLE_VERIFY_IO } = await import("../core/verify/verify.js");
-    const { createRealScanIO } = await import("../scan-io.js");
-    const io = createRealScanIO();
-
-    const collector = await collectInWorkers(pathToFileURL(bundle), "claude", files, 3);
-    expect(exportCollected(collector).done).toHaveLength(files.length);
-
-    const base = {
-      agent: "claude" as const,
-      files,
-      readLines: (path: string) => io.readLines(path),
-      io: UNAVAILABLE_VERIFY_IO,
-      fingerprint: createFingerprinter(),
-    };
-    const threaded = await checkSecrets({ ...base, collector });
-    const single = await checkSecrets(base);
-    expect(threaded).toEqual(single);
-    expect(single.facts.classes["likely-real"]).toBeGreaterThan(0);
+  ])("workers started from %s give what one thread gives", async (_name, bundle) => {
+    const { readInWorkers } = await import("../scan-workers.js");
+    const root = writeGenerated(11, 40);
+    let sessions = 0;
+    const threaded = (input: Parameters<typeof readInWorkers>[1], onSession: () => void) =>
+      readInWorkers(
+        pathToFileURL(bundle),
+        input,
+        () => {
+          sessions += 1;
+          onSession();
+        },
+        3,
+      );
+    for (const argv of [[], ["--json"], ["--json", "--no-checks"]]) {
+      sessions = 0;
+      const split = await scan(root, argv, threaded);
+      // Every session but the unreadable one was read on a worker.
+      expect(sessions).toBe(41);
+      expect(split).toEqual(await scan(root, argv));
+    }
   });
 
-  it("a worker that cannot start leaves its files to the check, which reads them itself", async () => {
-    const { files } = await manySessions();
-    const { collectInWorkers } = await import("../secrets-workers.js");
-    const { exportCollected } = await import("../core/verify/secrets.js");
+  it("a worker that cannot start leaves every session to this thread, which gives the same", async () => {
+    const { readInWorkers } = await import("../scan-workers.js");
+    const root = writeGenerated(12, 20);
     const missing = pathToFileURL(join(tmpdir(), "agenttrail-no-such-bundle.mjs"));
-    const collector = await collectInWorkers(missing, "claude", files, 2);
-    expect(exportCollected(collector).done).toHaveLength(0);
+    const read = await readInWorkers(
+      missing,
+      { items: [{ file: join(root, "x.jsonl"), sessionId: "x" }], rules: [], config: {} as never },
+      () => {},
+      2,
+    );
+    expect(read.reads).toEqual([undefined]);
+    expect(await read.collected()).toEqual([]);
+    expect(
+      await scan(root, [], (input, onSession) => readInWorkers(missing, input, onSession, 2)),
+    ).toEqual(await scan(root, []));
   });
 });

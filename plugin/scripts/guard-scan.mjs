@@ -1775,7 +1775,8 @@ var require_picomatch2 = __commonJS({
 });
 
 // src/commands/scan.ts
-import { basename as basename3, dirname as dirname5, join as join9, resolve as resolve4 } from "path";
+import { randomBytes as randomBytes2 } from "crypto";
+import { basename as basename4, dirname as dirname6, join as join10, resolve as resolve4 } from "path";
 import { pathToFileURL } from "url";
 
 // src/core/types.ts
@@ -8554,7 +8555,7 @@ function redactCloudIds(text2) {
     (_m, name, sep4, quote) => `${name}${sep4}${quote}${NAME_PLACEHOLDER}${quote}`
   ).replace(
     CLOUD_ID_FLAG,
-    (_m, flag, join12, quote) => `${flag}${join12}${quote}${NAME_PLACEHOLDER}${quote}`
+    (_m, flag, join13, quote) => `${flag}${join13}${quote}${NAME_PLACEHOLDER}${quote}`
   ).replace(AWS_ARN_ACCOUNT, NAME_PLACEHOLDER);
 }
 var AWS_PROFILE_ENV = /(?<![A-Za-z0-9_])(AWS_(?:DEFAULT_)?PROFILE)(=)(["']?)(?![<[])([^\s"';&|]+)\3/g;
@@ -8594,7 +8595,7 @@ function redactDatabaseLogins(text2) {
     if (start < cursor) continue;
     const stop = text2.slice(start).search(COMMAND_END);
     const end = stop < 0 ? text2.length : start + stop;
-    const login = (_m, flag, join12, quote) => `${flag}${join12}${quote}${USER_PLACEHOLDER}${quote}`;
+    const login = (_m, flag, join13, quote) => `${flag}${join13}${quote}${USER_PLACEHOLDER}${quote}`;
     const segment2 = text2.slice(start, end).replace(DB_LOGIN_LONG_FLAG, login).replace(DB_LOGIN_SHORT_FLAG, login);
     out += text2.slice(cursor, start) + segment2;
     cursor = end;
@@ -8608,7 +8609,7 @@ function redactMachineIdentifiers(text2) {
       (_m, name, sep4, quote) => `${name}${sep4}${quote}${NAME_PLACEHOLDER}${quote}`
     ).replace(
       AWS_PROFILE_FLAG,
-      (_m, head, join12, quote) => `${head}${join12}${quote}${NAME_PLACEHOLDER}${quote}`
+      (_m, head, join13, quote) => `${head}${join13}${quote}${NAME_PLACEHOLDER}${quote}`
     ).replace(AWS_RESOURCE_ID, NAME_PLACEHOLDER)
   );
 }
@@ -10103,7 +10104,15 @@ var NO_READER_SKIPS = {
   unreadableFiles: 0
 };
 var DECISIONS = /* @__PURE__ */ new WeakMap();
-var MAX_CACHED_DECISIONS = 1e5;
+var MAX_CACHED_DECISIONS = 1e6;
+var MAX_CACHED_CHARS = 64 * 1024 * 1024;
+function hasRoom(store, key) {
+  return store.map.size < MAX_CACHED_DECISIONS && store.chars + key.length <= MAX_CACHED_CHARS;
+}
+function keep(store, key, decision) {
+  store.map.set(key, decision);
+  store.chars += key.length;
+}
 var MAX_CACHED_INPUT = 16384;
 function decisionCache(catalog, allowlist) {
   let byAllowlist = DECISIONS.get(catalog);
@@ -10113,7 +10122,7 @@ function decisionCache(catalog, allowlist) {
   }
   let decisions = byAllowlist.get(allowlist);
   if (decisions === void 0) {
-    decisions = /* @__PURE__ */ new Map();
+    decisions = { map: /* @__PURE__ */ new Map(), chars: 0, cleared: 0 };
     byAllowlist.set(allowlist, decisions);
   }
   return decisions;
@@ -10124,16 +10133,37 @@ function decisionKey(mapped) {
   if ((command?.length ?? 0) + (path?.length ?? 0) > MAX_CACHED_INPUT) return void 0;
   return JSON.stringify([mapped.tool, command ?? null, path ?? null]);
 }
+function exportDecisions(catalog, allowlist, since) {
+  const store = decisionCache(catalog, allowlist);
+  const from = since !== void 0 && since.store === store && since.cleared === store.cleared ? since.size : 0;
+  return [...store.map].slice(from);
+}
+function decisionsMade(catalog, allowlist) {
+  const store = decisionCache(catalog, allowlist);
+  return { store, size: store.map.size, cleared: store.cleared };
+}
+function seedDecisions(catalog, allowlist, entries2) {
+  const decisions = decisionCache(catalog, allowlist);
+  for (const [key, decision] of entries2) {
+    if (decisions.map.has(key)) continue;
+    if (!hasRoom(decisions, key)) return;
+    keep(decisions, key, decision);
+  }
+}
 function evaluateAction(catalog, allowlist, candidates) {
   const decisions = decisionCache(catalog, allowlist);
   const evaluate = (mapped) => {
     const key = decisionKey(mapped);
-    let decision = key === void 0 ? void 0 : decisions.get(key);
+    let decision = key === void 0 ? void 0 : decisions.map.get(key);
     if (decision === void 0) {
       decision = evaluateCall(catalog, buildGuardSpanContext(mapped), mapped, allowlist);
       if (key !== void 0) {
-        if (decisions.size >= MAX_CACHED_DECISIONS) decisions.clear();
-        decisions.set(key, decision);
+        if (!hasRoom(decisions, key)) {
+          decisions.map.clear();
+          decisions.chars = 0;
+          decisions.cleared += 1;
+        }
+        keep(decisions, key, decision);
       }
     }
     return { mapped, decision };
@@ -11921,8 +11951,8 @@ function searchPatterns(words2) {
   }
   return [];
 }
-function segmentRegions(segment2, keep) {
-  if (keep) return [];
+function segmentRegions(segment2, keep2) {
+  if (keep2) return [];
   const words2 = segment2.words;
   const at2 = programIndex(words2);
   const program = words2[at2];
@@ -12108,7 +12138,7 @@ var VIEWS = /* @__PURE__ */ new Map();
 var VIEWS_WITH_BODIES = /* @__PURE__ */ new Map();
 var OPAQUE = /* @__PURE__ */ new Map();
 var MAX_CACHED_READINGS = 5e5;
-var MAX_CACHED_CHARS = 32 * 1024 * 1024;
+var MAX_CACHED_CHARS2 = 32 * 1024 * 1024;
 var MAX_CACHED_COMMAND = 16384;
 var CACHED_CHARS = /* @__PURE__ */ new WeakMap();
 function remembered(cache, key, make) {
@@ -12117,7 +12147,7 @@ function remembered(cache, key, make) {
   if (hit !== void 0) return hit;
   const made = make();
   let chars = CACHED_CHARS.get(cache) ?? 0;
-  if (cache.size >= MAX_CACHED_READINGS || chars + key.length > MAX_CACHED_CHARS) {
+  if (cache.size >= MAX_CACHED_READINGS || chars + key.length > MAX_CACHED_CHARS2) {
     cache.clear();
     chars = 0;
   }
@@ -12168,8 +12198,8 @@ function readCommandOnce(command, trustWrites) {
   if (parsed.open) forms.add("unterminated-quote");
   let gitConfigured = false;
   segments.forEach((segment2, index) => {
-    const keep = segment2.pipedOut && !pipesOnlyToConsumers(index) || writesAFile(segment2) && laterMayRun(index);
-    regions.push(...segmentRegions(segment2, keep));
+    const keep2 = segment2.pipedOut && !pipesOnlyToConsumers(index) || writesAFile(segment2) && laterMayRun(index);
+    regions.push(...segmentRegions(segment2, keep2));
     const command2 = commands[index];
     for (const form of segmentHidingForms(
       segment2,
@@ -12640,8 +12670,8 @@ function decodedMatches(catalog, allowlist, mapped) {
   const decoded = { ...mapped, args: { ...mapped.args, full_command: runs } };
   return evaluateAction(catalog, allowlist, [decoded]).decision.matches.map((m) => m.ruleId);
 }
-function rulesMatcher(catalog, allowlist, keep) {
-  const subset = catalog.filter(keep);
+function rulesMatcher(catalog, allowlist, keep2) {
+  const subset = catalog.filter(keep2);
   const matches = (call, text2) => evaluateAction(subset, allowlist, [
     { ...call.mapped, args: { ...call.mapped.args, full_command: text2 } }
   ]).decision.matches.length > 0;
@@ -12746,6 +12776,19 @@ function isEdit(call) {
 }
 function isShell(call) {
   return call.command !== void 0;
+}
+function primeDecisions(agent, sessions, catalog, allowlist) {
+  for (const session of sessions) {
+    for (const turn of session.turns) {
+      for (const use of turn.toolUses) {
+        for (const call of toolUseCalls(agent, use)) {
+          if (call.kind !== "action") continue;
+          const { mapped } = evaluateAction(catalog, allowlist, call.candidates);
+          decodedMatches(catalog, allowlist, mapped);
+        }
+      }
+    }
+  }
 }
 
 // src/core/verify/card-parts.ts
@@ -21049,6 +21092,9 @@ function compileCatalog(rules12, config) {
   return compiled;
 }
 
+// src/core/transcript/claude-session.ts
+import { basename as basename2, dirname as dirname5, join as join8 } from "path";
+
 // src/core/transcript/parse.ts
 import { createReadStream } from "fs";
 import { createInterface } from "readline";
@@ -21200,12 +21246,107 @@ async function parseSession(path, fallbackSessionId, source = fileLineSource, on
   };
 }
 
+// src/core/transcript/claude-session.ts
+async function readClaudeSession(io, item, collector2) {
+  const source = { readLines: (p) => io.readLines(p) };
+  const parse = async (path, id) => {
+    if (collector2 === void 0) return await parseSession(path, id, source);
+    const index = collector2.file(path);
+    const parsed = await parseSession(
+      path,
+      id,
+      source,
+      (record) => collector2.record(index, record)
+    );
+    collector2.read(index);
+    return parsed;
+  };
+  let session;
+  try {
+    session = await parse(item.file, item.sessionId);
+  } catch {
+    return { opened: 1, files: [] };
+  }
+  let opened = 1;
+  const files = [item.file];
+  const subDir = subagentsDir(item.file);
+  let names;
+  try {
+    names = io.readdir(subDir);
+  } catch {
+    names = [];
+  }
+  const turns = [...session.turns];
+  const userPrompts = [...session.userPrompts];
+  const seenTurns = new Set(turns.map((t) => t.messageUuid).filter((u) => u !== ""));
+  const seenPrompts = new Set(userPrompts.map((p) => p.messageUuid).filter((u) => u !== ""));
+  const toolResults = new Map(session.toolResults);
+  let skippedLines = session.skippedLines;
+  for (const name of [...names].sort()) {
+    if (!name.endsWith(".jsonl")) continue;
+    const subPath = join8(subDir, name);
+    try {
+      if (io.stat(subPath).isDirectory()) continue;
+    } catch {
+      continue;
+    }
+    opened += 1;
+    let sub;
+    try {
+      sub = await parse(subPath, name);
+    } catch {
+      continue;
+    }
+    files.push(subPath);
+    skippedLines += sub.skippedLines;
+    for (const turn of sub.turns) {
+      if (turn.messageUuid !== "" && seenTurns.has(turn.messageUuid)) continue;
+      if (turn.messageUuid !== "") seenTurns.add(turn.messageUuid);
+      turns.push(turn);
+    }
+    for (const prompt of sub.userPrompts) {
+      if (prompt.messageUuid !== "" && seenPrompts.has(prompt.messageUuid)) continue;
+      if (prompt.messageUuid !== "") seenPrompts.add(prompt.messageUuid);
+      userPrompts.push(prompt);
+    }
+    for (const [id, result] of sub.toolResults) {
+      if (!toolResults.has(id)) toolResults.set(id, result);
+    }
+  }
+  return {
+    session: { ...session, turns, userPrompts, toolResults, skippedLines },
+    opened,
+    files
+  };
+}
+function subagentsDir(file2) {
+  return join8(dirname5(file2), basename2(file2, ".jsonl"), "subagents");
+}
+function sessionBytes(io, file2) {
+  const size = (path) => {
+    try {
+      return io.stat(path).size;
+    } catch {
+      return 0;
+    }
+  };
+  let bytes = size(file2);
+  let names = [];
+  try {
+    names = io.readdir(subagentsDir(file2));
+  } catch {
+  }
+  for (const name of names)
+    if (name.endsWith(".jsonl")) bytes += size(join8(subagentsDir(file2), name));
+  return bytes;
+}
+
 // src/core/transcript/scan.ts
 import { readdirSync, statSync } from "fs";
 import { homedir } from "os";
-import { basename as basename2, isAbsolute as isAbsolute4, join as join8, relative as relative3 } from "path";
+import { basename as basename3, isAbsolute as isAbsolute4, join as join9, relative as relative3 } from "path";
 function defaultProjectsRoot(home = homedir()) {
-  return join8(home, ".claude", "projects");
+  return join9(home, ".claude", "projects");
 }
 var SNIFF_LINE_CAP = 40;
 async function sniff(path, source) {
@@ -21253,7 +21394,7 @@ async function scanTranscripts(projectsRoot = defaultProjectsRoot(), projectRoot
   const projects = [];
   let totalSessions = 0;
   for (const project of projectDirs.sort()) {
-    const dir = join8(projectsRoot, project);
+    const dir = join9(projectsRoot, project);
     let entries2;
     try {
       if (!stat2(dir).isDirectory()) continue;
@@ -21264,7 +21405,7 @@ async function scanTranscripts(projectsRoot = defaultProjectsRoot(), projectRoot
     const sessions = [];
     for (const entry of entries2.sort()) {
       if (!entry.endsWith(".jsonl")) continue;
-      const file2 = join8(dir, entry);
+      const file2 = join9(dir, entry);
       let size = 0;
       let mtimeMs = 0;
       try {
@@ -21286,7 +21427,7 @@ async function scanTranscripts(projectsRoot = defaultProjectsRoot(), projectRoot
         continue;
       }
       sessions.push({
-        sessionId: identity.sessionId ?? basename2(entry, ".jsonl"),
+        sessionId: identity.sessionId ?? basename3(entry, ".jsonl"),
         file: file2,
         project,
         cwd: identity.cwd,
@@ -22036,8 +22177,8 @@ function createSecretsCollector(options) {
           const reason = placeholderReason(found);
           const sighting = evidenceOf(found);
           const decided = reason !== void 0 || sighting.public === true ? "placeholder" : isLocalDev(found) ? "local-dev" : void 0;
-          const keep = decided === void 0 && held < (options.maxHeldValues ?? MAX_HELD_VALUES);
-          if (keep) held += 1;
+          const keep2 = decided === void 0 && held < (options.maxHeldValues ?? MAX_HELD_VALUES);
+          if (keep2) held += 1;
           candidate = {
             kind: sighting.kind,
             evidence: sighting.evidence,
@@ -22045,7 +22186,7 @@ function createSecretsCollector(options) {
             files: /* @__PURE__ */ new Set(),
             decided,
             // Past the cap a value is not held, so it cannot be searched for in the repos.
-            value: keep ? found.value : void 0,
+            value: keep2 ? found.value : void 0,
             setAside: reason === "named-not-credential-shaped" || sighting.public === true ? "named-not-credential-shaped" : void 0
           };
           collected.candidates.set(key, candidate);
@@ -22155,7 +22296,7 @@ function mergeCollected(collector2, part) {
 async function checkSecrets(input) {
   return (await classifySecrets(input, false)).check;
 }
-async function classifySecrets(input, keep) {
+async function classifySecrets(input, keep2) {
   const collector2 = input.collector ?? createSecretsCollector({
     agent: input.agent,
     fingerprint: input.fingerprint,
@@ -22218,7 +22359,7 @@ async function classifySecrets(input, keep) {
   let notHeld = 0;
   for (const candidate of candidates.values()) {
     candidate.decided ??= "likely-real";
-    if (keep && candidate.decided === "likely-real") {
+    if (keep2 && candidate.decided === "likely-real") {
       if (candidate.value === void 0) notHeld += 1;
       else {
         kept.push({
@@ -22438,8 +22579,8 @@ function chargeTime(io, ms) {
 async function verifyScan(input) {
   const agent = input.corpus.agent ?? "claude";
   const steps = [
-    "which commands ran",
     "skipped checks, lost work and destructive commands",
+    "which commands ran",
     "what commands and edits did",
     "cloud and permissions",
     "production infrastructure",
@@ -22455,8 +22596,6 @@ async function verifyScan(input) {
     input.onCheck?.(step, steps.length, steps[step - 1]);
   };
   next();
-  const matched = tallyMatchedCalls(input.corpus, input.catalog, input.allowlist);
-  next();
   const git = await checkGitBacked({
     corpus: input.corpus,
     io: input.io,
@@ -22464,6 +22603,9 @@ async function verifyScan(input) {
     home: input.home ?? homedir2(),
     ...input.scratchRoots === void 0 ? {} : { scratchRoots: input.scratchRoots }
   });
+  next();
+  await input.decisionsReady;
+  const matched = tallyMatchedCalls(input.corpus, input.catalog, input.allowlist);
   const started = Date.now();
   next();
   const calls = readCalls(input.corpus, input.catalog, input.allowlist);
@@ -22489,7 +22631,8 @@ async function verifyScan(input) {
   next();
   const egress = await checkEgress({ calls, ...rules12, io: input.io });
   next();
-  const collector2 = await input.secretsCollector;
+  const pending = input.secretsCollector;
+  const collector2 = await (typeof pending === "function" ? pending() : pending);
   const secrets = await checkSecrets({
     agent,
     files: input.corpus.files ?? [],
@@ -22809,10 +22952,10 @@ function shouldOpen(flags, env) {
   return (env.CI ?? "") === "";
 }
 function reportPathFor(out, filename, io) {
-  if (out === void 0) return join9(io.cwd(), filename);
+  if (out === void 0) return join10(io.cwd(), filename);
   const target = resolve4(io.cwd(), out);
   try {
-    if (io.stat(target).isDirectory()) return join9(target, filename);
+    if (io.stat(target).isDirectory()) return join10(target, filename);
   } catch {
   }
   return target;
@@ -22837,78 +22980,6 @@ function countTranscriptFiles(io, dir, depth = 0) {
   }
   return total;
 }
-async function readClaudeSession(io, item, collector2) {
-  const source = { readLines: (p) => io.readLines(p) };
-  const parse = async (path, id) => {
-    if (collector2 === void 0) return await parseSession(path, id, source);
-    const index = collector2.file(path);
-    const parsed = await parseSession(
-      path,
-      id,
-      source,
-      (record) => collector2.record(index, record)
-    );
-    collector2.read(index);
-    return parsed;
-  };
-  let session;
-  try {
-    session = await parse(item.file, item.sessionId);
-  } catch {
-    return { opened: 1, files: [] };
-  }
-  let opened = 1;
-  const files = [item.file];
-  const subDir = join9(dirname5(item.file), basename3(item.file, ".jsonl"), "subagents");
-  let names;
-  try {
-    names = io.readdir(subDir);
-  } catch {
-    names = [];
-  }
-  const turns = [...session.turns];
-  const userPrompts = [...session.userPrompts];
-  const seenTurns = new Set(turns.map((t) => t.messageUuid).filter((u) => u !== ""));
-  const seenPrompts = new Set(userPrompts.map((p) => p.messageUuid).filter((u) => u !== ""));
-  const toolResults = new Map(session.toolResults);
-  let skippedLines = session.skippedLines;
-  for (const name of [...names].sort()) {
-    if (!name.endsWith(".jsonl")) continue;
-    const subPath = join9(subDir, name);
-    try {
-      if (io.stat(subPath).isDirectory()) continue;
-    } catch {
-      continue;
-    }
-    opened += 1;
-    let sub;
-    try {
-      sub = await parse(subPath, name);
-    } catch {
-      continue;
-    }
-    files.push(subPath);
-    skippedLines += sub.skippedLines;
-    for (const turn of sub.turns) {
-      if (turn.messageUuid !== "" && seenTurns.has(turn.messageUuid)) continue;
-      if (turn.messageUuid !== "") seenTurns.add(turn.messageUuid);
-      turns.push(turn);
-    }
-    for (const prompt of sub.userPrompts) {
-      if (prompt.messageUuid !== "" && seenPrompts.has(prompt.messageUuid)) continue;
-      if (prompt.messageUuid !== "") seenPrompts.add(prompt.messageUuid);
-      userPrompts.push(prompt);
-    }
-    for (const [id, result] of sub.toolResults) {
-      if (!toolResults.has(id)) toolResults.set(id, result);
-    }
-  }
-  return {
-    session: { ...session, turns, userPrompts, toolResults, skippedLines },
-    opened,
-    files
-  };
-}
 function sessionRootFor(agent, home) {
   switch (agent) {
     case "cursor":
@@ -22921,7 +22992,7 @@ function sessionRootFor(agent, home) {
       return unhandledAgent(agent);
   }
 }
-async function readCorpusFor(agent, root, io, collector2, progress = NO_PROGRESS) {
+async function readCorpusFor(agent, root, io, collector2, progress = NO_PROGRESS, workers) {
   progress.phase("Reading sessions");
   switch (agent) {
     case "cursor":
@@ -22932,13 +23003,13 @@ async function readCorpusFor(agent, root, io, collector2, progress = NO_PROGRESS
       return {
         agent: "claude",
         capabilities: { tokens: true, skips: false },
-        ...await readCorpus(io, root, collector2, progress)
+        ...await readCorpus(io, root, collector2, progress, workers)
       };
     default:
       return unhandledAgent(agent);
   }
 }
-async function readCorpus(io, root, collector2, progress = NO_PROGRESS) {
+async function readCorpus(io, root, collector2, progress = NO_PROGRESS, workers) {
   const inventory = await scanTranscripts(root, void 0, {
     readdir: (p) => io.readdir(p),
     stat: (p) => io.stat(p),
@@ -22948,18 +23019,39 @@ async function readCorpus(io, root, collector2, progress = NO_PROGRESS) {
   const files = [];
   let quarantined = 0;
   let opened = 0;
-  const total = inventory.projects.reduce((n2, project) => n2 + project.sessions.length, 0);
+  const items = inventory.projects.flatMap((project) => project.sessions);
+  const total = items.length;
   let done = 0;
-  for (const project of inventory.projects) {
-    for (const item of project.sessions) {
-      progress.phase("Reading sessions", done, total);
+  progress.phase("Reading sessions", done, total);
+  let fromWorkers = [];
+  if (workers !== void 0) {
+    const read = await workers.read(
+      {
+        items: items.map((item) => ({ file: item.file, sessionId: item.sessionId })),
+        rules: workers.rules,
+        config: workers.config,
+        ...workers.key === void 0 ? {} : { key: workers.key }
+      },
+      () => {
+        done += 1;
+        progress.phase("Reading sessions", done, total);
+      }
+    );
+    fromWorkers = read.reads;
+    workers.decided(read.decisions);
+    workers.collected(read.collected);
+  }
+  for (const [at2, item] of items.entries()) {
+    let read = fromWorkers[at2];
+    if (read === void 0) {
+      read = await readClaudeSession(io, item, collector2);
       done += 1;
-      const read = await readClaudeSession(io, item, collector2);
-      opened += read.opened;
-      for (const path of read.files) files.push(path);
-      if (read.session !== void 0) sessions.push(read.session);
-      else quarantined++;
+      progress.phase("Reading sessions", done, total);
     }
+    opened += read.opened;
+    for (const path of read.files) files.push(path);
+    if (read.session !== void 0) sessions.push(read.session);
+    else quarantined++;
   }
   const notRead = Math.max(0, countTranscriptFiles(io, root) - opened);
   return { sessions, quarantined, projects: inventory.projects.length, notRead, files };
@@ -23279,11 +23371,43 @@ ${usage}`);
   const allowlist = compileAllowlist(config.allowlist);
   const readRoot = flags.scrub ? resolve4(io.cwd(), root) : root;
   const verifying = !flags.scrub && shouldVerify(flags, byDefault);
-  const secretsCollector = verifying && agent === "claude" && deps.collectSecrets === void 0 ? createSecretsCollector({ agent, fingerprint: createFingerprinter() }) : void 0;
+  const threaded = agent === "claude" && !flags.scrub && deps.readSessions !== void 0;
+  const key = randomBytes2(32);
+  const secretsCollector = verifying && agent === "claude" && !threaded ? createSecretsCollector({ agent, fingerprint: createFingerprinter(key) }) : void 0;
+  let secretsCollected = secretsCollector;
+  let decisionsIn = Promise.resolve();
+  const workers = threaded && deps.readSessions !== void 0 ? {
+    read: deps.readSessions,
+    rules: [...shipped, ...userRules],
+    config,
+    ...verifying ? { key } : {},
+    decided: (decisions) => {
+      decisionsIn = decisions.then((all) => {
+        for (const made of all) seedDecisions(catalog, allowlist, made);
+      });
+    },
+    collected: (parts) => {
+      if (!verifying) return;
+      secretsCollected = async () => {
+        const joined = createSecretsCollector({
+          agent: "claude",
+          fingerprint: createFingerprinter(key)
+        });
+        for (const part of await parts()) mergeCollected(joined, part);
+        return joined;
+      };
+    }
+  } : void 0;
   const progress = deps.progress === false || flags.quiet || flags.scrub || io.writeStderr === void 0 ? NO_PROGRESS : createProgress((text2) => io.writeStderr?.(text2), io.isStderrTTY?.() === true);
   const started = Date.now();
-  const corpus = await readCorpusFor(agent, readRoot, io, secretsCollector, progress);
-  const secretsCollected = verifying && deps.collectSecrets !== void 0 ? deps.collectSecrets(agent, corpus.files ?? []) : secretsCollector;
+  const corpus = await readCorpusFor(
+    agent,
+    readRoot,
+    io,
+    secretsCollector,
+    progress,
+    workers
+  );
   if (flags.scrub && deps.scrub !== void 0) {
     const scrubIO = deps.scrub.createIO();
     return await deps.scrub.run({
@@ -23313,6 +23437,7 @@ ${usage}`);
         // its own: the others cannot spend the time its search of the repos needs.
         secretsIO: deps.createVerifyIO?.() ?? UNAVAILABLE_VERIFY_IO,
         ...secretsCollected === void 0 ? {} : { secretsCollector: secretsCollected },
+        decisionsReady: decisionsIn,
         onCheck: (step, total, label) => progress.phase(`Checking ${step} of ${total}: ${label}`)
       });
     } catch {
@@ -23321,6 +23446,7 @@ ${usage}`);
     }
   }
   progress.phase("Writing the report");
+  await decisionsIn;
   const result = aggregateScan(corpus, catalog, allowlist, new Set(shipped), outcome?.verification);
   const meta = { version: VERSION, generatedAt: now };
   progress.finish(`Scanned in ${Math.max(1, Math.round((Date.now() - started) / 1e3))} s`);
@@ -23335,7 +23461,7 @@ ${usage}`);
   );
   const colors = createColors(shouldUseColor({ env: io.env, isTTY: io.isTTY() }));
   const fixes = outcome?.localFixes ?? [];
-  const fixesTarget = join9(dirname5(reportPath), FIXES_FILENAME);
+  const fixesTarget = join10(dirname6(reportPath), FIXES_FILENAME);
   const fixesIsReport = samePath(fixesTarget, reportPath, deps.platform ?? process.platform);
   const writesFixes = hasFileFixes(fixes) && !fixesIsReport;
   if (flags.review) {
@@ -23367,7 +23493,7 @@ ${usage}`);
     const text2 = fixesFileText(fixes, {
       version: VERSION,
       generatedAt: now,
-      reportName: basename3(reportPath)
+      reportName: basename4(reportPath)
     });
     if (io.writeFile(fixesTarget, text2)) fixesPath = fixesTarget;
     else io.writeStdout(colors.yellow(`Could not write the fix commands to ${fixesTarget}
@@ -23444,7 +23570,7 @@ ${osLine}
 
 // src/scan-io.ts
 import { spawn } from "child_process";
-import { randomBytes as randomBytes2 } from "crypto";
+import { randomBytes as randomBytes3 } from "crypto";
 import {
   closeSync,
   constants,
@@ -23460,7 +23586,7 @@ import {
   writeFileSync
 } from "fs";
 import { homedir as homedir3 } from "os";
-import { basename as basename4, dirname as dirname6, join as join10 } from "path";
+import { basename as basename5, dirname as dirname7, join as join11 } from "path";
 import { createInterface as createInterface2 } from "readline";
 function openCommand(platform, path) {
   if (platform === "darwin") return ["open", path];
@@ -23468,9 +23594,9 @@ function openCommand(platform, path) {
   return ["xdg-open", path];
 }
 function writePrivateFile(path, text2) {
-  const temporary = join10(
-    dirname6(path),
-    `.${basename4(path)}.${process.pid}.${randomBytes2(6).toString("hex")}.tmp`
+  const temporary = join11(
+    dirname7(path),
+    `.${basename5(path)}.${process.pid}.${randomBytes3(6).toString("hex")}.tmp`
   );
   let fd;
   try {
@@ -23579,63 +23705,248 @@ function createRealScanIO() {
   };
 }
 
-// src/secrets-workers.ts
-import { randomBytes as randomBytes3 } from "crypto";
+// src/scan-workers.ts
 import { availableParallelism } from "os";
 import { isMainThread, parentPort, Worker, workerData } from "worker_threads";
-var ROLE = "agenttrail-guard-secrets";
-var MAX_WORKERS = 3;
-var MIN_FILES_PER_WORKER = 8;
-function isSecretsWorker() {
+var ROLE = "agenttrail-guard-scan";
+var MAX_WORKERS = 4;
+var MIN_SESSIONS_PER_WORKER = 8;
+function isScanWorker() {
   return !isMainThread && workerData?.role === ROLE;
 }
-async function runSecretsWorker() {
-  const input = workerData;
+async function readSessions(items, onSession) {
+  const io = createRealScanIO();
+  const reads = [];
+  for (const item of items) {
+    reads.push(await readClaudeSession(io, item));
+    onSession();
+  }
+  return reads;
+}
+function compileRules(rules12) {
+  return {
+    catalog: compileCatalog(rules12.rules, rules12.config),
+    allowlist: compileAllowlist(rules12.config.allowlist)
+  };
+}
+function decide(reads, compiled) {
+  const { catalog, allowlist } = compiled;
+  const before = decisionsMade(catalog, allowlist);
+  const sessions = reads.flatMap((read) => read.session === void 0 ? [] : [read.session]);
+  primeDecisions("claude", sessions, catalog, allowlist);
+  return exportDecisions(catalog, allowlist, before);
+}
+async function collectShare(files, key) {
   const collector2 = createSecretsCollector({
-    agent: input.agent,
-    fingerprint: createFingerprinter(input.key)
+    agent: "claude",
+    fingerprint: createFingerprinter(key)
   });
   const io = createRealScanIO();
-  for (const path of input.files) await collectFile(collector2, path, (p) => io.readLines(p));
-  parentPort?.postMessage(exportCollected(collector2));
+  for (const path of files) await collectFile(collector2, path, (p) => io.readLines(p));
+  return exportCollected(collector2);
 }
-function workerCount(files, cores = availableParallelism()) {
-  return Math.max(0, Math.min(MAX_WORKERS, cores - 1, Math.floor(files / MIN_FILES_PER_WORKER)));
-}
-function runWorker(entry, input) {
-  return new Promise((resolve5) => {
-    let settled = false;
-    const settle = (part) => {
-      if (settled) return;
-      settled = true;
-      resolve5(part);
-    };
-    try {
-      const worker = new Worker(entry, { workerData: input });
-      worker.once("message", (part) => {
-        settle(part);
-        void worker.terminate();
-      });
-      worker.once("error", () => settle(void 0));
-      worker.once("exit", () => settle(void 0));
-    } catch {
-      settle(void 0);
-    }
+function runScanWorker() {
+  const input = workerData;
+  const post = (message) => parentPort?.postMessage(message);
+  const compiled = compileRules(input);
+  parentPort?.on("message", (task) => {
+    void (async () => {
+      if (task.kind === "read") {
+        const reads = await readSessions(task.items, () => post({ type: "session" }));
+        post({ type: "read", reads });
+        post({ type: "decided", decisions: decide(reads, compiled) });
+      } else if (input.key !== void 0) {
+        post({ type: "collected", part: await collectShare(task.files, input.key) });
+      }
+    })();
   });
 }
-async function collectInWorkers(entry, agent, files, threads = workerCount(files.length)) {
-  const key = randomBytes3(32);
-  const collector2 = createSecretsCollector({ agent, fingerprint: createFingerprinter(key) });
-  if (threads <= 0) return collector2;
-  const shares = Array.from(
-    { length: threads },
-    (_, i) => files.filter((_2, at2) => at2 % threads === i)
+function workerCount(sessions, cores = availableParallelism()) {
+  return Math.max(
+    0,
+    Math.min(MAX_WORKERS, cores - 1, Math.floor(sessions / MIN_SESSIONS_PER_WORKER))
   );
-  const parts = await Promise.all(
-    shares.map((share) => runWorker(entry, { role: ROLE, agent, files: share, key }))
+}
+function shareBySize(sizes, shares) {
+  const out = Array.from({ length: shares }, () => []);
+  const loads = out.map(() => 0);
+  const order = sizes.map((_, at2) => at2).sort((a, b) => (sizes[b] ?? 0) - (sizes[a] ?? 0) || a - b);
+  for (const at2 of order) {
+    let least = 0;
+    for (let i = 1; i < shares; i++) if ((loads[i] ?? 0) < (loads[least] ?? 0)) least = i;
+    out[least]?.push(at2);
+    loads[least] = (loads[least] ?? 0) + (sizes[at2] ?? 0);
+  }
+  for (const share of out) share.sort((a, b) => a - b);
+  return out.filter((share) => share.length > 0);
+}
+var READ_SHARES_PER_WORKER = 4;
+var FILES_PER_COLLECT = 16;
+async function readInWorkers(entry, input, onSession = () => {
+}, threads = workerCount(input.items.length)) {
+  const reads = input.items.map(() => void 0);
+  const decisions = [];
+  const parts = /* @__PURE__ */ new Map();
+  if (threads <= 0) {
+    return { reads, decisions: Promise.resolve([]), collected: () => Promise.resolve([]) };
+  }
+  const io = createRealScanIO();
+  const shares = shareBySize(
+    input.items.map((item) => sessionBytes(io, item.file)),
+    threads * READ_SHARES_PER_WORKER
   );
-  for (const part of parts) if (part !== void 0) mergeCollected(collector2, part);
-  return collector2;
+  const queue = shares.map((positions, id) => ({
+    id,
+    positions,
+    task: { kind: "read", items: positions.map((at2) => input.items[at2]) }
+  }));
+  let nextId = queue.length;
+  let unread = queue.length;
+  let undecided = queue.length;
+  let busy = 0;
+  let live = 0;
+  const idle = [];
+  const settled = () => {
+    let resolve5 = () => {
+    };
+    const promise = new Promise((r) => {
+      resolve5 = r;
+    });
+    return { promise, resolve: resolve5 };
+  };
+  const sessions = settled();
+  const decided = settled();
+  const collected = settled();
+  const settle = () => {
+    if (live === 0) {
+      for (const queued of queue) {
+        if (queued.task.kind !== "read") continue;
+        unread -= 1;
+        undecided -= 1;
+      }
+      queue.length = 0;
+    }
+    if (unread === 0) sessions.resolve();
+    if (undecided === 0) decided.resolve(decisions);
+    if (unread === 0 && undecided === 0 && busy === 0 && queue.length === 0) {
+      collected.resolve([...parts.entries()].sort(([a], [b]) => a - b).map(([, part]) => part));
+    }
+  };
+  const wake = () => {
+    for (const waiting of idle.splice(0)) waiting();
+  };
+  const addCollects = (files) => {
+    if (input.key === void 0) return;
+    for (let at2 = 0; at2 < files.length; at2 += FILES_PER_COLLECT) {
+      queue.push({
+        id: nextId++,
+        task: { kind: "collect", files: files.slice(at2, at2 + FILES_PER_COLLECT) }
+      });
+    }
+  };
+  const start = () => {
+    let worker;
+    try {
+      worker = new Worker(entry, {
+        workerData: {
+          role: ROLE,
+          rules: input.rules,
+          config: input.config,
+          ...input.key === void 0 ? {} : { key: input.key }
+        }
+      });
+    } catch {
+      return;
+    }
+    live += 1;
+    let current;
+    let currentRead = false;
+    let ended = false;
+    const end = () => {
+      ended = true;
+      live -= 1;
+      void worker.terminate();
+    };
+    const next = () => {
+      if (ended) return;
+      current = queue.shift();
+      currentRead = false;
+      if (current === void 0) {
+        if (unread > 0 && input.key !== void 0) idle.push(next);
+        else end();
+        settle();
+        return;
+      }
+      busy += 1;
+      worker.postMessage(current.task);
+    };
+    worker.on("message", (message) => {
+      const task = current;
+      if (message.type === "session") {
+        onSession();
+        return;
+      }
+      if (task === void 0) return;
+      if (message.type === "read") {
+        for (const [k, at2] of (task.positions ?? []).entries()) reads[at2] = message.reads[k];
+        currentRead = true;
+        unread -= 1;
+        addCollects(message.reads.flatMap((read) => read.files));
+        wake();
+        settle();
+        return;
+      }
+      busy -= 1;
+      if (message.type === "decided") {
+        decisions.push(message.decisions);
+        undecided -= 1;
+      } else {
+        parts.set(task.id, message.part);
+      }
+      current = void 0;
+      next();
+      settle();
+    });
+    const fail = () => {
+      if (ended) return;
+      ended = true;
+      live -= 1;
+      if (current !== void 0) {
+        busy -= 1;
+        if (current.task.kind === "read") {
+          if (!currentRead) unread -= 1;
+          undecided -= 1;
+        }
+        current = void 0;
+      }
+      wake();
+      settle();
+    };
+    worker.once("error", fail);
+    worker.once("exit", fail);
+    next();
+  };
+  for (let i = 0; i < Math.min(threads, shares.length); i++) start();
+  settle();
+  const help = async () => {
+    const key = input.key;
+    for (; ; ) {
+      const queued = key === void 0 ? void 0 : queue.shift();
+      if (queued === void 0 || key === void 0) break;
+      if (queued.task.kind !== "collect") {
+        queue.unshift(queued);
+        break;
+      }
+      busy += 1;
+      parts.set(queued.id, await collectShare(queued.task.files, key));
+      busy -= 1;
+      settle();
+    }
+    settle();
+    return await collected.promise;
+  };
+  await sessions.promise;
+  return { reads, decisions: decided.promise, collected: help };
 }
 
 // src/verify-io.ts
@@ -23650,7 +23961,7 @@ import {
   realpathSync,
   statSync as statSync3
 } from "fs";
-import { isAbsolute as isAbsolute5, join as join11, posix, relative as relative4, win32 } from "path";
+import { isAbsolute as isAbsolute5, join as join12, posix, relative as relative4, win32 } from "path";
 var SHA2 = { slot: "sha" };
 var LITERAL_PATH = { slot: "literal-path" };
 var GIT_ALLOW_LIST = [
@@ -23827,7 +24138,7 @@ function agentRoots(home) {
   const roots = [];
   for (const folder of AGENT_FOLDERS) {
     try {
-      roots.push(realpathSync(join11(home, folder)));
+      roots.push(realpathSync(join12(home, folder)));
     } catch {
     }
   }
@@ -23977,14 +24288,14 @@ function createRealVerifyIO(options = {}) {
 }
 
 // src/scan-entry.ts
-if (isSecretsWorker()) {
-  await runSecretsWorker();
+if (isScanWorker()) {
+  await runScanWorker();
 } else {
   const code = await runScan(process.argv.slice(2), createRealScanIO(), {
     productLine: false,
     progress: false,
     createVerifyIO: () => createRealVerifyIO(),
-    collectSecrets: (agent, files) => collectInWorkers(new URL(import.meta.url), agent, files)
+    readSessions: (input, onSession) => readInWorkers(new URL(import.meta.url), input, onSession)
   });
   if (code !== 0) {
     process.exitCode = code;
