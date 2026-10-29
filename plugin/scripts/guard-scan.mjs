@@ -8356,6 +8356,61 @@ function redactCloudIds(text2) {
     (_m, flag, join12, quote) => `${flag}${join12}${quote}${NAME_PLACEHOLDER}${quote}`
   ).replace(AWS_ARN_ACCOUNT, NAME_PLACEHOLDER);
 }
+var AWS_PROFILE_ENV = /(?<![A-Za-z0-9_])(AWS_(?:DEFAULT_)?PROFILE)(=)(["']?)(?![<[])([^\s"';&|]+)\3/g;
+var AWS_PROFILE_FLAG = /(?<![A-Za-z0-9_-])(aws(?:[ \t]+[^\s;&|]+)*?[ \t]+--profile)(=|[ \t]+)(["']?)(?![<[])([^\s"';&|]+)\3/g;
+var AWS_RESOURCE_ID = /(?<![A-Za-z0-9-])(?:i|vol|snap|sg|subnet|vpc|ami|eni|igw|nat|rtb|lt|eipalloc|acl)-(?:[0-9a-f]{17}|[0-9a-f]{8})(?![A-Za-z0-9-])/g;
+var DB_LOGIN_CLIENTS = [
+  "psql",
+  "pg_dump",
+  "pg_dumpall",
+  "pg_restore",
+  "pg_isready",
+  "createdb",
+  "dropdb",
+  "createuser",
+  "vacuumdb",
+  "reindexdb",
+  "mysql",
+  "mysqladmin",
+  "mysqldump",
+  "mongo",
+  "mongosh",
+  "mongodump",
+  "mongorestore"
+];
+var DB_LOGIN_COMMAND = new RegExp(
+  `(?<![A-Za-z0-9_./-])(?:${DB_LOGIN_CLIENTS.join("|")})(?![A-Za-z0-9_-])`,
+  "g"
+);
+var DB_LOGIN_LONG_FLAG = /(?<=^|\s)(--username|--user)(=|[ \t]+)(["']?)(?![<[-])([^\s"';&|]+)\3/g;
+var DB_LOGIN_SHORT_FLAG = /(?<=^|\s)(-U|-u)(=|[ \t]+|)(["']?)(?![<[-])([^\s"';&|]+)\3/g;
+var COMMAND_END = /[\n;&|]/;
+function redactDatabaseLogins(text2) {
+  let out = "";
+  let cursor = 0;
+  for (const match of text2.matchAll(DB_LOGIN_COMMAND)) {
+    const start = match.index + match[0].length;
+    if (start < cursor) continue;
+    const stop = text2.slice(start).search(COMMAND_END);
+    const end = stop < 0 ? text2.length : start + stop;
+    const login = (_m, flag, join12, quote) => `${flag}${join12}${quote}${USER_PLACEHOLDER}${quote}`;
+    const segment = text2.slice(start, end).replace(DB_LOGIN_LONG_FLAG, login).replace(DB_LOGIN_SHORT_FLAG, login);
+    out += text2.slice(cursor, start) + segment;
+    cursor = end;
+  }
+  return cursor === 0 ? text2 : out + text2.slice(cursor);
+}
+function redactMachineIdentifiers(text2) {
+  return redactDatabaseLogins(
+    text2.replace(
+      AWS_PROFILE_ENV,
+      (_m, name, sep4, quote) => `${name}${sep4}${quote}${NAME_PLACEHOLDER}${quote}`
+    ).replace(
+      AWS_PROFILE_FLAG,
+      (_m, head, join12, quote) => `${head}${join12}${quote}${NAME_PLACEHOLDER}${quote}`
+    ).replace(AWS_RESOURCE_ID, NAME_PLACEHOLDER)
+  );
+}
 function sshUserOption(word) {
   const option = /^(["']?)(User)=(.+?)\1$/i.exec(word);
   if (option === null || isRedactedWord(word)) return void 0;
@@ -8631,7 +8686,7 @@ function classify(word, state, options) {
 }
 function redactIdentifiers(input, options = {}) {
   if (input.length === 0) return input;
-  const text2 = redactCloudIds(redactHeredocBodies(input));
+  const text2 = redactMachineIdentifiers(redactCloudIds(redactHeredocBodies(input)));
   const pieces = tokenize(text2);
   const edits = [];
   let state = freshState(void 0);
@@ -12648,19 +12703,21 @@ function quoteArgument(argument) {
   return `'${argument.replace(/'/g, "'\\''")}'`;
 }
 function localFixCommand(category, parts) {
-  const argv = [];
+  const words2 = [];
   for (const part of parts) {
     if (typeof part === "string") {
-      argv.push(quoteArgument(part));
+      words2.push(part);
       continue;
     }
     const value = safeValue(part);
     if (value === void 0) {
       return { category, unsafe: true, note: "could not make a safe command" };
     }
-    argv.push(quoteArgument(value));
+    words2.push(value);
   }
-  return localFix(category, argv.join(" "));
+  const redacted2 = redactMachineIdentifiers(words2.join(" ")).split(" ");
+  const argv = redacted2.length === words2.length ? redacted2 : words2;
+  return localFix(category, argv.map(quoteArgument).join(" "));
 }
 function isLocalFix(value) {
   return typeof value === "object" && value !== null && LOCAL_ONLY in value;

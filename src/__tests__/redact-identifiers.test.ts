@@ -26,7 +26,7 @@ import { redactForReport } from "../core/scan-report.js";
 
 /** The leaks, with what each one is supposed to become. */
 const LEAKS: readonly (readonly [string, string, string])[] = [
-  ["a container name", "docker exec acme-prod-db psql -U app", "docker exec <name> psql -U app"],
+  ["a container name", "docker exec acme-prod-db psql -U app", "docker exec <name> psql -U <user>"],
   ["a compose project name", "docker logs -f betaholdings_api_1", "docker logs -f <name>"],
   ["a compose service name", "docker compose up acme-billing", "docker compose up <name>"],
   [
@@ -242,8 +242,8 @@ describe("totality and idempotency", () => {
 
   it("a placeholder still occupies its operand slot", () => {
     // Otherwise a second pass would promote `psql` into the container-name position.
-    expect(redactIdentifiers("docker exec <name> psql -U app")).toBe(
-      "docker exec <name> psql -U app",
+    expect(redactIdentifiers("docker exec <name> psql -U <user>")).toBe(
+      "docker exec <name> psql -U <user>",
     );
   });
 
@@ -347,9 +347,8 @@ describe("a SQL statement handed to a database client is redacted whole", () => 
     expect(redactIdentifiers(input)).toBe(expected);
   });
 
-  it("still keeps a username operand readable — the finding is worth reading", () => {
-    // `-U app` is not a host, a database or a SQL statement, so it survives, as before.
-    expect(redactIdentifiers("psql -U app")).toBe("psql -U app");
+  it("keeps the flag and replaces the login, so the shape stays readable", () => {
+    expect(redactIdentifiers("psql -U app")).toBe("psql -U <user>");
   });
 });
 

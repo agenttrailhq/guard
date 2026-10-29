@@ -1,6 +1,7 @@
 /**
  * The local fixes file: the exact fix commands for this machine, with real branch names and
- * paths, behind the redacted shapes the report shows.
+ * paths, behind the redacted shapes the report shows. An AWS profile name, an AWS resource id
+ * and a database login are replaced in it as on the page (`localFixCommand`).
  *
  * `commands/scan.ts` writes it next to the report, at `0600`, only when a check has made an
  * exact command. It is never part of the page, its data block or `--json`: those carry the

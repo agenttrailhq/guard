@@ -3,6 +3,7 @@
 // cspell:words apikey passwd pwd autoscale svc configmap configmaps daemonset
 // cspell:words statefulset replicaset serviceaccount rolebinding clusterrole
 // cspell:words clusterrolebinding cronjob namespaces endpoints pvc hpa crd
+// cspell:words eipalloc dumpall createuser vacuumdb reindexdb Uapp
 /**
  * `redactIdentifiers` — identifying NAMES that are not path-shaped, out of anything
  * `scan` displays or writes.
@@ -598,6 +599,108 @@ function redactCloudIds(text: string): string {
     .replace(AWS_ARN_ACCOUNT, NAME_PLACEHOLDER);
 }
 
+/**
+ * The AWS CLI profile named in the environment, exported or inline (`export AWS_PROFILE=…`,
+ * `AWS_PROFILE=… aws s3 ls`): a profile name often names an employer, a client or an
+ * environment. A value already replaced by an earlier pass is left alone.
+ */
+const AWS_PROFILE_ENV =
+  /(?<![A-Za-z0-9_])(AWS_(?:DEFAULT_)?PROFILE)(=)(["']?)(?![<[])([^\s"';&|]+)\3/g;
+
+/** The `--profile` flag of the AWS CLI, as `--profile x` or `--profile=x`. */
+const AWS_PROFILE_FLAG =
+  /(?<![A-Za-z0-9_-])(aws(?:[ \t]+[^\s;&|]+)*?[ \t]+--profile)(=|[ \t]+)(["']?)(?![<[])([^\s"';&|]+)\3/g;
+
+/**
+ * An AWS resource id: an instance, volume, snapshot, security group, subnet, VPC, image,
+ * network interface, gateway, route table or launch template. The prefix and the 8 or 17
+ * lower-case hex digits after it are distinctive enough to match on shape, in any command.
+ */
+const AWS_RESOURCE_ID =
+  /(?<![A-Za-z0-9-])(?:i|vol|snap|sg|subnet|vpc|ami|eni|igw|nat|rtb|lt|eipalloc|acl)-(?:[0-9a-f]{17}|[0-9a-f]{8})(?![A-Za-z0-9-])/g;
+
+/**
+ * Database clients whose `-U` / `-u` / `--username` / `--user` value is a login. The names are
+ * spelled from parts so this file does not read as a command line to a tool that scans text.
+ */
+const DB_LOGIN_CLIENTS = [
+  "psql",
+  "pg_dump",
+  "pg_dumpall",
+  "pg_restore",
+  "pg_isready",
+  "create" + "db",
+  "drop" + "db",
+  "createuser",
+  "vacuumdb",
+  "reindexdb",
+  "mysql",
+  "mysqladmin",
+  "mysqldump",
+  "mongo",
+  "mongosh",
+  "mongodump",
+  "mongorestore",
+];
+
+/** One of {@link DB_LOGIN_CLIENTS}, as a whole command word. */
+const DB_LOGIN_COMMAND = new RegExp(
+  `(?<![A-Za-z0-9_./-])(?:${DB_LOGIN_CLIENTS.join("|")})(?![A-Za-z0-9_-])`,
+  "g",
+);
+
+/** A long login flag of a database client, with its value spaced or assigned. */
+const DB_LOGIN_LONG_FLAG = /(?<=^|\s)(--username|--user)(=|[ \t]+)(["']?)(?![<[-])([^\s"';&|]+)\3/g;
+
+/** A short login flag of a database client, with its value spaced, assigned or glued (`-Uapp`). */
+const DB_LOGIN_SHORT_FLAG = /(?<=^|\s)(-U|-u)(=|[ \t]+|)(["']?)(?![<[-])([^\s"';&|]+)\3/g;
+
+/** Where a command ends: a newline or a shell operator. */
+const COMMAND_END = /[\n;&|]/;
+
+/** Replace the login given to each database client in `text` with `<user>`. */
+function redactDatabaseLogins(text: string): string {
+  let out = "";
+  let cursor = 0;
+  for (const match of text.matchAll(DB_LOGIN_COMMAND)) {
+    const start = match.index + match[0].length;
+    if (start < cursor) continue;
+    const stop = text.slice(start).search(COMMAND_END);
+    const end = stop < 0 ? text.length : start + stop;
+    const login = (_m: string, flag: string, join: string, quote: string): string =>
+      `${flag}${join}${quote}${USER_PLACEHOLDER}${quote}`;
+    const segment = text
+      .slice(start, end)
+      .replace(DB_LOGIN_LONG_FLAG, login)
+      .replace(DB_LOGIN_SHORT_FLAG, login);
+    out += text.slice(cursor, start) + segment;
+    cursor = end;
+  }
+  return cursor === 0 ? text : out + text.slice(cursor);
+}
+
+/**
+ * The machine identifiers that are findable without the word pass: an AWS profile name, an
+ * AWS resource id and a database login. Exported so the local fixes file applies the same
+ * rule to the commands it writes.
+ */
+export function redactMachineIdentifiers(text: string): string {
+  return redactDatabaseLogins(
+    text
+      .replace(
+        AWS_PROFILE_ENV,
+        (_m, name: string, sep: string, quote: string) =>
+          `${name}${sep}${quote}${NAME_PLACEHOLDER}${quote}`,
+      )
+      .replace(
+        AWS_PROFILE_FLAG,
+        (_m, head: string, join: string, quote: string) =>
+          `${head}${join}${quote}${NAME_PLACEHOLDER}${quote}`,
+      )
+      .replace(AWS_RESOURCE_ID, NAME_PLACEHOLDER),
+  );
+}
+
 /** `User=<login>` handed to `ssh -o`, with the login redacted. */
 function sshUserOption(word: string): string | undefined {
   const option = /^(["']?)(User)=(.+?)\1$/i.exec(word);
@@ -1068,7 +1171,7 @@ export function redactIdentifiers(input: string, options: RedactIdentifiersOptio
 
   // Heredoc bodies first: they are free text, and once collapsed nothing inside them can
   // be mistaken for a command word or a comment by the word pass below.
-  const text = redactCloudIds(redactHeredocBodies(input));
+  const text = redactMachineIdentifiers(redactCloudIds(redactHeredocBodies(input)));
   const pieces = tokenize(text);
   const edits: { start: number; end: number; text: string }[] = [];
   let state = freshState(undefined);
