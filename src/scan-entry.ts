@@ -17,13 +17,21 @@
 
 import { runScan } from "./commands/scan.js";
 import { createRealScanIO } from "./scan-io.js";
+import { collectInWorkers, isSecretsWorker, runSecretsWorker } from "./secrets-workers.js";
 import { createRealVerifyIO } from "./verify-io.js";
 
-// The skill's output is read by the agent, so the AgentTrail OS line is left out.
-const code = await runScan(process.argv.slice(2), createRealScanIO(), {
-  productLine: false,
-  createVerifyIO: () => createRealVerifyIO(),
-});
-if (code !== 0) {
-  process.exitCode = code;
+// A worker thread `scan` started for the secrets check runs this same file: it reads its
+// transcripts and nothing else.
+if (isSecretsWorker()) {
+  await runSecretsWorker();
+} else {
+  // The skill's output is read by the agent, so the AgentTrail OS line is left out.
+  const code = await runScan(process.argv.slice(2), createRealScanIO(), {
+    productLine: false,
+    createVerifyIO: () => createRealVerifyIO(),
+    collectSecrets: (agent, files) => collectInWorkers(new URL(import.meta.url), agent, files),
+  });
+  if (code !== 0) {
+    process.exitCode = code;
+  }
 }

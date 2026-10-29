@@ -450,6 +450,15 @@ export interface ScanDeps {
    * could-not-check.
    */
   readonly createVerifyIO?: () => VerifyIO;
+  /**
+   * Reads the transcripts for the secrets check on worker threads (`secrets-workers.ts`), while
+   * the other checks run. The CLI entries pass it; without it the secrets check collects from
+   * the records the scan's own reader parses, in one thread.
+   */
+  readonly collectSecrets?: (
+    agent: AgentSource,
+    files: readonly string[],
+  ) => Promise<SecretsCollector>;
   /** Runs the checks. For tests; production uses `verifyScan`. */
   readonly verify?: (input: VerifyInput) => Promise<VerifyOutcome>;
   /**
@@ -1162,10 +1171,15 @@ export async function runScan(
   // the transcripts are read once. Only Claude Code's reader hands its records over.
   const verifying = !flags.scrub && shouldVerify(flags, byDefault);
   const secretsCollector =
-    verifying && agent === "claude"
+    verifying && agent === "claude" && deps.collectSecrets === undefined
       ? createSecretsCollector({ agent, fingerprint: createFingerprinter() })
       : undefined;
   const corpus: ScanCorpus = await readCorpusFor(agent, readRoot, io, secretsCollector);
+  // With worker threads, the secrets check's reading starts now and runs beside the others.
+  const secretsCollected =
+    verifying && deps.collectSecrets !== undefined
+      ? deps.collectSecrets(agent, corpus.files ?? [])
+      : secretsCollector;
   if (flags.scrub && deps.scrub !== undefined) {
     const scrubIO = deps.scrub.createIO();
     return await deps.scrub.run({
@@ -1194,7 +1208,10 @@ export async function runScan(
         allowlist,
         readLines: (path) => io.readLines(path),
         io: deps.createVerifyIO?.() ?? UNAVAILABLE_VERIFY_IO,
-        ...(secretsCollector === undefined ? {} : { secretsCollector }),
+        // The secrets check runs beside the others, so it gets a seam, and a time budget, of
+        // its own: the others cannot spend the time its search of the repos needs.
+        secretsIO: deps.createVerifyIO?.() ?? UNAVAILABLE_VERIFY_IO,
+        ...(secretsCollected === undefined ? {} : { secretsCollector: secretsCollected }),
       });
     } catch {
       // The checks promise never to throw. If one does anyway, the scan still writes its page,

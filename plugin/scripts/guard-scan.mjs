@@ -327,8 +327,8 @@ var require_scan = __commonJS({
       CHAR_RIGHT_SQUARE_BRACKET
       /* ] */
     } = require_constants();
-    var isPathSeparator = (code2) => {
-      return code2 === CHAR_FORWARD_SLASH || code2 === CHAR_BACKWARD_SLASH;
+    var isPathSeparator = (code) => {
+      return code === CHAR_FORWARD_SLASH || code === CHAR_BACKWARD_SLASH;
     };
     var depth = (token) => {
       if (token.isPrefix !== true) {
@@ -358,38 +358,38 @@ var require_scan = __commonJS({
       let finished = false;
       let braces = 0;
       let prev;
-      let code2;
+      let code;
       let token = { value: "", depth: 0, isGlob: false };
       const eos = () => index >= length;
       const peek = () => str2.charCodeAt(index + 1);
       const advance = () => {
-        prev = code2;
+        prev = code;
         return str2.charCodeAt(++index);
       };
       while (index < length) {
-        code2 = advance();
+        code = advance();
         let next;
-        if (code2 === CHAR_BACKWARD_SLASH) {
+        if (code === CHAR_BACKWARD_SLASH) {
           backslashes = token.backslashes = true;
-          code2 = advance();
-          if (code2 === CHAR_LEFT_CURLY_BRACE) {
+          code = advance();
+          if (code === CHAR_LEFT_CURLY_BRACE) {
             braceEscaped = true;
           }
           continue;
         }
-        if (braceEscaped === true || code2 === CHAR_LEFT_CURLY_BRACE) {
+        if (braceEscaped === true || code === CHAR_LEFT_CURLY_BRACE) {
           braces++;
-          while (eos() !== true && (code2 = advance())) {
-            if (code2 === CHAR_BACKWARD_SLASH) {
+          while (eos() !== true && (code = advance())) {
+            if (code === CHAR_BACKWARD_SLASH) {
               backslashes = token.backslashes = true;
               advance();
               continue;
             }
-            if (code2 === CHAR_LEFT_CURLY_BRACE) {
+            if (code === CHAR_LEFT_CURLY_BRACE) {
               braces++;
               continue;
             }
-            if (braceEscaped !== true && code2 === CHAR_DOT && (code2 = advance()) === CHAR_DOT) {
+            if (braceEscaped !== true && code === CHAR_DOT && (code = advance()) === CHAR_DOT) {
               isBrace = token.isBrace = true;
               isGlob = token.isGlob = true;
               finished = true;
@@ -398,7 +398,7 @@ var require_scan = __commonJS({
               }
               break;
             }
-            if (braceEscaped !== true && code2 === CHAR_COMMA) {
+            if (braceEscaped !== true && code === CHAR_COMMA) {
               isBrace = token.isBrace = true;
               isGlob = token.isGlob = true;
               finished = true;
@@ -407,7 +407,7 @@ var require_scan = __commonJS({
               }
               break;
             }
-            if (code2 === CHAR_RIGHT_CURLY_BRACE) {
+            if (code === CHAR_RIGHT_CURLY_BRACE) {
               braces--;
               if (braces === 0) {
                 braceEscaped = false;
@@ -422,7 +422,7 @@ var require_scan = __commonJS({
           }
           break;
         }
-        if (code2 === CHAR_FORWARD_SLASH) {
+        if (code === CHAR_FORWARD_SLASH) {
           slashes.push(index);
           tokens.push(token);
           token = { value: "", depth: 0, isGlob: false };
@@ -435,22 +435,22 @@ var require_scan = __commonJS({
           continue;
         }
         if (opts.noext !== true) {
-          const isExtglobChar = code2 === CHAR_PLUS || code2 === CHAR_AT || code2 === CHAR_ASTERISK || code2 === CHAR_QUESTION_MARK || code2 === CHAR_EXCLAMATION_MARK;
+          const isExtglobChar = code === CHAR_PLUS || code === CHAR_AT || code === CHAR_ASTERISK || code === CHAR_QUESTION_MARK || code === CHAR_EXCLAMATION_MARK;
           if (isExtglobChar === true && peek() === CHAR_LEFT_PARENTHESES) {
             isGlob = token.isGlob = true;
             isExtglob = token.isExtglob = true;
             finished = true;
-            if (code2 === CHAR_EXCLAMATION_MARK && index === start) {
+            if (code === CHAR_EXCLAMATION_MARK && index === start) {
               negatedExtglob = true;
             }
             if (scanToEnd === true) {
-              while (eos() !== true && (code2 = advance())) {
-                if (code2 === CHAR_BACKWARD_SLASH) {
+              while (eos() !== true && (code = advance())) {
+                if (code === CHAR_BACKWARD_SLASH) {
                   backslashes = token.backslashes = true;
-                  code2 = advance();
+                  code = advance();
                   continue;
                 }
-                if (code2 === CHAR_RIGHT_PARENTHESES) {
+                if (code === CHAR_RIGHT_PARENTHESES) {
                   isGlob = token.isGlob = true;
                   finished = true;
                   break;
@@ -461,7 +461,7 @@ var require_scan = __commonJS({
             break;
           }
         }
-        if (code2 === CHAR_ASTERISK) {
+        if (code === CHAR_ASTERISK) {
           if (prev === CHAR_ASTERISK) isGlobstar = token.isGlobstar = true;
           isGlob = token.isGlob = true;
           finished = true;
@@ -470,7 +470,7 @@ var require_scan = __commonJS({
           }
           break;
         }
-        if (code2 === CHAR_QUESTION_MARK) {
+        if (code === CHAR_QUESTION_MARK) {
           isGlob = token.isGlob = true;
           finished = true;
           if (scanToEnd === true) {
@@ -478,7 +478,7 @@ var require_scan = __commonJS({
           }
           break;
         }
-        if (code2 === CHAR_LEFT_SQUARE_BRACKET) {
+        if (code === CHAR_LEFT_SQUARE_BRACKET) {
           while (eos() !== true && (next = advance())) {
             if (next === CHAR_BACKWARD_SLASH) {
               backslashes = token.backslashes = true;
@@ -497,21 +497,21 @@ var require_scan = __commonJS({
           }
           break;
         }
-        if (opts.nonegate !== true && code2 === CHAR_EXCLAMATION_MARK && index === start) {
+        if (opts.nonegate !== true && code === CHAR_EXCLAMATION_MARK && index === start) {
           negated = token.negated = true;
           start++;
           continue;
         }
-        if (opts.noparen !== true && code2 === CHAR_LEFT_PARENTHESES) {
+        if (opts.noparen !== true && code === CHAR_LEFT_PARENTHESES) {
           isGlob = token.isGlob = true;
           if (scanToEnd === true) {
-            while (eos() !== true && (code2 = advance())) {
-              if (code2 === CHAR_LEFT_PARENTHESES) {
+            while (eos() !== true && (code = advance())) {
+              if (code === CHAR_LEFT_PARENTHESES) {
                 backslashes = token.backslashes = true;
-                code2 = advance();
+                code = advance();
                 continue;
               }
-              if (code2 === CHAR_RIGHT_PARENTHESES) {
+              if (code === CHAR_RIGHT_PARENTHESES) {
                 finished = true;
                 break;
               }
@@ -576,7 +576,7 @@ var require_scan = __commonJS({
       };
       if (opts.tokens === true) {
         state.maxDepth = 0;
-        if (!isPathSeparator(code2)) {
+        if (!isPathSeparator(code)) {
           tokens.push(token);
         }
         state.tokens = tokens;
@@ -5902,11 +5902,11 @@ var TOOLS_PREFIX = "tools.";
 var MAX_SHIM_SOURCE = 128 * 1024;
 var MAX_WALK_DEPTH = 8;
 var SESSION_DEPTH = 3;
-function isIdentPart(code2) {
-  return code2 >= 48 && code2 <= 57 || code2 >= 65 && code2 <= 90 || code2 >= 97 && code2 <= 122 || code2 === 95 || code2 === 36;
+function isIdentPart(code) {
+  return code >= 48 && code <= 57 || code >= 65 && code <= 90 || code >= 97 && code <= 122 || code === 95 || code === 36;
 }
-function isIdentStart(code2) {
-  return code2 >= 65 && code2 <= 90 || code2 >= 97 && code2 <= 122 || code2 === 95 || code2 === 36;
+function isIdentStart(code) {
+  return code >= 65 && code <= 90 || code >= 97 && code <= 122 || code === 95 || code === 36;
 }
 function readEscape(source, at2) {
   const ch = source[at2 + 1];
@@ -5943,9 +5943,9 @@ function readUnicodeEscape(source, at2) {
     if (close === -1) return void 0;
     const digits = source.slice(at2 + 3, close);
     if (!/^[0-9a-fA-F]{1,6}$/.test(digits)) return void 0;
-    const code2 = Number.parseInt(digits, 16);
-    if (code2 > 1114111) return void 0;
-    return { text: String.fromCodePoint(code2), end: close + 1 };
+    const code = Number.parseInt(digits, 16);
+    if (code > 1114111) return void 0;
+    return { text: String.fromCodePoint(code), end: close + 1 };
   }
   const hex = source.slice(at2 + 2, at2 + 6);
   if (!/^[0-9a-fA-F]{4}$/.test(hex)) return void 0;
@@ -9337,13 +9337,13 @@ function isNewline(text2, j) {
   if (c === "\n" || c === "\r") return true;
   return c === "\\" && (text2[j + 1] === "n" || text2[j + 1] === "r");
 }
-function isNameChar(code2) {
-  return code2 >= 48 && code2 <= 57 || // 0-9
-  code2 >= 65 && code2 <= 90 || // A-Z
-  code2 >= 97 && code2 <= 122 || // a-z
-  code2 === 95 || // _
-  code2 === 46 || // .
-  code2 === 45;
+function isNameChar(code) {
+  return code >= 48 && code <= 57 || // 0-9
+  code >= 65 && code <= 90 || // A-Z
+  code >= 97 && code <= 122 || // a-z
+  code === 95 || // _
+  code === 46 || // .
+  code === 45;
 }
 function jsonKeyLength(text2, i, end) {
   const escaped = text2[i] === "\\";
@@ -10491,9 +10491,9 @@ function ansiQuoteValue(inner) {
   const value = inner.replace(
     ANSI_ESCAPE,
     (whole, hex, u4, u8, octal, control, one) => {
-      const code2 = hex ?? u4 ?? u8;
-      if (code2 !== void 0) {
-        const point = Number.parseInt(code2, 16);
+      const code = hex ?? u4 ?? u8;
+      if (code !== void 0) {
+        const point = Number.parseInt(code, 16);
         return point <= 1114111 ? String.fromCodePoint(point) : whole;
       }
       if (octal !== void 0) return String.fromCharCode(Number.parseInt(octal, 8) & 255);
@@ -18782,8 +18782,8 @@ function reportPayload(result, meta, builders = CARD_BUILDERS) {
 function postLength(text2) {
   let n2 = 0;
   for (const ch of text2) {
-    const code2 = ch.codePointAt(0) ?? 0;
-    const light = code2 <= 4351 || code2 >= 8192 && code2 <= 8205 || code2 >= 8208 && code2 <= 8223 || code2 >= 8242 && code2 <= 8247;
+    const code = ch.codePointAt(0) ?? 0;
+    const light = code <= 4351 || code >= 8192 && code <= 8205 || code >= 8208 && code <= 8223 || code >= 8242 && code <= 8247;
     n2 += light ? 1 : 2;
   }
   return n2 + 1 + 23 + 1 + "#agenttrail".length;
@@ -21408,6 +21408,63 @@ async function collectFile(collector2, path, readLines) {
     return false;
   }
 }
+function exportCollected(collector2) {
+  const collected = COLLECTED.get(collector2);
+  return {
+    paths: [...collected.paths],
+    done: [...collected.done],
+    unplaced: [...collected.unplaced],
+    workingDirs: [...collected.workingDirs],
+    candidates: [...collected.candidates].map(([key, c]) => [
+      key,
+      {
+        kind: c.kind,
+        evidence: c.evidence,
+        via: [...c.via],
+        files: [...c.files],
+        decided: c.decided,
+        value: c.value,
+        setAside: c.setAside
+      }
+    ])
+  };
+}
+function mergeCollected(collector2, part) {
+  const collected = COLLECTED.get(collector2);
+  const index = /* @__PURE__ */ new Map();
+  for (const [path, theirs] of part.paths) index.set(theirs, collector2.file(path));
+  const mine = (theirs) => index.get(theirs) ?? -1;
+  for (const theirs of part.done) collector2.read(mine(theirs));
+  for (const [theirs, count2] of part.unplaced) {
+    const at2 = mine(theirs);
+    collected.unplaced.set(at2, (collected.unplaced.get(at2) ?? 0) + count2);
+  }
+  for (const dir of part.workingDirs) collected.workingDirs.add(dir);
+  for (const [key, c] of part.candidates) {
+    const existing = collected.candidates.get(key);
+    if (existing === void 0) {
+      collected.candidates.set(key, {
+        kind: c.kind,
+        evidence: c.evidence,
+        via: new Set(c.via),
+        files: new Set(c.files.map(mine)),
+        decided: c.decided,
+        value: c.value,
+        setAside: c.setAside
+      });
+      continue;
+    }
+    for (const via of c.via) existing.via.add(via);
+    for (const file2 of c.files) existing.files.add(mine(file2));
+    if (existing.evidence === void 0 && c.evidence !== void 0) {
+      existing.evidence = c.evidence;
+      existing.kind = c.kind;
+    }
+    existing.decided ??= c.decided;
+    existing.setAside ??= c.setAside;
+    existing.value ??= c.value;
+  }
+}
 async function checkSecrets(input) {
   return (await classifySecrets(input, false)).check;
 }
@@ -21693,15 +21750,18 @@ function chargeTime(io, ms) {
 }
 async function verifyScan(input) {
   const agent = input.corpus.agent ?? "claude";
+  const secretsPending = (async () => {
+    const collector2 = await input.secretsCollector;
+    return await checkSecrets({
+      agent,
+      files: input.corpus.files ?? [],
+      readLines: input.readLines,
+      io: input.secretsIO ?? input.io,
+      fingerprint: input.fingerprint ?? createFingerprinter(),
+      ...collector2 === void 0 ? {} : { collector: collector2 }
+    });
+  })();
   const matched = tallyMatchedCalls(input.corpus, input.catalog, input.allowlist);
-  const secrets = await checkSecrets({
-    agent,
-    files: input.corpus.files ?? [],
-    readLines: input.readLines,
-    io: input.io,
-    fingerprint: input.fingerprint ?? createFingerprinter(),
-    ...input.secretsCollector === void 0 ? {} : { collector: input.secretsCollector }
-  });
   const git = await checkGitBacked({
     corpus: input.corpus,
     io: input.io,
@@ -21726,6 +21786,7 @@ async function verifyScan(input) {
   const tests = await checkTests({ calls, io: input.io });
   const unreviewed = await checkUnreviewed({ calls, io: input.io, rules: rules12 });
   const egress = await checkEgress({ calls, ...rules12, io: input.io });
+  const secrets = await secretsPending;
   const verification = {
     matchedCalls: matched.tally,
     resultsRecorded: matched.resultsRecorded,
@@ -22455,8 +22516,9 @@ ${usage}`);
   const allowlist = compileAllowlist(config.allowlist);
   const readRoot = flags.scrub ? resolve4(io.cwd(), root) : root;
   const verifying = !flags.scrub && shouldVerify(flags, byDefault);
-  const secretsCollector = verifying && agent === "claude" ? createSecretsCollector({ agent, fingerprint: createFingerprinter() }) : void 0;
+  const secretsCollector = verifying && agent === "claude" && deps.collectSecrets === void 0 ? createSecretsCollector({ agent, fingerprint: createFingerprinter() }) : void 0;
   const corpus = await readCorpusFor(agent, readRoot, io, secretsCollector);
+  const secretsCollected = verifying && deps.collectSecrets !== void 0 ? deps.collectSecrets(agent, corpus.files ?? []) : secretsCollector;
   if (flags.scrub && deps.scrub !== void 0) {
     const scrubIO = deps.scrub.createIO();
     return await deps.scrub.run({
@@ -22482,7 +22544,10 @@ ${usage}`);
         allowlist,
         readLines: (path) => io.readLines(path),
         io: deps.createVerifyIO?.() ?? UNAVAILABLE_VERIFY_IO,
-        ...secretsCollector === void 0 ? {} : { secretsCollector }
+        // The secrets check runs beside the others, so it gets a seam, and a time budget, of
+        // its own: the others cannot spend the time its search of the repos needs.
+        secretsIO: deps.createVerifyIO?.() ?? UNAVAILABLE_VERIFY_IO,
+        ...secretsCollected === void 0 ? {} : { secretsCollector: secretsCollected }
       });
     } catch {
       outcome = void 0;
@@ -22738,6 +22803,62 @@ function createRealScanIO() {
       return process.stdout.isTTY === true;
     }
   };
+}
+
+// src/secrets-workers.ts
+import { randomBytes as randomBytes3 } from "crypto";
+import { availableParallelism } from "os";
+import { isMainThread, parentPort, Worker, workerData } from "worker_threads";
+var ROLE = "agenttrail-guard-secrets";
+var MAX_WORKERS = 4;
+var MIN_FILES_PER_WORKER = 8;
+function isSecretsWorker() {
+  return !isMainThread && workerData?.role === ROLE;
+}
+async function runSecretsWorker() {
+  const input = workerData;
+  const collector2 = createSecretsCollector({
+    agent: input.agent,
+    fingerprint: createFingerprinter(input.key)
+  });
+  const io = createRealScanIO();
+  for (const path of input.files) await collectFile(collector2, path, (p) => io.readLines(p));
+  parentPort?.postMessage(exportCollected(collector2));
+}
+function workerCount(files, cores = availableParallelism()) {
+  return Math.max(0, Math.min(MAX_WORKERS, cores - 1, Math.floor(files / MIN_FILES_PER_WORKER)));
+}
+function runWorker(entry, input) {
+  return new Promise((resolve5) => {
+    let settled = false;
+    const settle = (part) => {
+      if (settled) return;
+      settled = true;
+      resolve5(part);
+    };
+    try {
+      const worker = new Worker(entry, { workerData: input });
+      worker.once("message", (part) => settle(part));
+      worker.once("error", () => settle(void 0));
+      worker.once("exit", () => settle(void 0));
+    } catch {
+      settle(void 0);
+    }
+  });
+}
+async function collectInWorkers(entry, agent, files, threads = workerCount(files.length)) {
+  const key = randomBytes3(32);
+  const collector2 = createSecretsCollector({ agent, fingerprint: createFingerprinter(key) });
+  if (threads <= 0) return collector2;
+  const shares = Array.from(
+    { length: threads },
+    (_, i) => files.filter((_2, at2) => at2 % threads === i)
+  );
+  const parts = await Promise.all(
+    shares.map((share) => runWorker(entry, { role: ROLE, agent, files: share, key }))
+  );
+  for (const part of parts) if (part !== void 0) mergeCollected(collector2, part);
+  return collector2;
 }
 
 // src/verify-io.ts
@@ -23021,8 +23142,8 @@ function createRealVerifyIO(options = {}) {
         statSync3(path);
         return true;
       } catch (error) {
-        const code2 = error.code;
-        return code2 === "ENOENT" || code2 === "ENOTDIR" ? false : void 0;
+        const code = error.code;
+        return code === "ENOENT" || code === "ENOTDIR" ? false : void 0;
       }
     },
     readFile(path) {
@@ -23079,10 +23200,15 @@ function createRealVerifyIO(options = {}) {
 }
 
 // src/scan-entry.ts
-var code = await runScan(process.argv.slice(2), createRealScanIO(), {
-  productLine: false,
-  createVerifyIO: () => createRealVerifyIO()
-});
-if (code !== 0) {
-  process.exitCode = code;
+if (isSecretsWorker()) {
+  await runSecretsWorker();
+} else {
+  const code = await runScan(process.argv.slice(2), createRealScanIO(), {
+    productLine: false,
+    createVerifyIO: () => createRealVerifyIO(),
+    collectSecrets: (agent, files) => collectInWorkers(new URL(import.meta.url), agent, files)
+  });
+  if (code !== 0) {
+    process.exitCode = code;
+  }
 }
