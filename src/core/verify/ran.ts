@@ -1252,6 +1252,7 @@ const READINGS = new Map<string, Reading>();
 const TRUSTING_READINGS = new Map<string, Reading>();
 const VIEWS = new Map<string, SimpleCommandView[]>();
 const VIEWS_WITH_BODIES = new Map<string, SimpleCommandView[]>();
+const OPAQUE = new Map<string, (readonly string[])[]>();
 
 /** Most entries kept in one of the maps above. */
 const MAX_CACHED_READINGS = 50_000;
@@ -1601,6 +1602,11 @@ function isKnownProgram(name: string): boolean {
  * Each as its words from the program on.
  */
 export function opaqueCommands(text: string): (readonly string[])[] {
+  return remembered(OPAQUE, text, () => opaqueCommandsOnce(text));
+}
+
+/** `opaqueCommands`, without the cache. */
+function opaqueCommandsOnce(text: string): (readonly string[])[] {
   const out: (readonly string[])[] = [];
   for (const simple of simpleCommandsOf(text)) {
     const at = programStart(simple.words).index;

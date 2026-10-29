@@ -80,7 +80,12 @@ function runWorker(entry: URL, input: WorkerInput): Promise<CollectedPart | unde
     };
     try {
       const worker = new Worker(entry, { workerData: input });
-      worker.once("message", (part: CollectedPart) => settle(part));
+      // Its part is all a worker has to give: it is ended then, so nothing it left running
+      // can keep the scan from exiting.
+      worker.once("message", (part: CollectedPart) => {
+        settle(part);
+        void worker.terminate();
+      });
       worker.once("error", () => settle(undefined));
       worker.once("exit", () => settle(undefined));
     } catch {
