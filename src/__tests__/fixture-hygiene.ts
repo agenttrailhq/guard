@@ -15,13 +15,17 @@
 
 import { readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { SECURITY_EMAIL } from "../core/report.js";
 
 /** A placeholder id. Removed before scanning, so any id left is a real one. */
 export const PLACEHOLDER_ID = /00000000-0000-4000-8000-\d{12}/g;
 
-/** The text the patterns scan: a file with its placeholder ids removed. */
+/**
+ * The text the patterns scan: a file with its placeholder ids removed, and the product's own
+ * published security contact, which every report's footer carries, set aside.
+ */
 export function scanned(text: string): string {
-  return text.replace(PLACEHOLDER_ID, "<id>");
+  return text.replace(PLACEHOLDER_ID, "<id>").replaceAll(SECURITY_EMAIL, "<security-contact>");
 }
 
 /** Every file under `dir`, by its path from there, sorted. */

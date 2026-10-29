@@ -22,12 +22,10 @@ import {
   contentSecurityPolicy,
   dataBlockText,
   escapeHtml,
-  FIX_FIRST_MAX,
   headline,
   MAX_EXAMPLES,
   MAX_ROWS,
   OWASP_EDITION,
-  OWN_CARD_HEADING,
   packLabel,
   postLength,
   type ReportMeta,
@@ -132,13 +130,17 @@ function resultWith(
   };
 }
 
-/** One whole row of All findings, up to the next row or the end of the list. */
+/** The `index`-th row of All findings in page order (most serious first), whole. */
 function rowOf(html: string, index: number): string {
-  const at = html.indexOf(`<li class="finding" id="finding-${index}"`);
-  if (at === -1) return "";
-  const next = html.indexOf('<li class="finding"', at + 1);
-  const end = html.indexOf("</ol>", at);
-  return html.slice(at, next === -1 || next > end ? end : next);
+  const rows = html.split('<details class="frow"').slice(1);
+  const row = rows[index];
+  if (row === undefined) return "";
+  return `<details class="frow"${row.slice(0, row.indexOf("\n</details>") + "\n</details>".length)}`;
+}
+
+/** The headline's text, without the emphasis round its counted phrase. */
+function h1Text(html: string): string {
+  return (html.match(/<h1 id="headline"[^>]*>(.*?)<\/h1>/)?.[1] ?? "").replace(/<\/?em>/g, "");
 }
 
 /** A tag whose every attribute value is quoted and holds no quote or angle bracket. */
@@ -169,7 +171,7 @@ describe("the headline", () => {
   ];
   it.each(cases)("%o reads %s", (byAction, text) => {
     expect(headline(resultWith([], byAction))).toBe(text);
-    expect(renderReport(resultWith([], byAction), META)).toContain(`<h1>${text}</h1>`);
+    expect(h1Text(renderReport(resultWith([], byAction), META))).toBe(text);
   });
 });
 
@@ -183,10 +185,9 @@ describe("the hero", () => {
       ),
       META,
     );
-    // 2 of 3 is 66.6%: shown as 66, never rounded up to a cleaner number.
-    expect(html).toContain(
-      '<div class="stat-value">66%</div><div class="stat-label">matched no guardrail</div>',
-    );
+    // 2 of 3 is 66.66%: shown as 66.6%, never rounded up to a cleaner number.
+    expect(html).toContain('<strong id="ring-pct">66.6%</strong>');
+    expect(html).toContain("<b>2 of 3</b> tool calls matched no guardrail");
   });
 
   it("omits that share when there were no tool calls", () => {
@@ -195,7 +196,7 @@ describe("the hero", () => {
     );
   });
 
-  it("names the most serious library guardrail, even when a user's own is more serious", () => {
+  it("names no guardrail: the headline and the lead are counts and kinds", () => {
     const html = renderReport(
       resultWith([own("t.mine", "block", 5), lib("a.lib", "block", 1)], {
         block: 6,
@@ -204,19 +205,9 @@ describe("the hero", () => {
       }),
       META,
     );
-    const hero = between(html, 'id="overview"', "</section>");
-    expect(hero).toContain("Library guardrail a.lib");
+    const hero = between(html, '<section class="hero"', "</section>");
+    expect(hero).not.toContain("Library guardrail a.lib");
     expect(hero).not.toContain("Team guardrail t.mine");
-  });
-
-  it("says only 'a guardrail you added' when every match is the user's own", () => {
-    const html = renderReport(
-      resultWith([own("t.mine", "block", 5)], { block: 5, require_approval: 0, warn: 0 }),
-      META,
-    );
-    const hero = between(html, 'id="overview"', "</section>");
-    expect(hero).toContain("Most serious match: a guardrail you added");
-    expect(hero).not.toContain("Team guardrail");
   });
 
   it("offers the init command for the agent that was scanned", () => {
@@ -236,20 +227,20 @@ describe("what Guard would have done", () => {
       ),
       META,
     );
-    const section = between(html, 'id="would-do"', "</section>");
-    expect(section).toMatch(/Blocked<\/p>\n<p class="col-count">5</);
-    expect(section).toMatch(/Asked you first<\/p>\n<p class="col-count">2</);
-    expect(section).toMatch(/Warned<\/p>\n<p class="col-count">4</);
+    const section = between(html, 'id="outcomes"', "</section>");
+    expect(section).toContain('<div class="n">5</div>\n<div class="t">Blocked</div>');
+    expect(section).toContain('<div class="n">2</div>\n<div class="t">Asked you first</div>');
+    expect(section).toContain('<div class="n">4</div>\n<div class="t">Warned</div>');
   });
 
-  it("names the match tally as a group, so its label is announced", () => {
+  it("names the severity bar as an image with its counts, so its label is announced", () => {
     // A label on an element with no role is ignored by assistive technology.
     const html = renderReport(resultWith([lib("a.b", "block", 1)]), META);
-    expect(html).toContain('<div class="tally" role="group" aria-label="Guardrail matches">');
+    expect(html).toContain('<div class="sevbar" role="img" id="sevbar" aria-label="1 high">');
   });
 
   it("is absent when nothing matched", () => {
-    expect(renderReport(resultWith([]), META)).not.toContain('id="would-do"');
+    expect(renderReport(resultWith([]), META)).not.toContain('id="outcomes"');
   });
 });
 
@@ -367,8 +358,8 @@ describe("the tuning hint", () => {
     const html = renderReport(result, META);
     expect(html).not.toContain("set-action a.shadowed");
     expect(html).toContain("would take the tool calls you are asked about from 6 to 0");
-    const asked = between(html, "Asked you first</p>", "</div>");
-    expect(asked).toContain('Library guardrail a.real</span><span class="times">6&times;');
+    const asked = between(html, "Asked you first</div>", "</ul>");
+    expect(asked).toContain("<li><span>Library guardrail a.real</span><b>6</b></li>");
     expect(asked).not.toContain("a.shadowed");
   });
 
@@ -380,10 +371,10 @@ describe("the tuning hint", () => {
       { decided: [{ action: "block", ruleIds: ["a.blocker", "a.both"], calls: 6 }] },
     );
     const html = renderReport(result, META);
-    const asked = between(html, "Asked you first</p>", "</div>");
-    expect(asked).toContain('<p class="col-count">0</p>');
-    expect(asked).not.toContain("col-list");
-    expect(html).not.toContain('<div class="hint">');
+    expect(html).toContain('<div class="n">0</div>\n<div class="t">Asked you first</div>');
+    const asked = between(html, "Asked you first</div>", "</ul>");
+    expect(asked).not.toContain("<li><span>");
+    expect(html).not.toContain('id="insight"');
   });
 
   it("rounds the share of the asks to the nearest percent", () => {
@@ -443,9 +434,9 @@ describe("the tuning hint never offers an unsafe command to copy", () => {
 
   it.each(UNSAFE)("an id like %s is named as text, with no command", (id) => {
     const html = renderReport(resultWith([own(id, "require_approval", 9)]), META);
-    const hint = between(html, '<div class="hint">', "</section>");
+    const hint = between(html, 'id="insight"', "</section>");
     expect(hint).toContain(`<code>${escapeHtml(id)}</code>`);
-    expect(hint).not.toContain("cmd-tune-");
+    expect(hint).not.toContain("cmd-tune");
     expect(hint).not.toContain(`set-action ${escapeHtml(id)}`);
     expect(hint).not.toContain(`set-action ${id}`);
   });
@@ -464,80 +455,26 @@ describe("the tuning hint never offers an unsafe command to copy", () => {
   });
 });
 
-describe("fix these first", () => {
-  it("lists only blocking guardrails, most serious first, up to the cap", () => {
-    const findings = [
-      lib("a.low", "block", 50, { severity: "low" }),
-      lib("a.crit", "block", 1, { severity: "critical" }),
-      lib("a.ask", "require_approval", 99, { severity: "critical" }),
-      ...Array.from({ length: FIX_FIRST_MAX + 2 }, (_, i) =>
-        lib(`a.more-${i}`, "block", 1, { severity: "medium" }),
-      ),
-    ];
-    const section = between(
-      renderReport(resultWith(findings), META),
-      'id="fix-first"',
-      "</section>",
-    );
-    expect(section.split('<article class="card">').length - 1).toBe(FIX_FIRST_MAX);
-    expect(section.indexOf("a.crit")).toBeLessThan(section.indexOf("a.more-0"));
-    expect(section).not.toContain("a.ask");
-    expect(section).not.toContain("a.low");
-  });
-
-  it("links a library guardrail to its page, tagged; a user's own gets no link", () => {
+describe("fix these first is not a section of its own", () => {
+  it("leaves the blocking guardrails to All findings, most serious first", () => {
     const html = renderReport(
-      resultWith([lib("wt.reset-hard", "block", 2), own("t.mine", "block", 1)]),
+      resultWith([
+        lib("a.low", "block", 50, { severity: "low" }),
+        lib("a.crit", "block", 1, { severity: "critical" }),
+      ]),
       META,
     );
-    const section = between(html, 'id="fix-first"', "</section>");
-    const link = `${SITE_URL}/guardrails/destructive-data/wt-reset-hard?utm_source=guard&amp;utm_medium=scan-report&amp;utm_campaign=claude&amp;utm_content=guardrail`;
-    expect(section).toContain(link);
-    expect(section).toContain(`>${OWN_CARD_HEADING}</a></h3>`);
-    expect(section.split("/guardrails/").length - 1).toBe(1);
+    expect(html).not.toContain('id="fix-first"');
+    expect(html).toContain(
+      '<a class="btn btn-primary btn-lg" href="#findings">See what to fix</a>',
+    );
+    expect(rowOf(html, 0)).toContain("a.crit");
   });
 
-  it("heads a user's own card with fixed text, and shows their title and id as plain text", () => {
-    const title = "Stop `./ship.sh` <b>now</b>";
-    const html = renderReport(
-      resultWith([own("t.mine", "block", 2, { title }), lib("a.lib", "block", 1)], {
-        block: 3,
-        require_approval: 0,
-        warn: 0,
-      }),
-      META,
-    );
-    const section = between(html, 'id="fix-first"', "</section>");
-    const headings = [...section.matchAll(/<h3>([\s\S]*?)<\/h3>/g)].map((m) => m[1]);
-    expect(headings).toEqual([
-      `<a href="#finding-0">${OWN_CARD_HEADING}</a>`,
-      '<a href="#finding-1">Library guardrail a.lib</a>',
-    ]);
-    expect(section).toContain(
-      '<p class="own-title">Stop <code>./ship.sh</code> &lt;b&gt;now&lt;/b&gt;</p>',
-    );
-    expect(section).toContain(`${YOUR_GUARDRAILS} &middot; <code>t.mine</code>`);
-    // Nowhere on the page does the title the user wrote become a heading.
-    for (const m of html.matchAll(/<h([1-6])[^>]*>([\s\S]*?)<\/h\1>/g)) {
-      expect(m[2]).not.toContain("ship.sh");
-    }
-  });
-
-  it("gives a library card with no description no description line", () => {
-    const html = renderReport(
-      resultWith([lib("a.bare", "block", 1, { description: undefined })]),
-      META,
-    );
-    const card = between(between(html, 'id="fix-first"', "</section>"), "<article", "</article>");
-    expect(card).toContain(
-      '<a href="#finding-0">Library guardrail a.bare</a></h3>\n<p class="example">',
-    );
-    expect(card).not.toContain("own-title");
-  });
-
-  it("says so when nothing would have been blocked", () => {
-    expect(renderReport(resultWith([lib("a.w", "warn", 1)]), META)).toContain(
-      "No guardrail would have blocked anything in these sessions.",
+  it("points the hero at All findings when there are no checks to show", () => {
+    const html = renderReport(resultWith([lib("a.w", "warn", 1)]), META);
+    expect(html).toContain(
+      '<a class="btn btn-primary btn-lg" href="#findings">See what to fix</a>',
     );
   });
 });
@@ -549,29 +486,32 @@ describe("all findings", () => {
     lib("a.critical", "block", 1, { severity: "critical", category: "working-tree" }),
   ];
   const html = renderReport(resultWith(findings), META);
-  const rows = [...html.matchAll(/<li class="finding" id="finding-(\d+)"[^>]*>/g)];
+  const rows = [...html.matchAll(/<details class="frow" id="finding-[^"]+"[^>]*>/g)];
 
   it("lists rows most serious first in the page, whatever the sort", () => {
     expect(rows.map((m) => m[0].match(/data-action="([^"]+)"/)?.[1])).toEqual([
       "block",
       "warn",
-      "require_approval",
+      "ask",
     ]);
   });
 
-  it("gives each row whole-number ranks for every sort, so the script reads numbers only", () => {
+  it("gives each row whole-number places for every sort, so the page reads numbers only", () => {
     for (const [row] of rows) {
-      for (const key of ["serious", "category", "count", "name"]) {
-        expect(row).toMatch(new RegExp(`data-rank-${key}="\\d+"`));
+      for (const key of ["risk", "category", "count", "name"]) {
+        expect(row).toMatch(new RegExp(`--o-${key}: \\d+`));
       }
     }
   });
 
-  /** One rank attribute of every row, in page order. */
-  const rankOf = (page: string, key: string): number[] =>
-    [...page.matchAll(/<li class="finding" id="finding-\d+"[^>]*>/g)].map((m) =>
-      Number(m[0].match(new RegExp(`data-rank-${key}="(\\d+)"`))?.[1]),
+  /** One sort's place of every row, in page order, as a rank among the rows. */
+  const rankOf = (page: string, key: string): number[] => {
+    const places = [...page.matchAll(/<details class="frow" id="finding-[^"]+"[^>]*>/g)].map((m) =>
+      Number(m[0].match(new RegExp(`--o-${key}: (\\d+)`))?.[1]),
     );
+    const sorted = [...places].sort((a, b) => a - b);
+    return places.map((p) => sorted.indexOf(p));
+  };
 
   it("ranks by category with a user's own guardrails last, by matches most first, by name", () => {
     // Rows in page order: a.critical (Working tree, 1), a.medium (Destructive data, 30),
@@ -589,13 +529,13 @@ describe("all findings", () => {
       ]),
       META,
     );
-    expect(page).toContain('<span class="group">zz-later-pack</span>');
+    expect(page).toContain('<span class="pack">zz-later-pack</span>');
     expect(rankOf(page, "category")).toEqual([0, 1]);
   });
 
   it("groups a library guardrail under its pack and a user's own under one fixed group", () => {
-    expect(html).toContain(`<span class="group">${packLabel("working-tree")}</span>`);
-    expect(html).toContain(`<span class="group">${YOUR_GUARDRAILS}</span>`);
+    expect(html).toContain(`<span class="pack">${packLabel("working-tree")}</span>`);
+    expect(html).toContain(`<span class="pack">${YOUR_GUARDRAILS}</span>`);
   });
 
   it("explains how a library guardrail decides, and says nothing of the kind for a user's own", () => {
@@ -607,13 +547,16 @@ describe("all findings", () => {
     expect(mine).not.toContain("How this guardrail decides");
   });
 
-  it("has filters and a sort control, hidden until the script runs", () => {
-    expect(html).toMatch(/<div class="controls js-only" hidden>/);
-    for (const filter of ["all", "block", "require_approval", "warn"]) {
-      expect(html).toContain(`data-filter="${filter}"`);
+  it("has filters and sorts that work without script, and a search that needs it", () => {
+    for (const filter of ["all", "block", "ask", "warn"]) {
+      expect(html).toContain(`id="ff-${filter}" value="${filter}"`);
     }
-    expect(html).toContain('aria-pressed="true">All</button>');
-    expect(html).toContain('role="status" aria-live="polite"');
+    for (const sort of ["risk", "category", "count", "name"]) {
+      expect(html).toContain(`id="fs-${sort}" value="${sort}"`);
+    }
+    expect(html).toContain('id="ff-all" value="all" autocomplete="off" checked>');
+    expect(html).toContain('<input class="search js-only" id="search"');
+    expect(html).toContain('id="result-count" aria-live="polite"');
   });
 });
 
@@ -631,6 +574,7 @@ describe("a guardrail the user wrote is never shown as a library one", () => {
     const row = rowOf(html, 0);
     expect(row).toContain("Hold rm on the billing cluster");
     expect(row).toContain("</details>");
+    expect(row).toContain(`<span class="pack">${YOUR_GUARDRAILS}</span>`);
     expect(row).not.toContain("/guardrails/");
     expect(row).not.toContain("How this guardrail decides");
     expect(shareText(result)).not.toContain("billing");
@@ -674,13 +618,18 @@ describe("a severity the user wrote never reaches the file", () => {
     ];
     const html = renderReport(resultWith(findings), META);
     expect(html).not.toContain(SEVERITY);
-    expect(html).toContain('<span class="badge sev-unknown">unknown</span>');
+    expect(html).toContain('<span><i class="s-unknown"></i>Unknown <b>');
+    if (before === 0) {
+      expect(html).toContain(
+        '<span class="badge sev-unknown"><span class="sr-only">Severity: </span>Unknown</span>',
+      );
+    }
   });
 
   it("is still counted in the severity tally, under unknown", () => {
     const html = renderReport(resultWith([own("t.sev", "warn", 3, { severity: SEVERITY })]), META);
-    const tally = between(html, '<div class="tally"', "</section>");
-    expect(tally).toMatch(/sev-unknown">unknown<\/span><span class="tally-count">3</);
+    const tally = between(html, '<div class="sevlegend"', "</div>");
+    expect(tally).toContain('<span><i class="s-unknown"></i>Unknown <b>3</b></span>');
   });
 });
 
@@ -756,7 +705,7 @@ describe("the suggested post", () => {
       const html = renderReport(resultWith([], undefined, { agent }), META);
       expect(html).toContain('id="share-link"');
       expect(html).toContain('href="https://x.com/intent/post?text=');
-      expect(html).toMatch(/<span id="share-count"[^>]*>\d+ \/ 280<\/span>/);
+      expect(html).toMatch(/<span class="post-count" id="share-count"[^>]*>\d+ \/ 280<\/span>/);
     }
   });
 
@@ -859,7 +808,7 @@ describe("what the file carries is one capped projection", () => {
       },
     );
     const html = renderReport(withExtra, META);
-    expect(html).toContain("x &lt;path&gt;");
+    expect(decodeEntities(html.replace(/<span[^>]*>|<\/span>/g, ""))).toContain("x <path>");
     expect(html).not.toContain("leak-in-");
   });
 
@@ -977,8 +926,8 @@ describe("what the file carries is one capped projection", () => {
     // The code spans an empty report also has are the page's own wording.
     const codes = (html: string): Set<string> =>
       new Set(
-        [...html.matchAll(/<code(?: id="[^"]*")?>([^<]*)<\/code>/g)].map((m) =>
-          decodeEntities(m[1] ?? ""),
+        [...html.matchAll(/<code(?: id="[^"]*"| class="cmd")?>(.*?)<\/code>/gs)].flatMap((m) =>
+          decodeEntities((m[1] ?? "").replace(/<[^>]+>/g, "")).split("\n"),
         ),
       );
     const own = codes(renderReport(resultWith([]), META));
@@ -1073,7 +1022,7 @@ describe("the artifact variant is static", () => {
     expect(html).not.toMatch(/<script/i);
     expect(html).not.toContain("report-data");
     expect(html).not.toContain("Content-Security-Policy");
-    expect(html).toContain('id="finding-0"');
+    expect(html).toContain('id="finding-a-b"');
     expect(html).toContain('id="share-link"');
   });
 });
@@ -1119,16 +1068,16 @@ describe("the privacy and coverage sections stay", () => {
       }),
       META,
     );
+    expect(html).toContain("<h2>Before you share this</h2>");
     for (const heading of [
-      "Before you share this",
       "How redaction works and where it can miss",
       "What was scanned",
       "What was not evaluated",
     ]) {
-      expect(html).toContain(`<h2>${heading}</h2>`);
+      expect(html).toContain(`<summary>${heading}</summary>`);
     }
     expect(html).toContain("Turn off headers and footers");
-    expect(html).toContain("marks where a long command was shortened");
+    expect(html).toContain("Where a long command was shortened for display");
     expect(html.indexOf('id="privacy"')).toBeLessThan(html.indexOf('id="scanned"'));
   });
 
@@ -1166,9 +1115,7 @@ describe("the OWASP section", () => {
 
   /** The ids a row of All findings shows, in order. */
   const rowIds = (html: string, index: number): string[] =>
-    [...rowOf(html, index).matchAll(/<span class="risk-id">([^<]+)<\/span>/g)].map(
-      (m) => m[1] ?? "",
-    );
+    [...rowOf(html, index).matchAll(/<span class="otag">([^<]+)<\/span>/g)].map((m) => m[1] ?? "");
 
   const TAGGED = renderReport(
     resultWith(
@@ -1190,24 +1137,30 @@ describe("the OWASP section", () => {
     expect(html).not.toContain('href="#owasp"');
     expect(html).not.toContain('id="risk-filter"');
     expect(html).not.toContain('<span class="risk-id">');
-    expect(html).not.toContain('<ul class="owasp-ids"');
+    expect(html).not.toContain('<span class="otag">');
   });
 
   it("lists each risk touched by name, with its tool calls and guardrails", () => {
-    expect(section).toContain(
-      `<span class="risk-id">ASI02</span> ${escapeHtml(owaspTitle("ASI02"))}`,
+    const card = (id: string): string => between(section, `data-risk="${id}">`, "</label>");
+    expect(card("ASI02")).toContain('<span class="risk-id">ASI02</span>');
+    expect(card("ASI02")).toContain(
+      `<span class="risk-title">${escapeHtml(owaspTitle("ASI02"))}</span>`,
     );
-    expect(section).toContain("4 tool calls &middot; 2 guardrails");
-    expect(section).toContain(
-      `<span class="risk-id">LLM03</span> ${escapeHtml(owaspTitle("LLM03"))}`,
+    expect(card("ASI02")).toContain(
+      '<span class="risk-n">4</span> <span class="risk-unit">calls</span>',
     );
-    expect(section).toContain("3 tool calls &middot; 1 guardrail<");
-    expect(section.split('<li class="risk"').length - 1).toBe(2);
+    expect(card("ASI02")).toContain('<span class="risk-sub">2 guardrails</span>');
+    expect(card("LLM03")).toContain(
+      `<span class="risk-title">${escapeHtml(owaspTitle("LLM03"))}</span>`,
+    );
+    expect(card("LLM03")).toContain('<span class="risk-n">3</span>');
+    expect(card("LLM03")).toContain('<span class="risk-sub">1 guardrail</span>');
+    expect(section.split('<label class="card risk"').length - 1).toBe(2);
   });
 
   it("says how many of each list it touched, out of the lists' own lengths", () => {
     expect(section).toContain(
-      `These matches touched 1 of ${OWASP_AGENTIC.length} agentic and 1 of ${OWASP_LLM.length} LLM risks, in the 2026 edition lists.`,
+      `This scan touched 1 of ${OWASP_AGENTIC.length} agentic risks and 1 of ${OWASP_LLM.length} LLM risks, in the 2026 edition lists.`,
     );
     expect(OWASP_AGENTIC.length).toBe(10);
     expect(OWASP_LLM.length).toBe(10);
@@ -1220,12 +1173,12 @@ describe("the OWASP section", () => {
       }),
       META,
     );
-    expect(html).toContain("These matches touched 1 of 10 agentic and 2 of 10 LLM risks");
+    expect(html).toContain("This scan touched 1 of 10 agentic risks and 2 of 10 LLM risks");
   });
 
   it("says the counts overlap and that it covers coding-agent actions only", () => {
-    expect(section).toContain("These counts can add up to more than the totals above.");
-    expect(section).toContain("Covers coding-agent actions only, not full OWASP coverage.");
+    expect(section).toContain("so counts overlap.");
+    expect(section).toContain("This covers coding-agent actions only");
   });
 
   it("links the site's OWASP page, tagged, and the two OWASP lists, untagged", () => {
@@ -1233,23 +1186,25 @@ describe("the OWASP section", () => {
     expect(section).toContain(`href="${SITE_URL}/security/owasp?${tags}&amp;utm_content=owasp"`);
     expect(section).toContain(`href="${OWASP_SOURCES.agentic}"`);
     expect(section).toContain(`href="${OWASP_SOURCES.llm}"`);
-    // Each risk links to its own row on the site, with the tags before the fragment.
-    expect(section).toContain(
+    // Each risk a row names links to its own entry on the site, with the tags before the fragment.
+    expect(TAGGED).toContain(
       `href="${SITE_URL}/security/owasp?${tags}&amp;utm_content=owasp-risk#asi02"`,
     );
   });
 
   it("names a risk only as owaspTitle does", () => {
-    const shown = [...TAGGED.matchAll(/<span class="risk-id">([^<]+)<\/span> ([^<]+)</g)];
+    const shown = [
+      ...TAGGED.matchAll(/data-risk="([^"]+)">[\s\S]*?<span class="risk-title">([^<]+)</g),
+    ];
     expect(shown.length).toBeGreaterThan(0);
     for (const m of shown) {
       expect(m[2]).toBe(escapeHtml(owaspTitle(m[1] as OwaspId)));
     }
   });
 
-  it("is linked from the top bar, after Fix first", () => {
-    const nav = between(TAGGED, '<nav class="sections"', "</nav>");
-    expect(nav.indexOf('href="#fix-first"')).toBeLessThan(nav.indexOf('href="#owasp"'));
+  it("is linked from the top bar, after the overview and before All findings", () => {
+    const nav = between(TAGGED, '<nav class="navlinks"', "</nav>");
+    expect(nav.indexOf('href="#outcomes"')).toBeLessThan(nav.indexOf('href="#owasp"'));
     expect(nav.indexOf('href="#owasp"')).toBeLessThan(nav.indexOf('href="#findings"'));
   });
 
@@ -1257,8 +1212,8 @@ describe("the OWASP section", () => {
     expect(rowIds(TAGGED, 0)).toEqual(["ASI02", "LLM03"]);
     expect(rowIds(TAGGED, 1)).toEqual(["ASI02"]);
     expect(rowIds(TAGGED, 2)).toEqual([]);
-    expect(rowOf(TAGGED, 0)).toContain('data-owasp="ASI02 LLM03"');
-    expect(rowOf(TAGGED, 2)).not.toContain("data-owasp");
+    expect(rowOf(TAGGED, 0)).toContain('data-risks="ASI02 LLM03"');
+    expect(rowOf(TAGGED, 2)).toContain('data-risks=""');
   });
 
   it("drops a value that is not an OWASP id", () => {
@@ -1273,25 +1228,22 @@ describe("the OWASP section", () => {
   });
 
   it("offers each risk touched in the findings filter, and nothing else", () => {
-    const select = between(TAGGED, '<select id="risk-filter">', "</select>");
-    expect(
-      [...select.matchAll(/<option value="([^"]*)">([^<]*)</g)].map((m) => [m[1], m[2]]),
-    ).toEqual([
-      ["", "Any risk"],
-      ["ASI02", `ASI02 ${escapeHtml(owaspTitle("ASI02"))}`],
-      ["LLM03", `LLM03 ${escapeHtml(owaspTitle("LLM03"))}`],
+    const radios = between(TAGGED, '<span class="risk-radios"', "</span>");
+    expect([...radios.matchAll(/id="ff-risk-([A-Z0-9]+)"/g)].map((m) => m[1])).toEqual([
+      "ASI02",
+      "LLM03",
     ]);
-    expect(section).toContain('data-risk="ASI02"');
-    expect(section).toContain('data-risk="LLM03"');
+    expect(section).toContain('<label class="card risk" for="ff-risk-ASI02" data-risk="ASI02">');
+    expect(section).toContain('<label class="card risk" for="ff-risk-LLM03" data-risk="LLM03">');
   });
 
-  it("names each risk's button by its id, so the buttons can be told apart", () => {
-    const names = [...section.matchAll(/<button [^>]*aria-label="([^"]+)"[^>]*>([^<]+)</g)];
-    expect(names.map((m) => m[1])).toEqual([
-      "Show its findings: ASI02",
-      "Show its findings: LLM03",
+  it("names each risk's radio by its id and title, so they can be told apart", () => {
+    const radios = between(TAGGED, '<span class="risk-radios"', "</span>");
+    expect([...radios.matchAll(/aria-label="([^"]+)"/g)].map((m) => m[1])).toEqual([
+      "Filter by OWASP risk",
+      escapeHtml(`OWASP ASI02: ${owaspTitle("ASI02")}`),
+      escapeHtml(`OWASP LLM03: ${owaspTitle("LLM03")}`),
     ]);
-    for (const m of names) expect(m[1]?.startsWith(m[2] ?? "")).toBe(true);
   });
 
   it("carries the tally in the data block, field by field, over every finding", () => {
@@ -1306,9 +1258,9 @@ describe("the OWASP section", () => {
     const payload = reportPayload(result, META);
     expect(payload.findings.length).toBe(MAX_ROWS);
     expect(payload.owasp).toEqual([tally("LLM02", MAX_ROWS + 3, MAX_ROWS + 3)]);
-    expect(renderReport(result, META)).toContain(
-      `${MAX_ROWS + 3} tool calls &middot; ${MAX_ROWS + 3} guardrails`,
-    );
+    const page = renderReport(result, META);
+    expect(page).toContain(`<span class="risk-n">${MAX_ROWS + 3}</span>`);
+    expect(page).toContain(`<span class="risk-sub">${MAX_ROWS + 3} guardrails</span>`);
   });
 
   describe("built from a real scan over the shipped library", () => {
@@ -1348,8 +1300,8 @@ describe("the OWASP section", () => {
       // The section lists exactly the risks those guardrails carry.
       const carried = new Set(payload.findings.flatMap((f) => [...f.owasp]));
       const listed = [
-        ...between(html, '<section id="owasp">', "</section>").matchAll(/id="risk-([a-z0-9]+)"/g),
-      ].map((m) => (m[1] ?? "").toUpperCase());
+        ...between(html, '<section id="owasp">', "</section>").matchAll(/data-risk="([A-Z0-9]+)"/g),
+      ].map((m) => m[1] ?? "");
       expect(new Set(listed)).toEqual(carried);
     });
 
@@ -1395,13 +1347,13 @@ describe("every copy button", () => {
     ),
     META,
   );
-  const buttons = [
-    ...html.matchAll(/<button type="button" class="copy js-only"[^>]*>([^<]*)<\/button>/g),
-  ].map((m) => ({ tag: m[0], text: m[1] ?? "", name: m[0].match(/aria-label="([^"]*)"/)?.[1] }));
+  const buttons = [...html.matchAll(/<button [^>]*data-copy="[^"]*"[^>]*>([^<]*)<\/button>/g)].map(
+    (m) => ({ tag: m[0], text: m[1] ?? "", name: m[0].match(/aria-label="([^"]*)"/)?.[1] }),
+  );
 
   it("has its own accessible name, which starts with the text it shows", () => {
-    // The hero's init command, two set-action commands, three next steps and the post.
-    expect(buttons.length).toBe(7);
+    // The hero's init command, the set-action commands together, three next steps and the post.
+    expect(buttons.length).toBe(6);
     for (const b of buttons) {
       expect(b.name, b.tag).toBeDefined();
       expect(b.name?.startsWith(b.text), b.tag).toBe(true);
@@ -1436,7 +1388,7 @@ describe("a scan that read no tool calls", () => {
     [2, "No tool calls found to scan", "The scan read 2 sessions with no tool calls in them"],
   ])("with %i sessions says so, and that it is not a clean result", (sessions, h1, lead) => {
     const html = renderReport(empty(sessions), META);
-    expect(html).toContain(`<h1>${h1}</h1>`);
+    expect(h1Text(html)).toBe(h1);
     expect(html).toContain(`${lead}, so nothing was checked. This is not a clean result`);
     expect(html).toContain('<code id="cmd-scan-hero">agenttrail-guard scan --agent claude</code>');
     expect(html).toContain('aria-label="Copy the scan command"');
@@ -1451,21 +1403,20 @@ describe("a scan that read no tool calls", () => {
     for (const absent of [
       'id="share"',
       "Share on X",
-      "See what to fix first",
+      "See what to fix",
       'id="fix-first"',
       'id="findings"',
-      'href="#fix-first"',
       'href="#findings"',
       'id="tokens"',
-      "<h2>Tokens</h2>",
-      ">tokens<",
+      'id="usage"',
+      'id="ring"',
     ]) {
       expect(html, absent).not.toContain(absent);
     }
     // There are no findings to read before posting.
     expect(html).not.toContain("Read the findings before");
     // What was scanned, the privacy notes and the next steps stay.
-    for (const present of ['id="scanned"', 'id="privacy"', 'id="next-steps"']) {
+    for (const present of ['id="scanned"', 'id="privacy"', 'id="next"']) {
       expect(html, present).toContain(present);
     }
   });
@@ -1483,18 +1434,18 @@ describe("the published copy says what only the downloaded file can do", () => {
   const artifact = renderReport(result, META, { variant: "artifact" });
 
   it("shows the post read-only, and says where to edit it", () => {
-    expect(artifact).toContain('<textarea id="share-text" rows="4" readonly>');
+    expect(artifact).toMatch(/<textarea class="post-text" id="share-text" rows="\d+" readonly>/);
     expect(artifact).toContain(
       "This published copy cannot change the post. In the report file it was made from, the post can be edited before posting.",
     );
-    expect(doc).toContain('<textarea id="share-text" rows="4">');
+    expect(doc).toMatch(/<textarea class="post-text" id="share-text" rows="\d+">/);
     expect(doc).toContain("Edit it before posting.");
     expect(doc).not.toContain("This published copy");
   });
 
   it("says the filters, sort and export are in the downloaded file", () => {
     const line =
-      "Filters, sort and export are in the report file itself, <code>agenttrail-guard-report.html</code>. To make one from your own sessions, run <code>agenttrail-guard scan</code>.";
+      "Search and export are in the report file itself, <code>agenttrail-guard-report.html</code>. To make one from your own sessions, run <code>agenttrail-guard scan</code>.";
     expect(between(artifact, 'id="findings"', "</section>")).toContain(line);
     expect(doc).not.toContain(line);
   });
@@ -1516,22 +1467,18 @@ describe("copy and layout details", () => {
     );
   });
 
-  it("says 'the command shape' for one and counts several", () => {
+  it("says how many more shapes there are, one or several", () => {
+    const shapes = (n: number) =>
+      Array.from({ length: n }, (_, i) => ({ text: `x${i} <path>`, count: 1 }));
     const html = renderReport(
       resultWith([
-        lib("a.one", "warn", 1),
-        lib("a.two", "warn", 2, {
-          examples: [
-            { text: "x <path>", count: 1 },
-            { text: "y <path>", count: 1 },
-          ],
-        }),
+        lib("a.one", "warn", 1, { examples: shapes(MAX_EXAMPLES + 1) }),
+        lib("a.two", "warn", 2, { examples: shapes(MAX_EXAMPLES + 2) }),
       ]),
       META,
     );
-    expect(html).toContain("<summary>The command shape behind it</summary>");
-    expect(html).toContain("<summary>The 2 command shapes behind it</summary>");
-    expect(html).not.toContain("The 1 command shape");
+    expect(html).toContain('<p class="more">and 1 more shape</p>');
+    expect(html).toContain('<p class="more">and 2 more shapes</p>');
   });
 
   it("lists a shape two guardrails matched once, with both guardrails", () => {
@@ -1557,14 +1504,14 @@ describe("copy and layout details", () => {
       }),
       META,
     );
-    const table = between(html, '<table class="recurring"', "</table>");
-    expect(table.split("<code>rm -rf &lt;path&gt;</code>").length - 1).toBe(1);
+    const table = between(html, '<table class="repeat-table"', "</table>");
+    expect(table.split("&lt;path&gt;</span></span></code></td>").length - 1).toBe(2);
     expect(table).toContain(
-      '<td class="num" role="cell">3&times;</td><td class="rule-name" role="cell"><a href="#finding-0">Library guardrail a.x</a><br><a href="#finding-1">Library guardrail a.y</a> (2&times;)</td>',
+      '<td class="n">3&times;</td><td class="g"><a class="linkish" href="#finding-a-x">Library guardrail a.x</a><br><a class="linkish" href="#finding-a-y">Library guardrail a.y</a> (2&times;)</td>',
     );
     // The tile counts shapes, as the table lists them.
     expect(html).toContain(
-      '<div class="stat-value">2</div><div class="stat-label">repeated command shapes</div>',
+      '<div class="stat-value">2</div><div class="stat-label">Repeated command shapes</div>',
     );
   });
 
@@ -1579,8 +1526,8 @@ describe("copy and layout details", () => {
       }),
       META,
     );
-    expect(html).toContain(">OWASP Top 10 for Agentic Applications (2026 edition)</a>");
-    expect(html).toContain(">OWASP Top 10 for LLM Applications (2026 edition)</a>");
+    expect(html).toContain(">OWASP Top 10 for Agentic Applications (2026 edition) <span");
+    expect(html).toContain(">OWASP Top 10 for LLM Applications (2026 edition) <span");
   });
 
   it.each([
@@ -1589,14 +1536,16 @@ describe("copy and layout details", () => {
     ["codex", "Set up Claude Code or Cursor"],
   ] as const)("on a %s report, offers to set up the other two apps", (agent, label) => {
     const html = renderReport(resultWith([lib("a.b", "warn", 1)], undefined, { agent }), META);
-    expect(html).toContain(`>${label}</a>`);
+    expect(html).toContain(`>${label} <span aria-hidden="true">`);
   });
 
-  it("links the post from the top bar when there is one", () => {
-    const nav = (html: string) => between(html, '<nav class="sections"', "</nav>");
-    expect(nav(renderReport(resultWith([lib("a.b", "warn", 1)]), META))).toContain('href="#share"');
+  it("keeps the top bar to one row of at most six sections", () => {
+    const nav = (html: string) => between(html, '<nav class="navlinks"', "</nav>");
+    const full = nav(renderReport(resultWith([lib("a.b", "warn", 1)]), META));
+    expect(full.split("<a href=").length - 1).toBeLessThanOrEqual(6);
+    expect(full).not.toContain('href="#share"');
     expect(nav(renderReport(resultWith([], undefined, { toolCalls: 0 }), META))).not.toContain(
-      'href="#share"',
+      'href="#findings"',
     );
   });
 });
@@ -1637,28 +1586,25 @@ describe("a hostile string in every free-text field stays text", () => {
   it.each(["document", "artifact"] as const)("in the %s", (variant) => {
     const page = renderReport(result, META, { variant }).replace(/<script[\s\S]*?<\/script>/g, "");
     // Every sink is reached.
-    for (const part of [
-      '<div class="hint">',
-      'id="fix-first"',
-      'id="not-evaluated"',
-      'id="share"',
-    ]) {
+    for (const part of ['id="insight"', 'id="findings"', 'id="not-evaluated"', 'id="share"']) {
       expect(page, part).toContain(part);
     }
     // Nowhere raw, and no element of its own.
     expect(page).not.toContain(HOSTILE);
-    expect(page).not.toContain("<b>");
+    expect(page).not.toContain("<b>x");
     const tags = page.match(/<[a-z][a-z0-9]*\b[^>]*>/g) ?? [];
     for (const tag of tags) expect(tag).toMatch(WELL_FORMED_TAG);
     // Each sink shows the text as written.
-    const fixFirst = between(page, 'id="fix-first"', "</section>");
-    expect(decodeEntities(fixFirst)).toContain(`<code>u.${HOSTILE}</code>`);
-    const notEvaluated = between(page, 'id="not-evaluated"', "</section>");
+    const findingsList = between(page, 'id="findings"', "</section>");
+    expect(decodeEntities(findingsList)).toContain(`<span class="fid">u.${HOSTILE}</span>`);
+    const notEvaluated = between(page, 'id="not-evaluated"', "</details>");
     expect(decodeEntities(notEvaluated)).toContain(HOSTILE);
-    const hint = between(page, '<div class="hint">', "</div>\n<div");
+    const hint = between(page, 'id="insight"', "</section>");
     expect(decodeEntities(hint)).toContain(`q.${HOSTILE}`);
     // The post preview reads back as exactly the post.
-    const area = page.match(/<textarea id="share-text" rows="4"(?: readonly)?>([^<]*)<\/textarea>/);
+    const area = page.match(
+      /<textarea class="post-text" id="share-text" rows="\d+"(?: readonly)?>([^<]*)<\/textarea>/,
+    );
     expect(area).not.toBeNull();
     expect(decodeEntities(area?.[1] ?? "")).toBe(shareText(result));
     expect(shareText(result)).toContain(`Library ${HOSTILE.replace(/`/g, "")}`);
@@ -1687,8 +1633,8 @@ describe("every command offered to copy runs as pasted", () => {
   ])("in %s: nothing but plain words", (_name, result) => {
     for (const agent of ["claude", "cursor", "codex"] as const) {
       const html = renderReport({ ...result, agent }, META);
-      const commands = [...html.matchAll(/<code id="cmd-[^"]+">([^<]*)<\/code>/g)].map((m) =>
-        decodeEntities(m[1] ?? ""),
+      const commands = [...html.matchAll(/<code id="cmd-[^"]+">(.*?)<\/code>/gs)].flatMap((m) =>
+        decodeEntities((m[1] ?? "").replace(/<[^>]+>/g, "")).split("\n"),
       );
       expect(commands.length).toBeGreaterThan(2);
       for (const command of commands) expect(command, command).toMatch(PLAIN_COMMAND);
@@ -1710,8 +1656,8 @@ describe("every command offered to copy runs as pasted", () => {
 
 describe("a clean scan offers nothing to fix", () => {
   it("has no fix-first button when nothing matched", () => {
-    const hero = between(renderReport(resultWith([]), META), 'id="overview"', "</section>");
-    expect(hero).not.toContain("See what to fix first");
+    const hero = between(renderReport(resultWith([]), META), '<section class="hero"', "</section>");
+    expect(hero).not.toContain("See what to fix");
     expect(hero).toContain("Share on X");
   });
 });
@@ -1733,8 +1679,8 @@ describe("Repeat offenders counts the tool calls behind each shape", () => {
       }),
       META,
     );
-    const table = between(html, '<table class="recurring"', "</table>");
-    expect(table).toContain('<td class="num" role="cell">4&times;</td>');
+    const table = between(html, '<table class="repeat-table"', "</table>");
+    expect(table).toContain('<td class="n">4&times;</td>');
     expect(table).toContain("Editing CI</a> (2&times;)<br>");
     expect(table).toContain("Editing instructions</a> (2&times;)</td>");
   });

@@ -24,13 +24,17 @@ import {
 
 /** Every property name the script may use. Anything else is a violation. */
 const ALLOWED_PROPERTIES = new Set([
+  "add",
   "addEventListener",
   "appendChild",
   "body",
   "call",
+  "classList",
   "click",
+  "clientWidth",
   "clipboard",
   "codePointAt",
+  "contains",
   "createElement",
   "documentElement",
   "download",
@@ -42,31 +46,34 @@ const ALLOWED_PROPERTIES = new Set([
   "getElementById",
   "getItem",
   "getSelection",
-  "hidden",
   "href",
   "indexOf",
+  "key",
   "length",
   "localStorage",
   "matchMedia",
   "matches",
   "open",
-  "order",
   "parse",
+  "preventDefault",
   "print",
   "prototype",
   "push",
   "querySelectorAll",
   "removeChild",
+  "scrollWidth",
   "select",
   "selectAllChildren",
   "setAttribute",
   "setItem",
   "slice",
   "stringify",
-  "style",
   "tagName",
   "textContent",
   "then",
+  "toggle",
+  "toLowerCase",
+  "trim",
   "value",
   "writeText",
 ]);
@@ -100,7 +107,14 @@ const PINNED_ASSIGNMENTS: readonly (readonly [string, string])[] = [
 ];
 
 /** The attributes the script may set, and the one element it may create. */
-const SETTABLE_ATTRIBUTES = new Set(['"data-theme"', '"aria-pressed"', '"data-over"']);
+const SETTABLE_ATTRIBUTES = new Set([
+  '"data-theme"',
+  '"aria-pressed"',
+  '"aria-expanded"',
+  '"data-over"',
+  '"role"',
+  '"tabindex"',
+]);
 const CREATABLE_ELEMENTS = new Set(['"a"']);
 
 /** Calls and names that are never allowed, whatever property list they get past. */
@@ -330,12 +344,11 @@ describe("everything the script looks for is in the rendered page", () => {
 
   it("every selector the script queries", () => {
     const present: Record<string, RegExp> = {
-      ".js-only": /class="[^"]*\bjs-only\b/,
-      "[data-filter]": /\sdata-filter="/,
-      ".finding": /class="finding"/,
       "[data-copy]": /\sdata-copy="/,
-      "[data-risk]": /\sdata-risk="/,
       details: /<details\b/,
+      "#flist .frow": /id="flist"[\s\S]*<details class="frow"/,
+      "#flist .fgroup": /id="flist"[\s\S]*<div class="fgroup"/,
+      ".cmd": /<code class="cmd">/,
     };
     const wanted = [...REPORT_SCRIPT.matchAll(/each\("([^"]+)"/g)].map((m) => m[1] ?? "");
     expect(wanted.length).toBeGreaterThan(3);
@@ -352,24 +365,11 @@ describe("everything the script looks for is in the rendered page", () => {
     for (const id of targets) expect(ids.has(id), id).toBe(true);
   });
 
-  /** The option values of one `<select>`. */
-  const optionsOf = (id: string): string[] => {
-    const at = html.indexOf(`<select id="${id}">`);
-    const select = html.slice(at, html.indexOf("</select>", at));
-    return [...select.matchAll(/<option value="([^"]*)">/g)].map((m) => m[1] ?? "");
-  };
-
-  it("the sort control offers exactly the sorts the script accepts", () => {
-    const options = optionsOf("sort");
-    expect(options).toEqual(["serious", "category", "count", "name"]);
-    for (const key of options) expect(html).toMatch(new RegExp(`data-rank-${key}="\\d+"`));
-  });
-
-  it("the risk filter offers any risk, then each risk touched, each one the script accepts", () => {
-    expect(optionsOf("risk-filter")).toEqual(["", "ASI02"]);
-    expect(logic.isRisk("ASI02")).toBe(true);
-    expect(html).toContain('data-owasp="ASI02"');
-    expect(html).toContain('data-risk="ASI02"');
+  it("the sorts need no script: each one is a radio, and each row carries its rank", () => {
+    const sorts = [...html.matchAll(/<input type="radio" name="fs" id="[^"]+" value="([^"]+)"/g)];
+    expect(sorts.map((m) => m[1])).toEqual(["risk", "category", "count", "name"]);
+    for (const [, key] of sorts) expect(html).toMatch(new RegExp(`--o-${key}: \\d+`));
+    expect(REPORT_SCRIPT).not.toContain('name="fs"');
   });
 });
 
@@ -382,20 +382,16 @@ interface Logic {
   shareHref(text: string, suffix: string): string;
   readTheme(value: unknown): string | null;
   nextTheme(current: unknown, systemDark: boolean): string;
-  isFilter(value: unknown): boolean;
-  rowVisible(filter: string, action: string | null): boolean;
-  isSort(value: unknown): boolean;
-  rankOf(value: unknown): number;
-  isRisk(value: unknown): boolean;
   copiedText(name: unknown): string;
-  riskVisible(risk: string, ids: string | null): boolean;
+  matchesQuery(text: unknown, query: unknown): boolean;
+  searchText(shown: number, total: number): string;
   exportHref(raw: string): string;
 }
 
 const logic = runInNewContext(
   `${REPORT_SCRIPT_LOGIC}
-({ xLength, postLength, shareSuffix, shareHref, readTheme, nextTheme, isFilter, rowVisible,
-   isSort, rankOf, isRisk, riskVisible, copiedText, exportHref });`,
+({ xLength, postLength, shareSuffix, shareHref, readTheme, nextTheme, copiedText, matchesQuery,
+   searchText, exportHref });`,
 ) as Logic;
 
 const SUFFIX = `&url=${encodeURIComponent("https://www.agenttrail.sh/agenttrail-guard?utm_source=guard")}&hashtags=agenttrail`;
@@ -428,9 +424,9 @@ describe("the share link", () => {
   });
 
   it.each([
-    ["edited text \uD800", "edited text \uFFFD"],
-    ["\uDC00 at the start", "\uFFFD at the start"],
-    ["pair 🙂 then \uDBFF", "pair 🙂 then \uFFFD"],
+    ["edited text \uD800", "edited text �"],
+    ["\uDC00 at the start", "� at the start"],
+    ["pair 🙂 then \uDBFF", "pair 🙂 then �"],
     ["pair 🙂", "pair 🙂"],
   ])("writes a lone surrogate as the replacement character instead of failing: %j", (typed, sent) => {
     const href = logic.shareHref(typed, SUFFIX);
@@ -447,7 +443,7 @@ describe("the share link", () => {
   });
 });
 
-describe("theme, filters and sort", () => {
+describe("theme and search", () => {
   it("reads back only light or dark", () => {
     expect(logic.readTheme("light")).toBe("light");
     expect(logic.readTheme("dark")).toBe("dark");
@@ -463,40 +459,19 @@ describe("theme, filters and sort", () => {
     expect(logic.nextTheme("junk", false)).toBe("dark");
   });
 
-  it("accepts only the four filters and the four sorts", () => {
-    for (const f of ["all", "block", "require_approval", "warn"])
-      expect(logic.isFilter(f)).toBe(true);
-    for (const f of ["", "ask", "toString", "__proto__"]) expect(logic.isFilter(f)).toBe(false);
-    for (const s of ["serious", "category", "count", "name"]) expect(logic.isSort(s)).toBe(true);
-    for (const s of ["", "toString", "hasOwnProperty", "__proto__"])
-      expect(logic.isSort(s)).toBe(false);
+  it("matches a search anywhere in a row's text, ignoring case and outer spaces", () => {
+    expect(logic.matchesQuery("Branch overwrite  branch-overwrite main", "OVERWRITE")).toBe(true);
+    expect(logic.matchesQuery("Branch overwrite", "  branch ")).toBe(true);
+    expect(logic.matchesQuery("Branch overwrite", "tidy")).toBe(false);
+    // An empty search matches every row.
+    for (const empty of ["", "   ", null, undefined])
+      expect(logic.matchesQuery("x", empty)).toBe(true);
+    expect(logic.matchesQuery(null, "x")).toBe(false);
   });
 
-  it("shows a row for its own action, or for all", () => {
-    expect(logic.rowVisible("all", "warn")).toBe(true);
-    expect(logic.rowVisible("block", "block")).toBe(true);
-    expect(logic.rowVisible("block", "warn")).toBe(false);
-  });
-
-  it("accepts an OWASP id only as the two lists spell them", () => {
-    for (const id of ["ASI01", "ASI10", "LLM01", "LLM10"]) expect(logic.isRisk(id)).toBe(true);
-    for (const junk of ["", "ASI00", "ASI11", "ASI1", "asi01", "LLM010", "XYZ01", "ASI0x", null, 1])
-      expect(logic.isRisk(junk)).toBe(false);
-  });
-
-  it("shows a row for a risk it carries, or for any risk", () => {
-    expect(logic.riskVisible("", null)).toBe(true);
-    expect(logic.riskVisible("ASI02", "ASI02 LLM03")).toBe(true);
-    expect(logic.riskVisible("LLM03", "ASI02 LLM03")).toBe(true);
-    expect(logic.riskVisible("ASI02", null)).toBe(false);
-    // A whole id, never part of one.
-    expect(logic.riskVisible("ASI01", "ASI010")).toBe(false);
-    expect(logic.riskVisible("nonsense", "nonsense")).toBe(false);
-  });
-
-  it("reads a rank as a whole number, and anything else as zero", () => {
-    expect(logic.rankOf("7")).toBe(7);
-    for (const junk of ["", "-3", "x", null, "Infinity"]) expect(logic.rankOf(junk)).toBe(0);
+  it("says how many rows a search left, out of all of them", () => {
+    expect(logic.searchText(2, 7)).toBe("Showing 2 of 7 guardrails that match the search");
+    expect(logic.searchText(0, 1)).toBe("Showing 0 of 1 guardrail that match the search");
   });
 });
 
@@ -514,25 +489,49 @@ describe("the export", () => {
 
 // ── The script in a page ────────────────────────────────────────────────────
 
-type Listener = () => void;
+interface KeyEvent {
+  readonly key: string;
+  preventDefault(): void;
+}
+type Listener = (event?: KeyEvent) => void;
+
+/** An element's class list, as much of it as the script uses. */
+class FakeClassList {
+  constructor(private readonly owner: FakeElement) {}
+  private get list(): string[] {
+    return (this.owner.getAttribute("class") ?? "").split(" ").filter((c) => c !== "");
+  }
+  contains(name: string): boolean {
+    return this.list.includes(name);
+  }
+  add(name: string): void {
+    if (!this.contains(name)) this.owner.setAttribute("class", [...this.list, name].join(" "));
+  }
+  toggle(name: string, force?: boolean): boolean {
+    const on = force ?? !this.contains(name);
+    const rest = this.list.filter((c) => c !== name);
+    this.owner.setAttribute("class", (on ? [...rest, name] : rest).join(" "));
+    return on;
+  }
+}
 
 /** The parts of an element the script touches, and nothing more. */
 class FakeElement {
   readonly attrs = new Map<string, string>();
-  readonly style: Record<string, string> = {};
   readonly listeners = new Map<string, Listener[]>();
-  hidden = false;
+  readonly classList: FakeClassList = new FakeClassList(this);
   open = false;
   textContent = "";
   value = "";
   download = "";
   selected = false;
+  scrollWidth = 100;
+  clientWidth = 100;
   /** Upper case, as a real page reports an HTML element's tag name. */
   readonly tagName: string;
   constructor(tag: string, attrs: Record<string, string> = {}) {
     this.tagName = tag.toUpperCase();
     for (const [k, v] of Object.entries(attrs)) this.attrs.set(k, v);
-    if ("hidden" in attrs) this.hidden = true;
   }
   getAttribute(name: string): string | null {
     return this.attrs.get(name) ?? null;
@@ -549,8 +548,8 @@ class FakeElement {
   addEventListener(type: string, fn: Listener): void {
     this.listeners.set(type, [...(this.listeners.get(type) ?? []), fn]);
   }
-  fire(type: string): void {
-    for (const fn of this.listeners.get(type) ?? []) fn();
+  fire(type: string, event?: KeyEvent): void {
+    for (const fn of this.listeners.get(type) ?? []) fn(event);
   }
   click(): void {
     this.fire("click");
@@ -589,86 +588,63 @@ interface PageOptions {
   readonly execCopy?: "copies" | "refuses" | "throws";
 }
 
-/** A page shaped like the report, with three findings, and the script run against it. */
+/** A page shaped like the report, with three findings in two groups, and the script run on it. */
 function loadPage(options: PageOptions = {}): Page {
-  const el = (tag: string, attrs: Record<string, string> = {}): FakeElement =>
-    new FakeElement(tag, attrs);
+  const el = (tag: string, attrs: Record<string, string> = {}, text = ""): FakeElement => {
+    const e = new FakeElement(tag, attrs);
+    e.textContent = text;
+    return e;
+  };
   const elements: FakeElement[] = [
-    el("button", { id: "theme-toggle", class: "js-only", hidden: "" }),
-    el("button", { id: "print-button", class: "js-only", hidden: "" }),
-    el("button", { id: "export-button", class: "js-only", hidden: "" }),
-    el("div", { class: "controls js-only", hidden: "" }),
-    el("button", { "data-filter": "all", "aria-pressed": "true" }),
-    el("button", { "data-filter": "block", "aria-pressed": "false" }),
-    el("button", { "data-filter": "warn", "aria-pressed": "false" }),
-    el("button", { "data-filter": "nonsense", "aria-pressed": "false" }),
-    el("select", { id: "sort" }),
-    el("select", { id: "risk-filter" }),
-    el("button", { class: "tool js-only", hidden: "", "data-risk": "LLM03" }),
-    el("button", { class: "tool js-only", hidden: "", "data-risk": "nonsense" }),
-    el("p", { id: "findings-status" }),
-    el("p", { id: "findings-count" }),
-    el("div", { id: "findings-empty", hidden: "" }),
-    el("button", { id: "clear-filters" }),
-    el("li", {
-      class: "finding",
-      "data-action": "block",
-      "data-owasp": "ASI02 LLM03",
-      "data-rank-serious": "0",
-      "data-rank-name": "2",
-      "data-rank-count": "1",
-    }),
-    el("li", {
-      class: "finding",
-      "data-action": "warn",
-      "data-owasp": "ASI02",
-      "data-rank-serious": "1",
-      "data-rank-name": "0",
-      "data-rank-count": "0",
-    }),
-    el("li", {
-      class: "finding",
-      "data-action": "require_approval",
-      "data-rank-serious": "2",
-      "data-rank-name": "1",
-      "data-rank-count": "x",
-    }),
-    el("details", {}),
-    el("details", {}),
-    el("code", { id: "cmd-init" }),
-    el("button", {
-      class: "copy js-only",
-      hidden: "",
-      "data-copy": "cmd-init",
-      "data-label": "Copy",
-      "aria-label": "Copy the init command",
-    }),
+    el("button", { id: "theme", class: "icon-btn js-only", "aria-pressed": "false" }),
+    el("button", { id: "print", class: "icon-btn js-only" }),
+    el("button", { id: "export", class: "icon-btn js-only" }),
+    el("section", { id: "findings" }),
+    el("input", { id: "search", class: "search js-only" }),
+    el("span", { id: "rc-search", class: "rc-js" }),
+    el("div", { class: "fgroup", "data-cat": "git" }, "Git"),
+    el("details", { class: "frow", "data-cat": "git" }, "Branch overwrite branch-overwrite main"),
+    el("details", { class: "frow", "data-cat": "git" }, "Tree reset tree-reset <ref>"),
+    el("div", { class: "fgroup", "data-cat": "files" }, "Files"),
+    el("details", { class: "frow", "data-cat": "files" }, "Folder delete folder-delete <path>"),
+    el("div", { id: "flist-empty", class: "flist-empty" }),
+    el("button", { id: "expand-all", "aria-expanded": "false" }, "Expand all"),
+    el("details", { class: "more-info" }),
+    el("code", { class: "cmd" }, "a short command"),
+    el("code", { class: "cmd" }, "a command too long for its box"),
+    el("code", { id: "cmd-init" }, "agenttrail-guard init --agent claude"),
+    el(
+      "button",
+      {
+        class: "js-only",
+        "data-copy": "cmd-init",
+        "data-label": "Copy",
+        "aria-label": "Copy the init command",
+      },
+      "Copy",
+    ),
     el("textarea", { id: "share-text" }),
-    el("button", {
-      class: "copy js-only",
-      hidden: "",
-      "data-copy": "share-text",
-      "data-label": "Copy text",
-    }),
+    el(
+      "button",
+      { class: "btn js-only", "data-copy": "share-text", "data-label": "Copy text" },
+      "Copy text",
+    ),
     el("a", { id: "share-link", href: LINK }),
     el("span", { id: "share-count" }),
     el("p", { id: "page-status" }),
+    el("div", { id: "toast", class: "toast" }),
     el("textarea", { id: "copy-buffer" }),
-    el("script", { id: "report-data" }),
+    el("script", { id: "report-data" }, JSON.stringify({ tool: "agenttrail-guard", n: 1 })),
   ];
   const byId = new Map<string, FakeElement>();
   for (const e of elements) {
     const id = e.getAttribute("id");
     if (id !== null) byId.set(id, e);
   }
-  const count = byId.get("findings-count");
-  if (count) count.textContent = "3 guardrails matched";
-  const code = byId.get("cmd-init");
-  if (code) code.textContent = "agenttrail-guard init --agent claude";
-  const data = byId.get("report-data");
-  if (data) data.textContent = JSON.stringify({ tool: "agenttrail-guard", n: 1 });
-  const details = elements.filter((e) => e.tagName === "DETAILS");
-  if (details[1]) details[1].open = true;
+  const long = elements.filter((e) => e.classList.contains("cmd"))[1];
+  if (long) long.scrollWidth = 300;
+  const more = elements.find((e) => e.classList.contains("more-info"));
+  if (more) more.open = true;
 
   const root = new FakeElement("html");
   const windowListeners = new Map<string, Listener[]>();
@@ -690,13 +666,11 @@ function loadPage(options: PageOptions = {}): Page {
   };
 
   const matches = (e: FakeElement, selector: string): boolean => {
-    const classes = (e.getAttribute("class") ?? "").split(" ");
-    if (selector === ".js-only") return classes.includes("js-only");
-    if (selector === ".finding") return classes.includes("finding");
-    if (selector === "[data-filter]") return e.getAttribute("data-filter") !== null;
     if (selector === "[data-copy]") return e.getAttribute("data-copy") !== null;
-    if (selector === "[data-risk]") return e.getAttribute("data-risk") !== null;
     if (selector === "details") return e.tagName === "DETAILS";
+    if (selector === "#flist .frow") return e.classList.contains("frow");
+    if (selector === "#flist .fgroup") return e.classList.contains("fgroup");
+    if (selector === ".cmd") return e.classList.contains("cmd");
     throw new Error(`the script asked for a selector this page does not model: ${selector}`);
   };
 
@@ -747,155 +721,101 @@ function loadPage(options: PageOptions = {}): Page {
     page.timers.push(fn);
     return 0;
   };
-  runInNewContext(REPORT_SCRIPT, { window, document, navigator, setTimeout });
+  const clearTimeout = () => undefined;
+  runInNewContext(REPORT_SCRIPT, { window, document, navigator, setTimeout, clearTimeout });
   return page;
 }
 
-const rows = (page: Page) => page.elements.filter((e) => e.getAttribute("class") === "finding");
-const filterButton = (page: Page, value: string) =>
-  page.elements.find((e) => e.getAttribute("data-filter") === value) as FakeElement;
+const has = (e: FakeElement | undefined, name: string): boolean =>
+  e?.classList.contains(name) ?? false;
+const rows = (page: Page) => page.elements.filter((e) => has(e, "frow"));
+const groups = (page: Page) => page.elements.filter((e) => has(e, "fgroup"));
+
+/** Types `text` into the search box. */
+function type(page: Page, text: string): void {
+  const search = page.byId.get("search") as FakeElement;
+  search.value = text;
+  search.fire("input");
+}
 
 describe("the script in the page", () => {
-  it("reveals the controls that need it", () => {
+  it("marks the page as scripted, which shows the controls that need it", () => {
+    expect(has(loadPage().root, "js")).toBe(true);
+  });
+
+  it("hides the rows a search does not match, and each group left empty", () => {
     const page = loadPage();
-    const hidden = page.elements.filter(
-      (e) => (e.getAttribute("class") ?? "").includes("js-only") && e.hidden,
+    type(page, "OVERWRITE");
+    expect(rows(page).map((r) => has(r, "nomatch"))).toEqual([false, true, true]);
+    expect(groups(page).map((g) => has(g, "nomatch"))).toEqual([false, true]);
+    expect(has(page.byId.get("findings"), "searching")).toBe(true);
+    expect(page.byId.get("rc-search")?.textContent).toBe(
+      "Showing 1 of 3 guardrails that match the search",
     );
-    expect(hidden).toEqual([]);
+    expect(has(page.byId.get("flist-empty"), "show")).toBe(false);
   });
 
-  it("filters rows, marks the pressed button and announces the count", () => {
+  it("searches command text too, and puts everything back when cleared", () => {
     const page = loadPage();
-    filterButton(page, "block").click();
-    expect(rows(page).map((r) => r.hidden)).toEqual([false, true, true]);
-    expect(filterButton(page, "block").getAttribute("aria-pressed")).toBe("true");
-    expect(filterButton(page, "all").getAttribute("aria-pressed")).toBe("false");
-    expect(page.byId.get("findings-status")?.textContent).toBe("Showing 1 of 3 guardrails");
-    filterButton(page, "all").click();
-    expect(rows(page).map((r) => r.hidden)).toEqual([false, false, false]);
+    type(page, "folder-delete");
+    expect(rows(page).map((r) => has(r, "nomatch"))).toEqual([true, true, false]);
+    type(page, "  ");
+    expect(rows(page).map((r) => has(r, "nomatch"))).toEqual([false, false, false]);
+    expect(groups(page).map((g) => has(g, "nomatch"))).toEqual([false, false]);
+    expect(has(page.byId.get("findings"), "searching")).toBe(false);
+    expect(page.byId.get("rc-search")?.textContent).toBe("");
   });
 
-  it("filters rows by OWASP risk, together with the action filter", () => {
+  it("says so when a search leaves nothing", () => {
     const page = loadPage();
-    const risk = page.byId.get("risk-filter") as FakeElement;
-    risk.value = "ASI02";
-    risk.fire("change");
-    expect(rows(page).map((r) => r.hidden)).toEqual([false, false, true]);
-    expect(page.byId.get("findings-status")?.textContent).toBe("Showing 2 of 3 guardrails");
-    filterButton(page, "warn").click();
-    expect(rows(page).map((r) => r.hidden)).toEqual([true, false, true]);
-    risk.value = "";
-    risk.fire("change");
-    expect(rows(page).map((r) => r.hidden)).toEqual([true, false, true]);
-    filterButton(page, "all").click();
-    expect(rows(page).map((r) => r.hidden)).toEqual([false, false, false]);
+    type(page, "nothing like this");
+    expect(rows(page).every((r) => has(r, "nomatch"))).toBe(true);
+    expect(has(page.byId.get("flist-empty"), "show")).toBe(true);
   });
 
-  it("shows the filtered count where the total was, and puts the total back", () => {
+  it("opens every row with Expand all, and closes them again", () => {
     const page = loadPage();
-    const count = page.byId.get("findings-count") as FakeElement;
-    filterButton(page, "block").click();
-    expect(count.textContent).toBe("Showing 1 of 3 guardrails");
-    filterButton(page, "all").click();
-    expect(count.textContent).toBe("3 guardrails matched");
+    const button = page.byId.get("expand-all") as FakeElement;
+    button.click();
+    expect(rows(page).map((r) => r.open)).toEqual([true, true, true]);
+    expect(button.getAttribute("aria-expanded")).toBe("true");
+    expect(button.textContent).toBe("Collapse all");
+    button.click();
+    expect(rows(page).map((r) => r.open)).toEqual([false, false, false]);
+    expect(button.textContent).toBe("Expand all");
   });
 
-  it("shows a row with a way back when the filters leave nothing", () => {
+  it("makes only a cut-off command a button that opens it in full", () => {
     const page = loadPage();
-    const risk = page.byId.get("risk-filter") as FakeElement;
-    const empty = page.byId.get("findings-empty") as FakeElement;
-    expect(empty.hidden).toBe(true);
-    risk.value = "LLM03";
-    risk.fire("change");
-    filterButton(page, "warn").click();
-    expect(rows(page).map((r) => r.hidden)).toEqual([true, true, true]);
-    expect(empty.hidden).toBe(false);
-    (page.byId.get("clear-filters") as FakeElement).click();
-    expect(rows(page).map((r) => r.hidden)).toEqual([false, false, false]);
-    expect(risk.value).toBe("");
-    expect(filterButton(page, "all").getAttribute("aria-pressed")).toBe("true");
-    expect(filterButton(page, "warn").getAttribute("aria-pressed")).toBe("false");
-    expect(filterButton(page, "all").focused).toBe(true);
-    expect(empty.hidden).toBe(true);
-  });
-
-  it("a risk's button shows all of that risk's findings, whatever action was chosen", () => {
-    const page = loadPage();
-    filterButton(page, "warn").click();
-    page.elements.find((e) => e.getAttribute("data-risk") === "LLM03")?.click();
-    expect(filterButton(page, "all").getAttribute("aria-pressed")).toBe("true");
-    expect(filterButton(page, "warn").getAttribute("aria-pressed")).toBe("false");
-    expect(rows(page).map((r) => r.hidden)).toEqual([false, true, true]);
-  });
-
-  it("treats a risk value it does not know as any risk", () => {
-    const page = loadPage();
-    const risk = page.byId.get("risk-filter") as FakeElement;
-    risk.value = "toString";
-    risk.fire("change");
-    expect(rows(page).map((r) => r.hidden)).toEqual([false, false, false]);
-  });
-
-  it("a risk's button selects it in the filter, applies it, and moves focus there", () => {
-    const page = loadPage();
-    const risk = page.byId.get("risk-filter") as FakeElement;
-    page.elements.find((e) => e.getAttribute("data-risk") === "LLM03")?.click();
-    expect(risk.value).toBe("LLM03");
-    expect(risk.focused).toBe(true);
-    expect(rows(page).map((r) => r.hidden)).toEqual([false, true, true]);
-  });
-
-  it("ignores a risk button with a value it does not know", () => {
-    const page = loadPage();
-    const risk = page.byId.get("risk-filter") as FakeElement;
-    page.elements.find((e) => e.getAttribute("data-risk") === "nonsense")?.click();
-    expect(risk.value).toBe("");
-    expect(risk.focused).toBe(false);
-    expect(rows(page).map((r) => r.hidden)).toEqual([false, false, false]);
-  });
-
-  it("ignores a filter it does not know", () => {
-    const page = loadPage();
-    filterButton(page, "nonsense").click();
-    expect(rows(page).map((r) => r.hidden)).toEqual([false, false, false]);
-    expect(filterButton(page, "all").getAttribute("aria-pressed")).toBe("true");
-  });
-
-  it("sorts by moving rows on screen only, and leaves their order in the page alone", () => {
-    const page = loadPage();
-    const sort = page.byId.get("sort") as FakeElement;
-    sort.value = "name";
-    sort.fire("change");
-    // The rows themselves never move in the page: the static allow-list above refuses any
-    // statement that adds, moves or removes an element other than the export's link.
-    expect(rows(page).map((r) => r.style.order)).toEqual(["2", "0", "1"]);
-    expect(page.byId.get("findings-status")?.textContent).toContain("stays most serious first");
-    sort.value = "count";
-    sort.fire("change");
-    expect(rows(page).map((r) => r.style.order)).toEqual(["1", "0", "0"]);
-    // Back to most serious: the page's own order.
-    sort.value = "serious";
-    sort.fire("change");
-    expect(rows(page).map((r) => r.style.order)).toEqual(["0", "1", "2"]);
-  });
-
-  it("ignores a sort it does not know", () => {
-    const page = loadPage();
-    const sort = page.byId.get("sort") as FakeElement;
-    sort.value = "toString";
-    sort.fire("change");
-    expect(rows(page).map((r) => r.style.order)).toEqual([undefined, undefined, undefined]);
+    const [short, long] = page.elements.filter((e) => has(e, "cmd"));
+    expect(short?.getAttribute("role")).toBeNull();
+    expect(long?.getAttribute("role")).toBe("button");
+    expect(long?.getAttribute("tabindex")).toBe("0");
+    long?.click();
+    expect(has(long, "expanded")).toBe(true);
+    expect(long?.getAttribute("aria-expanded")).toBe("true");
+    let prevented = false;
+    long?.fire("keydown", {
+      key: "Enter",
+      preventDefault: () => {
+        prevented = true;
+      },
+    });
+    expect(has(long, "expanded")).toBe(false);
+    expect(prevented).toBe(true);
+    long?.fire("keydown", { key: "a", preventDefault: () => undefined });
+    expect(has(long, "expanded")).toBe(false);
   });
 
   it("remembers a theme choice, and applies it on the next load", () => {
     const page = loadPage({ systemDark: true });
-    const toggle = page.byId.get("theme-toggle") as FakeElement;
-    // The label says what pressing it does.
-    expect(toggle.textContent).toBe("Switch to light theme");
+    const toggle = page.byId.get("theme") as FakeElement;
+    // Pressed means dark is showing.
+    expect(toggle.getAttribute("aria-pressed")).toBe("true");
     toggle.click();
     expect(page.root.getAttribute("data-theme")).toBe("light");
     expect(page.stored.get(THEME_KEY)).toBe("light");
-    expect(toggle.textContent).toBe("Switch to dark theme");
+    expect(toggle.getAttribute("aria-pressed")).toBe("false");
     const again = loadPage({ stored: "light" });
     expect(again.root.getAttribute("data-theme")).toBe("light");
   });
@@ -907,17 +827,10 @@ describe("the script in the page", () => {
 
   it("still works when storage is blocked", () => {
     const page = loadPage({ storage: "throws" });
-    (page.byId.get("theme-toggle") as FakeElement).click();
+    (page.byId.get("theme") as FakeElement).click();
     expect(page.root.getAttribute("data-theme")).toBe("dark");
-    filterButton(page, "warn").click();
-    expect(rows(page).map((r) => r.hidden)).toEqual([true, false, true]);
-  });
-
-  it("copies the text of the element a button names", async () => {
-    const page = loadPage();
-    page.elements.find((e) => e.getAttribute("data-copy") === "cmd-init")?.click();
-    await Promise.resolve();
-    expect(page.copied).toEqual(["agenttrail-guard init --agent claude"]);
+    type(page, "tree-reset");
+    expect(rows(page).map((r) => has(r, "nomatch"))).toEqual([true, false, true]);
   });
 
   /** The copy button that names `target`. */
@@ -929,6 +842,13 @@ describe("the script in the page", () => {
     for (let i = 0; i < 3; i++) await Promise.resolve();
   };
 
+  it("copies the text of the element a button names", async () => {
+    const page = loadPage();
+    copyButton(page, "cmd-init").click();
+    await settle();
+    expect(page.copied).toEqual(["agenttrail-guard init --agent claude"]);
+  });
+
   it("copies a text area's value, not its text", async () => {
     const page = loadPage();
     const input = page.byId.get("share-text") as FakeElement;
@@ -939,14 +859,18 @@ describe("the script in the page", () => {
     expect(page.copied).toEqual(["the text as edited"]);
   });
 
-  it("says Copied, then puts its own label back", async () => {
+  it("says Copied, in the button and a toast, then puts its own label back", async () => {
     const page = loadPage();
     const button = copyButton(page, "share-text");
     button.click();
     await settle();
     expect(button.textContent).toBe("Copied");
+    expect(has(button, "copied")).toBe(true);
+    expect(has(page.byId.get("toast"), "show")).toBe(true);
     for (const fn of page.timers) fn();
     expect(button.textContent).toBe("Copy text");
+    expect(has(button, "copied")).toBe(false);
+    expect(has(page.byId.get("toast"), "show")).toBe(false);
   });
 
   it.each([
@@ -1023,7 +947,7 @@ describe("the script in the page", () => {
     }
     input.value = "edited text \uD800";
     input.fire("input");
-    expect(new URL(link.href).searchParams.get("text")).toBe("edited text \uFFFD");
+    expect(new URL(link.href).searchParams.get("text")).toBe("edited text �");
     input.value = "x".repeat(300);
     input.fire("input");
     expect(page.byId.get("share-count")?.getAttribute("data-over")).toBe("true");
@@ -1031,18 +955,18 @@ describe("the script in the page", () => {
 
   it("prints, opening every collapsed section and closing them again after", () => {
     const page = loadPage();
-    (page.byId.get("print-button") as FakeElement).click();
+    (page.byId.get("print") as FakeElement).click();
     expect(page.printed).toBe(1);
     const details = page.elements.filter((e) => e.tagName === "DETAILS");
     for (const fn of page.windowListeners.get("beforeprint") ?? []) fn();
-    expect(details.map((d) => d.open)).toEqual([true, true]);
+    expect(details.map((d) => d.open)).toEqual([true, true, true, true]);
     for (const fn of page.windowListeners.get("afterprint") ?? []) fn();
-    expect(details.map((d) => d.open)).toEqual([false, true]);
+    expect(details.map((d) => d.open)).toEqual([false, false, false, true]);
   });
 
   it("exports the embedded data as a download, through a data URL", () => {
     const page = loadPage();
-    (page.byId.get("export-button") as FakeElement).click();
+    (page.byId.get("export") as FakeElement).click();
     const [link] = page.appended;
     expect(link?.download).toBe("agenttrail-guard-report.json");
     expect(link?.href.startsWith(EXPORT_PREFIX)).toBe(true);

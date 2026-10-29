@@ -150,9 +150,9 @@ describe("--no-checks is the same report whichever way the switch is set, byte f
     const [plain] = [...before.written.values()];
     expect(page).not.toBe(plain);
     expect(page).toContain('id="what-happened"');
-    expect(page).toContain("--tone-act-fg");
+    expect(page).toContain(".vrow {");
     expect(plain).not.toContain('id="what-happened"');
-    expect(plain).not.toContain("--tone-act-fg");
+    expect(plain).not.toContain(".vrow {");
   });
 });
 

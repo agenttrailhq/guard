@@ -7095,676 +7095,695 @@ function owaspTally(findings, callIds) {
 
 // src/core/report-brand.ts
 var LIGHT_TOKENS = {
-  bg: "#fafafa",
-  fg: "#0a0a0a",
-  "muted-fg": "#525252",
+  bg: "#f8f9fc",
+  fg: "#151d31",
+  muted: "#536078",
   card: "#ffffff",
-  subtle: "#f5f5f5",
-  "code-bg": "#f5f5f5",
-  "code-border": "#e5e5e5",
-  border: "#d4d4d4",
-  divider: "#e5e5e5",
+  subtle: "#edf0f7",
+  border: "#dce2ed",
+  divider: "#e7ebf3",
+  "code-bg": "#f8f9fc",
   brand: "#0748fe",
   "brand-hover": "#013de5",
-  "brand-fg": "#ffffff",
   "brand-text": "#0748fe",
+  "brand-soft": "#eef2ff",
+  "brand-soft-bd": "#c7d4ff",
+  ring: "#0748fe",
+  "control-bd": "#7a8296",
+  meter: "#0748fe",
   mark: "#0748fe",
-  "note-bg": "#f3f6ff",
-  "note-border": "#baccff",
-  shadow: "0 1px 2px rgba(10, 10, 10, 0.05)",
-  "sev-critical-fg": "#b91c1c",
-  "sev-critical-bg": "#fdecec",
-  "sev-critical-bd": "#f9bebe",
-  "sev-high-fg": "#c2410c",
-  "sev-high-bg": "#fef1e8",
-  "sev-high-bd": "#fdcead",
-  "sev-medium-fg": "#b45309",
-  "sev-medium-bg": "#fef5e7",
-  "sev-medium-bd": "#fcddaa",
-  "sev-low-fg": "#0369a1",
-  "sev-low-bg": "#e7f6fd",
-  "sev-low-bd": "#abe0f7",
-  "sev-info-fg": "#3f3f46",
-  "sev-info-bg": "#f1f1f2",
-  "sev-info-bd": "#cdcdd0",
-  "sev-unknown-fg": "#52525b",
-  "sev-unknown-bg": "#f1f1f2",
-  "sev-unknown-bd": "#cdcdd0",
-  "act-block-fg": "#b91c1c",
-  "act-block-bd": "#f8abab",
-  "act-ask-fg": "#b45309",
-  "act-ask-bd": "#fbd391",
-  "act-warn-fg": "#52525b",
-  "act-warn-bd": "#bfbfc3",
-  "tone-act-fg": "#b91c1c",
-  "tone-act-bg": "#fdecec",
-  "tone-act-bd": "#f9bebe",
-  "tone-review-fg": "#b45309",
-  "tone-review-bg": "#fef5e7",
-  "tone-review-bd": "#fcddaa",
-  "tone-clean-fg": "#15803d",
-  "tone-clean-bg": "#ecfdf3",
-  "tone-clean-bd": "#a6e5bd",
-  "tone-none-fg": "#52525b",
-  "tone-none-bg": "#f1f1f2",
-  "tone-none-bd": "#cdcdd0"
+  word: "#151d31",
+  ok: "#15803d",
+  "ok-ring": "#059669",
+  "act-block": "#be123c",
+  "act-ask": "#92400e",
+  "act-warn": "#0369a1",
+  tint: "5%",
+  "tint-base": "#ffffff",
+  "tint-bd": "25%",
+  "dot-crit": "#f43f5e",
+  "dot-high": "#f97316",
+  "dot-med": "#f59e0b",
+  "dot-low": "#0ea5e9",
+  "dot-info": "#94a3b8",
+  "btn-primary": "color-mix(in srgb, #0748fe 85%, transparent)",
+  "btn-primary-hover": "color-mix(in srgb, #013de5 92%, transparent)",
+  shadow: "0 1px 2px #15204005"
 };
 var DARK_TOKENS = {
   bg: "#0b0f1e",
-  fg: "#fafafa",
-  "muted-fg": "#a3a3a3",
-  card: "#111629",
-  subtle: "#1a2137",
-  "code-bg": "#1a2137",
-  "code-border": "#2b344f",
-  border: "#2b344f",
-  divider: "#212a44",
+  fg: "#f0f3fa",
+  muted: "#a6b1c8",
+  card: "#11182a",
+  subtle: "#192239",
+  border: "#28334a",
+  divider: "#1f293d",
+  "code-bg": "#192239",
   brand: "#0748fe",
-  "brand-hover": "#2d63ff",
-  "brand-fg": "#ffffff",
+  "brand-hover": "#013de5",
   "brand-text": "#6ea0ff",
+  "brand-soft": "#0f1f4f",
+  "brand-soft-bd": "#1d3a8f",
+  ring: "#8cadff",
+  "control-bd": "#6b7591",
+  meter: "#4f7dff",
   mark: "#ffffff",
-  "note-bg": "#0f1f4f",
-  "note-border": "#0d2d89",
-  shadow: "none",
-  "sev-critical-fg": "#f87171",
-  "sev-critical-bg": "#351d2d",
-  "sev-critical-bd": "#6a2834",
-  "sev-high-fg": "#fb923c",
-  "sev-high-bg": "#362526",
-  "sev-high-bd": "#6e3b21",
-  "sev-medium-fg": "#fbbf24",
-  "sev-medium-bg": "#352c24",
-  "sev-medium-bd": "#6c4c1d",
-  "sev-low-fg": "#38bdf8",
-  "sev-low-bg": "#112d48",
-  "sev-low-bd": "#104f76",
-  "sev-info-fg": "#d4d4d8",
-  "sev-info-bg": "#202536",
-  "sev-info-bd": "#373a49",
-  "sev-unknown-fg": "#a1a1aa",
-  "sev-unknown-bg": "#202536",
-  "sev-unknown-bd": "#373a49",
-  "act-block-fg": "#f87171",
-  "act-block-bd": "#802d37",
-  "act-ask-fg": "#fbbf24",
-  "act-ask-bd": "#835a1a",
-  "act-warn-fg": "#a1a1aa",
-  "act-warn-bd": "#414452",
-  "tone-act-fg": "#f87171",
-  "tone-act-bg": "#351d2d",
-  "tone-act-bd": "#6a2834",
-  "tone-review-fg": "#fbbf24",
-  "tone-review-bg": "#352c24",
-  "tone-review-bd": "#6c4c1d",
-  "tone-clean-fg": "#4ade80",
-  "tone-clean-bg": "#12301f",
-  "tone-clean-bd": "#1f5a37",
-  "tone-none-fg": "#a1a1aa",
-  "tone-none-bg": "#202536",
-  "tone-none-bd": "#373a49"
+  word: "#ffffff",
+  ok: "#4ade80",
+  "ok-ring": "#34d399",
+  "act-block": "#fb7185",
+  "act-ask": "#fbbf24",
+  "act-warn": "#38bdf8",
+  tint: "10%",
+  "tint-base": "#13151b",
+  "tint-bd": "35%",
+  "dot-crit": "#f43f5e",
+  "dot-high": "#f97316",
+  "dot-med": "#f59e0b",
+  "dot-low": "#0ea5e9",
+  "dot-info": "#94a3b8",
+  "btn-primary": "color-mix(in srgb, #0748fe 68%, transparent)",
+  "btn-primary-hover": "color-mix(in srgb, #013de5 82%, transparent)",
+  shadow: "inset 0 1px 0 #ffffff05"
 };
-function vars(tokens, verified) {
-  return Object.entries(tokens).filter(([key]) => verified || !key.startsWith("tone-")).map(([key, value]) => `  --${key}: ${value};`).join("\n");
+var PRINT_TOKENS = {
+  ...LIGHT_TOKENS,
+  bg: "#ffffff",
+  shadow: "none"
+};
+function vars(tokens, indent) {
+  return Object.entries(tokens).map(([key, value]) => `${indent}--${key}: ${value};`).join("\n");
 }
 var FONT_SANS = `"Inter", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif`;
 var FONT_MONO = `ui-monospace, SFMono-Regular, "SF Mono", Menlo, Monaco, Consolas, "Liberation Mono", monospace`;
-var SEVERITIES = ["critical", "high", "medium", "low", "info", "unknown"];
-var ACTIONS = ["block", "ask", "warn"];
-var severityRules = SEVERITIES.map(
-  (s) => `.sev-${s} { color: var(--sev-${s}-fg); background: var(--sev-${s}-bg); border-color: var(--sev-${s}-bd); }`
-).join("\n");
-var actionRules = ACTIONS.map(
-  (a) => `.act-${a} { color: var(--act-${a}-fg); border-color: var(--act-${a}-bd); }`
-).join("\n");
-var TONES = [
-  ["act", "act"],
-  ["review", "review"],
-  ["clean", "clean"],
-  ["could-not-check", "none"],
-  ["not-checked", "none"]
-];
-var toneRules = TONES.map(
-  ([tone, palette]) => `.tone-${tone} { color: var(--tone-${palette}-fg); background: var(--tone-${palette}-bg); border-color: var(--tone-${palette}-bd); }
-.v-${tone} { border-left-color: var(--tone-${palette}-fg); }`
-).join("\n");
-var VERIFIED_RULES = `.lead.totals { color: var(--muted-fg); }
-.evidence, .also-checked { margin-top: 28px; }
-.evidence-list {
-  list-style: none;
-  margin: 10px 0 12px;
-  padding: 0;
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-left: 3px solid var(--tone-act-fg);
-  border-radius: 12px;
-  box-shadow: var(--shadow);
+var BASE_RULES = `*, *::before, *::after { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; scroll-padding-top: 80px; --sp: 80px; }
+body { --gutter: 16px; margin: 0; background: var(--bg); color: var(--fg); font-family: var(--font-sans); font-size: 15px; line-height: 1.6; -webkit-font-smoothing: antialiased; }
+@media (min-width: 48rem) { body { --gutter: 32px; } }
+::selection { background: color-mix(in srgb, #0748fe 28%, transparent); }
+.page { position: relative; max-width: 68rem; margin: 0 auto; padding: 0 var(--gutter) 64px; }
+main.page { padding-bottom: 0; }
+h1, h2, h3 { margin: 0; color: var(--fg); }
+h2 { font-size: clamp(1.5rem, 2.4vw, 1.75rem); font-weight: 500; letter-spacing: -0.025em; line-height: 1.15; text-wrap: balance; }
+h3 { font-size: 16px; font-weight: 600; letter-spacing: -0.01em; line-height: 1.35; }
+p { margin: 0; }
+strong { font-weight: 600; color: var(--fg); }
+code, .mono { font-family: var(--font-mono); font-size: 0.86em; }
+a { color: var(--brand-text); text-decoration: none; text-underline-offset: 4px; }
+a:hover { text-decoration: underline; }
+p a, .legend a, .report-meta a { text-decoration: underline; text-decoration-color: color-mix(in srgb, currentColor 35%, transparent); }
+p a:hover, .legend a:hover, .report-meta a:hover { text-decoration-color: currentColor; }
+section { margin-top: 48px; }
+@media (min-width: 48rem) { section { margin-top: 64px; } }
+.muted { color: var(--muted); }
+.small { font-size: 13px; }
+.card { background: var(--card); border: 1px solid color-mix(in srgb, var(--border) 70%, transparent); border-radius: 16px; box-shadow: var(--shadow); }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+html:not(.js) .js-only { display: none !important; }
+.print-only { display: none; }
+:where(a[href], button, input, select, summary, textarea, [tabindex]):focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; border-radius: 6px; }
+[tabindex="-1"]:focus { outline: none; }
+.skip { position: absolute; left: -9999px; top: 8px; z-index: 20; padding: 12px 16px; border-radius: 8px; background: var(--card); color: var(--fg); border: 1px solid var(--border); font-size: 14px; font-weight: 500; }
+.skip:focus { left: 16px; }
+.topbar { position: sticky; top: 0; z-index: 10; background: color-mix(in srgb, var(--bg) 80%, transparent); -webkit-backdrop-filter: blur(24px) saturate(1.5); backdrop-filter: blur(24px) saturate(1.5); border-bottom: 1px solid color-mix(in srgb, var(--border) 60%, transparent); }
+.topbar-inner { max-width: 68rem; margin: 0 auto; padding: 10px var(--gutter); display: flex; align-items: center; gap: 12px; }
+.lockup { display: block; height: 22px; width: auto; }
+.lockup-mark, .mark { fill: var(--mark); }
+.lockup-word { fill: var(--word); }
+.home-link { display: inline-flex; border-radius: 6px; flex: none; }
+.navlinks { position: relative; margin-left: auto; display: flex; gap: 2px; align-items: center; min-width: 0; white-space: nowrap; }
+.navlinks a { font-size: 14px; color: var(--muted); padding: 8px 12px; border-radius: 999px; text-decoration: none; white-space: nowrap; }
+.tools { flex: none; display: flex; gap: 4px; align-items: center; }
+.icon-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; width: 44px; height: 44px; padding: 0; border: 0; border-radius: 999px; background: transparent; color: var(--muted); font: inherit; cursor: pointer; transition: background-color .2s ease-out, color .2s ease-out; }
+.icon-btn svg { width: 18px; height: 18px; flex: none; }
+.icon-btn.labeled { width: auto; height: 36px; padding: 0 14px; font-size: 13px; font-weight: 500; letter-spacing: -0.01em; color: var(--fg); background: color-mix(in srgb, var(--fg) 8%, transparent); }
+.icon-btn.labeled svg { width: 16px; height: 16px; }
+#theme .i-sun, #theme[aria-pressed="true"] .i-moon { display: none; }
+#theme[aria-pressed="true"] .i-sun { display: block; }
+@media (hover: hover) {
+  .navlinks a:hover { color: var(--fg); text-decoration-line: underline; text-decoration-color: var(--border); text-decoration-thickness: 2px; text-underline-offset: 10px; }
+  .icon-btn:hover { background: var(--subtle); color: var(--fg); }
+  .icon-btn.labeled:hover { background: color-mix(in srgb, var(--fg) 14%, transparent); }
 }
-.evidence-list li {
-  display: grid;
-  grid-template-columns: minmax(10rem, 14rem) 1fr auto;
-  align-items: baseline;
-  gap: 4px 16px;
-  padding: 10px 16px;
-  border-bottom: 1px solid var(--divider);
-  font-size: 14px;
+.hero { position: relative; isolation: isolate; display: grid; gap: 28px; margin-top: 0; padding: 40px 0 24px; color: var(--fg); }
+.hero::before { content: ""; position: absolute; z-index: -1; inset: -40px -16px 0; pointer-events: none; background: radial-gradient(50% 60% at 50% 0%, color-mix(in srgb, #0748fe 12%, transparent), transparent 70%); }
+@media (min-width: 52rem) { .hero { grid-template-columns: minmax(0, 1fr) auto; gap: 48px; align-items: center; padding: 44px 0 24px; } }
+.hero-main { min-width: 0; }
+.hero-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
+.hero-pill { display: inline-flex; align-items: center; gap: 8px; border: 1px solid var(--border); background: var(--card); border-radius: 999px; padding: 6px 14px; font-size: 12.5px; font-weight: 500; line-height: 1.3; color: var(--muted); }
+.hero-kicker { font-size: 13.5px; font-weight: 500; color: var(--muted); }
+.hero-kicker > span { white-space: nowrap; }
+.hero-kicker > .sep { white-space: normal; }
+.dot { width: 7px; height: 7px; border-radius: 999px; background: var(--ok-ring); flex: none; }
+.hero h1 { font-size: clamp(2.25rem, 4.4vw, 3.25rem); font-weight: 500; letter-spacing: -0.035em; line-height: 1.08; max-width: 20ch; text-wrap: balance; margin: 16px 0 12px; }
+.hero h1 em { font-style: normal; color: var(--act-block); }
+.hero .lead { font-size: 17px; line-height: 1.6; color: var(--muted); max-width: 56ch; text-wrap: balance; }
+.hero .lead + .lead { margin-top: 8px; }
+.hero-cta { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-top: 22px; }
+.hero-cta::before { content: ""; order: 1; flex: 0 0 100%; }
+.hero-cta > .hero-copy { order: 2; margin-top: -12px; }
+.ring-wrap { display: flex; align-items: center; gap: 18px; }
+.ring { width: 148px; height: 148px; position: relative; flex: none; }
+.ring svg { display: block; width: 100%; height: 100%; transform: rotate(-90deg); }
+.ring-track { stroke: var(--border); }
+.ring-arc { stroke: var(--ok-ring); }
+.ring-label { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.ring-label strong { font-size: 30px; font-weight: 600; letter-spacing: -0.025em; line-height: 1.1; font-variant-numeric: tabular-nums; color: var(--fg); }
+.ring-label span { font-size: 12px; color: var(--muted); }
+.ring-legend { font-size: 13px; color: var(--muted); max-width: 17ch; text-wrap: balance; }
+.ring-legend b { display: block; white-space: nowrap; color: var(--fg); font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; border: 0; border-radius: 999px; font: inherit; font-size: 14px; font-weight: 500; letter-spacing: -0.01em; line-height: 1.25; min-height: 44px; padding: 0 20px; text-decoration: none; white-space: nowrap; cursor: pointer; transition: background-color .2s ease-out, transform .2s ease-out; }
+.btn:hover { text-decoration: none; }
+.btn:active { transform: scale(.98); }
+.btn-lg { min-height: 48px; padding: 0 24px; font-size: 15px; }
+.btn-sm { min-height: 36px; padding: 0 16px; font-size: 13px; }
+.btn-primary { color: #fff; background: var(--btn-primary); }
+.btn-secondary { color: var(--fg); background: color-mix(in srgb, var(--fg) 10%, transparent); }
+.btn-secondary:active { background: color-mix(in srgb, var(--fg) 22%, transparent); }
+@media (hover: hover) {
+  .btn-primary:hover { background: var(--btn-primary-hover); }
+  .btn-secondary:hover { background: color-mix(in srgb, var(--fg) 16%, transparent); }
 }
-.evidence-list li:last-child { border-bottom: 0; }
-.evidence-kind { font-weight: 600; }
-.evidence-how { color: var(--muted-fg); }
-.check-chips {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
-  gap: 10px;
-  list-style: none;
-  margin: 12px 0 0;
-  padding: 0;
-}
-.check-chip {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  height: 100%;
-  padding: 10px 14px;
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-left: 3px solid var(--border);
-  border-radius: 10px;
-  box-shadow: var(--shadow);
-  color: var(--fg);
-  text-decoration: none;
-}
-.check-chip:hover { border-color: var(--brand-text); }
-.chip-title { font-size: 12px; color: var(--muted-fg); }
-.chip-text { font-size: 14px; font-weight: 600; }
-.verified-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr)); gap: 12px; margin-top: 12px; }
-.verified { border-left: 4px solid var(--border); }
-.verified:target { border-color: var(--brand-text); }
-.verified h3 { font-size: 16px; margin: 8px 0 6px; }
-.verified-note { margin: 8px 0 0; padding: 2px 0 2px 10px; border-left: 3px solid var(--tone-none-fg); font-size: 14px; }
-.verified-note-label { font-weight: 600; color: var(--muted-fg); }
-.tone {
-  display: inline-flex;
-  align-items: center;
-  border: 1px solid;
-  border-radius: 999px;
-  padding: 0 9px;
-  font-size: 11.5px;
-  font-weight: 650;
-  line-height: 1.8;
-  white-space: nowrap;
-}
-${toneRules}
-.tone-not-checked { border-style: dashed; }
-.verified-facts { margin: 0; }
-.verified-facts dt { margin: 10px 0 2px; font-size: 12px; font-weight: 600; color: var(--muted-fg); }
-.verified-facts dd { margin: 0; font-size: 14px; }
-.verified-facts dd p { margin: 0 0 6px; }
-.verified-facts .command { margin: 6px 0; }
-.codex-caveat { margin: 10px 0 0; font-size: 13px; }
-.read-list { list-style: none; margin: 0 0 12px; padding: 0; display: flex; flex-direction: column; gap: 4px; font-size: 14px; color: var(--muted-fg); }
-.read-title { font-weight: 600; color: var(--fg); }
+.share-x svg, .post-foot svg { width: 15px; height: 15px; fill: currentColor; flex: none; }
+.stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1px; margin-top: 20px; background: color-mix(in srgb, var(--border) 70%, transparent); border: 1px solid color-mix(in srgb, var(--border) 70%, transparent); border-radius: 16px; overflow: hidden; }
+@media (min-width: 64rem) { .stats { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.stats .stat { min-width: 0; border: 0; border-radius: 0; box-shadow: none; background: var(--card); padding: 16px 20px; }
+.stat-value { font-size: 26px; font-weight: 600; letter-spacing: -0.025em; line-height: 1.15; font-variant-numeric: tabular-nums; }
+.stat-label { font-size: 13.5px; font-weight: 500; margin-top: 4px; }
+.stat-note { font-size: 12.5px; color: var(--muted); margin-top: 2px; }
+.section-head { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 8px 16px; margin-bottom: 20px; }
+.section-head p { font-size: 15px; margin-top: 6px; max-width: 33rem; text-wrap: pretty; color: var(--muted); }
+.vnote { font-size: 13px; color: var(--muted); margin-top: 14px; }
+.vnote + .vnote { margin-top: 6px; }
+.empty { padding: 24px; text-align: center; color: var(--muted); }
 `;
-var VERIFIED_NARROW_RULES = `  .evidence-list li { grid-template-columns: 1fr; gap: 2px; }
-  .verified-cards { grid-template-columns: 1fr; }
+var COMMAND_RULES = `.cmd { display: block; background: var(--code-bg); border: 1px solid var(--divider); border-radius: 8px; padding: 7px 10px; font-family: var(--font-mono); font-size: 12.5px; line-height: 1.55; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--fg); }
+.cmd[role="button"] { cursor: pointer; }
+.cmd.expanded { white-space: pre-wrap; word-break: normal; overflow-wrap: anywhere; }
+html:not(.js) .cmd { white-space: pre-wrap; word-break: normal; overflow-wrap: anywhere; overflow: visible; text-overflow: clip; }
+[data-action="block"] .cmd { background: color-mix(in srgb, #f43f5e 4%, var(--card)); border-color: color-mix(in srgb, #f43f5e 20%, transparent); }
+.tok { display: inline-block; }
+@media screen and (min-width: 40.01rem) { html.js .cmd:not(.expanded) .tok { display: inline; } }
+.copy { --copy-w: 60px; position: relative; display: block; background: #0b0e14; border: 1px solid rgba(255, 255, 255, .1); border-radius: 12px; color: rgba(255, 255, 255, .9); padding: 6px 6px 6px 32px; margin-top: auto; min-width: 0; }
+.copy .prompt { position: absolute; left: 14px; top: 6px; color: #34d399; font-family: var(--font-mono); font-size: 12.5px; line-height: 32px; }
+.copy .prompt::before, .vcmd .prompt::before { content: "\\0024"; }
+.copy code { display: block; min-width: 0; background: none; color: inherit; font-size: 12.5px; line-height: 24px; padding: 4px 0; white-space: normal; overflow-wrap: anywhere; overflow: visible; }
+.copy code::before { content: ""; float: right; width: calc(var(--copy-w) + 8px); height: 24px; }
+html:not(.js) .copy code::before { display: none; }
+html:not(.js) .copy { padding-right: 14px; }
+.copy button { position: absolute; top: 7px; right: 6px; font: inherit; width: var(--copy-w); height: 30px; padding: 0; border-radius: 10px; border: 1px solid rgba(255, 255, 255, .1); background: rgba(255, 255, 255, .05); color: rgba(255, 255, 255, .8); font-size: 12px; font-weight: 500; cursor: pointer; transition: border-color .2s, color .2s; }
+.copy button.copied { color: #34d399; }
+.copy button:focus-visible { outline-color: #8cadff; }
+@media (hover: hover) { .copy button:hover { border-color: rgba(255, 255, 255, .25); color: #fff; } }
+.copy.multi { margin: 0; }
+.copy.multi .ln { display: block; position: relative; }
+.copy.multi .ln::before { content: "\\0024"; position: absolute; left: -18px; color: #34d399; }
+.copy.multi .ln + .ln { margin-top: 6px; }
 `;
-var VERIFIED_PRINT_BREAKS = `  .evidence-list li, .check-chip, .verified-facts > div, .verified-note { break-inside: avoid; }
-  .verified { break-inside: auto; }
-  .verified .card-head { break-after: avoid; }
+var OUTCOME_RULES = `.outcomes { display: grid; gap: 12px; }
+@media (min-width: 48rem) { .outcomes { grid-template-columns: repeat(3, minmax(0, 1fr)); grid-template-rows: repeat(4, auto); } .outcome { display: grid; grid-row: span 4; grid-template-rows: subgrid; row-gap: 0; align-content: start; } .outcome .otop { align-self: start; } }
+.outcome { min-width: 0; border: 1px solid color-mix(in srgb, var(--hue) var(--tint-bd), transparent); background: color-mix(in srgb, var(--hue) var(--tint), var(--tint-base)); border-radius: 16px; padding: 18px 22px; box-shadow: none; }
+.o-block { --hue: #f43f5e; --c: var(--act-block); }
+.o-ask { --hue: #f59e0b; --c: var(--act-ask); }
+.o-warn { --hue: #0ea5e9; --c: var(--act-warn); }
+.outcome .n { font-size: 32px; font-weight: 600; letter-spacing: -0.025em; line-height: 1.1; color: var(--c); font-variant-numeric: tabular-nums; }
+.outcome .t { font-size: 17px; font-weight: 600; margin-top: 4px; }
+.outcome p { color: var(--muted); font-size: 13.5px; margin-top: 6px; }
+.otop { list-style: none; margin: 12px 0 0; padding: 10px 0 0; border-top: 1px solid color-mix(in srgb, var(--hue) 20%, transparent); display: grid; gap: 4px; font-size: 13px; }
+.otop li { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+.otop span { min-width: 0; }
+.otop b { font-weight: 600; font-variant-numeric: tabular-nums; }
+.otop .olink-li { display: block; margin-top: 6px; }
+.olink { display: inline-block; font-size: 13px; font-weight: 600; color: var(--brand-text); text-decoration: none; }
+.olink:hover { text-decoration: underline; }
+.insight { margin-top: 12px; padding: 18px 22px; display: grid; grid-template-columns: 20px minmax(0, 1fr); column-gap: 14px; row-gap: 0; align-items: start; border-radius: 16px; background: color-mix(in srgb, #0748fe 5%, var(--card)); border-color: color-mix(in srgb, #0748fe 20%, transparent); }
+.insight > svg { flex: none; width: 20px; height: 20px; color: var(--brand-text); margin-top: 2px; }
+.insight .insight-text { display: contents; }
+.insight #insight-main { grid-column: 2; grid-row: 1; max-width: 33rem; text-wrap: pretty; }
+.insight .insight-cmds { grid-column: 2; grid-row: 2; margin-top: 12px; }
+.insight p.small { grid-column: 2; grid-row: 3; margin-top: 12px; max-width: 29rem; }
+.insight code { background: var(--subtle); border: 1px solid var(--border); border-radius: 4px; padding: 0 4px; }
+.insight .copy code { display: block; background: none; border: 0; border-radius: 0; padding: 4px 0; line-height: 24px; }
+@media (min-width: 68rem) { .insight { grid-template-columns: 20px minmax(0, 33rem) minmax(0, 1fr); } .insight .insight-text { display: block; grid-column: 2; grid-row: 1; } .insight p.small { margin-top: 8px; } .insight .insight-cmds { grid-column: 3; grid-row: 1; margin: 0 0 0 18px; align-self: center; } }
+@media screen and (min-width: 40.01rem) { html.js .insight .copy.multi code { padding-right: calc(var(--copy-w) + 8px); } html.js .insight .copy.multi code::before { display: none; } }
+.sevbar-card { margin-top: 12px; padding: 18px 22px; }
+.sevbar-title { font-size: 14px; font-weight: 600; }
+.sevbar { display: flex; height: 10px; border-radius: 999px; overflow: hidden; gap: 2px; margin: 12px 0; background: var(--subtle); }
+.sevbar span { display: block; height: 100%; }
+.sevlegend { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 13px; }
+.sevlegend span { display: inline-flex; align-items: center; gap: 6px; }
+.sevlegend i { width: 8px; height: 8px; border-radius: 999px; display: inline-block; }
+.sevlegend b { font-weight: 600; font-variant-numeric: tabular-nums; }
+.sev-caption { margin-top: 10px; font-size: 12.5px; color: var(--muted); max-width: 30rem; text-wrap: pretty; }
+.s-critical { background: var(--dot-crit); } .s-high { background: var(--dot-high); } .s-medium { background: var(--dot-med); } .s-low { background: var(--dot-low); } .s-info, .s-unknown { background: var(--dot-info); }
 `;
-var VERIFIED_PRINT_COLORS = `  .tone, .verified, .check-chip, .evidence-list, .verified-note { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+var FINDINGS_RULES = `.badge { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--border); background: var(--bg); color: var(--muted); border-radius: 999px; padding: 0 8px; font-size: 12px; font-weight: 500; line-height: 20px; white-space: nowrap; }
+.badge::before { content: ""; width: 6px; height: 6px; border-radius: 999px; background: var(--dot); flex: none; }
+.sev-critical { --dot: var(--dot-crit); } .sev-high { --dot: var(--dot-high); } .sev-medium { --dot: var(--dot-med); } .sev-low { --dot: var(--dot-low); } .sev-info, .sev-unknown { --dot: var(--dot-info); }
+.sev-unknown { border-style: dashed; }
+.act { display: inline-flex; align-items: center; border-radius: 999px; padding: 0 8px; font-size: 12px; font-weight: 500; line-height: 20px; white-space: nowrap; color: var(--ink); background: color-mix(in srgb, var(--hue) var(--tint), var(--tint-base)); border: 1px solid color-mix(in srgb, var(--hue) var(--tint-bd), transparent); }
+.act-block { --hue: #f43f5e; --ink: var(--act-block); }
+.act-ask { --hue: #f59e0b; --ink: var(--act-ask); }
+.act-warn { --hue: #0ea5e9; --ink: var(--act-warn); }
+.pack, .otag { display: inline-flex; align-items: center; border-radius: 6px; line-height: 20px; padding: 0 7px; border: 1px solid var(--border); background: transparent; color: var(--muted); font-size: 12px; font-weight: 500; white-space: nowrap; text-decoration: none; }
+.otag { font-family: var(--font-mono); font-size: 11.5px; }
+.learn { display: flex; flex-wrap: wrap; gap: 8px 20px; margin-top: 14px; font-size: 13.5px; }
+.learn a { color: var(--brand-text); }
+.owasp-grid { display: grid; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(min(15rem, 100%), 1fr)); }
+.risk { position: relative; min-width: 0; text-align: left; font: inherit; color: var(--fg); padding: 14px 16px; display: grid; gap: 4px; grid-template-rows: auto auto auto 1fr; cursor: pointer; }
+@media (hover: hover) { .risk:hover { border-color: color-mix(in srgb, #0748fe 35%, transparent); } }
+.risk-top { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.risk-id { font-family: var(--font-mono); font-size: 12px; font-weight: 600; color: var(--muted); }
+.risk-count { white-space: nowrap; }
+.risk-n { font-size: 18px; font-weight: 600; letter-spacing: -0.01em; font-variant-numeric: tabular-nums; }
+.risk-unit { font-size: 12px; font-weight: 400; color: var(--muted); }
+.risk-title { font-weight: 600; font-size: 14.5px; line-height: 1.35; min-height: 2.7em; }
+.risk-sub { color: var(--muted); font-size: 12.5px; }
+.risk-meter { align-self: end; height: 4px; border-radius: 999px; background: var(--subtle); overflow: hidden; margin-top: 8px; }
+.risk-meter span { display: block; height: 100%; min-width: 1px; background: var(--meter); }
+.owasp-foot { margin-top: 12px; font-size: 13px; color: var(--muted); }
+.owasp-foot span { display: block; max-width: 29rem; text-wrap: pretty; }
+.explorer-controls { position: relative; }
+.toolbar { display: flex; flex-wrap: wrap; gap: 8px; column-gap: 16px; align-items: center; margin-bottom: 12px; padding: 12px; background: var(--card); border: 1px solid color-mix(in srgb, var(--border) 70%, transparent); border-radius: 16px; }
+.toolbar > .seg { margin-right: auto; }
+.seg { position: relative; display: inline-flex; gap: 2px; background: var(--subtle); border: 1px solid var(--control-bd); border-radius: 999px; padding: 3px; }
+.filter { position: relative; display: inline-flex; align-items: center; justify-content: center; min-width: 44px; font: inherit; font-size: 14px; min-height: 34px; padding: 0 14px; border: 0; border-radius: 999px; background: transparent; color: var(--muted); white-space: nowrap; cursor: pointer; -webkit-user-select: none; user-select: none; }
+.filter > input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
+.filter:has(> input:checked) { background: var(--card); color: var(--fg); font-weight: 600; box-shadow: inset 0 0 0 1px var(--control-bd); }
+.filter:has(> input:focus-visible) { outline: 2px solid var(--ring); outline-offset: 2px; }
+@media (hover: hover) { .filter:not(:has(> input:checked)):hover { color: var(--fg); } }
+.seg .s { display: none; }
+.sortbox { display: flex; align-items: center; gap: 8px; }
+.sort-cap { font-size: 13px; color: var(--muted); }
+.search { flex: 1 1 200px; min-width: min(100%, 15rem); height: 42px; border-radius: 12px; background: var(--card); border: 1px solid var(--control-bd); padding: 0 14px; font: inherit; font-size: 14px; color: var(--fg); }
+.search::placeholder { color: var(--muted); opacity: 1; }
+.search:focus { border-color: var(--ring); }
+.vh { position: absolute; left: 0; top: 0; width: 1px; height: 1px; margin: 0; padding: 0; border: 0; opacity: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.risk-radios { position: absolute; left: 0; top: max(0px, calc((100vh - var(--sp, 80px)) / 2 + 1px)); width: 1px; height: 1px; }
+.active-filter { display: none; align-items: center; gap: 8px; font-size: 13px; background: var(--brand-soft); border: 1px solid var(--brand-soft-bd); color: var(--brand-text); border-radius: 999px; padding: 3px 4px 3px 12px; margin-bottom: 10px; }
+.active-filter #risk-clear { position: relative; display: inline-flex; align-items: center; font: inherit; font-size: 12px; font-weight: 500; border: 0; background: var(--card); color: var(--fg); border-radius: 999px; min-height: 26px; padding: 0 10px; cursor: pointer; -webkit-user-select: none; user-select: none; }
+#findings:has(.risk-radio:checked) .active-filter { display: inline-flex; }
+.result-count { font-size: 13px; color: var(--muted); margin: -2px 0 10px; }
+.rc, .rc-js, .af-t { display: none; }
+#findings:has(#ff-all:checked):not(:has(#fx-all:checked)) .rc[data-s="top"],
+#findings:has(#ff-all:checked):has(#fx-all:checked) .rc[data-s="all"],
+#findings:has(#ff-block:checked) .rc[data-s="block"],
+#findings:has(#ff-ask:checked) .rc[data-s="ask"],
+#findings:has(#ff-warn:checked) .rc[data-s="warn"] { display: inline; }
+#findings.searching .rc { display: none !important; }
+#findings.searching .rc-js { display: inline; }
+.flist-card { --fcols: 88px 104px 64px 56px; overflow: hidden; overflow-anchor: none; }
+.flist-head { display: grid; grid-template-columns: minmax(0, 1fr) var(--fcols); column-gap: 12px; padding: 8px 18px 8px 34px; font-size: 12.5px; font-weight: 600; color: var(--muted); background: var(--subtle); border-bottom: 1px solid var(--divider); }
+.flist-head span:last-child { justify-self: end; }
+.flist { display: flex; flex-direction: column; }
+.flist > * { order: var(--o-risk, 0); }
+#findings:has(#fs-category:checked) .flist > * { order: var(--o-category, 0); }
+#findings:has(#fs-count:checked) .flist > * { order: var(--o-count, 0); }
+#findings:has(#fs-name:checked) .flist > * { order: var(--o-name, 0); }
+.frow { border-bottom: 1px solid var(--divider); }
+@media screen { .flist { margin-bottom: -1px; } }
+.frow summary { list-style: none; cursor: pointer; display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 16px; padding: 12px 18px; align-items: start; }
+.frow summary::-webkit-details-marker { display: none; }
+.frow summary > div:first-child { min-width: 0; }
+.frow summary:focus-visible { outline-offset: -2px; border-radius: 0; }
+@media (hover: hover) { .frow summary:hover { background: color-mix(in srgb, var(--subtle) 55%, var(--card)); } }
+.frow:target > summary { background: var(--brand-soft); }
+.ftitle { font-weight: 600; display: flex; align-items: center; gap: 8px; line-height: 1.45; }
+.ftitle::before { content: ""; width: 8px; height: 8px; border-right: 2px solid var(--muted); border-bottom: 2px solid var(--muted); transform: rotate(-45deg); transition: transform .15s; flex: none; }
+.frow[open] .ftitle::before { transform: rotate(45deg); }
+.fsub { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; padding-left: 16px; margin-top: 4px; }
+.fid { font-family: var(--font-mono); font-size: 12px; color: var(--muted); }
+.fmeta { display: grid; grid-template-columns: var(--fcols); column-gap: 12px; align-items: center; justify-items: start; min-height: 22px; }
+.fcount { justify-self: end; font-weight: 600; font-variant-numeric: tabular-nums; line-height: 22px; }
+.fcount .unit { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.fbar { display: block; width: 64px; height: 4px; background: var(--divider); overflow: hidden; }
+.fbar span { display: block; height: 100%; min-width: 1px; background: var(--meter); }
+.fbody { padding: 0 18px 16px 34px; }
+.fbody .why { font-size: 14.5px; color: var(--fg); margin-bottom: 10px; max-width: 70ch; }
+.libdesc { margin: 2px 0 12px; }
+.frow .libdesc > summary, details.more-info > summary { display: block; list-style: none; }
+.frow .libdesc > summary::-webkit-details-marker, details.more-info > summary::-webkit-details-marker { display: none; }
+.frow .libdesc > summary { padding: 0; cursor: pointer; font-size: 13.5px; color: var(--brand-text); font-weight: 500; }
+.frow .libdesc > summary::before, details.more-info > summary::before { content: ""; display: inline-block; width: 7px; height: 7px; margin: 0 10px 0 1px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; vertical-align: 0.12em; transform: rotate(-45deg); transition: transform .15s; }
+.frow .libdesc[open] > summary::before, details.more-info[open] > summary::before { transform: translateY(-2px) rotate(45deg); }
+.libdesc > p { margin: 8px 0 0; font-size: 13.5px; color: var(--muted); max-width: 31rem; line-height: 1.6; }
+.libdesc code, .fbody code { overflow-wrap: anywhere; }
+.owasp-line { font-size: 13.5px; color: var(--muted); margin-bottom: 10px; }
+.shapes { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.shapes li { display: grid; grid-template-columns: minmax(0, 1fr) 5ch; gap: 10px; align-items: center; }
+.times { color: var(--muted); font-size: 12.5px; font-variant-numeric: tabular-nums; text-align: right; }
+.more { color: var(--muted); font-size: 13px; }
+.fgroup { display: none; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; padding: 16px 18px 12px; background: var(--subtle); border-top: 1px solid var(--divider); border-bottom: 1px solid var(--divider); margin-top: -1px; }
+.fgroup h3 { font-size: 16px; font-weight: 600; margin: 0; }
+.fgroup-meta { font-size: 12.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
+@media screen { #findings:has(#fs-category:checked) .fgroup { display: flex; } #findings:has(#fs-category:checked) .frow .pack { display: none; } }
+#findings:has(#ff-block:checked) .frow:not([data-action="block"]),
+#findings:has(#ff-ask:checked) .frow:not([data-action="ask"]),
+#findings:has(#ff-warn:checked) .frow:not([data-action="warn"]),
+#findings:has(#ff-block:checked) .fgroup:not([data-acts~="block"]),
+#findings:has(#ff-ask:checked) .fgroup:not([data-acts~="ask"]),
+#findings:has(#ff-warn:checked) .fgroup:not([data-acts~="warn"]) { display: none; }
+#findings:has(#ff-all:checked):not(:has(#fx-all:checked)):not(.searching):has(#fs-risk:checked) .frow:not([data-top~="risk"]),
+#findings:has(#ff-all:checked):not(:has(#fx-all:checked)):not(.searching):has(#fs-category:checked) .frow:not([data-top~="category"]),
+#findings:has(#ff-all:checked):not(:has(#fx-all:checked)):not(.searching):has(#fs-category:checked) .fgroup:not([data-top~="category"]),
+#findings:has(#ff-all:checked):not(:has(#fx-all:checked)):not(.searching):has(#fs-count:checked) .frow:not([data-top~="count"]),
+#findings:has(#ff-all:checked):not(:has(#fx-all:checked)):not(.searching):has(#fs-name:checked) .frow:not([data-top~="name"]) { display: none; }
+#findings:not(:has(#ff-all:checked)) #fx-toggle, #findings.searching #fx-toggle { display: none; }
+html:not(.js) .frow:target { display: block !important; }
+.frow.nomatch, .fgroup.nomatch { display: none !important; }
+.flist-empty { display: none; }
+.flist-empty.show { display: block; }
+.row-actions { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; align-items: center; }
+.limit .sort-cap { white-space: nowrap; }
+.linkish { background: none; border: 0; padding: 0; font: inherit; color: var(--brand-text); cursor: pointer; text-align: left; text-decoration: none; text-underline-offset: 3px; }
+.linkish:hover { text-decoration: underline; }
+.repeat-wrap { overflow: hidden; overflow-anchor: none; }
+.repeat-table { width: 100%; border-collapse: collapse; font-size: 14px; table-layout: fixed; }
+.repeat-table th, .repeat-table td { padding: 10px 16px; border-bottom: 1px solid var(--divider); text-align: left; vertical-align: middle; }
+.repeat-table tr:last-child > * { border-bottom: 0; }
+.repeat-table thead th { font-size: 12.5px; font-weight: 600; color: var(--muted); background: var(--subtle); }
+.repeat-table .n { width: 84px; text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
+.repeat-table .g { width: 34%; color: var(--muted); }
+.repeat-table .cmd { background: none; border: 0; border-radius: 0; padding: 0; font-size: 13px; }
+.repeat-table .g .linkish { color: var(--fg); text-decoration: underline; text-decoration-color: var(--border); text-underline-offset: 3px; }
+.repeat-table .g .linkish:hover { color: var(--brand-text); text-decoration-color: currentColor; }
+#repeats:not(:has(#rx-all:checked)) #repeat-body tr:nth-child(n+6) { display: none; }
+@media screen { #repeats:not(:has(#rx-all:checked)) #repeat-body tr:nth-child(5) > * { border-bottom: 0; } }
 `;
+var CLOSING_RULES = `.steps { display: grid; gap: 12px; grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 64rem) { .steps { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+.step { min-width: 0; padding: 20px; display: flex; flex-direction: column; gap: 10px; }
+@supports (grid-template-rows: subgrid) { @media screen and (min-width: 64rem) { .steps { grid-template-rows: repeat(4, auto); row-gap: 10px; } .step { display: grid; grid-row: span 4; grid-template-rows: subgrid; align-content: start; } .step .copy { margin-top: 0; } } }
+.step-n { font-family: var(--font-mono); font-size: 12px; font-weight: 400; color: var(--muted); }
+.step p { color: var(--muted); font-size: 14px; }
+.step p code { white-space: nowrap; }
+.post { margin: 0; padding: 14px 20px 16px; max-width: 36rem; }
+.post-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-bottom: 12px; border-bottom: 1px solid var(--divider); font-size: 13px; font-weight: 500; color: var(--muted); }
+.post-head svg { width: 16px; height: 16px; fill: currentColor; color: var(--fg); flex: none; }
+.post-text { display: block; width: 100%; margin-top: 14px; padding: 0; border: 0; background: transparent; resize: none; field-sizing: content; font: inherit; font-size: 15px; line-height: 1.55; color: var(--fg); white-space: pre-wrap; overflow-wrap: anywhere; }
+.post-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--divider); }
+.post-count { margin-left: auto; font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.post-count[data-over="true"] { color: var(--act-block); font-weight: 600; }
+#share-copy { min-width: 7.5em; }
+.privacy { padding: 20px 22px; display: grid; gap: 20px; }
+@media (min-width: 48rem) { .privacy { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 32px; } }
+.checks { list-style: none; margin: 0; padding: 0; display: grid; gap: 14px; align-content: start; }
+.checks li { display: flex; gap: 10px; font-size: 14px; }
+.checks svg { flex: none; width: 18px; height: 18px; color: var(--ok); margin-top: 2px; }
+.checks li.note svg { color: var(--muted); }
+.legend { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 6px 14px; font-size: 13.5px; margin: 0; align-content: start; }
+.legend dt code { background: var(--code-bg); border: 1px solid var(--divider); border-radius: 5px; padding: 0 5px; color: var(--brand-text); }
+.legend dd { margin: 0; color: var(--muted); }
+details.more-info { margin-top: 12px; }
+details.more-info > summary { cursor: pointer; color: var(--brand-text); font-size: 14px; font-weight: 500; }
+details.more-info > div { margin-top: 10px; display: grid; gap: 8px; color: var(--muted); font-size: 14px; max-width: 75ch; }
+details.more-info code { font-size: 0.86em; }
+.more-list { margin: 0; padding-left: 20px; }
+.kv { width: 100%; border-collapse: collapse; font-size: 14px; }
+.kv th, .kv td { padding: 10px 16px; border-bottom: 1px solid var(--divider); text-align: left; }
+.kv th { padding-left: 0; font-weight: 500; color: var(--muted); }
+.kv td { padding-right: 0; text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
+.kv tr:last-child > * { border-bottom: 0; }
+#usage > details { padding: 16px 20px; margin: 0; }
+#usage > details > summary { color: var(--fg); font-weight: 600; font-size: 15px; }
+#usage .usage-body { display: grid; grid-template-columns: minmax(0, 34rem) minmax(0, 1fr); gap: 8px 40px; max-width: none; align-items: start; }
+#usage .usage-body p { margin-top: 8px; font-size: 13px; }
+@media (max-width: 47.99rem) { #usage .usage-body { grid-template-columns: minmax(0, 1fr); } }
+.product { margin-top: 64px; padding: 40px 24px; display: grid; gap: 24px; color: var(--fg); background-color: var(--card); background-image: radial-gradient(55% 75% at 15% 10%, color-mix(in srgb, #0748fe 10%, transparent), transparent 70%), linear-gradient(135deg, color-mix(in srgb, #0748fe 5%, transparent), transparent 65%); border: 1px solid color-mix(in srgb, #0748fe 20%, transparent); border-radius: 24px; box-shadow: none; }
+@media (min-width: 48rem) { .product { padding: 56px; grid-template-columns: minmax(0, 1fr); align-items: start; gap: 28px; } }
+.product > div:first-child { display: grid; gap: 4px; }
+.product p { color: var(--muted); font-size: 16px; max-width: 60ch; text-wrap: pretty; }
+.product p + p { margin-top: 8px; }
+.product .eyebrow { display: inline-flex; align-items: center; gap: 8px; margin: 0 0 12px; font-size: 12px; font-weight: 600; color: var(--brand-text); }
+.product .eyebrow::before { content: ""; width: 6px; height: 6px; border-radius: 999px; background: currentColor; }
+.product h2 { font-size: clamp(1.625rem, 2.8vw, 2rem); font-weight: 500; letter-spacing: -0.03em; line-height: 1.12; text-wrap: balance; margin: 0 0 12px; max-width: 40rem; }
+.br-md { display: none; }
+@media (min-width: 64rem) { .br-md { display: inline; } }
+.product-ctas { display: flex; flex-wrap: wrap; gap: 10px; }
+.os-steps { list-style: none; margin: 20px 0 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; counter-reset: os; }
+.os-steps li { counter-increment: os; display: flex; flex-direction: column; gap: 6px; padding: 16px 18px; border: 1px solid var(--border); border-radius: 12px; background: color-mix(in srgb, var(--card) 70%, transparent); font-size: 14px; color: var(--muted); }
+.os-steps li::before { content: counter(os); width: 24px; height: 24px; margin-bottom: 4px; border-radius: 50%; display: grid; place-items: center; font-size: 12px; font-weight: 700; background: var(--brand-soft); color: var(--brand-text); border: 1px solid var(--brand-soft-bd); }
+.os-steps b { color: var(--fg); }
+.os-steps li span { color: var(--muted); font-size: 14px; line-height: 1.55; }
+.os-steps li code { font-size: 12.5px; word-break: break-word; color: var(--fg); }
+.report-meta { margin-top: 40px; padding-top: 16px; border-top: 1px solid var(--divider); color: var(--muted); font-size: 13px; display: grid; gap: 4px; }
+.report-meta p { max-width: 28rem; text-wrap: pretty; }
+.report-meta p.footer-brand { max-width: none; }
+.report-meta #source-link { display: block; width: fit-content; margin-top: 8px; }
+.footer-brand { display: flex; align-items: flex-start; gap: 8px; }
+.mark { width: 16px; height: 16px; flex: none; margin-top: 3px; }
+.site-footer { display: block; margin-top: 56px; border-top: 1px solid color-mix(in srgb, var(--border) 60%, transparent); background: var(--bg); }
+.site-footer-inner { max-width: 68rem; margin: 0 auto; padding: 40px 16px 24px; }
+@media (min-width: 48rem) { .site-footer-inner { padding: 56px 32px 32px; } }
+.sf-grid { display: grid; gap: 40px; padding-bottom: 40px; }
+@media (min-width: 64rem) { .sf-grid { grid-template-columns: minmax(0, 1.2fr) minmax(0, 2fr); gap: 80px; } }
+.sf-grid .lockup { height: 24px; }
+.sf-grid > div > a { display: inline-flex; align-items: center; }
+.sf-tagline { margin-top: 16px; max-width: 20rem; font-size: 14px; line-height: 1.65; color: var(--muted); }
+.sf-social { display: flex; gap: 4px; margin: 20px 0 0 -12px; }
+.sf-social a { width: 44px; height: 44px; border-radius: 999px; display: inline-flex; align-items: center; justify-content: center; color: var(--muted); transition: color .2s, background-color .2s; }
+@media (hover: hover) { .sf-social a:hover { background: var(--subtle); color: var(--fg); } }
+.sf-social svg { width: 16px; height: 16px; fill: currentColor; }
+.sf-cols { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 32px 24px; }
+@media (min-width: 40rem) { .sf-cols { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+.sf-cols p { margin: 0 0 12px; font-size: 14px; font-weight: 600; color: var(--fg); }
+.sf-cols ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.sf-cols a { display: inline-flex; min-height: 32px; align-items: center; font-size: 14px; color: var(--muted); }
+.sf-cols a:hover { color: var(--fg); }
+.sf-bottom { display: flex; flex-direction: column; gap: 12px; padding-top: 24px; border-top: 1px solid var(--divider); font-size: 12px; color: var(--muted); }
+@media (min-width: 40rem) { .sf-bottom { flex-direction: row; align-items: center; justify-content: space-between; } }
+.sf-bottom a { color: var(--muted); min-height: 32px; display: inline-flex; align-items: center; }
+.toast { position: fixed; bottom: 20px; left: 50%; z-index: 30; max-width: calc(100vw - 32px); transform: translateX(-50%) translateY(20px); opacity: 0; background: var(--fg); color: var(--bg); font-size: 13px; padding: 8px 16px; border-radius: 999px; transition: opacity .2s, transform .2s; pointer-events: none; }
+.toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+`;
+var VERIFIED_RULES = `.fchecked { font-size: 14px; margin: 0 0 12px; padding: 10px 14px; border-radius: 8px; background: var(--subtle); border: 1px solid var(--border); border-left: 3px solid var(--control-bd); }
+.fchecked b { font-weight: 600; }
+.fchecked.v-act { border-left-color: var(--act-block); }
+.fchecked.v-review { border-left-color: var(--act-ask); }
+.fchecked.v-clean { border-left-color: var(--ok); }
+.lead-extra { display: grid; gap: 20px; margin: 8px 0 28px; }
+.lx-evidence { padding: 0; overflow: hidden; }
+.lx-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; padding: 12px 20px; border-bottom: 1px solid var(--border); font-size: 13px; color: var(--muted); }
+.lx-rule { color: var(--act-warn); font-weight: 600; }
+.lx-creds { list-style: none; margin: 0; padding: 12px 20px; display: grid; gap: 6px; }
+.lx-creds li { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr) auto; gap: 12px; align-items: baseline; font-size: 14px; }
+.lx-creds li span:nth-child(2) { color: var(--muted); }
+.lx-times { color: var(--muted); font-variant-numeric: tabular-nums; font-size: 13px; flex: none; }
+.lx-more { padding: 0 20px 14px; margin: 0; font-size: 13px; color: var(--muted); }
+.lx-h { font-size: 15px; font-weight: 600; margin: 0 0 10px; letter-spacing: 0; }
+.lx-grid { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(270px, 1fr)); gap: 1px; background: var(--border); overflow: hidden; }
+.lx-grid li { background: var(--card); padding: 14px 18px; display: flex; justify-content: space-between; align-items: baseline; gap: 16px; }
+.lx-grid li b { font-size: 18px; font-variant-numeric: tabular-nums; }
+.lx-link { display: inline-block; color: var(--fg); text-decoration: none; }
+.lx-link::first-letter { text-transform: capitalize; }
+.lx-link:hover { color: var(--brand-text); text-decoration: underline; }
+.verified { display: grid; gap: 14px; }
+.vrow { display: grid; gap: 12px; padding: 20px 22px; }
+.vrow:target { border-color: var(--brand-text); }
+.vtop { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 14px; }
+.vtop h3 { margin: 0; font-size: 17px; }
+.vmatched { margin-left: auto; color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
+.vtone { font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--border); color: var(--muted); white-space: nowrap; }
+.v-act .vtone { color: var(--act-block); border-color: currentColor; }
+.v-review .vtone { color: var(--act-ask); border-color: currentColor; }
+.v-clean .vtone { color: var(--ok); border-color: currentColor; }
+.v-not-checked .vtone { border-style: dashed; }
+.v-clean { background: var(--subtle); }
+.vfacts { display: grid; grid-template-columns: 7.5em minmax(0, 1fr); gap: 6px 14px; margin: 0; font-size: 14px; }
+.vfacts dt { color: var(--muted); }
+.vfacts dd { margin: 0; }
+@media (max-width: 560px) { .vfacts { grid-template-columns: 1fr; } .vfacts dd { margin-bottom: 6px; } }
+.vcmds { background: var(--code-bg); border: 1px solid var(--border); border-radius: 8px; padding: 10px 14px; display: grid; gap: 4px; overflow-x: auto; }
+.vcmd { display: flex; gap: 8px; font-size: 13px; white-space: nowrap; }
+.vcmd .prompt { color: var(--muted); }
+details.vmore > summary { display: block; list-style: none; cursor: pointer; color: var(--brand-text); font-size: 13.5px; font-weight: 500; }
+details.vmore > summary::-webkit-details-marker { display: none; }
+details.vmore > summary::before { content: ""; display: inline-block; width: 7px; height: 7px; margin: 0 10px 0 1px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; vertical-align: 0.12em; transform: rotate(-45deg); transition: transform .15s; }
+details.vmore[open] > summary::before { transform: translateY(-2px) rotate(45deg); }
+.vmore-body { margin-top: 10px; display: grid; gap: 8px; font-size: 13.5px; color: var(--muted); max-width: 75ch; }
+.vmore-body h4 { margin: 4px 0 0; font-size: 13px; font-weight: 600; color: var(--fg); }
+.vmore-body p { margin: 0; }
+@media (max-width: 40rem) { .lx-creds li { grid-template-columns: 1fr auto; } .lx-creds li span:nth-child(2) { grid-column: 1 / -1; grid-row: 2; } }
+`;
+var NARROW_RULES = `@media (max-width: 63.99rem) {
+  html { scroll-padding-top: 120px; --sp: 120px; }
+  .topbar-inner { flex-wrap: wrap; row-gap: 0; padding-bottom: 0; }
+  .tools { margin-left: auto; }
+  .navlinks { order: 10; flex: 0 0 calc(100% + 2 * var(--gutter)); margin: 6px calc(-1 * var(--gutter)) 0; padding: 0 calc(var(--gutter) - 8px); gap: 0; overflow-x: auto; scrollbar-width: none; border-top: 1px solid var(--divider); }
+  .navlinks a { display: inline-flex; align-items: center; min-height: 44px; padding: 0 10px; font-size: 13.5px; border-radius: 0; }
+  .navlinks a:focus-visible { outline-offset: -4px; border-radius: 8px; }
+}
+@media (max-width: 40rem) {
+  .topbar-inner { gap: 8px; padding-top: 6px; }
+  .topbar .lockup { height: 20px; }
+  .tools { gap: 0; }
+  .icon-btn, .icon-btn.labeled { width: 44px; height: 44px; padding: 0; background: transparent; color: var(--muted); }
+  .icon-btn.labeled { flex-direction: column; gap: 1px; }
+  .icon-btn.labeled span { font-size: 10px; font-weight: 600; line-height: 12px; letter-spacing: 0; }
+  .hero { padding-top: 28px; }
+  .hero .lead { text-wrap: pretty; }
+  .hero-kicker .when { display: block; }
+  .hero-kicker .sep-when { display: none; }
+  .hero-cta > * { flex: 1 1 100%; }
+  .hero-cta > .btn { flex: 1 1 auto; padding: 0 18px; }
+  .ring { width: 116px; height: 116px; }
+  .ring-label strong { font-size: 24px; }
+  .outcome { padding: 14px 16px; }
+  .outcome .n { font-size: 26px; }
+  .sevbar-card, .insight { padding: 16px; }
+  .toolbar { padding: 10px; }
+  .seg { flex: 1 1 100%; flex-wrap: wrap; }
+  .filter { flex: 1 1 auto; min-height: 44px; padding: 0 8px; }
+  .search { flex: 1 1 100%; height: 44px; font-size: 16px; }
+  .sortbox { flex: 1 1 100%; }
+  .sortbox .seg { flex: 1 1 0; min-width: 0; }
+  .sortbox.limit { flex: 0 1 auto; }
+  .sortbox.limit .seg { flex: 0 1 auto; flex-wrap: nowrap; }
+  .seg .l { display: none; }
+  .seg .s { display: inline; }
+  .flist-head { display: none; }
+  .frow summary { grid-template-columns: minmax(0, 1fr); row-gap: 6px; padding: 12px 16px; }
+  .frow summary > div:first-child { display: contents; }
+  .fmeta { display: flex; align-items: center; gap: 8px; padding-left: 16px; }
+  .fsub .otag, .fbar { display: none; }
+  .fcount { margin-left: auto; }
+  .fcount .unit { position: static; width: auto; height: auto; overflow: visible; clip-path: none; font-size: 13px; font-weight: 400; color: var(--muted); }
+  .fbody { padding: 0 16px 16px 32px; }
+  .cmd { white-space: pre-wrap; word-break: normal; overflow-wrap: anywhere; }
+  .repeat-table, .repeat-table tbody { display: block; }
+  .repeat-table thead { display: none; }
+  .repeat-table tr { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 12px; padding: 10px 14px; border-bottom: 1px solid var(--divider); }
+  .repeat-table td { padding: 0; border: 0; }
+  .repeat-table .n { width: auto; align-self: start; }
+  .repeat-table .g { display: block; grid-column: 1 / -1; width: auto; font-size: 13px; padding-top: 2px; }
+  .privacy { padding: 18px 16px; }
+  .legend { grid-template-columns: minmax(0, 1fr); gap: 2px; }
+  .legend dd { margin-bottom: 8px; }
+  .product { margin-top: 48px; }
+}
+@media (max-width: 40rem), (pointer: coarse) {
+  .btn:not(.btn-lg) { min-height: 44px; }
+  .copy button { top: 6px; height: 44px; }
+  .copy .prompt { line-height: 44px; }
+  .copy code { padding: 10px 0; }
+  .copy code::before { height: 34px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition: none !important; animation: none !important; scroll-behavior: auto !important; }
+  .btn:active { transform: none; }
+}
+@media (forced-colors: active) {
+  .seg .filter { border: 2px solid Canvas; }
+  .seg .filter:has(> input:checked) { border-color: Highlight; }
+}
+`;
+function printRules(verified) {
+  return `@media print {
+  @page { size: A4; margin: 12mm 12mm 14mm; }
+  :root:root:root:root {
+  color-scheme: light;
+${vars(PRINT_TOKENS, "  ")}
+  }
+  html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  body { --gutter: 0px; background: #fff; font-size: 12px; line-height: 1.5; }
+  .page { max-width: none; padding: 0; }
+  .print-only { display: block; }
+  .print-head { display: flex; justify-content: space-between; align-items: center; padding-bottom: 8px; border-bottom: 1px solid var(--divider); font-size: 11px; color: var(--muted); }
+  .topbar, .toolbar, .hero-cta .btn, .copy button, .icon-btn, .row-actions, .active-filter, .result-count, .skip, .toast, .fgroup, .flist-empty, .screen-only, #hero-share, #share, .share { display: none !important; }
+  .hero::before { display: none; }
+  .hero { grid-template-columns: minmax(0, 1fr) auto; gap: 20px; padding: 8px 0; align-items: center; }
+  .hero h1 { font-size: 26px; margin: 10px 0 8px; }
+  .hero .lead { font-size: 13px; }
+  .ring { width: 104px; height: 104px; }
+  .ring-label strong { font-size: 22px; }
+  .flist, .frow { display: block !important; }
+  #repeat-body tr { display: table-row !important; }
+  details > summary { cursor: default; list-style: none; }
+  details::details-content { content-visibility: visible; display: block; }
+  details > *:not(summary) { display: block !important; }
+  .card, .stats { box-shadow: none; }
+  h2 { font-size: 17px; }
+  section { margin-top: 22px; }
+  .section-head { margin-bottom: 10px; }
+  .stats { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .outcomes { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+  .owasp-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+  .cmd { white-space: pre-wrap; overflow-wrap: anywhere; overflow: visible; text-overflow: clip; }
+  .product { margin-top: 14px; padding: 10px 16px; border-radius: 12px; background-image: none; gap: 4px; }
+  .product-ctas .btn { min-height: 0; padding: 0; background: none !important; color: var(--brand-text); font-size: 12px; }
+  .button, .product-ctas .btn { display: inline; background: none; border: 0; padding: 0; }
+  .product-ctas .btn::after, #source-link::after { content: " " attr(href); color: var(--muted); font-weight: 400; }
+  a[href^="http"]::after { content: " (" attr(href) ")"; font-size: 11px; color: var(--muted); overflow-wrap: anywhere; }
+  .learn a::after, .owasp-line a::after, .navlinks a::after, .sf-cols a::after, .sf-social a::after, .home-link::after, .lx-link::after, #hero-share::after, #share-link::after { content: none; }
+  .sf-grid { display: none; }
+  .card, .stat, .outcome, .risk, .step, .frow summary, .shapes li, .repeat-table tr, .finding-head { break-inside: avoid; }
+  .flist, .flist-card, .repeat-wrap { break-inside: auto; }
+${verified ? "  .verified { break-inside: auto; }\n  .vrow, .lx-creds li, .lx-grid li, .fchecked { break-inside: avoid; }\n" : ""}
+  h2, h3, summary, .section-head { break-after: avoid; }
+  .report-meta, .site-footer { break-inside: avoid; }
+}
+`;
+}
 function reportStyles(verified) {
-  const only = (rules12) => verified ? rules12 : "";
   return `
 :root {
   --font-sans: ${FONT_SANS};
   --font-mono: ${FONT_MONO};
   color-scheme: light;
-${vars(LIGHT_TOKENS, verified)}
+${vars(LIGHT_TOKENS, "  ")}
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
   color-scheme: dark;
-${vars(DARK_TOKENS, verified)}
+${vars(DARK_TOKENS, "  ")}
   }
 }
 :root[data-theme="dark"] {
   color-scheme: dark;
-${vars(DARK_TOKENS, verified)}
+${vars(DARK_TOKENS, "  ")}
 }
-*, *::before, *::after { box-sizing: border-box; }
-[hidden] { display: none !important; }
-body {
-  margin: 0;
-  background: var(--bg);
-  color: var(--fg);
-  font-family: var(--font-sans);
-  font-size: 15px;
-  line-height: 1.6;
-  -webkit-font-smoothing: antialiased;
-  text-rendering: optimizeLegibility;
+${BASE_RULES}${COMMAND_RULES}${OUTCOME_RULES}${FINDINGS_RULES}${CLOSING_RULES}${verified ? VERIFIED_RULES : ""}${NARROW_RULES}${printRules(verified)}`;
 }
-.page { max-width: 64rem; margin: 0 auto; padding: 32px clamp(16px, 4vw, 40px) 64px; }
-p { margin: 0 0 12px; }
-p, dd { max-width: 72ch; }
-h1, h2 { color: var(--fg); font-weight: 650; letter-spacing: -0.02em; line-height: 1.25; }
-h1 { font-size: 28px; margin: 6px 0 10px; letter-spacing: -0.025em; }
-h2 { font-size: 18px; margin: 0 0 12px; }
-section { margin-top: 44px; }
-strong { font-weight: 600; color: var(--fg); }
-code {
-  font-family: var(--font-mono);
-  font-size: 0.86em;
-  background: var(--code-bg);
-  border: 1px solid var(--code-border);
-  border-radius: 6px;
-  padding: 0.05em 0.4em;
-  overflow-wrap: anywhere;
+function riskStyles(ids) {
+  const safe = ids.filter((id) => /^(?:ASI|LLM)(?:0[1-9]|10)$/.test(id));
+  if (safe.length === 0) return "";
+  const rule = (f, body) => `${safe.map(f).join(",\n")} { ${body} }`;
+  return [
+    rule(
+      (id) => `#findings:has(#ff-risk-${id}:checked) .frow:not([data-risks~="${id}"]),
+#findings:has(#ff-risk-${id}:checked) .fgroup:not([data-risks~="${id}"])`,
+      "display: none;"
+    ),
+    rule(
+      (id) => `#findings:has(#ff-risk-${id}:checked) .rc[data-s="risk-${id}"],
+#findings:has(#ff-risk-${id}:checked) .af-t[data-s="risk-${id}"]`,
+      "display: inline;"
+    ),
+    rule(
+      (id) => `body:has(#ff-risk-${id}:checked) .risk[data-risk="${id}"]`,
+      "background: color-mix(in srgb, #0748fe 5%, var(--card)); border-color: color-mix(in srgb, #0748fe 35%, transparent); box-shadow: inset 0 0 0 1px var(--ring);"
+    ),
+    rule(
+      (id) => `body:has(#ff-risk-${id}:focus-visible) .risk[data-risk="${id}"]`,
+      "outline: 2px solid var(--ring); outline-offset: 2px;"
+    ),
+    ""
+  ].join("\n");
 }
-.note { color: var(--muted-fg); font-size: 14px; }
-.empty { color: var(--muted-fg); font-style: italic; }
-.masthead {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding-bottom: 20px;
-  border-bottom: 1px solid var(--divider);
-}
-.brand { display: inline-flex; line-height: 0; }
-.lockup { display: block; height: 24px; width: auto; }
-.lockup-mark, .mark { fill: var(--mark); }
-.lockup-word { fill: var(--fg); }
-.product-tag {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--brand-text);
-  background: var(--note-bg);
-  border: 1px solid var(--note-border);
-  border-radius: 999px;
-  padding: 1px 10px;
-}
-.intro { margin-top: 32px; }
-.agent {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  margin: 0;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--muted-fg);
-}
-.agent::before { content: ""; width: 8px; height: 8px; border-radius: 999px; background: var(--brand); }
-.lead { font-size: 17px; margin-bottom: 8px; }
-.provenance { color: var(--muted-fg); font-size: 13px; margin: 0; }
-.stats {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
-  gap: 12px;
-  margin-top: 28px;
-}
-.stat {
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 16px 18px;
-  box-shadow: var(--shadow);
-}
-.stat-value {
-  font-size: 28px;
-  font-weight: 650;
-  letter-spacing: -0.02em;
-  line-height: 1.15;
-  font-variant-numeric: tabular-nums;
-}
-.stat-label { color: var(--muted-fg); font-size: 13px; margin-top: 4px; }
-.stat-note { color: var(--muted-fg); font-size: 12px; margin-top: 6px; }
-.tally {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 14px 40px;
-  margin-top: 12px;
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 16px 18px;
-  box-shadow: var(--shadow);
-}
-.tally-group { display: flex; flex-direction: column; gap: 8px; }
-.tally-label {
-  margin: 0;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--muted-fg);
-}
-.pills { display: flex; flex-wrap: wrap; gap: 8px 14px; list-style: none; margin: 0; padding: 0; }
-.pills li { display: inline-flex; align-items: center; gap: 6px; }
-.tally-count { font-weight: 650; font-variant-numeric: tabular-nums; }
-.tally .note { flex-basis: 100%; margin: 0; font-size: 12px; }
-.badge {
-  display: inline-flex;
-  align-items: center;
-  border: 1px solid;
-  border-radius: 999px;
-  padding: 0 9px;
-  font-size: 11px;
-  font-weight: 650;
-  line-height: 1.8;
-  white-space: nowrap;
-}
-${severityRules}
-.sev-unknown { border-style: dashed; }
-.chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  border: 1px solid;
-  border-radius: 6px;
-  padding: 0 8px;
-  font-size: 12.5px;
-  font-weight: 500;
-  line-height: 1.7;
-  white-space: nowrap;
-  background: var(--card);
-}
-.chip::before { content: ""; width: 6px; height: 6px; border-radius: 999px; background: currentColor; }
-${actionRules}
-.callout {
-  background: var(--subtle);
-  border: 1px solid var(--border);
-  border-left: 3px solid var(--sev-medium-fg);
-  border-radius: 8px;
-  padding: 18px 20px;
-}
-.callout h2 { font-size: 16px; margin-bottom: 8px; }
-.legend {
-  display: grid;
-  grid-template-columns: max-content 1fr;
-  gap: 6px 16px;
-  margin: 12px 0 14px;
-  font-size: 14px;
-}
-.legend div { display: contents; }
-.legend dt { margin: 0; }
-.legend dd { margin: 0; color: var(--muted-fg); }
-.warning { font-size: 14px; margin: 0; }
-.section-head {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 4px 16px;
-  margin-bottom: 12px;
-}
-.section-head h2 { margin: 0; }
-.section-meta { margin: 0; color: var(--muted-fg); font-size: 13px; }
-.table-wrap {
-  position: relative;
-  overflow-x: auto;
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  box-shadow: var(--shadow);
-}
-.table-wrap + p { margin-top: 12px; }
-table { width: 100%; border-collapse: collapse; font-size: 14px; }
-th, td { text-align: left; vertical-align: top; padding: 12px 14px; border-bottom: 1px solid var(--divider); }
-tbody tr:last-child > * { border-bottom: 0; }
-thead th {
-  background: var(--subtle);
-  color: var(--muted-fg);
-  font-size: 12px;
-  font-weight: 600;
-  white-space: nowrap;
-}
-.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
-td.num { font-weight: 600; }
-.kv th { color: var(--muted-fg); font-weight: 500; }
-.guardrail-title { font-weight: 600; font-size: 15px; }
-.guardrail-id { margin-top: 2px; font-size: 13px; }
-.guardrail-id code { background: none; border: 0; padding: 0; color: var(--muted-fg); }
-.shapes { list-style: none; margin: 10px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
-.shapes li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; }
-.times { color: var(--muted-fg); font-size: 12.5px; font-variant-numeric: tabular-nums; }
-.more { color: var(--muted-fg); font-size: 13px; font-style: italic; }
-.recurring td.shape { width: 55%; }
-.rule-name { color: var(--muted-fg); }
-.list { margin: 8px 0 14px; padding-left: 20px; }
-.list li { margin-bottom: 4px; }
-.sr-only {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip-path: inset(50%);
-  white-space: nowrap;
-}
-.page { position: relative; }
-.masthead { flex-wrap: wrap; }
-.sections ul { display: flex; flex-wrap: wrap; gap: 4px 16px; list-style: none; margin: 0; padding: 0; }
-.sections a { color: var(--muted-fg); font-size: 13px; text-decoration: none; }
-.sections a:hover, .sections a:focus-visible { color: var(--fg); text-decoration: underline; }
-.toolbar { display: flex; gap: 8px; margin-left: auto; }
-.tool, .copy, .filter {
-  font: inherit;
-  font-size: 13px;
-  color: var(--fg);
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 4px 10px;
-  cursor: pointer;
-}
-.tool:hover, .copy:hover, .filter:hover { border-color: var(--brand-text); }
-.tool:focus-visible, .copy:focus-visible, .filter:focus-visible, .sort select:focus-visible,
-.sections a:focus-visible, summary:focus-visible, textarea:focus-visible, a:focus-visible {
-  outline: 2px solid var(--brand-text);
-  outline-offset: 2px;
-}
-.filter[aria-pressed="true"] { background: var(--note-bg); border-color: var(--brand-text); color: var(--brand-text); font-weight: 600; }
-.origin { margin: 0 0 6px; font-size: 13px; color: var(--muted-fg); }
-.top-match { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 12px 0 0; font-size: 14px; }
-.top-title { font-weight: 600; }
-.actions { display: flex; flex-wrap: wrap; gap: 10px 14px; margin: 18px 0 12px; }
-.button.secondary { background: var(--card); color: var(--fg); border: 1px solid var(--border); }
-.button.secondary:hover { background: var(--subtle); }
-.command { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 8px 0; }
-.command code { font-size: 13px; padding: 4px 8px; }
-.columns + .note { margin-top: 12px; }
-.columns { display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); gap: 12px; margin-top: 12px; }
-.col {
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-top-width: 3px;
-  border-radius: 12px;
-  padding: 16px 18px;
-  box-shadow: var(--shadow);
-}
-.act-block-col { border-top-color: var(--act-block-fg); }
-.act-ask-col { border-top-color: var(--act-ask-fg); }
-.act-warn-col { border-top-color: var(--act-warn-fg); }
-.col-label { margin: 0; font-weight: 600; }
-.col-count { margin: 2px 0 6px; font-size: 28px; font-weight: 650; font-variant-numeric: tabular-nums; }
-.col-list { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; font-size: 14px; }
-.col-list li { display: flex; justify-content: space-between; gap: 8px; }
-.hint {
-  margin-top: 12px;
-  background: var(--note-bg);
-  border: 1px solid var(--note-border);
-  border-radius: 12px;
-  padding: 14px 18px;
-  font-size: 14px;
-}
-.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr)); gap: 12px; }
-.card {
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 16px 18px;
-  box-shadow: var(--shadow);
-}
-.card h3 { font-size: 16px; margin: 8px 0 6px; }
-.card h3 a { color: var(--fg); text-decoration: none; }
-.card h3 a:hover { text-decoration: underline; }
-.card-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-.card-meta { font-size: 13px; color: var(--muted-fg); margin: 6px 0; }
-.example { margin: 6px 0; }
-${only(VERIFIED_RULES)}.controls { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
-.filters { display: flex; flex-wrap: wrap; gap: 6px; }
-.sort { font-size: 13px; color: var(--muted-fg); }
-.sort select { font: inherit; font-size: 13px; color: var(--fg); background: var(--card); border: 1px solid var(--border); border-radius: 6px; padding: 3px 6px; }
-.findings-section { position: relative; }
-.filter-empty {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px 14px;
-  margin-top: 10px;
-  padding: 14px 16px;
-  border: 1px dashed var(--border);
-  border-radius: 10px;
-  color: var(--muted-fg);
-}
-.filter-empty[hidden] { display: none; }
-.filter-empty p { margin: 0; }
-.finding-list { display: flex; flex-direction: column; list-style: none; margin: 0; padding: 0; gap: 10px; }
-.finding {
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 14px 16px;
-  box-shadow: var(--shadow);
-}
-.finding:target { border-color: var(--brand-text); }
-.finding-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 6px 12px; }
-.finding-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-.group { color: var(--muted-fg); }
-.owasp-ids { display: flex; flex-wrap: wrap; gap: 4px 14px; list-style: none; margin: 6px 0 0; padding: 0; font-size: 13px; }
-.risk-id { font-family: var(--font-mono); font-size: 12.5px; font-weight: 600; }
-.risks { display: grid; grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); gap: 10px; list-style: none; margin: 12px 0; padding: 0; }
-.risk {
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 12px 14px;
-  box-shadow: var(--shadow);
-}
-.risk p { margin: 0 0 6px; }
-.risk-name { font-size: 14px; font-weight: 600; }
-.risk-counts { font-size: 13px; color: var(--muted-fg); }
-.risk-sources { font-size: 14px; }
-details { margin-top: 8px; font-size: 14px; }
-summary { cursor: pointer; color: var(--brand-text); }
-.how p { color: var(--muted-fg); margin: 8px 0 0; }
-.steps { margin: 0; padding-left: 22px; }
-.steps li { margin-bottom: 14px; }
-.steps p { margin: 0 0 4px; }
-.links, .footer-links { display: flex; flex-wrap: wrap; gap: 6px 18px; list-style: none; margin: 8px 0 0; padding: 0; font-size: 14px; }
-a { color: var(--brand-text); }
-.share-label { display: block; font-size: 13px; color: var(--muted-fg); margin-bottom: 6px; }
-.share textarea {
-  display: block;
-  width: 100%;
-  font: inherit;
-  font-size: 14px;
-  color: var(--fg);
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 10px 12px;
-  resize: vertical;
-}
-.share textarea[readonly] { background: var(--subtle); resize: none; }
-.share-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; margin-top: 10px; }
-.share-count { font-size: 13px; color: var(--muted-fg); font-variant-numeric: tabular-nums; }
-.share-count[data-over="true"] { color: var(--sev-critical-fg); font-weight: 600; }
-.text-link { font-weight: 600; }
-.product-note {
-  margin-top: 48px;
-  background: var(--note-bg);
-  border: 1px solid var(--note-border);
-  border-radius: 12px;
-  padding: 24px 26px;
-}
-.eyebrow {
-  margin: 0 0 6px;
-  font-size: 12px;
-  font-weight: 650;
-  color: var(--brand-text);
-}
-.product-note h2 { font-size: 22px; margin: 0 0 8px; }
-.product-note-action { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; margin: 16px 0 0; }
-.button {
-  display: inline-flex;
-  align-items: center;
-  background: var(--brand);
-  color: var(--brand-fg);
-  font-weight: 600;
-  font-size: 14px;
-  text-decoration: none;
-  border-radius: 6px;
-  padding: 9px 16px;
-}
-.button:hover { background: var(--brand-hover); }
-.button:focus-visible { outline: 2px solid var(--brand-text); outline-offset: 2px; }
-.url { font-family: var(--font-mono); font-size: 13px; color: var(--brand-text); }
-footer {
-  margin-top: 48px;
-  padding-top: 20px;
-  border-top: 1px solid var(--divider);
-  color: var(--muted-fg);
-  font-size: 13px;
-}
-footer p { margin: 0 0 6px; max-width: none; }
-.footer-brand { display: flex; align-items: center; gap: 8px; }
-.mark { display: block; width: 16px; height: 16px; flex: none; }
-@media (min-width: 48rem) {
-  h1 { font-size: 36px; }
-}
-@media (max-width: 40rem) {
-  .recurring thead {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    overflow: hidden;
-    clip-path: inset(50%);
-    white-space: nowrap;
-  }
-  .recurring, .recurring tbody, .recurring td { display: block; }
-  .recurring tr {
-    display: grid;
-    grid-template-columns: auto 1fr;
-    align-items: baseline;
-    gap: 6px 10px;
-    padding: 12px 14px;
-    border-bottom: 1px solid var(--divider);
-  }
-  .recurring tbody tr:last-child { border-bottom: 0; }
-  .recurring td { padding: 0; border: 0; }
-  .recurring td.shape { grid-column: 1 / -1; width: auto; }
-  .toolbar { margin-left: 0; }
-  .recurring td.num { text-align: left; }
-  .legend { grid-template-columns: 1fr; gap: 2px; }
-  .legend dd { margin-bottom: 8px; }
-${only(VERIFIED_NARROW_RULES)}}
-@media print {
-  html:root:not([data-theme="print"]) {
-  color-scheme: light;
-${vars(LIGHT_TOKENS, verified)}
-  }
-  body { background: #ffffff; }
-  .sections, .toolbar, .js-only, .actions, .controls, .copy, .share { display: none; }
-  .button, .button.secondary { display: inline; background: none; color: var(--brand-text); border: 0; padding: 0; }
-  .stat, .tally, .product-note, tr, .card, .col, .risk, .finding-head, .shapes li { break-inside: avoid; }
-${only(VERIFIED_PRINT_BREAKS)}  h1, h2, h3, .section-head, summary, h2 + .note, h2 + .lead${only(", .verified-facts dt")} { break-after: avoid; }
-  .chip::before { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
-${only(VERIFIED_PRINT_COLORS)}  .owasp-ids a[href^="http"]::after, .risk-name a[href^="http"]::after { content: none; }
-  .how a[href^="http"]::after, .card a[href^="http"]::after { content: none; }
-  a[href^="http"]::after { content: " (" attr(href) ")"; font-size: 11px; color: var(--muted-fg); overflow-wrap: anywhere; }
-}
-`;
-}
+var STROKE = `viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"`;
+var ICONS = {
+  pdf: `<svg ${STROKE}><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M12 18v-6M9 15l3 3 3-3"/></svg>`,
+  json: `<svg ${STROKE}><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 12a1 1 0 0 0-1 1v1a1 1 0 0 1-1 1 1 1 0 0 1 1 1v1a1 1 0 0 0 1 1"/><path d="M14 18a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1 1 1 0 0 1-1-1v-1a1 1 0 0 0-1-1"/></svg>`,
+  moon: `<svg class="i-moon" ${STROKE}><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>`,
+  sun: `<svg class="i-sun" ${STROKE}><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>`,
+  info: `<svg ${STROKE}><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>`,
+  check: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M20 6 9 17l-5-5"/></svg>`,
+  x: `<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24h-6.66l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>`,
+  github: `<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.573C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg>`,
+  linkedin: `<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 01-2.063-2.065 2.064 2.064 0 112.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.225 0z"/></svg>`,
+  npm: `<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M1.763 0C.786 0 0 .786 0 1.763v20.474C0 23.214.786 24 1.763 24h20.474c.977 0 1.763-.786 1.763-1.763V1.763C24 .786 23.214 0 22.237 0zM5.13 5.323l13.837.019-.009 13.836h-3.464l.01-10.382h-3.456L12.04 19.17H5.113z"/></svg>`
+};
 var MARK_PATHS = `<path d="m49 68.207v-8.207c0-6.6289 5.3711-12 12-12s12 5.3711 12 12v9.2422l13 14.734v-31.977c0-19.883-16.117-36-36-36s-36 16.117-36 36v32.785z"/>
 <path d="m18.672 87h64.66l-13.234-15h-19.758z"/>`;
 var WORDMARK_PATH = `M5.28 0.22L5.28 0.22Q3.96 0.22 2.95-0.25Q1.94-0.72 1.37-1.56Q0.79-2.40 0.79-3.50L0.79-3.50Q0.79-5.23 2.11-6.23Q3.43-7.22 5.74-7.22L5.74-7.22Q7.54-7.22 9.07-6.53L9.07-6.53L9.07-7.82Q9.07-9.12 8.32-9.78Q7.56-10.44 6.10-10.44L6.10-10.44Q5.26-10.44 4.34-10.19Q3.43-9.94 2.30-9.38L2.30-9.38L1.42-11.21Q2.81-11.86 4.01-12.16Q5.21-12.46 6.43-12.46L6.43-12.46Q8.81-12.46 10.12-11.33Q11.42-10.20 11.42-8.11L11.42-8.11L11.42 0L9.07 0L9.07-1.06Q8.26-0.41 7.32-0.10Q6.38 0.22 5.28 0.22Z
@@ -7804,8 +7823,6 @@ var THEME_KEY = ${JSON.stringify(THEME_KEY)};
 var POST_LIMIT = ${POST_LIMIT};
 var URL_WEIGHT = 23;
 var HASHTAG = "#agenttrail";
-var FILTERS = ["all", "block", "require_approval", "warn"];
-var SORTS = ["serious", "category", "count", "name"];
 
 function charWeight(code) {
   if (code <= 0x10ff) return 1;
@@ -7855,54 +7872,19 @@ function nextTheme(current, systemDark) {
   return effective === "dark" ? "light" : "dark";
 }
 
-function isFilter(value) {
-  return FILTERS.indexOf(value) !== -1;
-}
-
-function rowVisible(filter, action) {
-  return filter === "all" || filter === action;
-}
-
-function isRisk(value) {
-  if (typeof value !== "string" || value.length !== 5) return false;
-  var list = value.slice(0, 3);
-  var n = parseInt(value.slice(3), 10);
-  if (list !== "ASI" && list !== "LLM") return false;
-  return n >= 1 && n <= 10 && value.slice(3) === (n < 10 ? "0" + n : "10");
-}
-
-function riskVisible(risk, ids) {
-  if (risk === "") return true;
-  if (!isRisk(risk) || typeof ids !== "string") return false;
-  return (" " + ids + " ").indexOf(" " + risk + " ") !== -1;
-}
-
-function isSort(value) {
-  return SORTS.indexOf(value) !== -1;
-}
-
-function rankOf(value) {
-  var n = parseInt(value, 10);
-  return isFinite(n) && n >= 0 ? n : 0;
-}
-
-function statusText(shown, total) {
-  return "Showing " + shown + " of " + total + (total === 1 ? " guardrail" : " guardrails");
-}
-
-function sortLabel(key) {
-  if (key === "serious") return "most serious";
-  if (key === "count") return "most matches";
-  return key;
-}
-
 function copiedText(name) {
   var label = String(name || "");
   return label.indexOf("Copy ") === 0 ? "Copied " + label.slice(5) : "Copied";
 }
 
-function sortText(key) {
-  return "Sorted by " + sortLabel(key) + ". Keyboard and screen-reader order stays most serious first.";
+function matchesQuery(text, query) {
+  var q = String(query || "").trim().toLowerCase();
+  if (q === "") return true;
+  return String(text || "").toLowerCase().indexOf(q) !== -1;
+}
+
+function searchText(shown, total) {
+  return "Showing " + shown + " of " + total + (total === 1 ? " guardrail" : " guardrails") + " that match the search";
 }
 
 function exportHref(raw) {
@@ -7919,6 +7901,7 @@ function each(selector, fn) {
 }
 
 var page = document.documentElement;
+page.classList.add("js");
 var store = null;
 try {
   store = window.localStorage;
@@ -7942,112 +7925,42 @@ function storeTheme(value) {
   }
 }
 
-function themeLabel(button) {
-  var current = readTheme(page.getAttribute("data-theme"));
-  var dark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
-  button.textContent =
-    nextTheme(current, dark) === "dark" ? "Switch to dark theme" : "Switch to light theme";
+function systemDark() {
+  return window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+}
+
+function showTheme(button) {
+  var current = readTheme(page.getAttribute("data-theme")) || (systemDark() ? "dark" : "light");
+  button.setAttribute("aria-pressed", current === "dark" ? "true" : "false");
 }
 
 var saved = storedTheme();
 if (saved) page.setAttribute("data-theme", saved);
 
-each(".js-only", function (el) {
-  el.hidden = false;
-});
-
-var themeButton = byId("theme-toggle");
+var themeButton = byId("theme");
 if (themeButton) {
-  themeLabel(themeButton);
+  showTheme(themeButton);
   themeButton.addEventListener("click", function () {
-    var dark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
-    var next = nextTheme(page.getAttribute("data-theme"), dark);
+    var next = nextTheme(page.getAttribute("data-theme"), systemDark());
     page.setAttribute("data-theme", next);
     storeTheme(next);
-    themeLabel(themeButton);
-  });
-}
-
-var status = byId("findings-status");
-var riskSelect = byId("risk-filter");
-var countLine = byId("findings-count");
-var countText = countLine ? countLine.textContent : "";
-var emptyRow = byId("findings-empty");
-var actionFilter = "all";
-
-function pressAction(filter) {
-  actionFilter = filter;
-  each("[data-filter]", function (other) {
-    other.setAttribute("aria-pressed", other.getAttribute("data-filter") === filter ? "true" : "false");
-  });
-}
-
-function applyFilters() {
-  var risk = riskSelect && isRisk(riskSelect.value) ? riskSelect.value : "";
-  var shown = 0;
-  var total = 0;
-  each(".finding", function (row) {
-    var visible =
-      rowVisible(actionFilter, row.getAttribute("data-action")) &&
-      riskVisible(risk, row.getAttribute("data-owasp"));
-    row.hidden = !visible;
-    total++;
-    if (visible) shown++;
-  });
-  if (status) status.textContent = statusText(shown, total);
-  if (countLine) countLine.textContent = shown === total ? countText : statusText(shown, total);
-  if (emptyRow) emptyRow.hidden = shown !== 0;
-}
-
-each("[data-filter]", function (button) {
-  button.addEventListener("click", function () {
-    var filter = button.getAttribute("data-filter");
-    if (!isFilter(filter)) return;
-    pressAction(filter);
-    applyFilters();
-  });
-});
-
-if (riskSelect) riskSelect.addEventListener("change", applyFilters);
-
-each("[data-risk]", function (button) {
-  button.addEventListener("click", function () {
-    var risk = button.getAttribute("data-risk");
-    if (!riskSelect || !isRisk(risk)) return;
-    pressAction("all");
-    riskSelect.value = risk;
-    applyFilters();
-    riskSelect.focus();
-  });
-});
-
-var clearFilters = byId("clear-filters");
-if (clearFilters) {
-  clearFilters.addEventListener("click", function () {
-    pressAction("all");
-    if (riskSelect) riskSelect.value = "";
-    applyFilters();
-    each("[data-filter]", function (other) {
-      if (other.getAttribute("data-filter") === "all") other.focus();
-    });
-  });
-}
-
-var sortSelect = byId("sort");
-if (sortSelect) {
-  sortSelect.addEventListener("change", function () {
-    var key = sortSelect.value;
-    if (!isSort(key)) return;
-    each(".finding", function (row) {
-      row.style.order = String(rankOf(row.getAttribute("data-rank-" + key)));
-    });
-    if (status) status.textContent = sortText(key);
+    showTheme(themeButton);
   });
 }
 
 var pageStatus = byId("page-status");
+var toast = byId("toast");
+var toastTimer = 0;
 
 function say(text) {
+  if (toast) {
+    toast.textContent = text;
+    toast.classList.add("show");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () {
+      toast.classList.toggle("show", false);
+    }, 1800);
+  }
   if (!pageStatus) return;
   // Cleared first and written a moment later, so the same message is announced again.
   pageStatus.textContent = "";
@@ -8058,8 +7971,10 @@ function say(text) {
 
 function relabel(button, text, ms) {
   button.textContent = text;
+  button.classList.add("copied");
   setTimeout(function () {
     button.textContent = button.getAttribute("data-label") || "Copy";
+    button.classList.toggle("copied", false);
   }, ms);
 }
 
@@ -8113,7 +8028,7 @@ each("[data-copy]", function (button) {
   });
 });
 
-var printButton = byId("print-button");
+var printButton = byId("print");
 if (printButton) {
   printButton.addEventListener("click", function () {
     window.print();
@@ -8136,7 +8051,7 @@ window.addEventListener("afterprint", function () {
   openedForPrint = [];
 });
 
-var exportButton = byId("export-button");
+var exportButton = byId("export");
 var data = byId("report-data");
 if (exportButton && data) {
   exportButton.addEventListener("click", function () {
@@ -8148,6 +8063,70 @@ if (exportButton && data) {
     document.body.removeChild(a);
   });
 }
+
+var findings = byId("findings");
+var search = byId("search");
+var searchCount = byId("rc-search");
+var emptyList = byId("flist-empty");
+
+// The sorts, filters and limits are radio groups the stylesheet reads; a search hides what it
+// does not match, and each group header with no row left.
+if (findings && search) {
+  search.addEventListener("input", function () {
+    var query = search.value;
+    var searching = query.trim() !== "";
+    var shown = 0;
+    var total = 0;
+    var cats = [];
+    each("#flist .frow", function (row) {
+      var match = matchesQuery(row.textContent, query);
+      row.classList.toggle("nomatch", !match);
+      total++;
+      if (match) {
+        shown++;
+        cats.push(row.getAttribute("data-cat"));
+      }
+    });
+    each("#flist .fgroup", function (group) {
+      group.classList.toggle("nomatch", searching && cats.indexOf(group.getAttribute("data-cat")) === -1);
+    });
+    findings.classList.toggle("searching", searching);
+    if (searchCount) searchCount.textContent = searching ? searchText(shown, total) : "";
+    if (emptyList) emptyList.classList.toggle("show", searching && shown === 0);
+  });
+}
+
+var expandAll = byId("expand-all");
+if (expandAll) {
+  expandAll.addEventListener("click", function () {
+    var open = expandAll.getAttribute("aria-expanded") !== "true";
+    each("#flist .frow", function (row) {
+      row.open = open;
+    });
+    expandAll.setAttribute("aria-expanded", open ? "true" : "false");
+    expandAll.textContent = open ? "Collapse all" : "Expand all";
+  });
+}
+
+// A command cut off at the edge of its box opens in full when chosen.
+each(".cmd", function (cmd) {
+  if (cmd.scrollWidth <= cmd.clientWidth) return;
+  cmd.setAttribute("role", "button");
+  cmd.setAttribute("tabindex", "0");
+  cmd.setAttribute("aria-expanded", "false");
+  function toggle() {
+    var open = !cmd.classList.contains("expanded");
+    cmd.classList.toggle("expanded", open);
+    cmd.setAttribute("aria-expanded", open ? "true" : "false");
+  }
+  cmd.addEventListener("click", toggle);
+  cmd.addEventListener("keydown", function (event) {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      toggle();
+    }
+  });
+});
 
 var shareInput = byId("share-text");
 var shareLink = byId("share-link");
@@ -8600,8 +8579,8 @@ function redactDatabaseLogins(text2) {
     const stop = text2.slice(start).search(COMMAND_END);
     const end = stop < 0 ? text2.length : start + stop;
     const login = (_m, flag, join12, quote) => `${flag}${join12}${quote}${USER_PLACEHOLDER}${quote}`;
-    const segment = text2.slice(start, end).replace(DB_LOGIN_LONG_FLAG, login).replace(DB_LOGIN_SHORT_FLAG, login);
-    out += text2.slice(cursor, start) + segment;
+    const segment2 = text2.slice(start, end).replace(DB_LOGIN_LONG_FLAG, login).replace(DB_LOGIN_SHORT_FLAG, login);
+    out += text2.slice(cursor, start) + segment2;
     cursor = end;
   }
   return cursor === 0 ? text2 : out + text2.slice(cursor);
@@ -9140,17 +9119,17 @@ var NAME_WORDS = /* @__PURE__ */ new Set([
 ]);
 function looksLikeSegmentedName(candidate) {
   const segments = candidate.split(/[-_]/);
-  if (segments.length < 5 || segments.some((segment) => segment.length > NAME_SEGMENT_MAX)) {
+  if (segments.length < 5 || segments.some((segment2) => segment2.length > NAME_SEGMENT_MAX)) {
     return false;
   }
-  return segments.filter((segment) => NAME_WORDS.has(segment.toLowerCase())).length >= 3;
+  return segments.filter((segment2) => NAME_WORDS.has(segment2.toLowerCase())).length >= 3;
 }
 function looksRandom(candidate) {
   if (UUID_SHAPE.test(candidate)) return false;
   if (/^sha(?:1|224|256|384|512)-/i.test(candidate)) return false;
   if (looksLikeWords(candidate) || looksLikeSegmentedName(candidate)) return false;
   if (/\d{8,}/.test(candidate)) return false;
-  if (candidate.split(/[-_]/).some((segment) => segment.length >= 32 && /^[0-9a-fA-F]+$/.test(segment)))
+  if (candidate.split(/[-_]/).some((segment2) => segment2.length >= 32 && /^[0-9a-fA-F]+$/.test(segment2)))
     return false;
   if (/^[0-9a-fA-F]+$/.test(candidate)) return false;
   if (!/[A-Za-z]/.test(candidate) || !/[0-9]/.test(candidate)) return false;
@@ -11425,7 +11404,7 @@ function parseShell(text2) {
   let processSubstitution = false;
   let targetRuns = false;
   let open = false;
-  let segment = emptySegment();
+  let segment2 = emptySegment();
   let next = "word";
   let wordStart = -1;
   let value = "";
@@ -11434,18 +11413,18 @@ function parseShell(text2) {
   const endWord = (end) => {
     if (wordStart < 0) return;
     const word = { start: wordStart, end, value, runs };
-    if (next === "word") segment.words.push(word);
+    if (next === "word") segment2.words.push(word);
     else if (next === "heredoc" || next === "heredoc-tabs") {
       pending.push({
         delimiter: value,
         stripTabs: next === "heredoc-tabs",
         quoted: quotedWord,
-        segment
+        segment: segment2
       });
     } else if (next === "herestring") {
-      segment.inputs.push({ start: word.start, end: word.end, expands: runs });
+      segment2.inputs.push({ start: word.start, end: word.end, expands: runs });
     } else if (next === "target") {
-      if (targetWrites) segment.written.push(value);
+      if (targetWrites) segment2.written.push(value);
       if (runs) targetRuns = true;
     }
     targetWrites = false;
@@ -11457,8 +11436,8 @@ function parseShell(text2) {
   };
   const endSegment = (end) => {
     endWord(end);
-    if (segment.words.length > 0 || segment.inputs.length > 0) segments.push(segment);
-    segment = emptySegment();
+    if (segment2.words.length > 0 || segment2.inputs.length > 0) segments.push(segment2);
+    segment2 = emptySegment();
   };
   const pipeFrom = (from) => {
     for (let k = Math.max(0, from); k < segments.length; k++)
@@ -11579,7 +11558,7 @@ function parseShell(text2) {
     if ((ch === "<" || ch === ">") && text2[i + 1] === "(") {
       endWord(i);
       next = "word";
-      if (ch === ">") segment.pipedOut = true;
+      if (ch === ">") segment2.pipedOut = true;
       substitution = ch === "<" ? "input" : "output";
       processSubstitution = true;
       i += 1;
@@ -11605,8 +11584,8 @@ function parseShell(text2) {
         while (i < text2.length && /[>|&<]/.test(text2[i])) i += 1;
         const operator = text2.slice(start, i);
         const toDescriptor = operator.endsWith("&") && /^\s*(?:\d|-)/.test(text2.slice(i));
-        if (operator.startsWith(">") && !toDescriptor) segment.writesFile = true;
-        if (operator.startsWith("<") && !toDescriptor) segment.readsFile = true;
+        if (operator.startsWith(">") && !toDescriptor) segment2.writesFile = true;
+        if (operator.startsWith("<") && !toDescriptor) segment2.readsFile = true;
         targetWrites = operator.startsWith(">") && !toDescriptor;
         next = "target";
       }
@@ -11616,7 +11595,7 @@ function parseShell(text2) {
       endWord(i);
       i += 2;
       if (text2[i] === ">") i += 1;
-      segment.writesFile = true;
+      segment2.writesFile = true;
       next = "target";
       targetWrites = true;
       continue;
@@ -11760,12 +11739,12 @@ var PURE_CONSUMERS = /* @__PURE__ */ new Set([
   "echo",
   "printf"
 ]);
-function commandOf(segment) {
-  const at2 = programIndex(segment.words);
-  const program = segment.words[at2];
+function commandOf(segment2) {
+  const at2 = programIndex(segment2.words);
+  const program = segment2.words[at2];
   if (program === void 0) return void 0;
   const name = programName2(program);
-  const rest = segment.words.slice(at2 + 1);
+  const rest = segment2.words.slice(at2 + 1);
   if (name !== "git") return { name, sub: "", globals: [], args: rest };
   const k = gitSubcommandIndex(rest.map((word) => word.value));
   return {
@@ -11790,11 +11769,11 @@ function plainPath(path) {
 }
 function hooksPathsNamed(segments) {
   const out = [];
-  for (const segment of segments) {
-    segment.words.forEach((word, k) => {
+  for (const segment2 of segments) {
+    segment2.words.forEach((word, k) => {
       const named = /^core\.hookspath(?:=(.*))?$/i.exec(word.value);
       if (named === null) return;
-      const value = named[1] ?? segment.words[k + 1]?.value;
+      const value = named[1] ?? segment2.words[k + 1]?.value;
       if (value !== void 0 && value !== "") out.push(plainPath(value));
     });
   }
@@ -11814,10 +11793,10 @@ function runsAProgramOption(command) {
   }
   return false;
 }
-function isInert(segment, gitRunnableWritten) {
-  const command = commandOf(segment);
+function isInert(segment2, gitRunnableWritten) {
+  const command = commandOf(segment2);
   if (command === void 0) return true;
-  if (segment.words[programIndex(segment.words)]?.value.includes("/")) return false;
+  if (segment2.words[programIndex(segment2.words)]?.value.includes("/")) return false;
   if (command.name === "git") {
     if (setsGitConfig(command) || runsGitProgram(command)) return false;
     if (gitRunnableWritten) return false;
@@ -11826,16 +11805,16 @@ function isInert(segment, gitRunnableWritten) {
   if (runsAProgramOption(command)) return false;
   return INERT_PROGRAMS.has(command.name);
 }
-function writtenBy(segment) {
-  const paths = [...segment.written];
-  const command = commandOf(segment);
+function writtenBy(segment2) {
+  const paths = [...segment2.written];
+  const command = commandOf(segment2);
   if (command?.name === "tee") {
     for (const w of command.args) if (!w.value.startsWith("-")) paths.push(w.value);
   }
   return paths;
 }
-function writesAFile(segment) {
-  return segment.writesFile || writtenBy(segment).length > 0;
+function writesAFile(segment2) {
+  return segment2.writesFile || writtenBy(segment2).length > 0;
 }
 function isHeredocValue(raw) {
   if (!raw.startsWith("$(") || skipSubstitution2(raw, 1) !== raw.length) return false;
@@ -11926,9 +11905,9 @@ function searchPatterns(words2) {
   }
   return [];
 }
-function segmentRegions(segment, keep) {
+function segmentRegions(segment2, keep) {
   if (keep) return [];
-  const words2 = segment.words;
+  const words2 = segment2.words;
   const at2 = programIndex(words2);
   const program = words2[at2];
   if (program === void 0) return [];
@@ -11967,7 +11946,7 @@ function segmentRegions(segment, keep) {
     blank(optionValues(rest, TEST_FILTER_OPTIONS), "test-string");
   }
   if (INPUT_SINKS.has(name)) {
-    for (const input of segment.inputs) {
+    for (const input of segment2.inputs) {
       if (!input.expands) regions.push({ start: input.start, end: input.end, kind: "heredoc" });
     }
   }
@@ -12074,12 +12053,12 @@ function runsASubstitution(word) {
   const eq = word.value.indexOf("=");
   return eq < 0 || !isDataValue(word, word.value.slice(eq + 1));
 }
-function segmentHidingForms(segment, command, gitConfigured, gitRunnableWritten, fedByPipe) {
+function segmentHidingForms(segment2, command, gitConfigured, gitRunnableWritten, fedByPipe) {
   const forms = [];
-  if (segment.words.some(runsASubstitution) || segment.inputs.some((input) => input.expands)) {
+  if (segment2.words.some(runsASubstitution) || segment2.inputs.some((input) => input.expands)) {
     forms.push("command-substitution");
   }
-  if (programStart(segment.words.map((word) => word.value)).shellString) forms.push("shell-string");
+  if (programStart(segment2.words.map((word) => word.value)).shellString) forms.push("shell-string");
   if (command === void 0) return forms;
   const { name, args: args2 } = command;
   if (SHELLS2.has(name) && runsAString(args2)) forms.push("shell-string");
@@ -12088,7 +12067,7 @@ function segmentHidingForms(segment, command, gitConfigured, gitRunnableWritten,
   }
   if (runsInNixShell(name, args2)) forms.push("shell-string");
   if (runsInlineCode(name, args2) || scriptRunsCommands(name, args2)) forms.push("inline-code");
-  const fed = fedByPipe || segment.inputs.length > 0;
+  const fed = fedByPipe || segment2.inputs.length > 0;
   if (fed && !(SHELLS2.has(name) && runsAString(args2)) && runsPipedScript(name, args2)) {
     forms.push("piped-script");
   }
@@ -12165,12 +12144,12 @@ function readCommandOnce(command, trustWrites) {
   if (parsed.targetRuns) forms.add("command-substitution");
   if (parsed.open) forms.add("unterminated-quote");
   let gitConfigured = false;
-  segments.forEach((segment, index) => {
-    const keep = segment.pipedOut && !pipesOnlyToConsumers(index) || writesAFile(segment) && laterMayRun(index);
-    regions.push(...segmentRegions(segment, keep));
+  segments.forEach((segment2, index) => {
+    const keep = segment2.pipedOut && !pipesOnlyToConsumers(index) || writesAFile(segment2) && laterMayRun(index);
+    regions.push(...segmentRegions(segment2, keep));
     const command2 = commands[index];
     for (const form of segmentHidingForms(
-      segment,
+      segment2,
       command2,
       gitConfigured,
       gitRunnableBefore[index],
@@ -12212,15 +12191,15 @@ function simpleViews(text2, bodies) {
 function simpleViewsOnce(text2, bodies) {
   const { segments } = parseShell(text2);
   const out = [];
-  segments.forEach((segment, k) => {
+  segments.forEach((segment2, k) => {
     out.push({
-      words: segment.words.map((word) => word.value),
-      writes: segment.written,
-      readsFile: segment.readsFile,
+      words: segment2.words.map((word) => word.value),
+      writes: segment2.written,
+      readsFile: segment2.readsFile,
       pipedIn: segments[k - 1]?.pipedOut === true
     });
     if (!bodies) return;
-    for (const input of segment.inputs) {
+    for (const input of segment2.inputs) {
       out.push(...simpleViews(text2.slice(input.start, input.end), false));
     }
   });
@@ -15259,13 +15238,6 @@ var PROVENANCE_PHRASES = {
   "in-agent-reply": "in an agent reply",
   "added-by-app": "in text the app added to a prompt"
 };
-function evidenceRow(item) {
-  return {
-    kind: KIND_LABELS[item.kind] ?? KIND_LABELS.other,
-    how: item.via.map((via) => PROVENANCE_PHRASES[via]).filter((phrase) => phrase !== void 0).join(", "),
-    files: `in ${countOf(item.files, "transcript file")}`
-  };
-}
 var MORE_EVIDENCE = {
   id: "evidence.more",
   render: ({ more }) => more > 0 ? `And ${countOf(more, "more likely-real credential", "more likely-real credentials")}.` : void 0
@@ -15341,20 +15313,6 @@ function toneLabel(card) {
 var CODEX_CAVEAT = {
   id: "card.codex-caveat",
   render: ({ codexCaveat: codexCaveat2 }) => codexCaveat2 ? "Codex counts here include every call Codex recorded an output for, which may include calls a hook blocked." : void 0
-};
-var TONE_TALLY = {
-  id: "cards.tally",
-  render: (cards) => {
-    const parts = [];
-    const n2 = (tone) => cards.filter((c) => c.tone === tone).length;
-    if (n2("act") > 0) parts.push(`${formatCount(n2("act"))} to act on`);
-    if (n2("review") > 0) parts.push(`${formatCount(n2("review"))} to review`);
-    if (n2("clean") > 0) parts.push(`${formatCount(n2("clean"))} clean`);
-    if (n2("could-not-check") > 0)
-      parts.push(`${formatCount(n2("could-not-check"))} could not check`);
-    if (n2("not-checked") > 0) parts.push(`${formatCount(n2("not-checked"))} not checked`);
-    return parts.length === 0 ? void 0 : parts.join(" \xB7 ");
-  }
 };
 var FIXES_FILE_NOTE = {
   id: "card.fixes-file",
@@ -18669,9 +18627,31 @@ var PRODUCT_NOTE = {
   eyebrow: "AgentTrail OS",
   heading: "AgentTrail Guard stops the mistake. AgentTrail OS remembers it and turns it into a rule.",
   body: "This report is one look at the transcripts on one machine. AgentTrail OS watches every agent session, turns each repeated mistake into a guardrail, and proves the fix on your own history. It is a separate product, and nothing in this report was sent to it.",
+  steps: [
+    {
+      title: "Connect your projects",
+      text: "Every agent session on the team is recorded in one place, with the guardrails that matched."
+    },
+    {
+      title: "Backtest a guardrail",
+      text: "See which past commands it would have caught before it applies to anyone's work."
+    },
+    {
+      title: "Approve before it runs",
+      text: "A matching command waits for a teammate to allow it, and the decision is kept."
+    }
+  ],
+  start: { label: "Start free with AgentTrail OS", path: "/signup", content: "os-signup" },
   primary: { label: "Book a team demo", path: "/agenttrail-os", content: "os-demo" },
   secondary: { label: "Guard vs OS", path: "/guard-vs-os", content: "os-compare" }
 };
+var SOCIAL_LINKS = {
+  github: "https://github.com/agenttrailhq",
+  x: "https://x.com/agenttrailhq",
+  linkedin: "https://www.linkedin.com/company/agenttrail",
+  npm: "https://www.npmjs.com/org/agenttrail"
+};
+var SECURITY_EMAIL = "security@agenttrail.sh";
 var SEVERITY_ORDER = ["critical", "high", "medium", "low", "info"];
 function knownSeverity(severity) {
   return SEVERITY_ORDER.includes(severity) ? severity : "unknown";
@@ -18705,7 +18685,6 @@ function bySeverityThenCount(findings) {
 }
 var MAX_ROWS = 50;
 var MAX_EXAMPLES = 3;
-var FIX_FIRST_MAX = 6;
 var TOP_PER_ACTION = 3;
 var DESCRIPTION_LINE = 160;
 var TUNING_MAX_GUARDRAILS = 3;
@@ -18758,7 +18737,6 @@ var PACK_LABELS = {
   exfiltration: "Data leaving the machine"
 };
 var YOUR_GUARDRAILS = "Your guardrails";
-var OWN_CARD_HEADING = "A guardrail you added";
 function packLabel(category) {
   return PACK_LABELS[category] ?? category;
 }
@@ -19077,6 +19055,14 @@ function severityClass(severity) {
       return "sev-unknown";
   }
 }
+var SEVERITY_LABELS = {
+  critical: "Critical",
+  high: "High",
+  medium: "Medium",
+  low: "Low",
+  info: "Info",
+  unknown: "Unknown"
+};
 function actionLabel(action) {
   switch (action) {
     case "block":
@@ -19087,35 +19073,44 @@ function actionLabel(action) {
       return "would warn";
   }
 }
-function actionClass(action) {
-  switch (action) {
-    case "block":
-      return "act-block";
-    case "require_approval":
-      return "act-ask";
-    default:
-      return "act-warn";
-  }
+function actionSlug(action) {
+  if (action === "block") return "block";
+  if (action === "require_approval") return "ask";
+  return "warn";
 }
 function severityBadge(severity) {
-  return `<span class="badge ${severityClass(severity)}">${escapeHtml(severity)}</span>`;
+  const label = SEVERITY_LABELS[severity] ?? severity;
+  return `<span class="badge ${severityClass(severity)}"><span class="sr-only">Severity: </span>${escapeHtml(label)}</span>`;
 }
 function actionChip(action) {
-  return `<span class="chip ${actionClass(action)}">${escapeHtml(actionLabel(action))}</span>`;
+  const label = actionLabel(action);
+  return `<span class="act act-${actionSlug(action)}">${escapeHtml(label.charAt(0).toUpperCase() + label.slice(1))}</span>`;
 }
 function inlineTitle(title) {
   return escapeHtml(title).replace(/`([^`\n]+)`/g, "<code>$1</code>");
 }
-function outLink(url, text2, className) {
+function outLink(url, text2, className, attrs = "") {
   const cls = className === void 0 ? "" : ` class="${className}"`;
-  return `<a${cls} href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${text2}</a>`;
+  return `<a${cls} href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer"${attrs}>${text2}</a>`;
 }
-function copyable(id, command, name) {
-  return `<div class="command"><code id="${escapeHtml(id)}">${escapeHtml(command)}</code><button type="button" class="copy js-only" data-copy="${escapeHtml(id)}" data-label="Copy" aria-label="${escapeHtml(name)}" hidden>Copy</button></div>`;
+function learnLink(url, text2) {
+  return outLink(
+    url,
+    `${escapeHtml(text2)} <span aria-hidden="true">&#8599;</span><span class="sr-only"> (opens in a new tab)</span>`
+  );
+}
+var PLACEHOLDER_HTML = /&lt;(path|name|host|user|message|comment|value|other|unnamed)&gt;/g;
+function commandHtml(command) {
+  return escapeHtml(command).split(" ").map(
+    (word) => word === "" ? "" : `<span class="tok">${word.replace(PLACEHOLDER_HTML, '<span class="ph">&lt;$1&gt;</span>')}</span>`
+  ).join(" ");
+}
+function copyable(id, command, name, className = "") {
+  return `<div class="copy${className}"><span class="prompt" aria-hidden="true"></span><code id="${escapeHtml(id)}">${escapeHtml(command)}</code><button type="button" class="js-only" data-copy="${escapeHtml(id)}" data-label="Copy" aria-label="${escapeHtml(name)}">Copy</button></div>`;
 }
 function stat(value, label, note) {
   const noteHtml2 = note === void 0 ? "" : `<div class="stat-note">${escapeHtml(note)}</div>`;
-  return `<div class="stat"><div class="stat-value">${escapeHtml(value)}</div><div class="stat-label">${escapeHtml(label)}</div>${noteHtml2}</div>`;
+  return `<div class="card stat"><div class="stat-value">${escapeHtml(value)}</div><div class="stat-label">${escapeHtml(label)}</div>${noteHtml2}</div>`;
 }
 function firstSentence(lines2) {
   const text2 = lines2.join(" ");
@@ -19125,6 +19120,16 @@ function firstSentence(lines2) {
 function libraryText(text2, className = "library-text") {
   const html = wrapLines(inlineTitle(text2), DESCRIPTION_LINE).join("\n");
   return `<p class="${className}">${html}</p>`;
+}
+function sectionHead(title, lead, headingId) {
+  const id = headingId === void 0 ? "" : ` id="${headingId}"`;
+  return `<div class="section-head"><div><h2${id}>${title}</h2>${lead === "" ? "" : `<p>${lead}</p>`}</div></div>`;
+}
+function sentenceSpan(line2) {
+  return `<span data-template="${escapeHtml(line2.template)}">${escapeHtml(line2.text)}</span>`;
+}
+function sentencesHtml(lines2) {
+  return lines2.map(sentenceSpan).join(" ");
 }
 var MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 function readableTime(at2) {
@@ -19145,31 +19150,53 @@ function headline(result) {
   if (warn > 0) return `AgentTrail Guard would have warned you about ${actions(warn)}`;
   return "Nothing in these sessions matched a guardrail";
 }
+var CLAIM_VERB = /\s(?:are|is|were|was|can|could|ran|reached|lowered|need|needs|would|still)\b/;
+function headlineParts(text2) {
+  const lead = /^\d[\d,]*/.exec(text2);
+  if (lead !== null) {
+    const verb = CLAIM_VERB.exec(text2);
+    if (verb !== null && verb.index > lead[0].length) {
+      return { before: "", emphasis: text2.slice(0, verb.index), after: text2.slice(verb.index) };
+    }
+  }
+  const counted5 = /\d[\d,]*\s+[^\s,.]+/.exec(text2);
+  if (counted5 === null) return { before: text2, emphasis: "", after: "" };
+  return {
+    before: text2.slice(0, counted5.index),
+    emphasis: counted5[0],
+    after: text2.slice(counted5.index + counted5[0].length)
+  };
+}
+function headlineHtml(text2, template) {
+  const parts = headlineParts(text2);
+  const tpl = template === void 0 ? "" : ` data-template="${escapeHtml(template)}"`;
+  const em = parts.emphasis === "" ? "" : `<em>${escapeHtml(parts.emphasis)}</em>`;
+  return `<h1 id="headline"${tpl}>${escapeHtml(parts.before)}${em}${escapeHtml(parts.after)}</h1>`;
+}
 function topBar(payload) {
   const scanned = payload.toolCalls > 0;
   const links = [
-    ["overview", "Overview"],
     ...scanned && payload.cards !== void 0 ? [["what-happened", "What happened"]] : [],
-    ...scanned ? [["fix-first", "Fix first"]] : [],
+    ...scanned && payload.findings.length > 0 ? [["outcomes", "Overview"]] : [],
     ...payload.owasp.length > 0 ? [["owasp", "OWASP"]] : [],
     ...scanned ? [["findings", "All findings"]] : [],
-    ["next-steps", "Next steps"],
-    ...scanned ? [["share", "Share"]] : [],
+    ["next", "Next steps"],
     ["privacy", "Privacy"]
   ];
-  const nav = links.map(([id, label]) => `<li><a href="#${id}">${label}</a></li>`).join("\n");
-  const controls = `<div class="toolbar">
-<button type="button" id="print-button" class="tool js-only" hidden>PDF</button>
-<button type="button" id="export-button" class="tool js-only" hidden>JSON</button>
-<button type="button" id="theme-toggle" class="tool js-only" hidden>Theme</button>
-</div>`;
-  return `<header class="masthead">
-<div class="brand" role="img" aria-label="AgentTrail">${LOGO_LOCKUP_SVG}</div>
-<span class="product-tag">Guard</span>
-<nav class="sections" aria-label="Report sections"><ul>
+  const nav = links.map(([id, label]) => `<a href="#${id}">${label}</a>`).join("\n");
+  return `<a class="skip" href="#main">Skip to the report</a>
+<header class="topbar">
+<div class="topbar-inner">
+<a class="home-link" href="#main" aria-label="AgentTrail: back to the top of the report">${LOGO_LOCKUP_SVG}</a>
+<nav class="navlinks" aria-label="Sections">
 ${nav}
-</ul></nav>
-${controls}
+</nav>
+<div class="tools">
+<button class="icon-btn labeled js-only" id="print" type="button" aria-label="Save as PDF" title="Save the full report as a PDF">${ICONS.pdf}<span>PDF</span></button>
+<button class="icon-btn labeled js-only" id="export" type="button" aria-label="Download JSON" title="Download the scan data as JSON">${ICONS.json}<span>JSON</span></button>
+<button class="icon-btn js-only" id="theme" type="button" aria-label="Dark theme" aria-pressed="false" title="Switch between light and dark">${ICONS.moon}${ICONS.sun}</button>
+</div>
+</div>
 </header>`;
 }
 function provenance(result, meta, variant) {
@@ -19180,96 +19207,170 @@ function provenance(result, meta, variant) {
   }
   return `${stamp}. Produced entirely on this machine from transcripts already on disk &mdash; no account, nothing uploaded, and no network call: the one exception anywhere in this tool is crash reporting, which is off unless you turn it on and which a scan never uses.`;
 }
-function mostSerious(payload) {
-  if (payload.findings.length === 0) return void 0;
-  const library = payload.findings.find((f) => f.source === "library");
-  if (library === void 0) {
-    return `<p class="top-match">Most serious match: a guardrail you added</p>`;
-  }
-  return `<p class="top-match">Most serious match: ${severityBadge(library.severity)} <span class="top-title">${inlineTitle(library.title)}</span></p>`;
-}
 function emptyLead(result) {
   const read = result.sessions === 0 ? `The scan found no ${agentName(result.agent)} sessions to read` : `The scan read ${counted3(result.sessions, "session", "sessions")} with no tool calls in them`;
   return `${read}, so nothing was checked. This is not a clean result: check that the folder and the agent are the ones you meant, then scan again.`;
 }
-function heroSection(result, payload, meta, variant, lead) {
-  const origin = variant === "artifact" ? "Scanned locally &middot; published by the person who ran it" : "Scanned locally &middot; nothing uploaded";
-  const fixTarget = payload.findings.some((f) => f.action === "block") ? "fix-first" : "findings";
-  const top = mostSerious(payload);
-  const claim = lead?.headline;
-  const leadLine = claim === void 0 ? "What your coding agent actually did, and which guardrails would have fired." : `${escapeHtml(headline(result))}.`;
-  const next = result.toolCalls === 0 ? `<p class="lead">${escapeHtml(emptyLead(result))}</p>
-<p class="provenance">${provenance(result, meta, variant)}</p>
-${copyable("cmd-scan-hero", `agenttrail-guard scan --agent ${result.agent}`, "Copy the scan command")}
-<p class="note">This reads the folder ${escapeHtml(agentName(result.agent))} uses by default. To read another folder, add <code>--dir</code> and its path.</p>` : `<p class="lead${claim === void 0 ? "" : " totals"}">${leadLine}</p>
-<p class="provenance">${provenance(result, meta, variant)}</p>${top === void 0 ? "" : `
-${top}`}
-<div class="actions">${payload.findings.length > 0 ? `
-<a class="button" href="#${fixTarget}">See what to fix first</a>` : ""}
-${outLink(shareLink(payload.shareText, result.agent), "Share on X", "button secondary")}
-</div>
-${copyable("cmd-init-hero", `agenttrail-guard init --agent ${result.agent}`, "Copy the init command")}`;
-  const h1 = claim === void 0 ? `<h1>${escapeHtml(headline(result))}</h1>` : `<h1 data-template="${escapeHtml(claim.sentence.template)}">${escapeHtml(claim.sentence.text)}</h1>`;
-  return `<section class="intro" id="overview">
-<p class="origin">${origin}</p>
-<p class="agent">Agent: ${escapeHtml(agentName(result.agent))}</p>
-${h1}
-${next}
-</section>`;
+var RING_RADIUS = 52;
+function noMatchShare(toolCalls, risky) {
+  if (toolCalls <= 0) return 0;
+  return Math.floor((toolCalls - risky) / toolCalls * 1e3) / 10;
 }
-function statsSection(result) {
-  const t = result.tokens;
-  const repeatedShapes = new Set(result.recurring.map((r) => r.text)).size;
-  const cells = [
-    stat(formatCount(result.sessions), result.sessions === 1 ? "session" : "sessions"),
-    stat(formatCount(result.toolCalls), "tool calls"),
-    stat(formatCount(result.riskyActions), "risky actions"),
-    stat(
-      formatCount(repeatedShapes),
-      repeatedShapes === 1 ? "repeated command shape" : "repeated command shapes"
-    )
-  ];
-  if (result.toolCalls > 0) {
-    const clean = Math.floor((result.toolCalls - result.riskyActions) / result.toolCalls * 100);
-    cells.push(stat(`${clean}%`, "matched no guardrail"));
+function ringHtml(result) {
+  const share = noMatchShare(result.toolCalls, result.riskyActions);
+  const circumference = 2 * Math.PI * RING_RADIUS;
+  const arc = circumference * share / 100;
+  const clean = Math.max(0, result.toolCalls - result.riskyActions);
+  const pct = `${share.toFixed(1)}%`;
+  return `<div class="ring-wrap">
+<div class="ring" role="img" id="ring" aria-label="${escapeHtml(`${pct} of tool calls matched no guardrail`)}">
+<svg viewBox="0 0 120 120" aria-hidden="true" focusable="false"><circle class="ring-track" cx="60" cy="60" r="${RING_RADIUS}" fill="none" stroke-width="12"/><circle class="ring-arc" id="ring-arc" cx="60" cy="60" r="${RING_RADIUS}" fill="none" stroke-width="12" stroke-linecap="round" stroke-dasharray="${arc.toFixed(1)} ${circumference.toFixed(1)}"/></svg>
+<div class="ring-label"><strong id="ring-pct">${escapeHtml(pct)}</strong><span>no match</span></div>
+</div>
+<p class="ring-legend" id="ring-legend"><b>${escapeHtml(`${formatCount(clean)} of ${formatCount(result.toolCalls)}`)}</b> tool calls matched no guardrail</p>
+</div>`;
+}
+var PROVENANCE_PRIORITY = [
+  "pasted-into-prompt",
+  "typed-into-command",
+  "printed-by-command",
+  "in-agent-reply"
+];
+function primaryWay(via) {
+  return PROVENANCE_PRIORITY.find((way) => via.includes(way));
+}
+var ARRIVED_IN = {
+  "pasted-into-prompt": "in a prompt you wrote",
+  "typed-into-command": "in a command the agent typed",
+  "printed-by-command": "in a command's output",
+  "in-agent-reply": "in an agent reply"
+};
+var GENERIC_KIND_START = /^(?:Password|Private|Random-looking|Other|Named|Authorization|Bearer|Database|URL)\b/;
+function pluralKind(label, first) {
+  let text2 = label.replace(/^(?:A|An) /, "");
+  if (!first && GENERIC_KIND_START.test(text2)) text2 = text2.charAt(0).toLowerCase() + text2.slice(1);
+  if (first) text2 = text2.charAt(0).toUpperCase() + text2.slice(1);
+  const cut = text2.indexOf(" with ");
+  const head = cut === -1 ? text2 : text2.slice(0, cut);
+  const tail = cut === -1 ? "" : text2.slice(cut);
+  return `${/s$/.test(head) ? head : `${head}s`}${tail}`;
+}
+function andList(items) {
+  if (items.length <= 1) return items.join("");
+  return `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`;
+}
+var LEAD_KINDS = {
+  id: "hero.lead.kinds",
+  render: (f) => {
+    if (f.items.length === 0) return void 0;
+    const kinds = [...new Set(f.items.map((item) => item.kind))].map(
+      (kind2) => KIND_LABELS[kind2] ?? KIND_LABELS.other
+    );
+    const shown = kinds.slice(0, 3).map((label, i) => pluralKind(label, i === 0));
+    const rest = kinds.length - shown.length;
+    const list = andList(rest > 0 ? [...shown, counted3(rest, "other kind", "other kinds")] : shown);
+    return `${list} sit in plain text in the transcripts on this machine.`;
   }
-  if (t !== null && result.toolCalls > 0) {
-    cells.push(
-      stat(
-        formatTokens(totalTokens(t)),
-        "tokens",
-        `${formatTokens(t.cacheRead)} cache reads (cumulative)`
-      )
+};
+var LEAD_ARRIVED = {
+  id: "hero.lead.arrived",
+  render: (f) => {
+    const tally = /* @__PURE__ */ new Map();
+    for (const item of f.items) {
+      const way = primaryWay(item.via);
+      if (way !== void 0) tally.set(way, (tally.get(way) ?? 0) + 1);
+    }
+    const top = [...tally].sort((a, b) => b[1] - a[1])[0];
+    if (top === void 0 || top[1] * 2 < f.items.length || f.items.length < 2) return void 0;
+    return `Most arrived ${ARRIVED_IN[top[0]]}.`;
+  }
+};
+function leadSentences(lead, payload) {
+  if (lead.category === "secrets" && payload.verification !== void 0) {
+    const facts = payload.verification.categories.secrets.facts;
+    return [sentence(LEAD_KINDS, facts), sentence(LEAD_ARRIVED, facts)].filter(
+      (line2) => line2 !== void 0
     );
   }
-  return `<section class="stats" aria-label="Summary">
-${cells.join("\n")}
+  const claim = lead.headline?.sentence.text;
+  return cardSummary(lead).happened.filter((line2) => line2.text !== claim);
+}
+function heroSection(result, payload, meta, variant, lead) {
+  const origin = variant === "artifact" ? "Scanned locally &middot; published by the person who ran it" : "Scanned locally &middot; nothing uploaded";
+  const when4 = `<time datetime="${escapeHtml(meta.generatedAt.toISOString())}">${escapeHtml(readableTime(meta.generatedAt))}</time>`;
+  const metaRow = `<div class="hero-meta" id="hero-meta"><span class="hero-pill"><i class="dot"></i>${origin}</span><span class="hero-kicker"><span>AgentTrail Guard scan report</span><span class="sep" aria-hidden="true"> &middot; </span><span class="sr-only">, </span><span>${escapeHtml(agentName(result.agent))}</span><span class="sep sep-when" aria-hidden="true"> &middot; </span><span class="sr-only">, </span><span class="when">${when4}</span></span></div>`;
+  if (result.toolCalls === 0) {
+    return `<section class="hero" aria-label="Summary">
+<div class="hero-main">
+${metaRow}
+${headlineHtml(headline(result))}
+<p class="lead" id="lead">${escapeHtml(emptyLead(result))}</p>
+<div class="hero-cta">
+${copyable("cmd-scan-hero", `agenttrail-guard scan --agent ${result.agent}`, "Copy the scan command", " hero-copy")}
+</div>
+<p class="lead small">This reads the folder ${escapeHtml(agentName(result.agent))} uses by default. To read another folder, add <code>--dir</code> and its path.</p>
+</div>
+</section>`;
+  }
+  const claim = lead?.headline;
+  const h1 = claim === void 0 ? headlineHtml(headline(result)) : headlineHtml(claim.sentence.text, claim.sentence.template);
+  const leads = lead === void 0 ? [] : leadSentences(lead, payload);
+  const leadHtml = claim === void 0 ? `<p class="lead" id="lead">What your coding agent actually did, and which guardrails would have fired.</p>` : leads.length === 0 ? "" : `<p class="lead" id="lead">${sentencesHtml(leads)}</p>`;
+  const fixTarget = payload.cards !== void 0 ? "what-happened" : "findings";
+  const fixButton = payload.findings.length > 0 || payload.cards !== void 0 ? `
+<a class="btn btn-primary btn-lg" href="#${fixTarget}">See what to fix</a>` : "";
+  return `<section class="hero" aria-label="Summary">
+<div class="hero-main">
+${metaRow}
+${h1}${leadHtml === "" ? "" : `
+${leadHtml}`}
+<div class="hero-cta">${fixButton}
+${outLink(shareLink(payload.shareText, result.agent), `${ICONS.x}<span>Share on X<span class="sr-only"> (opens in a new tab)</span></span>`, "btn btn-secondary btn-lg share-x", ' id="hero-share"')}
+${copyable("cmd-init-hero", `agenttrail-guard init --agent ${result.agent}`, "Copy the init command", " hero-copy")}
+</div>
+</div>
+${ringHtml(result)}
 </section>`;
 }
-function sentenceHtml(line2, className) {
-  const cls = className === void 0 ? "" : ` class="${className}"`;
-  return `<p${cls} data-template="${escapeHtml(line2.template)}">${escapeHtml(line2.text)}</p>`;
+function guardrailsByAction(result) {
+  const out = { block: 0, ask: 0, warn: 0 };
+  for (const f of result.findings) out[actionSlug(f.action)] += 1;
+  return out;
+}
+function statsSection(result) {
+  const repeatedShapes = new Set(result.recurring.map((r) => r.text)).size;
+  const by = guardrailsByAction(result);
+  const cells = [
+    stat(
+      formatCount(result.sessions),
+      result.sessions === 1 ? "Session" : "Sessions",
+      `in ${counted3(result.projects, "project", "projects")}`
+    ),
+    stat(formatCount(result.riskyActions), "Risky actions", "Calls that matched a guardrail"),
+    stat(
+      formatCount(result.findings.length),
+      "Guardrails matched",
+      `${formatCount(by.block)} block, ${formatCount(by.ask)} ask, ${formatCount(by.warn)} warn`
+    ),
+    stat(
+      formatCount(repeatedShapes),
+      repeatedShapes === 1 ? "Repeated command shape" : "Repeated command shapes",
+      repeatedShapes === 0 ? "None seen twice" : "Listed under Repeat offenders"
+    )
+  ];
+  return `<div class="stats" id="stats">
+${cells.join("\n")}
+</div>`;
 }
 function cardId(category) {
   return `check-${category}`;
 }
-function evidenceSection(payload) {
-  const facts = payload.verification?.categories.secrets.facts;
-  if (facts === void 0 || facts.items.length === 0) return "";
-  const rows = facts.items.map((item) => {
-    const row = evidenceRow(item);
-    return `<li><span class="evidence-kind">${escapeHtml(row.kind)}</span><span class="evidence-how">${escapeHtml(row.how)}</span><span class="times">${escapeHtml(row.files)}</span></li>`;
-  }).join("\n");
-  const more = MORE_EVIDENCE.render({ more: facts.moreItems });
-  return `<section class="evidence" id="found" aria-labelledby="found-heading">
-<h2 id="found-heading">What it found, never the values</h2>
-<p class="note">Each credential that looks real, by its kind and how it got into the transcripts. Never the value, and never the name it was given.</p>
-<ul class="evidence-list">
-${rows}
-</ul>${more === void 0 ? "" : `
-${sentenceHtml({ template: MORE_EVIDENCE.id, text: more }, "note")}`}
-<p class="note"><a href="#${cardId("secrets")}">What checking found, and how to fix it</a></p>
-</section>`;
+var EVIDENCE_ROWS = 10;
+function evidenceRowHtml(item) {
+  const kind2 = KIND_LABELS[item.kind] ?? KIND_LABELS.other;
+  const way = primaryWay(item.via);
+  const how = way === void 0 ? "" : PROVENANCE_PHRASES[way];
+  return `<li><b>${escapeHtml(kind2)}</b><span>${escapeHtml(how)}</span><span class="lx-times">${escapeHtml(countOf(item.files, "file"))}</span></li>`;
 }
 function chipsFor(cards, lead) {
   return chipCategories(lead?.category).flatMap((category) => {
@@ -19282,103 +19383,133 @@ function chipsFor(cards, lead) {
         category,
         tone: card.tone,
         title: CATEGORY_TITLES[category],
-        text: text2,
-        template: chip.label.template
+        label: chip.label.text,
+        ...chip.count === void 0 ? {} : { count: chip.count },
+        template: chip.label.template,
+        text: text2
       }
     ];
   });
 }
-function alsoCheckedSection(payload, cards, lead) {
+function leadExtraSection(payload, cards, lead) {
   const verification = payload.verification;
   if (verification === void 0) return "";
+  const facts = verification.categories.secrets.facts;
+  const parts = [];
+  if (facts.items.length > 0) {
+    const rows = facts.items.slice(0, EVIDENCE_ROWS).map(evidenceRowHtml).join("\n");
+    const more = MORE_EVIDENCE.render({
+      more: facts.moreItems + Math.max(0, facts.items.length - EVIDENCE_ROWS)
+    });
+    parts.push(`<div class="card lx-evidence" id="found">
+<div class="lx-head"><span>What it found, never the values</span><span class="lx-rule">Kind and source only</span></div>
+<ul class="lx-creds">
+${rows}
+</ul>${more === void 0 ? "" : `
+<p class="lx-more"><span data-template="${MORE_EVIDENCE.id}">${escapeHtml(more)}</span> <a href="#${cardId("secrets")}">See the card</a></p>`}
+</div>`);
+  }
   const chips = chipsFor(cards, lead).map(
-    (chip) => `<li><a class="check-chip v-${chip.tone}" href="#${cardId(chip.category)}"><span class="chip-title">${escapeHtml(chip.title)}</span><span class="chip-text" data-template="${escapeHtml(chip.template)}">${escapeHtml(chip.text)}</span></a></li>`
+    (chip) => `<li><a class="lx-link" href="#${cardId(chip.category)}" data-template="${escapeHtml(chip.template)}">${escapeHtml(chip.label)}</a>${chip.count === void 0 ? "" : `<b>${escapeHtml(formatCount(chip.count))}</b>`}</li>`
   ).join("\n");
-  const notes = leadNotes(verification).map((line2) => sentenceHtml(line2, "note")).join("\n");
   const forms = sentence(HIDING_FORMS_LIST, cards);
-  return `<section class="also-checked" id="also-checked" aria-labelledby="also-checked-heading">
-<h2 id="also-checked-heading">Also checked on this machine</h2>
-${notes}
-<ul class="check-chips">
+  if (chips !== "" || forms !== void 0) {
+    parts.push(`<div class="lx-also" id="also-checked">
+<h2 class="lx-h">Also checked on this machine</h2>${chips === "" ? "" : `
+<ul class="card lx-grid">
 ${chips}
-</ul>${forms === void 0 ? "" : `
-${sentenceHtml(forms, "note hiding-forms")}`}
+</ul>`}${forms === void 0 ? "" : `
+<p class="vnote">${sentenceSpan(forms)}</p>`}
+</div>`);
+  }
+  if (parts.length === 0) return "";
+  return `<section class="lead-extra" id="lead-extra" aria-label="Behind the headline">
+${parts.join("\n")}
 </section>`;
 }
-function verifiedCard(card, variant, localFixes, unsafeListed) {
+var SUMMARY_LIMITS = {
+  happened: { sentences: 2, chars: 200 },
+  now: { sentences: 1, chars: 140 },
+  fix: { sentences: 1, chars: 140 }
+};
+function firstLines(lines2, limit) {
+  const out = [];
+  let length = 0;
+  for (const line2 of lines2) {
+    if (out.length >= limit.sentences) break;
+    const next = length + (out.length === 0 ? 0 : 1) + line2.text.length;
+    if (out.length > 0 && next > limit.chars) break;
+    out.push(line2);
+    length = next;
+  }
+  return out;
+}
+function cardSummary(card) {
+  return {
+    happened: firstLines(card.found, SUMMARY_LIMITS.happened),
+    now: firstLines(card.now, SUMMARY_LIMITS.now),
+    fix: firstLines(card.fixSteps ?? [], SUMMARY_LIMITS.fix)
+  };
+}
+function vtoneLabel(card) {
+  if (card.tone === "act") return "Fix now";
+  if (card.tone === "review") return "Review";
+  if (card.tone === "clean" && card.unconfirmed === void 0) return "Checked, clean";
+  return toneLabel(card);
+}
+var MAX_CARD_COMMANDS = 6;
+function verifiedCard(card) {
   const title = CATEGORY_TITLES[card.category];
   const id = cardId(card.category);
   const count3 = cardCount(card);
-  const block = (lines2) => lines2.map((line2) => sentenceHtml(line2)).join("\n");
-  const fields = [];
-  if (card.found.length > 0) {
-    fields.push(`<div><dt>What checking found</dt><dd>
-${block(card.found)}
-</dd></div>`);
+  const short = cardSummary(card);
+  const rows = [];
+  if (short.happened.length > 0)
+    rows.push(`<dt>What happened</dt><dd>${sentencesHtml(short.happened)}</dd>`);
+  if (short.now.length > 0) rows.push(`<dt>Now</dt><dd>${sentencesHtml(short.now)}</dd>`);
+  if (short.fix.length > 0) rows.push(`<dt>Fix</dt><dd>${sentencesHtml(short.fix)}</dd>`);
+  const commands = card.fixes.slice(0, MAX_CARD_COMMANDS).map(
+    (fix) => `<div class="vcmd"><span class="prompt" aria-hidden="true"></span><code>${commandHtml(fix.shape)}</code></div>`
+  ).join("\n");
+  const more = [];
+  const group = (label, lines2) => {
+    if (lines2.length > 0) more.push(`<h4>${label}</h4><p>${sentencesHtml(lines2)}</p>`);
+  };
+  const codex = sentence(CODEX_CAVEAT, card);
+  const extra = card.found.length > short.happened.length || card.now.length > short.now.length || (card.fixSteps ?? []).length > short.fix.length || card.read !== void 0 || card.caveat !== void 0 || codex !== void 0;
+  if (extra) {
+    group("What checking found", card.found);
+    group("Now", card.now);
+    group("Fix", card.fixSteps ?? []);
+    if (card.read !== void 0) group("What it read", [card.read]);
+    if (card.caveat !== void 0)
+      more.push(`<p class="note card-caveat">${sentenceSpan(card.caveat)}</p>`);
+    if (codex !== void 0) more.push(`<p class="note codex-caveat">${sentenceSpan(codex)}</p>`);
   }
-  if (card.now.length > 0) {
-    fields.push(`<div><dt>Now</dt><dd>
-${block(card.now)}
-</dd></div>`);
-  }
-  const steps = card.fixSteps ?? [];
-  const fileNote = localFixes && card.tone !== "not-checked" ? FIXES_FILE_NOTE.render({ variant }) : void 0;
-  const unsafeNote = unsafeListed && card.tone !== "not-checked" ? UNSAFE_FIXES_FILE_NOTE.render({ variant }) : void 0;
-  const fileNoteHtml = (id2, text2) => `<p class="note fixes-file" data-template="${id2}">${escapeHtml(text2).replace(FIXES_FILENAME, `<code>${FIXES_FILENAME}</code>`)}</p>`;
-  if (steps.length > 0 || card.fixes.length > 0 || fileNote !== void 0 || unsafeNote !== void 0) {
-    const shapes = card.fixes.map(
-      (fix, i) => copyable(
-        `fix-${card.category}-${i + 1}`,
-        fix.shape,
-        `Copy fix command ${i + 1} for ${title.toLowerCase()}`
-      )
-    );
-    const parts = [
-      ...steps.map((line2) => sentenceHtml(line2)),
-      ...shapes,
-      ...fileNote === void 0 ? [] : [fileNoteHtml(FIXES_FILE_NOTE.id, fileNote)],
-      ...unsafeNote === void 0 ? [] : [fileNoteHtml(UNSAFE_FIXES_FILE_NOTE.id, unsafeNote)]
-    ];
-    fields.push(`<div><dt>Fix</dt><dd>
-${parts.join("\n")}
-</dd></div>`);
-  }
-  const caveat = sentence(CODEX_CAVEAT, card);
-  const unconfirmed = card.caveat;
-  return `<article class="card verified v-${card.tone}" id="${id}" aria-labelledby="${id}-title" aria-describedby="${id}-tone">
-<div class="card-head"><span class="tone tone-${card.tone}" id="${id}-tone">${escapeHtml(toneLabel(card))}</span>${count3 === void 0 ? "" : `<span class="times" data-template="${escapeHtml(count3.template)}">${escapeHtml(count3.text)}</span>`}</div>
-<h3 id="${id}-title">${escapeHtml(title)}</h3>
-<dl class="verified-facts">
-${fields.join("\n")}
-</dl>${unconfirmed === void 0 ? "" : `
-${sentenceHtml(unconfirmed, "note card-caveat")}`}${caveat === void 0 ? "" : `
-${sentenceHtml(caveat, "note codex-caveat")}`}
+  const expander = more.length === 0 ? "" : `
+<details class="vmore"><summary>How this was checked</summary><div class="vmore-body">
+${more.join("\n")}
+</div></details>`;
+  return `<article class="card vrow v-${card.tone}" id="${id}" aria-labelledby="${id}-title" aria-describedby="${id}-tone">
+<div class="vtop"><span class="vtone" id="${id}-tone">${escapeHtml(vtoneLabel(card))}</span><h3 id="${id}-title">${escapeHtml(title)}</h3>${count3 === void 0 ? "" : `<span class="vmatched" data-template="${escapeHtml(count3.template)}">${escapeHtml(count3.text)}</span>`}</div>${rows.length === 0 ? "" : `
+<dl class="vfacts">${rows.join("")}</dl>`}${commands === "" ? "" : `
+<div class="vcmds">
+${commands}
+</div>`}${expander}
 </article>`;
 }
-function whatHappenedSection(cards, variant, localFixCategories, unsafeFixCategories2) {
-  const tally = sentence(TONE_TALLY, cards);
-  const reads = cards.filter((card) => card.read !== void 0).map(
-    (card) => `<li><span class="read-title">${escapeHtml(CATEGORY_TITLES[card.category])}:</span> <span data-template="${escapeHtml(card.read?.template ?? "")}">${escapeHtml(card.read?.text ?? "")}</span></li>`
-  );
-  const readList = reads.length === 0 ? "" : `
-<p class="note">What the checks read on this machine:</p>
-<ul class="read-list">
-${reads.join("\n")}
-</ul>`;
-  const rows = cards.map(
-    (card) => verifiedCard(
-      card,
-      variant,
-      localFixCategories.includes(card.category),
-      unsafeFixCategories2.includes(card.category)
-    )
-  ).join("\n");
-  return `<section id="what-happened" class="what-happened" aria-labelledby="what-happened-heading">
-<div class="section-head"><h2 id="what-happened-heading">What actually happened</h2>${tally === void 0 ? "" : `<p class="section-meta" data-template="${escapeHtml(tally.template)}">${escapeHtml(tally.text)}</p>`}</div>
-<p class="note">A match means a guardrail fired on a command. Each card says what checking that on this machine found, how things stand now, and how to fix it. The checks only read: they changed nothing on this machine.</p>${readList}
-<div class="verified-cards">
+function whatHappenedSection(verification, cards, variant, localFixCategories, unsafeFixCategories2) {
+  const rows = cards.map(verifiedCard).join("\n");
+  const notes = leadNotes(verification);
+  const listed = (categories) => cards.some((c) => c.tone !== "not-checked" && categories.includes(c.category));
+  const fileHtml = (template) => ` <span data-template="${template.id}">${escapeHtml(template.render({ variant }) ?? "").replace(FIXES_FILENAME, `<code>${FIXES_FILENAME}</code>`)}</span>`;
+  const files = (listed(localFixCategories) ? fileHtml(FIXES_FILE_NOTE) : "") + (listed(unsafeFixCategories2) ? fileHtml(UNSAFE_FIXES_FILE_NOTE) : "");
+  return `<section id="what-happened" aria-labelledby="h-verified">
+${sectionHead("What actually happened", "A match only means a guardrail fired. Each card says what checking it on this machine found, how things stand now, and how to fix it.", "h-verified")}
+<div class="verified" id="verified-rows">
 ${rows}
 </div>
+<p class="vnote">The checks only read: they changed nothing on this machine.${notes.length === 0 ? "" : ` ${sentencesHtml(notes)}`}${files}</p>
 </section>`;
 }
 var ACTION_MEANING = {
@@ -19389,8 +19520,7 @@ var ACTION_MEANING = {
 function askOnCodexNote(result, byAction) {
   if (result.agent !== "codex") return "";
   if (!byAction.some((a) => a.action === "require_approval")) return "";
-  return `
-<p class="note"><strong>On Codex, &ldquo;would ask&rdquo; means the action would have been stopped.</strong> Codex gives a guardrail no way to ask you, so AgentTrail Guard sends those as a block. The label above is the guardrail&#39;s own decision, kept the same across apps so one guardrail reads the same way everywhere.</p>`;
+  return ` <strong>On Codex, &ldquo;would ask&rdquo; means the action would have been stopped.</strong> Codex gives a guardrail no way to ask you, so AgentTrail Guard sends those as a block. The label is the guardrail&#39;s own decision, kept the same across apps so one guardrail reads the same way everywhere.`;
 }
 function decidedBy(decided, action) {
   const out = /* @__PURE__ */ new Map();
@@ -19437,34 +19567,42 @@ function tuningSection(result, payload) {
   if (hint === void 0) return "";
   const n2 = hint.ids.length;
   const pct = Math.round(hint.share * 100);
-  const commands = hint.ids.map(
-    (id, i) => SHELL_SAFE_ID.test(id) ? copyable(
-      `cmd-tune-${i}`,
-      `agenttrail-guard guardrails set-action ${id} warn`,
-      `Copy set-action command ${i + 1}`
-    ) : `<p class="note">Set <code>${escapeHtml(id)}</code> to warn with <code>agenttrail-guard guardrails set-action</code>. Its id has characters a shell would read, so no command is offered to copy.</p>`
-  ).join("\n");
-  return `<div class="hint">
-<p><strong>${escapeHtml(counted3(n2, "guardrail accounts", "guardrails account"))} for ${pct}% of the asks.</strong> Setting ${n2 === 1 ? "it" : "them"} to warn would take the tool calls you are asked about from ${escapeHtml(formatCount(hint.asks))} to ${escapeHtml(formatCount(hint.remaining))}, and the agent would be shown a warning on those calls instead.</p>
-${commands}
-</div>`;
+  const safe = hint.ids.filter((id) => SHELL_SAFE_ID.test(id));
+  const unsafe2 = hint.ids.filter((id) => !SHELL_SAFE_ID.test(id));
+  const commands = safe.map((id) => `agenttrail-guard guardrails set-action ${id} warn`);
+  const copy = commands.length === 0 ? "" : `<div class="copy multi"><span class="prompt" aria-hidden="true"></span><code id="cmd-tune">${commands.map((c) => `<span class="ln">${escapeHtml(c)}</span>`).join("\n")}</code><button type="button" class="js-only" data-copy="cmd-tune" data-label="Copy" aria-label="${escapeHtml(n2 === 1 ? "Copy the set-action command" : "Copy the set-action commands")}">Copy</button></div>`;
+  const unsafeNote = unsafe2.map(
+    (id) => ` Set <code>${escapeHtml(id)}</code> to warn with <code>agenttrail-guard guardrails set-action</code>: its id has characters a shell would read, so no command is offered to copy.`
+  ).join("");
+  return `<div class="card insight" id="insight">${ICONS.info}<div class="insight-text"><p id="insight-main"><strong>${escapeHtml(counted3(n2, "guardrail accounts", "guardrails account"))} for ${pct}% of the asks.</strong> Setting ${n2 === 1 ? "it" : "them"} to warn would take the tool calls you are asked about from ${escapeHtml(formatCount(hint.asks))} to ${escapeHtml(formatCount(hint.remaining))}, and the agent would be shown a warning on those calls instead.</p><p class="muted small">The agent is still shown each match.${unsafeNote}</p></div><div class="insight-cmds" id="insight-cmds">${copy}</div></div>`;
 }
+var OUTCOME_TITLES = {
+  block: "Blocked",
+  require_approval: "Asked you first",
+  warn: "Warned"
+};
 function wouldHaveDoneSection(result, payload) {
   if (result.findings.length === 0) return "";
-  const columns = ACTION_ORDER.map((action) => {
+  const guardrails = guardrailsByAction(result);
+  const panels = ACTION_ORDER.map((action) => {
     const count3 = result.riskyByAction[action];
     const calls = decidedBy(result.decided, action);
     const top = payload.findings.filter((f) => f.action === action && (calls.get(f.ruleId) ?? 0) > 0).map((f) => ({ f, n: calls.get(f.ruleId) ?? 0 })).sort((a, b) => b.n - a.n || a.f.ruleId.localeCompare(b.f.ruleId)).slice(0, TOP_PER_ACTION).map(
-      ({ f, n: n2 }) => `<li><span class="col-title">${inlineTitle(f.title)}</span><span class="times">${escapeHtml(formatCount(n2))}&times;</span></li>`
-    ).join("\n");
-    const label = { block: "Blocked", require_approval: "Asked you first", warn: "Warned" }[action];
-    return `<div class="col ${actionClass(action)}-col">
-<p class="col-label">${label}</p>
-<p class="col-count">${escapeHtml(formatCount(count3))}</p>
-<p class="note">${escapeHtml(ACTION_MEANING[action])}</p>${top === "" ? "" : `
-<ul class="col-list">
-${top}
-</ul>`}
+      ({ f, n: n2 }) => `<li><span>${inlineTitle(f.title)}</span><b>${escapeHtml(formatCount(n2))}</b></li>`
+    );
+    const all = guardrails[actionSlug(action)];
+    if (all > 0) {
+      top.push(
+        `<li class="olink-li"><a class="olink" href="#findings">See all ${escapeHtml(formatCount(all))} in All findings</a></li>`
+      );
+    }
+    return `<div class="card outcome o-${actionSlug(action)}">
+<div class="n">${escapeHtml(formatCount(count3))}</div>
+<div class="t">${OUTCOME_TITLES[action]}</div>
+<p>${escapeHtml(ACTION_MEANING[action])}</p>
+<ul class="otop">${top.length === 0 ? "" : `
+${top.join("\n")}
+`}</ul>
 </div>`;
   }).join("\n");
   const { byAction } = matchTally(result);
@@ -19473,85 +19611,68 @@ ${top}
     const key = knownSeverity(s.severity);
     severityCounts.set(key, (severityCounts.get(key) ?? 0) + s.count);
   }
-  const bySeverity = [...severityCounts].map(([severity, count3]) => ({ severity, count: count3 }));
-  const item = (label, count3) => `<li>${label}<span class="tally-count">${escapeHtml(formatCount(count3))}</span></li>`;
-  const severities = bySeverity.map((s) => item(severityBadge(s.severity), s.count)).join("\n");
-  const actions = byAction.map((a) => item(actionChip(a.action), a.count)).join("\n");
-  return `<section id="would-do">
-<h2>What AgentTrail Guard would have done</h2>
-<p class="note">Tool calls, each counted once under the strictest guardrail it matched.</p>
-<div class="columns">
-${columns}
-</div>${askOnCodexNote(result, byAction)}
-${tuningSection(result, payload)}
-<div class="tally" role="group" aria-label="Guardrail matches">
-<div class="tally-group"><p class="tally-label">Matches by severity</p><ul class="pills">
-${severities}
-</ul></div>
-<div class="tally-group"><p class="tally-label">Matches by action</p><ul class="pills">
-${actions}
-</ul></div>
-<p class="note">Each guardrail counts its own matches, so a tool call that matched two guardrails is counted under both, and these totals can be larger than the number of risky actions.</p>
+  const severities = [...severityCounts].map(([severity, count3]) => ({ severity, count: count3 }));
+  const total = severities.reduce((sum, s) => sum + s.count, 0);
+  const bar = severities.map((s) => `<span class="s-${escapeHtml(s.severity)}" style="flex: ${s.count} 0 0"></span>`).join("");
+  const legend = severities.map(
+    (s) => `<span><i class="s-${escapeHtml(s.severity)}"></i>${escapeHtml(SEVERITY_LABELS[s.severity] ?? s.severity)} <b>${escapeHtml(formatCount(s.count))}</b></span>`
+  ).join("\n");
+  const barLabel = severities.map(
+    (s) => `${formatCount(s.count)} ${(SEVERITY_LABELS[s.severity] ?? s.severity).toLowerCase()}`
+  ).join(", ");
+  return `<section id="outcomes">
+${sectionHead("What AgentTrail Guard would have done", "If AgentTrail Guard had been running during these sessions, with its default settings.")}
+<div class="outcomes" id="outcome-cards">
+${panels}
 </div>
-</section>`;
-}
-function fixFirstSection(payload) {
-  const blocking = payload.findings.filter((f) => f.action === "block").slice(0, FIX_FIRST_MAX);
-  if (blocking.length === 0) {
-    return `<section id="fix-first"><h2>Fix these first</h2><p class="empty">No guardrail would have blocked anything in these sessions.</p></section>`;
-  }
-  const cards = blocking.map((f) => {
-    const index = payload.findings.indexOf(f);
-    const yours = f.source !== "library";
-    const heading = yours ? OWN_CARD_HEADING : inlineTitle(f.title);
-    const why = yours ? `
-<p class="own-title">${inlineTitle(f.title)}</p>` : f.descriptionLines === void 0 ? "" : `
-${libraryText(firstSentence(f.descriptionLines), "library-text note")}`;
-    const example = f.examples[0];
-    const exampleHtml = example === void 0 ? "" : `
-<p class="example"><code>${escapeHtml(example.text)}</code></p>`;
-    const group = f.category === void 0 ? YOUR_GUARDRAILS : packLabel(f.category);
-    const link = f.category === void 0 ? "" : `
-<p>${outLink(libraryLink(f.category, f.ruleId, payload.agent), "How this guardrail works")}</p>`;
-    return `<article class="card">
-<div class="card-head">${severityBadge(f.severity)} ${actionChip(f.action)}<span class="times">${escapeHtml(formatCount(f.count))}&times;</span></div>
-<h3><a href="#finding-${index}">${heading}</a></h3>${why}${exampleHtml}
-<p class="card-meta">${escapeHtml(group)} &middot; <code>${escapeHtml(f.ruleId)}</code></p>${link}
-</article>`;
-  }).join("\n");
-  return `<section id="fix-first">
-<h2>Fix these first</h2>
-<p class="note">The guardrails that would have stopped a command outright, most serious first.</p>
-<div class="cards">
-${cards}
+<p class="vnote" id="excl-note">Tool calls, each counted once under the strictest guardrail it matched.${askOnCodexNote(result, byAction)}</p>
+${tuningSection(result, payload)}
+<div class="card sevbar-card">
+<h3 class="sevbar-title">Matches by severity</h3>
+<div class="sevbar" role="img" id="sevbar" aria-label="${escapeHtml(barLabel)}">${bar}</div>
+<div class="sevlegend" id="sevlegend">
+${legend}
+</div>
+<p class="sev-caption" id="sev-caption">${escapeHtml(counted3(total, "guardrail match", "guardrail matches"))} from ${escapeHtml(counted3(result.riskyActions, "risky action", "risky actions"))}: each guardrail counts its own matches, so a tool call that matched two guardrails counts under both.</p>
 </div>
 </section>`;
 }
 var OWASP_EDITION = "2026 edition";
-function riskLabel(id) {
-  return `<span class="risk-id">${escapeHtml(id)}</span> ${escapeHtml(owaspTitle(id))}`;
-}
 function owaspSection(payload) {
   if (payload.owasp.length === 0) return "";
   const touched = (list) => payload.owasp.filter((t) => list.some((risk) => risk.id === t.id)).length;
-  const summary = `These matches touched ${touched(OWASP_AGENTIC)} of ${OWASP_AGENTIC.length} agentic and ${touched(OWASP_LLM)} of ${OWASP_LLM.length} LLM risks, in the ${OWASP_EDITION} lists.`;
-  const risks = payload.owasp.map(
-    (t) => `<li class="risk" id="risk-${escapeHtml(t.id.toLowerCase())}">
-<p class="risk-name">${outLink(owaspRiskLink(t.id, payload.agent), riskLabel(t.id))}</p>
-<p class="risk-counts">${escapeHtml(counted3(t.callCount, "tool call", "tool calls"))} &middot; ${escapeHtml(counted3(t.guardrailCount, "guardrail", "guardrails"))}</p>
-<button type="button" class="tool js-only" data-risk="${escapeHtml(t.id)}" aria-label="Show its findings: ${escapeHtml(t.id)}" hidden>Show its findings</button>
-</li>`
+  const risks = [...payload.owasp].sort(
+    (a, b) => b.callCount - a.callCount || a.id.localeCompare(b.id)
+  );
+  const most = Math.max(1, ...risks.map((t) => t.callCount));
+  const cards = risks.map(
+    (t) => `<label class="card risk" for="ff-risk-${escapeHtml(t.id)}" data-risk="${escapeHtml(t.id)}">
+<span class="risk-top"><span class="risk-id">${escapeHtml(t.id)}</span><span class="risk-count"><span class="risk-n">${escapeHtml(formatCount(t.callCount))}</span> <span class="risk-unit">${t.callCount === 1 ? "call" : "calls"}</span></span></span>
+<span class="risk-title">${escapeHtml(owaspTitle(t.id))}</span>
+<span class="risk-sub">${escapeHtml(counted3(t.guardrailCount, "guardrail", "guardrails"))}</span>
+<span class="risk-meter" aria-hidden="true"><span style="width: ${(t.callCount / most * 100).toFixed(1)}%"></span></span>
+</label>`
   ).join("\n");
+  const caption = `This scan touched ${touched(OWASP_AGENTIC)} of ${OWASP_AGENTIC.length} agentic risks and ${touched(OWASP_LLM)} of ${OWASP_LLM.length} LLM risks, in the ${OWASP_EDITION} lists. A guardrail can name more than one risk, and a tool call can match more than one guardrail, so counts overlap. This covers coding-agent actions only, and an id never claims a guardrail covers the whole risk.`;
   return `<section id="owasp">
-<h2>OWASP risks</h2>
-<p class="lead">${escapeHtml(summary)}</p>
-<ul class="risks">
-${risks}
-</ul>
-<p class="note">A guardrail can name more than one risk, and a tool call can match more than one guardrail, so one tool call can count under several risks. These counts can add up to more than the totals above.</p>
-<p class="note">Covers coding-agent actions only, not full OWASP coverage. Each id names a risk where it becomes a command or a file change, and is never a claim that a guardrail covers the whole risk.</p>
-<p class="risk-sources">${outLink(siteLink(sitePath(OWASP_PAGE_URL), payload.agent, "owasp"), "How the guardrails map to OWASP")} &middot; ${outLink(OWASP_SOURCES.agentic, `OWASP Top 10 for Agentic Applications (${OWASP_EDITION})`)} &middot; ${outLink(OWASP_SOURCES.llm, `OWASP Top 10 for LLM Applications (${OWASP_EDITION})`)}</p>
+${sectionHead("Mapped to OWASP", `The OWASP Top 10 risks for agentic applications (ASI) and LLM applications that these findings fall under. <span class="screen-only">Select a risk to filter the findings below.</span>`)}
+<div class="owasp-grid" id="owasp-grid">
+${cards}
+</div>
+<div class="owasp-foot"><span id="owasp-caption">${escapeHtml(caption)}</span></div>
+<div class="learn">${learnLink(siteLink(sitePath(OWASP_PAGE_URL), payload.agent, "owasp"), "How the guardrails map to OWASP")}${learnLink(OWASP_SOURCES.agentic, `OWASP Top 10 for Agentic Applications (${OWASP_EDITION})`)}${learnLink(OWASP_SOURCES.llm, `OWASP Top 10 for LLM Applications (${OWASP_EDITION})`)}</div>
 </section>`;
+}
+function findingAnchors(findings) {
+  const used = /* @__PURE__ */ new Set();
+  const out = /* @__PURE__ */ new Map();
+  findings.forEach((f, i) => {
+    let anchor = `finding-${ruleSlug(f.ruleId) || String(i)}`;
+    if (used.has(anchor)) anchor = `${anchor}-${i}`;
+    used.add(anchor);
+    out.set(f, anchor);
+  });
+  return out;
 }
 function ranks(findings) {
   const yours = (f) => f.category === void 0 ? 1 : 0;
@@ -19567,6 +19688,7 @@ function ranks(findings) {
     )
   };
 }
+var TOP_ROWS = 5;
 function noteTone(note, cards) {
   const tone = cards.find((card) => card.category === note.category)?.tone;
   switch (note.outcome) {
@@ -19579,104 +19701,161 @@ function noteTone(note, cards) {
   }
 }
 function noteHtml(note, tone) {
-  const cls = tone === void 0 ? "verified-note" : `verified-note v-${tone}`;
-  return `<p class="${cls}"><span class="verified-note-label">What checking found:</span> <span data-template="${escapeHtml(note.sentence.template)}">${escapeHtml(note.sentence.text)}</span></p>`;
+  return `<p class="${tone === void 0 ? "fchecked" : `fchecked v-${tone}`}"><b>What checking found:</b> <span data-template="${escapeHtml(note.sentence.template)}">${escapeHtml(note.sentence.text)}</span></p>`;
 }
-function findingRow(f, index, r, agent, note) {
+function findingRow(f, index, anchor, order, top, most, agent, note) {
   const group = f.category === void 0 ? YOUR_GUARDRAILS : packLabel(f.category);
   const examples = f.examples.map(
-    (example) => `<li><code>${escapeHtml(example.text)}</code><span class="times">${escapeHtml(formatCount(example.count))}&times;</span></li>`
+    (example) => `<li><code class="cmd">${commandHtml(example.text)}</code><span class="times">${escapeHtml(formatCount(example.count))}&times;</span></li>`
   ).join("\n");
   const more = f.moreShapes > 0 ? `
-<li class="more">and ${escapeHtml(formatCount(f.moreShapes))} more shapes</li>` : "";
-  const shapeCount = f.examples.length + f.moreShapes;
-  const shapes = shapeCount === 1 ? "command shape" : `${formatCount(shapeCount)} command shapes`;
+<p class="more">and ${escapeHtml(counted3(f.moreShapes, "more shape", "more shapes"))}</p>` : "";
+  const why = f.descriptionLines === void 0 ? "" : `
+${libraryText(firstSentence(f.descriptionLines), "library-text why")}`;
   const how = f.descriptionLines === void 0 ? "" : `
-<details class="how"><summary>How this guardrail decides, and what it misses</summary>
+<details class="libdesc"><summary>How this guardrail decides, and what it misses<span class="sr-only">: ${inlineTitle(f.title)}</span></summary>
 ${libraryText(f.descriptionLines.join(" "))}
 <p>${outLink(libraryLink(f.category ?? "", f.ruleId, agent), "Open it in the guardrail library")}</p>
 </details>`;
   const risks = f.owasp.length === 0 ? "" : `
-<ul class="owasp-ids" aria-label="OWASP risks">
-${f.owasp.map((id) => `<li>${outLink(owaspRiskLink(id, agent), riskLabel(id))}</li>`).join("\n")}
-</ul>`;
-  const riskData = f.owasp.length === 0 ? "" : ` data-owasp="${escapeHtml(f.owasp.join(" "))}"`;
-  return `<li class="finding" id="finding-${index}" data-action="${escapeHtml(f.action)}"${riskData} data-rank-serious="${index}" data-rank-category="${r.category.get(f) ?? index}" data-rank-count="${r.count.get(f) ?? index}" data-rank-name="${r.name.get(f) ?? index}">
-<div class="finding-head">
-<div class="guardrail-title">${inlineTitle(f.title)}</div>
-<div class="finding-meta">${severityBadge(f.severity)} ${actionChip(f.action)}<span class="num" data-label="Matches">${escapeHtml(formatCount(f.count))}&times;</span></div>
-</div>
-<div class="guardrail-id"><code>${escapeHtml(f.ruleId)}</code> &middot; <span class="group">${escapeHtml(group)}</span></div>${note === void 0 ? "" : `
-${noteHtml(note.note, note.tone)}`}${risks}
-<details class="commands"><summary>The ${escapeHtml(shapes)} behind it</summary>
+<p class="owasp-line"><span class="lbl">OWASP:</span> ${f.owasp.map((id) => outLink(owaspRiskLink(id, agent), `${escapeHtml(id)} ${escapeHtml(owaspTitle(id))}`, void 0, ` aria-describedby="${anchor}-title"`)).join(' <span class="sep" aria-hidden="true">&middot;</span> ')}</p>`;
+  const tags = f.owasp.map((id) => `<span class="otag">${escapeHtml(id)}</span>`).join("");
+  const width = (f.count / most * 100).toFixed(1);
+  const style2 = `--o-risk: ${index}; --o-category: ${order.category}; --o-count: ${order.count}; --o-name: ${order.name}`;
+  return `<details class="frow" id="${anchor}" data-action="${actionSlug(f.action)}" data-risks="${escapeHtml(f.owasp.join(" "))}" data-cat="${escapeHtml(f.category ?? "yours")}" data-top="${top}" style="${style2}">
+<summary><div><div class="ftitle" id="${anchor}-title">${inlineTitle(f.title)}</div><div class="fsub"><span class="fid">${escapeHtml(f.ruleId)}</span><span class="pack">${escapeHtml(group)}</span>${tags}</div></div><div class="fmeta">${severityBadge(f.severity)}${actionChip(f.action)}<span class="fbar" aria-hidden="true"><span style="width: ${width}%"></span></span><span class="fcount">${escapeHtml(formatCount(f.count))}<span class="unit"> ${f.count === 1 ? "match" : "matches"}</span></span></div></summary>
+<div class="fbody">${note === void 0 ? "" : `
+${noteHtml(note.note, note.tone)}`}${why}${how}${risks}
 <ul class="shapes">
-${examples}${more}
-</ul>
-</details>${how}
-</li>`;
+${examples}
+</ul>${more}
+</div>
+</details>`;
 }
-function riskFilter(payload) {
-  if (payload.owasp.length === 0) return "";
-  const options = payload.owasp.map(
-    (t) => `<option value="${escapeHtml(t.id)}">${escapeHtml(`${t.id} ${owaspTitle(t.id)}`)}</option>`
-  ).join("\n");
-  return `
-<label class="sort">OWASP risk <select id="risk-filter">
-<option value="">Any risk</option>
-${options}
-</select></label>`;
+function segment(name, id, value, label, checked) {
+  return `<label class="filter"><input type="radio" name="${name}" id="${id}" value="${value}" autocomplete="off"${checked ? " checked" : ""}>${label}</label>`;
 }
 function findingsSection(payload, variant) {
   if (payload.findings.length === 0) {
-    return `<section id="findings"><h2>All findings</h2><p class="empty">No guardrail matched anything in these sessions.</p></section>`;
+    return `<section id="findings">
+${sectionHead("All findings", "")}
+<div class="card empty">No guardrail matched anything in these sessions.</div>
+</section>`;
   }
-  const r = ranks(payload.findings);
+  const findings = payload.findings;
+  const r = ranks(findings);
+  const anchors = findingAnchors(findings);
+  const most = Math.max(1, ...findings.map((f) => f.count));
+  const total = findings.length + payload.moreFindings;
+  const matches = findings.reduce((sum, f) => sum + f.count, 0);
+  const packOf = (f) => f.category ?? "yours";
+  const byCategory = [...findings].sort(
+    (a, b) => (r.category.get(a) ?? 0) - (r.category.get(b) ?? 0)
+  );
+  const categoryOrder = /* @__PURE__ */ new Map();
+  const groups = [];
+  let position = 0;
+  for (const f of byCategory) {
+    let group = groups[groups.length - 1];
+    if (group === void 0 || group.cat !== packOf(f)) {
+      group = {
+        cat: packOf(f),
+        label: f.category === void 0 ? YOUR_GUARDRAILS : packLabel(f.category),
+        order: position++,
+        rows: []
+      };
+      groups.push(group);
+    }
+    group.rows.push(f);
+    categoryOrder.set(f, position++);
+  }
+  const topIn = (rank) => (rank ?? TOP_ROWS) < TOP_ROWS;
+  const topCategory = new Set(byCategory.slice(0, TOP_ROWS));
+  const topOf = (f, index) => [
+    index < TOP_ROWS ? "risk" : "",
+    topCategory.has(f) ? "category" : "",
+    topIn(r.count.get(f)) ? "count" : "",
+    topIn(r.name.get(f)) ? "name" : ""
+  ].filter((t) => t !== "").join(" ");
+  const headers = groups.map((g) => {
+    const acts = [...new Set(g.rows.map((f) => actionSlug(f.action)))].join(" ");
+    const risks = [...new Set(g.rows.flatMap((f) => f.owasp))].join(" ");
+    const top = g.rows.some((f) => topCategory.has(f)) ? "category" : "";
+    const n2 = g.rows.reduce((sum, f) => sum + f.count, 0);
+    return `<div class="fgroup" data-cat="${escapeHtml(g.cat)}" data-acts="${acts}" data-risks="${escapeHtml(risks)}" data-top="${top}" style="--o-category: ${g.order}"><h3>${escapeHtml(g.label)}</h3><span class="fgroup-meta">${escapeHtml(`${counted3(g.rows.length, "guardrail", "guardrails")} \xB7 ${counted3(n2, "match", "matches")}`)}</span></div>`;
+  }).join("\n");
+  const notes = payload.notes ?? [];
   const cards = payload.cards ?? [];
   const noteFor = (f) => {
-    const note = f.source === "library" ? payload.notes?.find((n2) => n2.ruleId === f.ruleId) : void 0;
+    const note = f.source === "library" ? notes.find((n2) => n2.ruleId === f.ruleId) : void 0;
     return note === void 0 ? void 0 : { note, tone: noteTone(note, cards) };
   };
-  const rows = payload.findings.map((f, i) => findingRow(f, i, r, payload.agent, noteFor(f))).join("\n");
-  const truncated = payload.moreFindings > 0 ? `
-<p class="note">${escapeHtml(formatCount(payload.moreFindings))} further guardrails matched and are not listed here.</p>` : "";
-  const filters = [
-    ["all", "All"],
-    ["block", "Would block"],
-    ["require_approval", "Would ask"],
-    ["warn", "Would warn"]
-  ].map(
-    ([value, label]) => `<button type="button" class="filter" data-filter="${value}" aria-pressed="${value === "all" ? "true" : "false"}">${label}</button>`
+  const rows = findings.map(
+    (f, i) => findingRow(
+      f,
+      i,
+      anchors.get(f) ?? `finding-${i}`,
+      {
+        category: categoryOrder.get(f) ?? i,
+        count: r.count.get(f) ?? i,
+        name: r.name.get(f) ?? i
+      },
+      topOf(f, i),
+      most,
+      payload.agent,
+      noteFor(f)
+    )
   ).join("\n");
-  const matched = counted3(
-    payload.findings.length + payload.moreFindings,
-    "guardrail matched",
-    "guardrails matched"
-  );
-  return `<section id="findings" class="findings-section">
-<div class="section-head"><h2>All findings</h2><p class="section-meta" id="findings-count">${escapeHtml(matched)}</p></div>${variant === "artifact" ? `
-<p class="note artifact-note">Filters, sort and export are in the report file itself, <code>${REPORT_FILENAME}</code>. To make one from your own sessions, run <code>agenttrail-guard scan</code>.</p>` : ""}
-<div class="controls js-only" hidden>
-<div class="filters" role="group" aria-label="Show findings">
-${filters}
+  const showing = (shown) => `Showing ${formatCount(shown)} of ${counted3(findings.length, "guardrail", "guardrails")} \xB7 ${counted3(matches, "match", "matches")} in all`;
+  const byAction = (slug) => findings.filter((f) => actionSlug(f.action) === slug).length;
+  const rc = [
+    `<span class="rc" data-s="top">${escapeHtml(showing(Math.min(TOP_ROWS, findings.length)))}</span>`,
+    `<span class="rc" data-s="all">${escapeHtml(showing(findings.length))}</span>`,
+    ...["block", "ask", "warn"].map(
+      (slug) => `<span class="rc" data-s="${slug}">${escapeHtml(showing(byAction(slug)))}</span>`
+    ),
+    ...payload.owasp.map(
+      (t) => `<span class="rc" data-s="risk-${escapeHtml(t.id)}">${escapeHtml(showing(findings.filter((f) => f.owasp.includes(t.id)).length))}</span>`
+    ),
+    `<span class="rc-js" id="rc-search"></span>`
+  ].join("");
+  const riskRadios = payload.owasp.length === 0 ? "" : `
+<span class="risk-radios" id="ff-risks" role="group" aria-label="Filter by OWASP risk">${payload.owasp.map((t) => `<input class="vh risk-radio" type="radio" name="ff" id="ff-risk-${escapeHtml(t.id)}" value="${escapeHtml(t.id)}" autocomplete="off" aria-label="${escapeHtml(`OWASP ${t.id}: ${owaspTitle(t.id)}`)}">`).join("")}</span>`;
+  const activeFilter = payload.owasp.length === 0 ? "" : `
+<div class="active-filter" id="risk-filter"><span id="risk-filter-label">Filtered by ${payload.owasp.map((t) => `<span class="af-t" data-s="risk-${escapeHtml(t.id)}">${escapeHtml(`${t.id} ${owaspTitle(t.id)}`)}</span>`).join("")}</span><label for="ff-all" id="risk-clear">Clear<span class="sr-only"> the OWASP filter</span></label></div>`;
+  const truncated = payload.moreFindings > 0 ? `
+<p class="vnote">${escapeHtml(formatCount(payload.moreFindings))} further guardrails matched and are not listed here.</p>` : "";
+  const limit = findings.length > TOP_ROWS ? `<div class="sortbox limit" id="fx-toggle"><span class="sort-cap" id="fx-cap">Show</span><div class="seg" role="radiogroup" aria-labelledby="fx-cap">${segment("fx", "fx-top", "top", `<span>Top ${TOP_ROWS}</span>`, true)}${segment("fx", "fx-all", "all", `<span>All ${escapeHtml(counted3(findings.length, "guardrail", "guardrails"))}</span>`, false)}</div></div>` : "";
+  const artifactNote = variant === "artifact" ? ` Search and export are in the report file itself, <code>${REPORT_FILENAME}</code>. To make one from your own sessions, run <code>agenttrail-guard scan</code>.` : "";
+  return `<section id="findings">
+${sectionHead("All findings", `<span id="findings-count">${escapeHtml(counted3(total, "guardrail matched", "guardrails matched"))}.</span> <span class="screen-only">Open a row to see the commands behind it.</span>${artifactNote}`)}
+<div class="explorer-controls">
+<div class="toolbar">
+<div class="seg" role="radiogroup" aria-label="Filter findings">${segment("ff", "ff-all", "all", "<span>All</span>", true)}${segment("ff", "ff-block", "block", '<span><span class="w">Would </span>block</span>', false)}${segment("ff", "ff-ask", "ask", '<span><span class="w">Would </span>ask</span>', false)}${segment("ff", "ff-warn", "warn", '<span><span class="w">Would </span>warn</span>', false)}</div>${riskRadios}
+<div class="sortbox"><span class="sort-cap" id="sort-cap">Sort</span><div class="seg" role="radiogroup" aria-labelledby="sort-cap">${segment("fs", "fs-risk", "risk", '<span class="l">Most serious</span><span class="s">Serious</span>', true)}${segment("fs", "fs-category", "category", '<span class="l">By category</span><span class="s">Category</span>', false)}${segment("fs", "fs-count", "count", '<span class="l">Most matches</span><span class="s">Matches</span>', false)}${segment("fs", "fs-name", "name", '<span class="l">Name</span><span class="s">Name</span>', false)}</div></div>
+<input class="search js-only" id="search" type="search" placeholder="Search by name or command" aria-label="Search guardrails or commands" autocomplete="off">
 </div>
-<label class="sort">Sort <select id="sort">
-<option value="serious">Most serious</option>
-<option value="category">Category</option>
-<option value="count">Most matches</option>
-<option value="name">Name</option>
-</select></label>${riskFilter(payload)}
-</div>
-<p id="findings-status" class="sr-only" role="status" aria-live="polite"></p>
-<ol class="finding-list">
+</div>${activeFilter}
+<p class="result-count" id="result-count" aria-live="polite">${rc}</p>
+<div class="card flist-card">
+<div class="flist-head" aria-hidden="true"><span>Guardrail</span><span>Severity</span><span>Action</span><span></span><span>Matches</span></div>
+<div class="flist" id="flist">
+${headers}
 ${rows}
-</ol>
-<div class="filter-empty" id="findings-empty" hidden><p>No findings match these filters.</p><button type="button" class="tool" id="clear-filters">Show all findings</button></div>${truncated}
+</div>
+<div class="empty flist-empty" id="flist-empty">No findings match this search.</div>
+</div>${truncated}
+<div class="row-actions">${limit}<button class="btn btn-secondary btn-sm js-only" id="expand-all" type="button" aria-expanded="false">Expand all</button></div>
 </section>`;
 }
 function recurringSection(payload) {
   if (payload.recurring.length === 0) {
-    return `<section id="repeats"><h2>Repeat offenders</h2><p class="empty">Nothing matched more than once.</p></section>`;
+    return `<section id="repeats">
+${sectionHead("Repeat offenders", "")}
+<div class="card empty">Nothing matched more than once.</div>
+</section>`;
   }
+  const anchors = findingAnchors(payload.findings);
   const byShape = /* @__PURE__ */ new Map();
   for (const item of payload.recurring) {
     byShape.set(item.text, [...byShape.get(item.text) ?? [], item]);
@@ -19684,22 +19863,28 @@ function recurringSection(payload) {
   const rows = [...byShape].map(([text2, items]) => {
     const times = Math.max(...items.map((item) => item.calls));
     const names = items.map((item) => {
-      const index = payload.findings.findIndex((f) => f.ruleId === item.ruleId);
+      const finding = payload.findings.find((f) => f.ruleId === item.ruleId);
+      const anchor = finding === void 0 ? void 0 : anchors.get(finding);
       const title = inlineTitle(item.title);
-      const named = index === -1 ? title : `<a href="#finding-${index}">${title}</a>`;
+      const named = anchor === void 0 ? title : `<a class="linkish" href="#${anchor}">${title}</a>`;
       return item.count === times ? named : `${named} (${escapeHtml(formatCount(item.count))}&times;)`;
     }).join("<br>");
-    return `<tr role="row"><td class="shape" role="cell"><code>${escapeHtml(text2)}</code></td><td class="num" role="cell">${escapeHtml(formatCount(times))}&times;</td><td class="rule-name" role="cell">${names}</td></tr>`;
+    return `<tr><td><code class="cmd">${commandHtml(text2)}</code></td><td class="n">${escapeHtml(formatCount(times))}&times;</td><td class="g">${names}</td></tr>`;
   }).join("\n");
-  return `<section id="repeats"><h2>Repeat offenders</h2>
-<p class="note">The same shape, seen more than once. Paths are redacted before counting, so many different paths under one command become one repeat.</p>
-<div class="table-wrap"><table class="recurring" role="table">
-<thead role="rowgroup"><tr role="row"><th scope="col" role="columnheader">Command shape</th><th scope="col" class="num" role="columnheader">Times</th><th scope="col" role="columnheader">Guardrail</th></tr></thead>
-<tbody role="rowgroup">
+  const more = payload.moreRecurring > 0 ? `
+<p class="vnote">${escapeHtml(counted3(payload.moreRecurring, "further repeat is", "further repeats are"))} not listed here.</p>` : "";
+  const limit = byShape.size > TOP_ROWS ? `
+<div class="row-actions" id="rx-row"><div class="sortbox limit"><span class="sort-cap" id="rx-cap">Show</span><div class="seg" role="radiogroup" aria-labelledby="rx-cap">${segment("rx", "rx-top", "top", `<span>Top ${TOP_ROWS}</span>`, true)}${segment("rx", "rx-all", "all", `<span>All ${escapeHtml(counted3(byShape.size, "repeat", "repeats"))}</span>`, false)}</div></div></div>` : "";
+  return `<section id="repeats">
+${sectionHead("Repeat offenders", `The same command shape, seen more than once. Paths are redacted before counting, so one command against many files counts as one repeat. <span class="screen-only">Select a guardrail to jump to it.</span>`)}
+<div class="card repeat-wrap">
+<table class="repeat-table">
+<thead><tr><th scope="col">Command shape</th><th scope="col" class="n">Times</th><th scope="col" class="g">Guardrail</th></tr></thead>
+<tbody id="repeat-body">
 ${rows}
 </tbody>
-</table></div>${payload.moreRecurring > 0 ? `
-<p class="note">${escapeHtml(counted3(payload.moreRecurring, "further repeat is", "further repeats are"))} not listed here.</p>` : ""}
+</table>
+</div>${limit}${more}
 </section>`;
 }
 var OTHER_AGENTS = {
@@ -19709,21 +19894,15 @@ var OTHER_AGENTS = {
 };
 function nextStepsSection(result) {
   const a = result.agent;
-  return `<section id="next-steps">
-<h2>Next steps</h2>
-<ol class="steps">
-<li><p><strong>Turn on AgentTrail Guard</strong> so these guardrails run before each command.</p>
-${copyable("cmd-init", `agenttrail-guard init --agent ${a}`, "Copy the step 1 command")}</li>
-<li><p><strong>See what it is doing</strong>: whether it is on, and what it decided recently.</p>
-${copyable("cmd-status", "agenttrail-guard status", "Copy the step 2 command")}</li>
-<li><p><strong>Scan again next week</strong>, and read every line before the report is written.</p>
-${copyable("cmd-scan-again", `agenttrail-guard scan --agent ${a} --review`, "Copy the step 3 command")}</li>
-</ol>
-<ul class="links">
-<li>${outLink(siteLink("/get-started/guard", a, "next-commands"), "Every command")}</li>
-<li>${outLink(siteLink("/guardrails", a, "next-library"), "The guardrail library")}</li>
-<li>${outLink(siteLink("/get-started/guard", a, "next-agents"), `Set up ${OTHER_AGENTS[a]}`)}</li>
-</ul>
+  const step = (n2, title, text2, command, name) => `<div class="card step"><span class="step-n">${n2}</span><h3>${title}</h3><p>${text2}</p>${copyable(`cmd-step-${n2}`, command, name)}</div>`;
+  return `<section id="next">
+${sectionHead("Next steps", "Two commands to turn it on, and one to check again. No account.")}
+<div class="steps">
+${step("01", "Turn on AgentTrail Guard", "Install the hook, so these guardrails check each command before it runs.", `agenttrail-guard init --agent ${a}`, "Copy the step 1 command")}
+${step("02", "See what it is doing", "Shows whether it is on, and what it decided recently.", "agenttrail-guard status", "Copy the step 2 command")}
+${step("03", "Scan again next week", "See whether the counts fall. <code>--review</code> shows every line before the file is written.", `agenttrail-guard scan --agent ${a} --review`, "Copy the step 3 command")}
+</div>
+<div class="learn">${learnLink(siteLink("/get-started/guard", a, "next-commands"), "Every command")}${learnLink(siteLink("/guardrails", a, "next-library"), "The guardrail library")}${learnLink(siteLink("/get-started/guard", a, "next-agents"), `Set up ${OTHER_AGENTS[a]}`)}</div>
 </section>`;
 }
 function shareSectionHtml(result, payload, variant) {
@@ -19731,44 +19910,43 @@ function shareSectionHtml(result, payload, variant) {
   const editable = variant === "document";
   const edit = editable ? "Edit it before posting." : "This published copy cannot change the post. In the report file it was made from, the post can be edited before posting.";
   const what = payload.shareText === totalsShareText(result) ? "Totals and at most one library guardrail&#39;s name" : "Counts from the checks on this machine, and nothing else";
+  const rows = Math.max(3, payload.shareText.split("\n").length + 1);
   return `<section id="share" class="share">
-<h2>Share your result</h2>
-<p class="note share-note">${what}: no commands, paths, project names or guardrails you wrote. ${edit}</p>
-<label class="share-label" for="share-text">Post preview</label>
-<textarea id="share-text" rows="4"${editable ? "" : " readonly"}>${escapeHtml(payload.shareText)}</textarea>
-<p class="share-actions"><span id="share-count" class="share-count" data-over="${length > POST_LIMIT ? "true" : "false"}">${escapeHtml(`${length} / ${POST_LIMIT}`)}</span>
-<a id="share-link" class="button" href="${escapeHtml(shareLink(payload.shareText, result.agent))}" target="_blank" rel="noopener noreferrer">Post on X</a>
-<button type="button" class="copy js-only" data-copy="share-text" data-label="Copy text" aria-label="Copy text of the post" hidden>Copy text</button></p>
+${sectionHead("Share your result", `${what}: no commands, paths, project names or guardrails you wrote. ${edit}`)}
+<figure class="card post">
+<figcaption class="post-head"><span>Post preview</span>${ICONS.x}</figcaption>
+<label class="sr-only" for="share-text">Post text</label>
+<textarea class="post-text" id="share-text" rows="${rows}"${editable ? "" : " readonly"}>${escapeHtml(payload.shareText)}</textarea>
+<div class="post-foot">
+${outLink(shareLink(payload.shareText, result.agent), `${ICONS.x}<span>Post on X<span class="sr-only"> (opens in a new tab)</span></span>`, "btn btn-primary", ' id="share-link"')}
+<button class="btn btn-secondary js-only" id="share-copy" type="button" data-copy="share-text" data-label="Copy text" aria-label="Copy text of the post">Copy text</button>
+<span class="post-count" id="share-count" data-over="${length > POST_LIMIT ? "true" : "false"}">${escapeHtml(`${length} / ${POST_LIMIT}`)}</span>
+</div>
+</figure>
 </section>`;
 }
-function beforeYouShareSection(result, variant) {
+var LEGEND = `<dl class="legend">
+<dt><code>&lt;path&gt;</code></dt><dd>A redacted file path or URL</dd>
+<dt><code>&lt;name&gt;</code> <code>&lt;host&gt;</code> <code>&lt;user&gt;</code></dt><dd>An identifying operand of a command, such as a container, a namespace, a machine or a login</dd>
+<dt><code>&lt;message&gt;</code> <code>&lt;comment&gt;</code></dt><dd>A commit message, heredoc body or shell comment</dd>
+<dt><code>&lt;value&gt;</code></dt><dd>A redacted MCP payload value</dd>
+<dt><code>[REDACTED:&hellip;]</code></dt><dd>A redacted secret; <code>[REDACTED:secret:generic]</code> marks a long random-looking string masked on a best guess</dd>
+<dt><code>&hellip;</code></dt><dd>Where a long command was shortened for display</dd>
+</dl>`;
+function redactionDetails(result, variant) {
   const review2 = `<code>agenttrail-guard scan --agent ${escapeHtml(result.agent)} --review</code>`;
   const check = variant === "artifact" ? `Redaction is thorough but not a guarantee. Read the findings before passing this page on; the person who published it can check every line with ${review2} before the file is written.` : `Redaction is thorough but not a guarantee. Read the findings before posting this anywhere public, and run ${review2} to see every line before the file is written.`;
   const warning = result.toolCalls === 0 ? "" : `
 <p class="warning">${check}</p>`;
-  return `<section class="callout" id="privacy">
-<h2>Before you share this</h2>
-<p class="note">This report was made on one machine from transcripts already on its disk, and the scan sent nothing anywhere.</p>
-<p class="note">Every command in this report has been through a secret scrubber, a path redactor, a pass for secret-named values and long random-looking strings, and an identifier redactor, and every MCP tool call has had its payload values structurally redacted. Redaction runs before anything is written, so this file has never held the original text.</p>
-<dl class="legend">
-<div><dt><code>&lt;path&gt;</code></dt><dd>stands for a redacted filesystem path or URL</dd></div>
-<div><dt><code>&lt;name&gt;</code> <code>&lt;host&gt;</code> <code>&lt;user&gt;</code> <code>&lt;message&gt;</code> <code>&lt;comment&gt;</code></dt><dd>stand for an identifying operand of a command &mdash; a container, a namespace, a machine, a login, a commit message or heredoc body, a shell comment</dd></div>
-<div><dt><code>&lt;value&gt;</code></dt><dd>stands for a redacted MCP payload value</dd></div>
-<div><dt><code>[REDACTED:&hellip;]</code></dt><dd>stands for a redacted secret; <code>[REDACTED:secret:generic]</code> marks a long random-looking string masked on a best guess</dd></div>
-<div><dt><code>&hellip;</code></dt><dd>marks where a long command was shortened for display</dd></div>
-</dl>${warning}
-<p class="note pdf-tip"><strong>Saving as PDF?</strong> Turn off headers and footers in the print dialog, so the file&rsquo;s location on your disk is not printed on every page.</p>
-</section>`;
-}
-function redactionSection() {
-  return `<section id="redaction"><h2>How redaction works and where it can miss</h2>
-<p class="note">Working directories and file paths appear nowhere in this file, and the projects these sessions came from are carried as a count and never as names.</p>
-<p class="note"><strong>Identifying names are a weaker claim than paths, and the difference is worth knowing.</strong> Shell commands go through an identifier redactor keyed to a fixed list of tools &mdash; container runtimes, <code>kubectl</code> (including resource names), the database clients (host, database, and the SQL handed to <code>-c</code> / <code>-e</code>), <code>ssh</code>, <code>git</code> commit messages and identity settings, 1Password&#39;s <code>op</code> (item and vault names), and <code>gh</code> titles and bodies &mdash; plus, in any command, a secret passed as a flag value (<code>--token</code>, <code>--password</code>, <code>--key</code>), a UUID, the body of a heredoc, and the text of a <code>#</code> comment. That list is a deny-list and will miss the tool nobody thought of, so a bare operand naming a resource for a tool not on it can survive.</p>
-<p class="note">Cloud account identifiers are redacted where a name or flag gives them away: <code>CLOUDFLARE_ACCOUNT_ID</code> and <code>--account-id</code>, <code>wrangler</code> commands, AWS account numbers after <code>--account</code> or inside an ARN, and <code>--project</code> for <code>gcloud</code>, <code>gsutil</code>, <code>bq</code> and <code>firebase</code>.</p>
-<p class="note"><strong>Secrets without a known format are caught by name and by shape, and both are guesses.</strong> A value after a name ending in <code>_KEY</code> or <code>-key</code>, an <code>Authorization</code> header, and any long random-looking string of 32 or more characters is masked. A secret that is shorter, that is only hexadecimal and has no revealing name, that is split by punctuation, or that has no name and is followed by a <code>.</code>, ends in <code>=</code> or is written as short dashed groups can survive. Branch names, folder names and git branch operands are kept readable and are not redacted.</p>
-<p class="note"><strong>MCP tool calls are handled the other way round:</strong> a call to an MCP server arrives as a structured payload, and rather than deny-listing known-sensitive fields, every value in it is redacted to <code>&lt;value&gt;</code> by default and only the field names and the shape are kept.</p>
-<p class="note">Guardrail ids and titles are shown as their author wrote them &mdash; which for any guardrail you added yourself means your own words, unredacted. Redaction is thorough but not a guarantee. Read the commands and guardrail names above before posting this anywhere public.</p>
-</section>`;
+  return `<details class="more-info" id="redaction"><summary>How redaction works and where it can miss</summary><div>
+<p>Every command in this report has been through a secret scrubber, a path redactor, a pass for secret-named values and long random-looking strings, and an identifier redactor, and every MCP tool call has had its payload values structurally redacted. Redaction runs before anything is written, so this file has never held the original text.</p>
+<p>Working directories and file paths appear nowhere in this file, and the projects these sessions came from are carried as a count and never as names.</p>
+<p><strong>Identifying names are a weaker claim than paths, and the difference is worth knowing.</strong> Shell commands go through an identifier redactor keyed to a fixed list of tools &mdash; container runtimes, <code>kubectl</code> (including resource names), the database clients (host, login, database, and the SQL handed to <code>-c</code> / <code>-e</code>), <code>ssh</code>, <code>git</code> commit messages and identity settings, 1Password&#39;s <code>op</code> (item and vault names), and <code>gh</code> titles and bodies &mdash; plus, in any command, a secret passed as a flag value (<code>--token</code>, <code>--password</code>, <code>--key</code>), a UUID, an AWS profile or resource id, the body of a heredoc, and the text of a <code>#</code> comment. That list is a deny-list and will miss the tool nobody thought of, so a bare operand naming a resource for a tool not on it can survive.</p>
+<p>Cloud account identifiers are redacted where a name or flag gives them away: <code>CLOUDFLARE_ACCOUNT_ID</code> and <code>--account-id</code>, <code>wrangler</code> commands, AWS account numbers after <code>--account</code> or inside an ARN, and <code>--project</code> for <code>gcloud</code>, <code>gsutil</code>, <code>bq</code> and <code>firebase</code>.</p>
+<p><strong>Secrets without a known format are caught by name and by shape, and both are guesses.</strong> A value after a name ending in <code>_KEY</code> or <code>-key</code>, an <code>Authorization</code> header, and any long random-looking string of 32 or more characters is masked. A secret that is shorter, that is only hexadecimal and has no revealing name, that is split by punctuation, or that has no name and is followed by a <code>.</code>, ends in <code>=</code> or is written as short dashed groups can survive. Branch names, folder names and git branch operands are kept readable and are not redacted.</p>
+<p><strong>MCP tool calls are handled the other way round:</strong> a call to an MCP server arrives as a structured payload, and rather than deny-listing known-sensitive fields, every value in it is redacted to <code>&lt;value&gt;</code> by default and only the field names and the shape are kept.</p>
+<p>Guardrail ids and titles are shown as their author wrote them &mdash; which for any guardrail you added yourself means your own words, unredacted. Read the commands and guardrail names above before posting this anywhere public.</p>${warning}
+</div></details>`;
 }
 function coverageNote(result) {
   if (result.notRead === 0) return "";
@@ -19787,7 +19965,7 @@ function coverageNote(result) {
       return unhandledAgent(result.agent);
   }
 }
-function corpusSection(result) {
+function scannedDetails(result) {
   const lines2 = [];
   lines2.push(
     `Read ${escapeHtml(formatCount(result.sessions))} session${result.sessions === 1 ? "" : "s"} across ${escapeHtml(formatCount(result.projects))} project${result.projects === 1 ? "" : "s"}.`
@@ -19810,23 +19988,23 @@ function corpusSection(result) {
   const coverage = coverageNote(result);
   const codex = result.agent === "codex" && result.verification !== void 0 ? `
 <p class="note codex-reading">${escapeHtml(CODEX_UNVERIFIED_TEXT)}</p>` : "";
-  return `<section id="scanned"><h2>What was scanned</h2>
+  return `<details class="more-info" id="scanned"><summary>What was scanned</summary><div>
 <p class="note">${lines2.join(" ")}</p>${coverage === "" ? "" : `
 ${coverage}`}${codex}
-</section>`;
+</div></details>`;
 }
-function skippedSection(payload) {
+function notEvaluatedDetails(payload) {
   const skipped = payload.skipped;
   if (skipped === void 0) return "";
   const phrases = skippedPhrases(skipped);
-  const kinds = phrases.length === 0 ? `<p class="empty">Every line of every session file that was opened was read.</p>` : `<ul class="list">
+  const kinds = phrases.length === 0 ? `<p class="note">Every line of every session file that was opened was read.</p>` : `<ul class="more-list">
 ${phrases.map((phrase) => `<li>${escapeHtml(phrase)}</li>`).join("\n")}
 </ul>`;
   const tools = skipped.unmappedTools.length === 0 ? "" : `
 <p class="note">Tool calls this reader does not recognize, by name:</p>
 <ul class="shapes">
 ${skipped.unmappedTools.map(
-    (tool) => `<li><code>${escapeHtml(tool.name)}</code><span class="times">${escapeHtml(formatCount(tool.count))}&times;</span></li>`
+    (tool) => `<li><code class="cmd">${escapeHtml(tool.name)}</code><span class="times">${escapeHtml(formatCount(tool.count))}&times;</span></li>`
   ).join("\n")}
 </ul>`;
   const notes = [];
@@ -19840,10 +20018,31 @@ ${skipped.unmappedTools.map(
       `${counted3(skipped.turnsEndedWithError, "turn", "turns")} ended with an error; the tool calls made before it were read.`
     );
   }
-  return `<section id="not-evaluated"><h2>What was not evaluated</h2>
+  return `<details class="more-info" id="not-evaluated"><summary>What was not evaluated</summary><div>
 <p class="note">None of this stopped the scan. Each line of a session file is read on its own, and whatever could not be used is counted here.</p>
 ${kinds}${tools}${notes.map((note) => `
 <p class="note">${escapeHtml(note)}</p>`).join("")}
+</div></details>`;
+}
+function privacySection(result, payload, meta, variant) {
+  const made = variant === "artifact" ? "Published by the person who ran it." : "Made on this machine.";
+  return `<section id="privacy">
+${sectionHead("Before you share this", "Built to be shared. Still worth a read before you post it anywhere public.")}
+<div class="card privacy">
+<ul class="checks">
+<li>${ICONS.check}<span><strong>${made}</strong> <span class="provenance">${provenance(result, meta, variant)}</span></span></li>
+<li>${ICONS.check}<span><strong>Secrets, paths and identifiers redacted</strong> before anything was written. This file never held the original text.</span></li>
+<li>${ICONS.check}<span><strong>Project names never appear</strong>, only a count of projects.</span></li>
+<li class="note screen-only">${ICONS.info}<span><strong>Saving a PDF?</strong> Turn off headers and footers in the print dialog, so the file&rsquo;s location on your disk is not printed on every page.</span></li>
+</ul>
+${LEGEND}
+</div>
+${redactionDetails(result, variant)}
+${scannedDetails(result)}${(() => {
+    const more = notEvaluatedDetails(payload);
+    return more === "" ? "" : `
+${more}`;
+  })()}
 </section>`;
 }
 function tokensSection(result) {
@@ -19862,28 +20061,84 @@ function tokensSection(result) {
     ]);
   }
   const body = rows.map(
-    ([label, value]) => `<tr><th scope="row">${escapeHtml(label ?? "")}</th><td class="num">${escapeHtml(value ?? "")}</td></tr>`
+    ([label, value]) => `<tr><th scope="row">${escapeHtml(label ?? "")}</th><td>${escapeHtml(value ?? "")}</td></tr>`
   ).join("\n");
-  const splitNote = t.turnsWithSplit > 0 ? `<p class="note">The 5-minute / 1-hour split is reported separately by the model and is not derived from the total above; on real sessions the two do not always agree, so both are shown as reported.</p>` : `<p class="note">None of these sessions reported a 5-minute / 1-hour cache-write split, so that row is omitted rather than shown as zero.</p>`;
-  const cacheReadNote = t.cacheRead > 0 ? `<p class="note">"Read from cache" is cumulative \u2014 the cached prefix is re-read and re-charged every turn, so this counts the same tokens many times over a session. It is a total of what the model billed for, not of distinct input.</p>` : "";
-  return `<section id="tokens"><h2>Tokens</h2>
-<p class="note">Read straight from the transcripts, so these are exact counts and not estimates.</p>
-<div class="table-wrap"><table class="kv">
+  const splitNote = t.turnsWithSplit > 0 ? `<p>The 5-minute / 1-hour split is reported separately by the model and is not derived from the total above; on real sessions the two do not always agree, so both are shown as reported.</p>` : `<p>None of these sessions reported a 5-minute / 1-hour cache-write split, so that row is omitted rather than shown as zero.</p>`;
+  const cacheReadNote = t.cacheRead > 0 ? `<p>"Read from cache" is cumulative \u2014 the cached prefix is re-read and re-charged every turn, so this counts the same tokens many times over a session. It is a total of what the model billed for, not of distinct input.</p>` : "";
+  return `<section id="usage">
+<details class="more-info card" id="tokens"><summary>Token usage for these sessions</summary><div class="usage-body">
+<table class="kv"><tbody>
 ${body}
-</table></div>
-${cacheReadNote}${splitNote}</section>`;
+</tbody></table>
+<div class="muted"><p>Read straight from the transcripts, so these are exact counts and not estimates.</p>${cacheReadNote}${splitNote}</div>
+</div></details>
+</section>`;
 }
-function productNoteSection(result) {
+var OS_REVIEW = {
+  id: "os.review",
+  render: (cards) => {
+    const review2 = cards.filter((card) => card.tone === "review");
+    if (review2.length === 0) return void 0;
+    const titles = review2.map(
+      (card, i) => i === 0 ? CATEGORY_TITLES[card.category] : CATEGORY_TITLES[card.category].toLowerCase()
+    );
+    return `${andList(titles)} ${review2.length === 1 ? "needs" : "need"} a person to review: once a call has changed something remote, a scan on one machine can only report it.`;
+  }
+};
+function productNoteSection(result, cards) {
   if (result.agent !== "claude") return "";
   const a = result.agent;
-  const { primary, secondary } = PRODUCT_NOTE;
-  return `<aside class="product-note" id="os" aria-label="About AgentTrail OS">
+  const { start, primary, secondary } = PRODUCT_NOTE;
+  const [first, ...rest] = PRODUCT_NOTE.heading.split(". ");
+  const heading = rest.length === 0 ? escapeHtml(PRODUCT_NOTE.heading) : `${escapeHtml(`${first}.`)}<br class="br-md"> ${escapeHtml(rest.join(". "))}`;
+  const review2 = cards === void 0 ? void 0 : sentence(OS_REVIEW, cards);
+  const steps = PRODUCT_NOTE.steps.map((s) => `<li><b>${escapeHtml(s.title)}</b><span>${escapeHtml(s.text)}</span></li>`).join("");
+  return `<aside class="card product" id="os" aria-label="About AgentTrail OS">
+<div>
 <p class="eyebrow">${escapeHtml(PRODUCT_NOTE.eyebrow)}</p>
-<h2>${escapeHtml(PRODUCT_NOTE.heading)}</h2>
+<h2>${heading}</h2>${review2 === void 0 ? "" : `
+<p>${sentenceSpan(review2)}</p>`}
 <p>${escapeHtml(PRODUCT_NOTE.body)}</p>
-<p class="product-note-action">${outLink(siteLink(primary.path, a, primary.content), escapeHtml(primary.label), "button")}
-${outLink(siteLink(secondary.path, a, secondary.content), escapeHtml(secondary.label), "text-link")}</p>
+<ol class="os-steps">${steps}</ol>
+</div>
+<div class="product-ctas">${outLink(siteLink(start.path, a, start.content), escapeHtml(start.label), "btn btn-primary")}${outLink(siteLink(primary.path, a, primary.content), escapeHtml(primary.label), "btn btn-secondary")}${outLink(siteLink(secondary.path, a, secondary.content), escapeHtml(secondary.label), "btn btn-secondary")}</div>
 </aside>`;
+}
+function reportMeta(payload, meta) {
+  return `<div class="report-meta">
+<p class="footer-brand">${LOGO_MARK_SVG}<span id="footer-version">agenttrail-guard ${escapeHtml(meta.version)} &middot; ${escapeHtml(payload.catalog)}</span></p>
+<p>A finding is a guardrail that matched. It is not proof that anything went wrong, and each guardrail&#39;s entry in the library states what it can miss.</p>
+<p>${outLink(REPOSITORY_URL, "Source on GitHub", void 0, ' id="source-link"')}</p>
+</div>`;
+}
+function siteFooter(agent, year) {
+  const link = (path, content, label) => `<li>${outLink(siteLink(path, agent, content), escapeHtml(label))}</li>`;
+  const column = (title, items) => `<nav aria-label="${title} footer links"><p>${title}</p><ul>
+${items.join("\n")}
+</ul></nav>`;
+  const social = (url, label, icon) => `<a href="${url}" target="_blank" rel="noopener noreferrer" aria-label="${label}">${icon}</a>`;
+  return `<footer class="site-footer">
+<div class="site-footer-inner">
+<div class="sf-grid">
+<div>
+${outLink(siteLink("/", agent, "footer-home"), `<span role="img" aria-label="AgentTrail">${LOGO_LOCKUP_SVG}</span>`, void 0, ' aria-label="AgentTrail home"')}
+<p class="sf-tagline">Give your AI agents room to work.<br>Keep the guardrails in your hands.</p>
+<div class="sf-social">
+${social(SOCIAL_LINKS.github, "AgentTrail on GitHub", ICONS.github)}
+${social(SOCIAL_LINKS.x, "AgentTrail on X", ICONS.x)}
+${social(SOCIAL_LINKS.linkedin, "AgentTrail on LinkedIn", ICONS.linkedin)}
+${social(SOCIAL_LINKS.npm, "AgentTrail on npm", ICONS.npm)}
+</div>
+</div>
+<div class="sf-cols">
+${column("Product", [link("/agenttrail-guard", "footer-guard", "AgentTrail Guard"), link("/agenttrail-os", "footer-os", "AgentTrail OS"), link("/guard-vs-os", "footer-compare", "Guard vs OS"), link("/pricing", "footer-pricing", "Pricing")])}
+${column("Resources", [link("/about", "footer-about", "About"), link("/blog", "footer-blog", "Blog"), link("/guardrails", "footer-library", "Guardrail library"), link("/security/owasp", "footer-owasp", "OWASP Top 10")])}
+${column("Trust", [link("/security", "footer-security", "Security & Trust"), link("/subprocessors", "footer-subprocessors", "Subprocessors")])}
+</div>
+</div>
+<div class="sf-bottom"><span>&copy; ${year} AgentTrail. All rights reserved.</span><a href="mailto:${SECURITY_EMAIL}">${SECURITY_EMAIL}</a></div>
+</div>
+</footer>`;
 }
 function pageTitle(result, meta) {
   return `AgentTrail Guard scan report \xB7 ${agentName(result.agent)} \xB7 ${meta.generatedAt.toISOString().slice(0, 10)}`;
@@ -19902,14 +20157,14 @@ function renderReport(result, meta, options = {}) {
   const cards = scanned ? payload.cards : void 0;
   const lead = cards === void 0 || payload.verification === void 0 ? void 0 : pickHeadline(cards, { ranEvidence: payload.verification.ranEvidence });
   const head = `<title>${escapeHtml(pageTitle(result, meta))}</title>
-<style>${reportStyles(cards !== void 0)}</style>`;
+<style>${reportStyles(cards !== void 0)}${riskStyles(payload.owasp.map((t) => t.id))}</style>`;
   const sections = [
-    topBar(payload),
     heroSection(result, payload, meta, variant, lead),
-    ...cards === void 0 ? [] : [evidenceSection(payload), alsoCheckedSection(payload, cards, lead)],
+    ...cards === void 0 ? [] : [leadExtraSection(payload, cards, lead)],
     statsSection(result),
-    ...cards === void 0 ? [] : [
+    ...cards === void 0 || payload.verification === void 0 ? [] : [
       whatHappenedSection(
+        payload.verification,
         cards,
         variant,
         options.localFixCategories ?? [],
@@ -19918,35 +20173,27 @@ function renderReport(result, meta, options = {}) {
     ],
     ...scanned ? [
       wouldHaveDoneSection(result, payload),
-      fixFirstSection(payload),
       owaspSection(payload),
       findingsSection(payload, variant),
       recurringSection(payload)
     ] : [],
     nextStepsSection(result),
     scanned ? shareSectionHtml(result, payload, variant) : "",
-    beforeYouShareSection(result, variant),
-    redactionSection(),
-    corpusSection(result),
-    skippedSection(payload),
+    privacySection(result, payload, meta, variant),
     scanned ? tokensSection(result) : "",
-    productNoteSection(result)
+    productNoteSection(result, cards),
+    reportMeta(payload, meta)
   ].filter((section) => section !== "");
-  const body = `<main class="page" lang="en">
+  const printHead = `<div class="page print-only"><div class="print-head"><span role="img" aria-label="AgentTrail">${LOGO_LOCKUP_SVG}</span><span id="print-meta">${escapeHtml(pageTitle(result, meta))}</span></div></div>`;
+  const body = `${topBar(payload)}
+${printHead}
+<main id="main" class="page" lang="en" tabindex="-1">
 ${sections.join("\n")}
-<footer>
-<p class="footer-brand">${LOGO_MARK_SVG}<span>agenttrail-guard ${escapeHtml(meta.version)} &middot; ${escapeHtml(payload.catalog)}</span></p>
-<p>Source: ${escapeHtml(REPOSITORY_URL)}</p>
-<p>A finding is a guardrail that matched. It is not proof that anything went wrong, and the guardrails state their own coverage limits.</p>
-<ul class="footer-links">
-<li>${outLink(siteLink("/agenttrail-guard", result.agent, "footer-guard"), "AgentTrail Guard")}</li>
-<li>${outLink(siteLink("/guardrails", result.agent, "footer-library"), "Guardrail library")}</li>
-<li>${outLink(siteLink("/security", result.agent, "footer-security"), "Security")}</li>
-</ul>
-</footer>
 <p id="page-status" class="sr-only" role="status" aria-live="polite"></p>
 <textarea id="copy-buffer" class="sr-only" tabindex="-1" aria-hidden="true" readonly></textarea>
-</main>`;
+</main>
+${siteFooter(result.agent, meta.generatedAt.getUTCFullYear())}
+<div class="toast" id="toast" aria-hidden="true"></div>`;
   if (variant === "artifact") return `${head}
 ${body}
 `;
@@ -20010,24 +20257,24 @@ function verifiedLines(payload) {
   if (cards === void 0 || payload.verification === void 0) return [];
   const lines2 = [];
   const lead = pickHeadline(cards, { ranEvidence: payload.verification.ranEvidence });
-  if (lead?.headline !== void 0) lines2.push(lead.headline.sentence.text);
-  const facts = payload.verification.categories.secrets.facts;
-  for (const item of facts.items) {
-    const row = evidenceRow(item);
-    lines2.push(`${row.kind}  ${row.how}  ${row.files}`);
+  if (lead?.headline !== void 0) {
+    lines2.push(lead.headline.sentence.text);
+    for (const line2 of leadSentences(lead, payload)) lines2.push(line2.text);
   }
-  const more = MORE_EVIDENCE.render({ more: facts.moreItems });
+  const facts = payload.verification.categories.secrets.facts;
+  for (const item of facts.items.slice(0, EVIDENCE_ROWS)) {
+    const way = primaryWay(item.via);
+    lines2.push(
+      `${KIND_LABELS[item.kind] ?? KIND_LABELS.other}  ${way === void 0 ? "" : PROVENANCE_PHRASES[way]}  ${countOf(item.files, "file")}`
+    );
+  }
+  const more = MORE_EVIDENCE.render({
+    more: facts.moreItems + Math.max(0, facts.items.length - EVIDENCE_ROWS)
+  });
   if (more !== void 0) lines2.push(more);
-  for (const note of leadNotes(payload.verification)) lines2.push(note.text);
-  for (const chip of chipsFor(cards, lead)) lines2.push(`${chip.title}  ${chip.text}`);
+  for (const chip of chipsFor(cards, lead)) lines2.push(chip.label);
   const forms = sentence(HIDING_FORMS_LIST, cards);
   if (forms !== void 0) lines2.push(forms.text);
-  const tally = sentence(TONE_TALLY, cards);
-  if (tally !== void 0) lines2.push(tally.text);
-  for (const card of cards) {
-    if (card.read !== void 0)
-      lines2.push(`${CATEGORY_TITLES[card.category]}:  ${card.read.text}`);
-  }
   for (const card of cards) {
     const title = CATEGORY_TITLES[card.category];
     const count3 = cardCount(card);
@@ -20035,12 +20282,16 @@ function verifiedLines(payload) {
     for (const line2 of [...card.found, ...card.now, ...card.fixSteps ?? []]) {
       lines2.push(`${title}  ${line2.text}`);
     }
-    for (const fix of card.fixes) lines2.push(`${title}  ${fix.shape}`);
+    for (const fix of card.fixes.slice(0, MAX_CARD_COMMANDS)) lines2.push(`${title}  ${fix.shape}`);
+    if (card.read !== void 0) lines2.push(`${title}  ${card.read.text}`);
     if (card.caveat !== void 0) lines2.push(`${title}  ${card.caveat.text}`);
     const caveat = sentence(CODEX_CAVEAT, card);
     if (caveat !== void 0) lines2.push(`${title}  ${caveat.text}`);
   }
+  for (const note of leadNotes(payload.verification)) lines2.push(note.text);
   for (const note of payload.notes ?? []) lines2.push(`${note.ruleId}  ${note.sentence.text}`);
+  const review2 = payload.agent === "claude" ? sentence(OS_REVIEW, cards) : void 0;
+  if (review2 !== void 0) lines2.push(review2.text);
   return lines2;
 }
 function renderJson(result, meta) {
@@ -21249,9 +21500,9 @@ var FORMAT_KINDS = /* @__PURE__ */ new Set([
   "slack-token",
   "api-key"
 ]);
-function jwtPart(segment) {
+function jwtPart(segment2) {
   try {
-    const value = JSON.parse(Buffer.from(segment, "base64url").toString("utf8"));
+    const value = JSON.parse(Buffer.from(segment2, "base64url").toString("utf8"));
     return value !== null && typeof value === "object" && !Array.isArray(value) ? value : void 0;
   } catch {
     return void 0;

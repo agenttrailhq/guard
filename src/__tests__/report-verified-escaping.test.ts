@@ -13,6 +13,7 @@ import { renderReport } from "../core/report.js";
 import { CARD_BUILDERS } from "../core/verify/builders.js";
 import { type CardBuilders, type CardView, HEADLINE_BASIS } from "../core/verify/cards.js";
 import { VERIFY_CATEGORIES, type VerifyCategory } from "../core/verify/types.js";
+import { joinCommandWords } from "./html-text.js";
 import {
   baseResult,
   LOCAL_FIX_CATEGORIES,
@@ -93,13 +94,15 @@ const LEAKS: readonly [string, RegExp][] = [
 describe("the verified sections escape every slot", () => {
   it("the hostile text reached the page, in every slot", () => {
     // Health: the slots were filled, so an absence below is escaping, not a missing slot.
-    expect(HTML).toContain('<h1 data-template="id&quot;&gt;&lt;b class=&quot;x.skipped-checks">');
+    expect(HTML).toContain(
+      '<h1 id="headline" data-template="id&quot;&gt;&lt;b class=&quot;x.skipped-checks">',
+    );
     // The evidence rows hold only fixed kind labels and counts, so it is not a slot here.
     for (const slot of ["also-checked", "what-happened"]) {
       expect(HTML).toContain(`id="${slot}"`);
     }
     expect(markup.split("&lt;b&gt;bold&lt;/b&gt;").length - 1).toBeGreaterThan(40);
-    expect(markup).toContain("git show &lt;b&gt;bold");
+    expect(joinCommandWords(markup)).toContain("git show &lt;b&gt;bold");
   });
 
   it.each(LEAKS)("leaves no %s", (_name, pattern) => {

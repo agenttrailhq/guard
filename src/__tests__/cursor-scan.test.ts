@@ -687,13 +687,13 @@ describe("a Cursor report", () => {
 
   it("names Cursor, and its review hint names --agent cursor", async () => {
     const html = renderReport(await cursorResult(), META);
-    expect(html).toContain('<p class="agent">Agent: Cursor</p>');
+    expect(html).toContain('<span class="sr-only">, </span><span>Cursor</span>');
     expect(html).toContain("<code>agenttrail-guard scan --agent cursor --review</code>");
   });
 
   it("has no token cell or section, and says why", async () => {
     const html = renderReport(await cursorResult(), META);
-    expect(html).not.toContain("<h2>Tokens</h2>");
+    expect(html).not.toContain("<summary>Token usage for these sessions</summary>");
     expect(html).not.toContain('<div class="stat-label">tokens</div>');
     expect(html).toContain("Cursor&#39;s session files record no token counts");
   });
@@ -701,10 +701,10 @@ describe("a Cursor report", () => {
   it("lists what was not evaluated, by kind and by tool name", async () => {
     const result = await cursorResult();
     const html = renderReport(result, META);
-    expect(html).toContain("<h2>What was not evaluated</h2>");
+    expect(html).toContain("<summary>What was not evaluated</summary>");
     expect(html).toContain("<li>1 file whose last line was cut off</li>");
     expect(html).toContain("<li>1 tool call of a kind this reader does not recognize</li>");
-    expect(html).toContain("<code>FutureTool</code>");
+    expect(html).toContain('<code class="cmd">FutureTool</code>');
 
     const tools = reviewStrings(result).find((g) => g.label === "Tool names in the report");
     expect(tools?.lines).toEqual(["FutureTool"]);

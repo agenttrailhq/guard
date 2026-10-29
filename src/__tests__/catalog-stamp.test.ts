@@ -217,13 +217,16 @@ describe("all three surfaces read the SAME stamp", () => {
     // thing that would get appended to a version line, so the footer is checked on its own.
     const html = renderReport(EMPTY_RESULT, { version: VERSION, generatedAt: now });
     expect(EMPTY_RESULT.agent).toBe("claude");
-    const footer = html.slice(html.indexOf("<footer"), html.indexOf("</footer>"));
+    const footer = html.slice(
+      html.indexOf('<div class="report-meta">'),
+      html.indexOf("</div>", html.indexOf('<div class="report-meta">')),
+    );
     expect(footer).toContain(expected);
-    expect(footer).not.toContain("product-note");
+    expect(footer).not.toContain('class="card product"');
     expect(footer).not.toContain(PRODUCT_NOTE.primary.label);
     expect(footer).not.toContain(PRODUCT_NOTE.heading);
     expect(footer).not.toMatch(/sign up|free trial|get started|upgrade|book a demo|waitlist/i);
     // The control: the note IS in the page, so the slice above is what kept it out.
-    expect(html).toContain(PRODUCT_NOTE.heading);
+    expect(html.replace('<br class="br-md"> ', " ")).toContain(PRODUCT_NOTE.heading);
   });
 });

@@ -513,9 +513,14 @@ describe("a hiding form in a call that ran keeps every git-backed category from 
       const at = html.indexOf(`id="check-${name}"`);
       expect(at, name).toBeGreaterThan(-1);
       const card = html.slice(html.lastIndexOf("<article", at), html.indexOf("</article>", at));
-      return [
-        ...card.matchAll(/<p(?: class="note card-caveat")? data-template="([^"]+)">([^<]*)<\/p>/g),
-      ].map((m) => [m[1] as string, m[2] as string]);
+      // A card's short rows repeat its first lines, which its expander lists again in full:
+      // each line counts once, in the order it first appears.
+      const lines = [...card.matchAll(/<span data-template="([^"]+)">([^<]*)<\/span>/g)].map(
+        (m) => [m[1] as string, m[2] as string],
+      );
+      return lines.filter(
+        (line, i) => lines.findIndex((l) => l[0] === line[0] && l[1] === line[1]) === i,
+      );
     };
     const LINES: Record<GitName, readonly string[][]> =
       hiding > 0

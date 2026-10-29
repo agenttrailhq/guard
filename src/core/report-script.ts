@@ -3,9 +3,11 @@
  * The scan report's one inline script, as a constant.
  *
  * ── What it may do ───────────────────────────────────────────────────────────
- * Filters (by action and by OWASP risk), sort, copy buttons, the theme toggle, print and the
- * JSON export, and keeping the
- * Post-on-X link in step with the editable share text. Everything it shows is already in the
+ * Search over the findings, Expand all, opening a cut-off command, copy buttons, the theme
+ * toggle, print and the JSON export, and keeping the Post-on-X link in step with the editable
+ * share text. The filters, the OWASP risks, the sorts and the top-five limits need no script:
+ * they are radio groups the stylesheet reads. The script marks `<html>` with `js`, which shows
+ * its controls. Everything it shows is already in the
  * page: it reads the `#report-data` block with `textContent` + `JSON.parse`, writes text with
  * `textContent` only, and never builds markup from data.
  *
@@ -42,8 +44,6 @@ var THEME_KEY = ${JSON.stringify(THEME_KEY)};
 var POST_LIMIT = ${POST_LIMIT};
 var URL_WEIGHT = 23;
 var HASHTAG = "#agenttrail";
-var FILTERS = ["all", "block", "require_approval", "warn"];
-var SORTS = ["serious", "category", "count", "name"];
 
 function charWeight(code) {
   if (code <= 0x10ff) return 1;
@@ -93,54 +93,19 @@ function nextTheme(current, systemDark) {
   return effective === "dark" ? "light" : "dark";
 }
 
-function isFilter(value) {
-  return FILTERS.indexOf(value) !== -1;
-}
-
-function rowVisible(filter, action) {
-  return filter === "all" || filter === action;
-}
-
-function isRisk(value) {
-  if (typeof value !== "string" || value.length !== 5) return false;
-  var list = value.slice(0, 3);
-  var n = parseInt(value.slice(3), 10);
-  if (list !== "ASI" && list !== "LLM") return false;
-  return n >= 1 && n <= 10 && value.slice(3) === (n < 10 ? "0" + n : "10");
-}
-
-function riskVisible(risk, ids) {
-  if (risk === "") return true;
-  if (!isRisk(risk) || typeof ids !== "string") return false;
-  return (" " + ids + " ").indexOf(" " + risk + " ") !== -1;
-}
-
-function isSort(value) {
-  return SORTS.indexOf(value) !== -1;
-}
-
-function rankOf(value) {
-  var n = parseInt(value, 10);
-  return isFinite(n) && n >= 0 ? n : 0;
-}
-
-function statusText(shown, total) {
-  return "Showing " + shown + " of " + total + (total === 1 ? " guardrail" : " guardrails");
-}
-
-function sortLabel(key) {
-  if (key === "serious") return "most serious";
-  if (key === "count") return "most matches";
-  return key;
-}
-
 function copiedText(name) {
   var label = String(name || "");
   return label.indexOf("Copy ") === 0 ? "Copied " + label.slice(5) : "Copied";
 }
 
-function sortText(key) {
-  return "Sorted by " + sortLabel(key) + ". Keyboard and screen-reader order stays most serious first.";
+function matchesQuery(text, query) {
+  var q = String(query || "").trim().toLowerCase();
+  if (q === "") return true;
+  return String(text || "").toLowerCase().indexOf(q) !== -1;
+}
+
+function searchText(shown, total) {
+  return "Showing " + shown + " of " + total + (total === 1 ? " guardrail" : " guardrails") + " that match the search";
 }
 
 function exportHref(raw) {
@@ -159,6 +124,7 @@ function each(selector, fn) {
 }
 
 var page = document.documentElement;
+page.classList.add("js");
 var store = null;
 try {
   store = window.localStorage;
@@ -182,112 +148,42 @@ function storeTheme(value) {
   }
 }
 
-function themeLabel(button) {
-  var current = readTheme(page.getAttribute("data-theme"));
-  var dark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
-  button.textContent =
-    nextTheme(current, dark) === "dark" ? "Switch to dark theme" : "Switch to light theme";
+function systemDark() {
+  return window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+}
+
+function showTheme(button) {
+  var current = readTheme(page.getAttribute("data-theme")) || (systemDark() ? "dark" : "light");
+  button.setAttribute("aria-pressed", current === "dark" ? "true" : "false");
 }
 
 var saved = storedTheme();
 if (saved) page.setAttribute("data-theme", saved);
 
-each(".js-only", function (el) {
-  el.hidden = false;
-});
-
-var themeButton = byId("theme-toggle");
+var themeButton = byId("theme");
 if (themeButton) {
-  themeLabel(themeButton);
+  showTheme(themeButton);
   themeButton.addEventListener("click", function () {
-    var dark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
-    var next = nextTheme(page.getAttribute("data-theme"), dark);
+    var next = nextTheme(page.getAttribute("data-theme"), systemDark());
     page.setAttribute("data-theme", next);
     storeTheme(next);
-    themeLabel(themeButton);
-  });
-}
-
-var status = byId("findings-status");
-var riskSelect = byId("risk-filter");
-var countLine = byId("findings-count");
-var countText = countLine ? countLine.textContent : "";
-var emptyRow = byId("findings-empty");
-var actionFilter = "all";
-
-function pressAction(filter) {
-  actionFilter = filter;
-  each("[data-filter]", function (other) {
-    other.setAttribute("aria-pressed", other.getAttribute("data-filter") === filter ? "true" : "false");
-  });
-}
-
-function applyFilters() {
-  var risk = riskSelect && isRisk(riskSelect.value) ? riskSelect.value : "";
-  var shown = 0;
-  var total = 0;
-  each(".finding", function (row) {
-    var visible =
-      rowVisible(actionFilter, row.getAttribute("data-action")) &&
-      riskVisible(risk, row.getAttribute("data-owasp"));
-    row.hidden = !visible;
-    total++;
-    if (visible) shown++;
-  });
-  if (status) status.textContent = statusText(shown, total);
-  if (countLine) countLine.textContent = shown === total ? countText : statusText(shown, total);
-  if (emptyRow) emptyRow.hidden = shown !== 0;
-}
-
-each("[data-filter]", function (button) {
-  button.addEventListener("click", function () {
-    var filter = button.getAttribute("data-filter");
-    if (!isFilter(filter)) return;
-    pressAction(filter);
-    applyFilters();
-  });
-});
-
-if (riskSelect) riskSelect.addEventListener("change", applyFilters);
-
-each("[data-risk]", function (button) {
-  button.addEventListener("click", function () {
-    var risk = button.getAttribute("data-risk");
-    if (!riskSelect || !isRisk(risk)) return;
-    pressAction("all");
-    riskSelect.value = risk;
-    applyFilters();
-    riskSelect.focus();
-  });
-});
-
-var clearFilters = byId("clear-filters");
-if (clearFilters) {
-  clearFilters.addEventListener("click", function () {
-    pressAction("all");
-    if (riskSelect) riskSelect.value = "";
-    applyFilters();
-    each("[data-filter]", function (other) {
-      if (other.getAttribute("data-filter") === "all") other.focus();
-    });
-  });
-}
-
-var sortSelect = byId("sort");
-if (sortSelect) {
-  sortSelect.addEventListener("change", function () {
-    var key = sortSelect.value;
-    if (!isSort(key)) return;
-    each(".finding", function (row) {
-      row.style.order = String(rankOf(row.getAttribute("data-rank-" + key)));
-    });
-    if (status) status.textContent = sortText(key);
+    showTheme(themeButton);
   });
 }
 
 var pageStatus = byId("page-status");
+var toast = byId("toast");
+var toastTimer = 0;
 
 function say(text) {
+  if (toast) {
+    toast.textContent = text;
+    toast.classList.add("show");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () {
+      toast.classList.toggle("show", false);
+    }, 1800);
+  }
   if (!pageStatus) return;
   // Cleared first and written a moment later, so the same message is announced again.
   pageStatus.textContent = "";
@@ -298,8 +194,10 @@ function say(text) {
 
 function relabel(button, text, ms) {
   button.textContent = text;
+  button.classList.add("copied");
   setTimeout(function () {
     button.textContent = button.getAttribute("data-label") || "Copy";
+    button.classList.toggle("copied", false);
   }, ms);
 }
 
@@ -353,7 +251,7 @@ each("[data-copy]", function (button) {
   });
 });
 
-var printButton = byId("print-button");
+var printButton = byId("print");
 if (printButton) {
   printButton.addEventListener("click", function () {
     window.print();
@@ -376,7 +274,7 @@ window.addEventListener("afterprint", function () {
   openedForPrint = [];
 });
 
-var exportButton = byId("export-button");
+var exportButton = byId("export");
 var data = byId("report-data");
 if (exportButton && data) {
   exportButton.addEventListener("click", function () {
@@ -388,6 +286,70 @@ if (exportButton && data) {
     document.body.removeChild(a);
   });
 }
+
+var findings = byId("findings");
+var search = byId("search");
+var searchCount = byId("rc-search");
+var emptyList = byId("flist-empty");
+
+// The sorts, filters and limits are radio groups the stylesheet reads; a search hides what it
+// does not match, and each group header with no row left.
+if (findings && search) {
+  search.addEventListener("input", function () {
+    var query = search.value;
+    var searching = query.trim() !== "";
+    var shown = 0;
+    var total = 0;
+    var cats = [];
+    each("#flist .frow", function (row) {
+      var match = matchesQuery(row.textContent, query);
+      row.classList.toggle("nomatch", !match);
+      total++;
+      if (match) {
+        shown++;
+        cats.push(row.getAttribute("data-cat"));
+      }
+    });
+    each("#flist .fgroup", function (group) {
+      group.classList.toggle("nomatch", searching && cats.indexOf(group.getAttribute("data-cat")) === -1);
+    });
+    findings.classList.toggle("searching", searching);
+    if (searchCount) searchCount.textContent = searching ? searchText(shown, total) : "";
+    if (emptyList) emptyList.classList.toggle("show", searching && shown === 0);
+  });
+}
+
+var expandAll = byId("expand-all");
+if (expandAll) {
+  expandAll.addEventListener("click", function () {
+    var open = expandAll.getAttribute("aria-expanded") !== "true";
+    each("#flist .frow", function (row) {
+      row.open = open;
+    });
+    expandAll.setAttribute("aria-expanded", open ? "true" : "false");
+    expandAll.textContent = open ? "Collapse all" : "Expand all";
+  });
+}
+
+// A command cut off at the edge of its box opens in full when chosen.
+each(".cmd", function (cmd) {
+  if (cmd.scrollWidth <= cmd.clientWidth) return;
+  cmd.setAttribute("role", "button");
+  cmd.setAttribute("tabindex", "0");
+  cmd.setAttribute("aria-expanded", "false");
+  function toggle() {
+    var open = !cmd.classList.contains("expanded");
+    cmd.classList.toggle("expanded", open);
+    cmd.setAttribute("aria-expanded", open ? "true" : "false");
+  }
+  cmd.addEventListener("click", toggle);
+  cmd.addEventListener("keydown", function (event) {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      toggle();
+    }
+  });
+});
 
 var shareInput = byId("share-text");
 var shareLink = byId("share-link");

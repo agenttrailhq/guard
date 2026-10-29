@@ -33,17 +33,17 @@ const payload = reportPayload(RESULT, VERIFIED_META, TONE_BUILDERS);
 
 /** One finding row's markup, by its guardrail id. */
 function row(html: string, ruleId: string): string {
-  const at = html.indexOf(`<code>${ruleId}</code>`);
+  const at = html.indexOf(`<span class="fid">${ruleId}</span>`);
   expect(at, ruleId).toBeGreaterThan(-1);
-  const start = html.lastIndexOf('<li class="finding"', at);
-  // A row closes on a line of its own; the shapes inside it close on theirs.
-  return html.slice(start, html.indexOf("\n</li>", at));
+  const start = html.lastIndexOf('<details class="frow"', at);
+  // A row's body closes, then the row; the expanders inside it close on their own lines.
+  return html.slice(start, html.indexOf("\n</div>\n</details>", at));
 }
 
-/** The expander that lists a row's command shapes. */
+/** The list of a row's command shapes. */
 function commands(rowHtml: string): string {
-  const start = rowHtml.indexOf('<details class="commands">');
-  return rowHtml.slice(start, rowHtml.indexOf("</details>", start));
+  const start = rowHtml.indexOf('<ul class="shapes">');
+  return rowHtml.slice(start, rowHtml.indexOf("</ul>", start));
 }
 
 describe("the notes on the page corpus", () => {
@@ -110,30 +110,29 @@ describe("where a note is shown", () => {
   const html = renderReport(RESULT, VERIFIED_META, OPTIONS);
 
   /** A row's note line, or "" when it has none. */
-  const noteLine = (r: string): string =>
-    r.match(/<p class="verified-note[^"]*">.*<\/p>/)?.[0] ?? "";
+  const noteLine = (r: string): string => r.match(/<p class="fchecked[^"]*">.*<\/p>/)?.[0] ?? "";
 
-  it("is a line of its own under the guardrail's id, outside every expander", () => {
+  it("is the first line of the expanded row, before the guardrail's own text", () => {
     const r = row(html, "se.env-print");
     expect(r).toMatch(
-      /<div class="guardrail-id"><code>se\.env-print<\/code> &middot; <span class="group">[^<]*<\/span><\/div>\n<p class="verified-note v-act"><span class="verified-note-label">What checking found:<\/span> <span data-template="note\.secrets-printed">Likely-real credentials printed by a command: 1\.<\/span><\/p>\n/,
+      /<\/summary>\n<div class="fbody">\n<p class="fchecked v-act"><b>What checking found:<\/b> <span data-template="note\.secrets-printed">Likely-real credentials printed by a command: 1\.<\/span><\/p>\n/,
     );
-    expect(r.indexOf('class="verified-note')).toBeLessThan(r.indexOf("<details"));
-    expect(commands(r)).not.toContain("verified-note");
-    expect(commands(r)).toContain("<summary>The command shape behind it</summary>");
+    expect(r.indexOf('class="fchecked')).toBeLessThan(r.indexOf('<details class="libdesc">'));
+    expect(commands(r)).not.toContain("fchecked");
+    expect(commands(r)).toContain('<code class="cmd">');
   });
 
   it("a note that could not confirm takes the neutral mark, not its card's tone", () => {
     expect(noteLine(row(html, "ti.test-file-delete"))).toContain(
-      '<p class="verified-note v-could-not-check">',
+      '<p class="fchecked v-could-not-check">',
     );
     expect(noteLine(row(html, "wt.stash-drop"))).toContain(
-      '<p class="verified-note v-could-not-check">',
+      '<p class="fchecked v-could-not-check">',
     );
   });
 
   /** The classes of a row's note, or "" when it has none. */
-  const noteClass = (r: string): string => r.match(/class="(verified-note[^"]*)"/)?.[1] ?? "";
+  const noteClass = (r: string): string => r.match(/class="(fchecked[^"]*)"/)?.[1] ?? "";
 
   it("a reassuring note never takes an alarming card's colour", () => {
     // The secrets card is act: a credential was pasted. Its note on a printing guardrail says
@@ -149,7 +148,7 @@ describe("where a note is shown", () => {
     );
     const r = row(renderReport(nonePrinted, VERIFIED_META, OPTIONS), "se.env-print");
     expect(r).toContain("None of the likely-real credentials found were printed by a command.");
-    expect(noteClass(r)).toBe("verified-note");
+    expect(noteClass(r)).toBe("fchecked");
   });
 
   it("a reassuring note in a clean category is marked clean", () => {
@@ -163,11 +162,11 @@ describe("where a note is shown", () => {
     );
     const r = row(renderReport(clean, VERIFIED_META, OPTIONS), "se.env-print");
     expect(r).toContain("No likely-real credential was found in the transcripts.");
-    expect(noteClass(r)).toBe("verified-note v-clean");
+    expect(noteClass(r)).toBe("fchecked v-clean");
   });
 
   it("a note of what was found takes its card's tone", () => {
-    expect(noteClass(row(html, "se.env-print"))).toBe("verified-note v-act");
+    expect(noteClass(row(html, "se.env-print"))).toBe("fchecked v-act");
   });
 
   it("a note that could hide others is neutral, once the report carries that count", () => {
@@ -179,7 +178,7 @@ describe("where a note is shown", () => {
     const line = noteLine(row(renderReport(hiding, VERIFIED_META, OPTIONS), "ex.file-upload"));
     if (FACT_KEYS.includes("couldHide")) {
       expect(line).toMatch(
-        /^<p class="verified-note v-could-not-check"><span class="verified-note-label">What checking found:<\/span> <span data-template="note\.could-hide">/,
+        /^<p class="fchecked v-could-not-check"><b>What checking found:<\/b> <span data-template="note\.could-hide">/,
       );
     } else {
       expect(line).toBe("");
@@ -188,17 +187,17 @@ describe("where a note is shown", () => {
 
   it("a row with no note is as it was", () => {
     const r = row(html, "ps.persistence");
-    expect(r).not.toContain("verified-note");
-    expect(r).toContain("<summary>The command shape behind it</summary>");
+    expect(r).not.toContain("fchecked");
+    expect(r).toContain('<ul class="shapes">');
   });
 
-  it("the artifact, which has no script, shows the same notes outside its expanders", () => {
+  it("the artifact, which has no script, shows the same notes in the same place", () => {
     const artifact = renderReport(RESULT, VERIFIED_META, { ...OPTIONS, variant: "artifact" });
     for (const id of ["se.env-print", "wt.stash-drop", "ti.test-file-delete"]) {
       const r = row(artifact, id);
       expect(noteLine(r), id).not.toBe("");
       expect(noteLine(r), id).toBe(noteLine(row(html, id)));
-      expect(r.indexOf('class="verified-note'), id).toBeLessThan(r.indexOf("<details"));
+      expect(r.indexOf('class="fchecked'), id).toBeLessThan(r.indexOf('<ul class="shapes">'));
     }
   });
 
@@ -225,14 +224,14 @@ describe("where a note is shown", () => {
     }
     const at = html.indexOf('id="share"');
     const section = html.slice(at, html.indexOf("</section>", at));
-    expect(section).not.toContain("verified-note");
+    expect(section).not.toContain("fchecked");
     expect(decodeEntities(section)).not.toContain("printed by a command");
   });
 
   it("a scan with no verification shows no note and carries none", () => {
     const plain = notesResult(undefined);
     expect(reportPayload(plain, VERIFIED_META).notes).toBeUndefined();
-    expect(renderReport(plain, VERIFIED_META)).not.toContain('class="verified-note');
+    expect(renderReport(plain, VERIFIED_META)).not.toContain('class="fchecked');
   });
 
   it("a verification with no note to give carries no notes field", () => {
@@ -265,20 +264,21 @@ describe("how a note looks", () => {
   };
 
   it("is marked by a left border the tone classes color, set before them so they win", () => {
-    expect(rule(".verified-note")).toContain("border-left: 3px solid var(--tone-none-fg)");
-    expect(REPORT_STYLES.indexOf(".verified-note {")).toBeLessThan(
-      REPORT_STYLES.indexOf(".v-act {"),
+    expect(rule(".fchecked")).toContain("border-left: 3px solid var(--control-bd)");
+    expect(rule(".fchecked.v-act")).toContain("border-left-color: var(--act-block)");
+    expect(REPORT_STYLES.indexOf(".fchecked {")).toBeLessThan(
+      REPORT_STYLES.indexOf(".fchecked.v-act {"),
     );
   });
 
   it("is in sentence case, with no all-caps label", () => {
-    for (const selector of [".verified-note", ".verified-note-label"]) {
+    for (const selector of [".fchecked", ".fchecked b"]) {
       expect(rule(selector)).not.toMatch(/text-transform|letter-spacing/);
     }
   });
 
   it("uses theme colors only, so it follows both themes", () => {
-    for (const selector of [".verified-note", ".verified-note-label"]) {
+    for (const selector of [".fchecked", ".fchecked b"]) {
       expect(rule(selector)).not.toMatch(/#[0-9a-f]{3,8}\b|rgb\(/i);
     }
   });
@@ -287,14 +287,13 @@ describe("how a note looks", () => {
     const print = REPORT_STYLES.slice(REPORT_STYLES.indexOf("@media print"));
     for (const rule of print.split("}")) {
       if (/display:\s*none/.test(rule)) {
-        expect(rule).not.toMatch(/verified-note|guardrail-id|\.finding\b/);
+        expect(rule).not.toMatch(/fchecked|\.frow\b|\.fbody\b/);
       }
     }
-    expect(print).toMatch(
-      /\.verified-note \{ break-inside: avoid; \}|\.verified-note[^{]*\{ break-inside: avoid; \}/,
-    );
-    expect(print).toMatch(
-      /\.verified-note \{ print-color-adjust: exact;|\.verified-note[^{]*\{ print-color-adjust: exact;/,
+    expect(print).toMatch(/\.fchecked[^{]*\{ break-inside: avoid; \}/);
+    // The whole page prints in its colours, so the note does too.
+    expect(print).toContain(
+      "html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }",
     );
   });
 });

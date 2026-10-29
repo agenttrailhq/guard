@@ -145,16 +145,19 @@ describe("the golden report", () => {
     expect(RESULT.riskyByAction).toEqual({ block: 3, require_approval: 5, warn: 1 });
     const html = render("document");
     for (const part of [
-      'id="would-do"',
-      '<div class="hint">',
-      'id="fix-first"',
-      '<article class="card">',
+      'class="ring"',
+      'id="stats"',
+      'id="outcomes"',
+      'id="insight"',
+      'id="sevbar"',
       'id="owasp"',
-      '<ul class="owasp-ids"',
+      '<label class="card risk"',
       'id="risk-filter"',
       'id="findings"',
+      '<details class="frow"',
       'id="repeats"',
-      'id="next-steps"',
+      'class="repeat-table"',
+      'id="next"',
       'id="share"',
       'id="privacy"',
       'id="redaction"',
@@ -162,7 +165,8 @@ describe("the golden report", () => {
       'id="not-evaluated"',
       'id="tokens"',
       'id="os"',
-      "<footer>",
+      'class="report-meta"',
+      'class="site-footer"',
     ]) {
       expect(html, part).toContain(part);
     }
@@ -215,16 +219,16 @@ describe("the golden verified report", () => {
     const html = verified("document");
     for (const part of [
       'data-template="secrets.headline"',
-      'class="lead totals"',
+      'data-template="hero.lead.kinds"',
       'id="found"',
       'id="also-checked"',
       'id="what-happened"',
-      'class="card verified v-act"',
-      'class="card verified v-review"',
-      'class="card verified v-clean"',
-      'class="card verified v-could-not-check"',
-      'class="card verified v-not-checked"',
-      'class="note fixes-file"',
+      'class="card vrow v-act"',
+      'class="card vrow v-review"',
+      'class="card vrow v-clean"',
+      'class="card vrow v-could-not-check"',
+      'class="card vrow v-not-checked"',
+      'data-template="card.fixes-file"',
     ]) {
       expect(html, part).toContain(part);
     }
@@ -265,8 +269,8 @@ describe("the golden notes report", () => {
       'data-template="note.secrets-printed"',
       'data-template="note.could-not-check"',
       'data-template="could-not-confirm"',
-      'class="verified-note v-act"',
-      'class="verified-note v-could-not-check"',
+      'class="fchecked v-act"',
+      'class="fchecked v-could-not-check"',
     ]) {
       expect(html, part).toContain(part);
     }
