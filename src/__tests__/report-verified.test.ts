@@ -39,7 +39,7 @@ import {
   type Verification,
   type VerifyCategory,
 } from "../core/verify/types.js";
-import { decodeEntities } from "./html-text.js";
+import { decodeEntities, whatHappenedNote } from "./html-text.js";
 import {
   checked,
   DESTRUCTIVE_FACTS,
@@ -76,10 +76,9 @@ function section(html: string, id: string): string {
   return html.slice(start, html.indexOf("</section>", at) + "</section>".length);
 }
 
-/** The note under the cards of What actually happened. */
+/** The note under the cards of What actually happened, and the closed expander after it. */
 function sectionNote(html: string): string {
-  const body = section(html, "what-happened");
-  return body.match(/<p class="vnote">[\s\S]*?<\/p>/)?.[0] ?? "";
+  return whatHappenedNote(html);
 }
 
 /** The cards of a page, in page order: category and tone. */

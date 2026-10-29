@@ -1546,7 +1546,7 @@ ${rows}
   const forms = sentence(HIDING_FORMS_LIST, cards);
   if (chips !== "" || forms !== undefined) {
     parts.push(`<div class="lx-also" id="also-checked">
-<h2 class="lx-h">Also checked on this machine</h2>${chips === "" ? "" : `\n<ul class="card lx-grid">\n${chips}\n</ul>`}${forms === undefined ? "" : `\n<p class="vnote">${sentenceSpan(forms)}</p>`}
+<h2 class="lx-h">Also checked on this machine</h2>${chips === "" ? "" : `\n<ul class="card lx-grid">\n${chips}\n</ul>`}${forms === undefined ? "" : `\n<details class="more-info" id="hiding-forms"><summary>Forms the checks cannot read inside</summary><div><p>${sentenceSpan(forms)}</p></div></details>`}
 </div>`);
   }
   if (parts.length === 0) return "";
@@ -1695,7 +1695,11 @@ ${sectionHead("What actually happened", "A match only means a guardrail fired. E
 <div class="verified" id="verified-rows">
 ${rows}
 </div>
-<p class="vnote">The checks only read: they changed nothing on this machine.${notes.length === 0 ? "" : ` ${sentencesHtml(notes)}`}${files}</p>
+<p class="vnote">The checks only read: they changed nothing on this machine.</p>${
+    notes.length === 0 && files === ""
+      ? ""
+      : `\n<details class="more-info" id="checks-notes"><summary>What the counts leave out${files === "" ? "" : ", and where the exact commands are"}</summary><div><p>${notes.length === 0 ? "" : sentencesHtml(notes)}${files}</p></div></details>`
+  }
 </section>`;
 }
 
