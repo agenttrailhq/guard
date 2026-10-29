@@ -97,13 +97,14 @@ describe("the four classes, from a synthetic corpus and a temporary repo", () =>
   it("sorts every value into exactly one class", async () => {
     const result = await check("claude", [first, second], { cwd: repo });
     expect(result.facts.classes).toEqual({
-      "likely-real": 5,
+      "likely-real": 4,
       "committed-fixture": 1,
-      placeholder: 3,
+      placeholder: 4,
       "local-dev": 1,
     });
-    // Of the three placeholders, one was set aside by the random-string rule.
-    expect(result.facts.setAside).toEqual({ unnamedOutputOnly: 1, namedNotCredentialShaped: 0 });
+    // Of the four placeholders, two are random-looking strings with nothing marking them as a
+    // credential: one printed by a command, one pasted into a prompt.
+    expect(result.facts.setAside).toEqual({ unnamedOutputOnly: 2, namedNotCredentialShaped: 0 });
     expect(result.matches).toBe(10);
     expect(result.status).toBe("act");
     expect(result.facts.fixtureCheck).toBe("complete");
@@ -116,9 +117,8 @@ describe("the four classes, from a synthetic corpus and a temporary repo", () =>
     expect(result.facts.items).toEqual([
       { kind: "github-token", via: ["pasted-into-prompt"], files: 2 },
       { kind: "aws-access-key", via: ["printed-by-command"], files: 1 },
-      { kind: "named-secret", via: ["typed-into-command"], files: 1 },
-      { kind: "random-string", via: ["pasted-into-prompt"], files: 1 },
-      { kind: "slack-token", via: ["in-agent-reply"], files: 1 },
+      { kind: "named-token", via: ["typed-into-command"], files: 1 },
+      { kind: "slack-bot-token", via: ["in-agent-reply"], files: 1 },
     ]);
     expect(result.facts.moreItems).toBe(0);
   });
@@ -126,7 +126,7 @@ describe("the four classes, from a synthetic corpus and a temporary repo", () =>
   it("without the repo, the fixture stays likely real — never the other way", async () => {
     const result = await check("claude", [first], { io: UNAVAILABLE_VERIFY_IO, cwd: repo });
     expect(result.facts.classes["committed-fixture"]).toBe(0);
-    expect(result.facts.classes["likely-real"]).toBe(6);
+    expect(result.facts.classes["likely-real"]).toBe(5);
     expect(result.facts.fixtureCheck).toBe("unavailable");
     expect(result.facts.reposNotChecked).toBe(1);
   });
@@ -162,8 +162,8 @@ describe("how it got there, for each app", () => {
     expect(seen).toEqual(
       [
         "github-token pasted-into-prompt",
-        "named-secret typed-into-command",
-        "slack-token in-agent-reply",
+        "named-token typed-into-command",
+        "slack-bot-token in-agent-reply",
         ...printed,
       ].sort(),
     );
@@ -372,7 +372,11 @@ describe("the fixture search through the seam", () => {
   });
 
   it("a value with separators in it is searched as a substring", async () => {
-    const jwt = `eyJ${"hbGciOiJIUzI1"}.${"eyJzdWIiOiIx"}.${"c2lnbmF0dXJlMDk"}`;
+    const jwt = [{ alg: "HS256" }, { sub: "1" }, "signature0"]
+      .map((part) =>
+        Buffer.from(typeof part === "string" ? part : JSON.stringify(part)).toString("base64url"),
+      )
+      .join(".");
     const seam: VerifyIO = {
       ...scripted({}).io,
       readFile: () => Promise.resolve({ ok: true, text: `const token = "${jwt}";` }),
@@ -727,11 +731,15 @@ describe("what was set aside is counted, not dropped", () => {
     expect(result.status).toBe("clean");
   });
 
-  it("a value set aside in output is likely real once it is also typed into a command", async () => {
+  it("a value set aside in output is likely real once a credential's name is seen with it", async () => {
     const result = await check("claude", [
       [
         { kind: "call", command: "env", result: { text: `id ${RANDOM_IN_OUTPUT}` } },
-        { kind: "call", command: `curl -H "x: ${RANDOM_IN_OUTPUT}" api`, result: { text: "" } },
+        {
+          kind: "call",
+          command: `curl -H "X-Api-Key: ${RANDOM_IN_OUTPUT}" api`,
+          result: { text: "" },
+        },
       ],
     ]);
     expect(result.facts.setAside.unnamedOutputOnly).toBe(0);

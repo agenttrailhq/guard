@@ -199,12 +199,17 @@ export const HIDING_FORMS = [
 /** One of `HIDING_FORMS`. */
 export type HidingForm = (typeof HIDING_FORMS)[number];
 
-/** How a likely-real credential reached a transcript. */
+/**
+ * How a likely-real credential reached a transcript. `added-by-app` is text the agent's app put
+ * into a prompt record itself (a reminder, a summary, a skill or command body), not text a
+ * person typed.
+ */
 export const SECRET_PROVENANCES = [
   "pasted-into-prompt",
   "typed-into-command",
   "printed-by-command",
   "in-agent-reply",
+  "added-by-app",
 ] as const;
 
 /** One way a credential reached a transcript. */
@@ -230,6 +235,26 @@ export const SECRET_KINDS = [
   "named-secret",
   "random-string",
   "other",
+  // Recognised formats, beyond the scrubber's own labels.
+  "npm-token",
+  "stripe-live-key",
+  "stripe-test-key",
+  "slack-bot-token",
+  "slack-user-token",
+  "slack-webhook",
+  "openai-key",
+  "anthropic-key",
+  "google-api-key",
+  "gitlab-token",
+  "huggingface-token",
+  "sendgrid-key",
+  // A JSON web token whose payload names its role.
+  "jwt-service-role",
+  "jwt-authenticated",
+  // A value under a credential name, by the class of the name: never the name itself.
+  "named-password",
+  "named-token",
+  "named-api-key",
 ] as const;
 
 /** One kind of credential. */
@@ -295,10 +320,12 @@ export interface SecretsFacts {
   readonly unplaced: number;
   /**
    * Of the `placeholder` count, the values set aside by a rule that can under-count:
-   * - `unnamedOutputOnly`: an unnamed random string seen only in command output or an agent
-   *   reply, where ids and hashes are common;
-   * - `namedNotCredentialShaped`: a value found only by the name it was given whose own text
-   *   does not look like a credential (`tokens: count`, a letters-only password).
+   * - `unnamedOutputOnly`: a random-looking string with nothing around it that marks a
+   *   credential (a credential name, flag or header just before it), wherever it appeared;
+   *   ids and hashes look the same;
+   * - `namedNotCredentialShaped`: a value found by a name or format whose name is not a
+   *   credential's (an id, a count, a public key) or whose own text does not look like one
+   *   (`tokens: count`, a letters-only password), and a token that is public by design.
    * A real credential can be among them, so the report states how many there were.
    */
   readonly setAside: {

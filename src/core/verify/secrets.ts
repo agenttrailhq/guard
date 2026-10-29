@@ -67,6 +67,8 @@ export interface FoundValue {
   readonly kind: SecretKind;
   /** Up to `CONTEXT` characters of the text after the value. Used to read a URL's host. */
   readonly after: string;
+  /** Up to `CONTEXT` characters of the text before the value. Used to read the name it was given. */
+  readonly before?: string;
 }
 
 /** Characters of context kept after a value. */
@@ -216,6 +218,7 @@ export function findValues(text: string): FoundValues {
       value: clean.slice(span[0], span[1]),
       kind,
       after: clean.slice(span[1], span[1] + CONTEXT),
+      before: clean.slice(Math.max(0, span[0] - CONTEXT), span[0]),
     });
   });
   return { values, unaligned: false };
@@ -367,7 +370,10 @@ export function isLocalDev(found: FoundValue): boolean {
 
 /** One distinct value, while the check runs. */
 interface Candidate {
-  readonly kind: SecretKind;
+  /** Refined when a later sighting gives evidence the first did not. */
+  kind: SecretKind;
+  /** Why it counts as a credential, once any sighting has shown it. See `evidenceOf`. */
+  evidence: Evidence | undefined;
   readonly via: Set<SecretProvenance>;
   readonly files: Set<number>;
   /** Decided without the repos, or `undefined` until the fixture test has run. */
@@ -576,11 +582,6 @@ async function searchFixtures(
   return { check, reposChecked: checked, reposNotChecked: notChecked };
 }
 
-/** Is an unnamed random string a credential? Only where a person or the agent put it. */
-function randomStringIsCredential(via: ReadonlySet<SecretProvenance>): boolean {
-  return via.has("pasted-into-prompt") || via.has("typed-into-command");
-}
-
 /** The likely-real values as the report may describe them, most widespread first. */
 function itemsOf(candidates: Iterable<Candidate>): SecretItem[] {
   const items: SecretItem[] = [];
@@ -612,6 +613,229 @@ export function secretsStatus(
   if (facts.classes["likely-real"] > 0) return "act";
   if (facts.filesNotRead > 0 || facts.unplaced > 0) return "could-not-check";
   return "clean";
+}
+
+// ── Evidence: why a value counts as a credential ──────────────────────────────
+
+/**
+ * Why a value counts as likely real. Without one of these it does not, however it reached the
+ * transcripts:
+ * - `known-format`: a provider's token format (`KNOWN_FORMATS`), or a format the scrubber
+ *   recognises (an AWS key, a private key, a GitHub or Slack token, an `sk-` key, a JWT whose
+ *   header and payload decode);
+ * - `named`: given under a credential's name (`CREDENTIAL_NAME`), and shaped like a credential
+ *   itself (`namedValueShaped`); or a bearer token, an `Authorization` value or a URL password;
+ * - `corroborated`: a random-looking string right after a credential's name, flag or header on
+ *   the same line (`CORROBORATING_CONTEXT`).
+ */
+export type Evidence = "known-format" | "named" | "corroborated";
+
+/** Provider formats, whole-value, and the kind each one is. Checked in order. */
+const KNOWN_FORMATS: readonly (readonly [RegExp, SecretKind])[] = [
+  [/^(?:AKIA|ASIA|ABIA|ACCA|AGPA|AIDA|AIPA|ANPA|ANVA|AROA|ASCA)[A-Z0-9]{16}$/, "aws-access-key"],
+  [
+    /^(?:(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{36,255}|github_pat_[A-Za-z0-9_]{22,255})$/,
+    "github-token",
+  ],
+  [/^xoxb-[A-Za-z0-9-]{10,}$/, "slack-bot-token"],
+  [/^xox[aprs]-[A-Za-z0-9-]{10,}$/, "slack-user-token"],
+  [/^https:\/\/hooks\.slack\.com\/services\/[A-Za-z0-9/]{20,}$/, "slack-webhook"],
+  [/^npm_[A-Za-z0-9]{36}$/, "npm-token"],
+  [/^(?:sk|rk)_live_[A-Za-z0-9]{16,}$/, "stripe-live-key"],
+  [/^(?:sk|rk)_test_[A-Za-z0-9]{16,}$/, "stripe-test-key"],
+  [/^sk-ant-[A-Za-z0-9_-]{20,}$/, "anthropic-key"],
+  [/^sk-(?:proj-|svcacct-|admin-)?[A-Za-z0-9_-]{20,}$/, "openai-key"],
+  [/^AIza[0-9A-Za-z_-]{35}$/, "google-api-key"],
+  [/^glpat-[A-Za-z0-9_-]{20,}$/, "gitlab-token"],
+  [/^hf_[A-Za-z0-9]{30,}$/, "huggingface-token"],
+  [/^SG\.[A-Za-z0-9_-]{16,}\.[A-Za-z0-9_-]{16,}$/, "sendgrid-key"],
+];
+
+/** The kind a value's own format says it is, or `undefined`. */
+export function knownFormat(value: string): SecretKind | undefined {
+  const bare = value.replace(/^["']|["']$/g, "");
+  for (const [format, kind] of KNOWN_FORMATS) if (format.test(bare)) return kind;
+  return undefined;
+}
+
+/** Kinds the scrubber names by a format of their own. */
+const FORMAT_KINDS: ReadonlySet<SecretKind> = new Set([
+  "aws-access-key",
+  "aws-secret-key",
+  "private-key",
+  "github-token",
+  "slack-token",
+  "api-key",
+]);
+
+/** One base64url segment of a JWT, decoded as JSON, or `undefined`. */
+function jwtPart(segment: string): Record<string, unknown> | undefined {
+  try {
+    const value: unknown = JSON.parse(Buffer.from(segment, "base64url").toString("utf8"));
+    return value !== null && typeof value === "object" && !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * What a JWT is: its role, from a fixed set, when its header (with an `alg`) and payload decode;
+ * `public` for a role of `anon`, a key meant to be shipped to browsers; `undecodable` otherwise.
+ */
+export function jwtKind(value: string): SecretKind | "public" | "undecodable" {
+  const [header, payload] = value.split(".");
+  const head = header === undefined ? undefined : jwtPart(header);
+  const body = payload === undefined ? undefined : jwtPart(payload);
+  if (head === undefined || typeof head.alg !== "string" || body === undefined) {
+    return "undecodable";
+  }
+  if (body.role === "anon") return "public";
+  if (body.role === "service_role") return "jwt-service-role";
+  if (body.role === "authenticated") return "jwt-authenticated";
+  return "jwt";
+}
+
+/** The class of a credential's name, from a fixed set, or `undefined` for any other name. */
+type NameClass = "password" | "token" | "api-key" | "secret";
+
+/** The name a value was given: the last identifier before its separator and any quote. */
+const NAME_BEFORE = /([A-Za-z_][A-Za-z0-9_.-]*)["'\]]?\s*(?:[:=]|=>)?\s*["'`]?\s*$/;
+
+/**
+ * A name that is a field about a credential rather than the credential: an id, an ARN, a name,
+ * a path, a file, a type, a URL, a count, a length, a size, a version, a prefix, an expiry.
+ */
+const NAME_IS_REFERENCE =
+  /(?:id|ids|arn|name|path|file|ref|type|url|uri|count|len|length|size|field|header|env|var|prefix|version|ttl|expiry|expires|at|limit|max|min|usage)$/;
+
+/** A name that is a public or a lookup key, not a secret one. */
+const PUBLIC_KEY_NAME =
+  /(?:public|publishable|anon|site|primary|cache|sort|partition|idempotency|foreign|object|lookup|dedupe|row|map|hash)[_-]?key/;
+
+/** The class of the name before a value, or `undefined` when it is not a credential's name. */
+export function credentialNameClass(before: string): NameClass | undefined {
+  const name = (NAME_BEFORE.exec(before.split(/\r?\n/).pop() ?? "")?.[1] ?? "").toLowerCase();
+  if (name === "") return undefined;
+  const flat = name.replace(/[_.-]/g, "");
+  if (NAME_IS_REFERENCE.test(flat) || PUBLIC_KEY_NAME.test(name)) return undefined;
+  if (/passw|passphrase|pwd/.test(name)) return "password";
+  if (/api[_.-]?key|apikey/.test(name)) return "api-key";
+  if (
+    /(?:^|[_.-])tokens?$|token[_.-]/.test(name) ||
+    /(?:access|refresh|auth|bearer|session|bot|id)[_.-]?token/.test(name)
+  ) {
+    return /tokens$/.test(name) ? undefined : "token";
+  }
+  if (
+    /secret|credential|(?:access|private|signing|encryption|master|license)[_.-]?key|auth/.test(
+      name,
+    )
+  ) {
+    return "secret";
+  }
+  return undefined;
+}
+
+/** Shortest value a credential's name can vouch for. */
+const MIN_NAMED_LENGTH = 12;
+
+/** Lowest entropy, in bits per character, a named value must have. */
+const MIN_NAMED_ENTROPY = 3.5;
+
+/** Shannon entropy of `value`, in bits per character. */
+function entropyOf(value: string): number {
+  const counts = new Map<string, number>();
+  for (const ch of value) counts.set(ch, (counts.get(ch) ?? 0) + 1);
+  let bits = 0;
+  for (const n of counts.values()) {
+    const p = n / value.length;
+    bits -= p * Math.log2(p);
+  }
+  return bits;
+}
+
+/**
+ * Does a value under a credential's name look like a credential itself? At least 12 characters
+ * and 3.5 bits of entropy per character, a digit or a symbol among its letters, and not a
+ * reference to one: no `$`, no URL, no path, no file name, no ARN, no shell or markup syntax,
+ * and a `:` only in a single `user:pass` pair.
+ */
+export function namedValueShaped(value: string): boolean {
+  const bare = value.replace(/^["']|["']$/g, "");
+  if (bare.length < MIN_NAMED_LENGTH || entropyOf(bare) < MIN_NAMED_ENTROPY) return false;
+  if (!/[^A-Za-z]/.test(bare)) return false;
+  if (/\$|:\/\/|^[~./]|^arn:|[|<>]/.test(bare)) return false;
+  if (/\.(?:json|ya?ml|env|txt|pem|key|js|ts|py|sh|md|toml)$/i.test(bare)) return false;
+  if (bare.includes(":") && !/^[^:\s]+:[^:\s]+$/.test(bare)) return false;
+  return true;
+}
+
+/**
+ * What marks a random-looking string as a credential: right before it on its line, a
+ * credential word in an assignment, a credential flag, or a credential header.
+ */
+const CORROBORATING_CONTEXT =
+  /(?:token|secret|passw(?:or)?d|pwd|api[-_ ]?key|access[-_ ]?key|private[-_ ]?key|client[-_ ]?secret|credential|auth(?:orization)?|bearer|session[-_ ]?(?:id|key|token)|cookie|signing[-_ ]?key|webhook|dsn|license[-_ ]?key)["'\]]?\s*(?:[:=]|=>|\s)\s*["'`]?$|(?:--(?:token|password|secret|api-key|apikey|key|auth)(?:=|\s+)["']?|-H\s*["']?[A-Za-z-]*(?:key|token|auth)[A-Za-z-]*:\s*(?:Bearer\s+)?)$/i;
+
+/** Characters before a random-looking string read for a credential's name, flag or header. */
+const CORROBORATION_WINDOW = 48;
+
+/** What one sighting of a value shows: its kind, and why it counts, if it does. */
+export interface Sighting {
+  readonly kind: SecretKind;
+  readonly evidence?: Evidence;
+  /** A token that is public by design, such as a JWT for the `anon` role. */
+  readonly public?: true;
+}
+
+/** What one sighting of `found` shows. Pure. */
+export function evidenceOf(found: FoundValue): Sighting {
+  const secret = secretPart(found);
+  const format = knownFormat(found.value) ?? knownFormat(secret);
+  if (found.kind === "jwt") {
+    const kind = jwtKind(found.value.replace(/^["']|["']$/g, ""));
+    if (kind === "public") return { kind: "jwt", public: true };
+    if (kind === "undecodable") return { kind: "jwt" };
+    return { kind, evidence: "known-format" };
+  }
+  if (format !== undefined) return { kind: format, evidence: "known-format" };
+  if (FORMAT_KINDS.has(found.kind)) return { kind: found.kind, evidence: "known-format" };
+  switch (found.kind) {
+    case "database-url":
+    case "url-credentials":
+      return { kind: found.kind, evidence: "named" };
+    case "bearer-token":
+    case "auth-header":
+      return namedValueShaped(secret)
+        ? { kind: found.kind, evidence: "named" }
+        : { kind: found.kind };
+    case "password":
+      // A password handed to a database client's `-p` flag.
+      return credentialShaped(secret)
+        ? { kind: found.kind, evidence: "named" }
+        : { kind: found.kind };
+    case "named-secret": {
+      const name = credentialNameClass(found.before ?? "");
+      if (name === undefined || !namedValueShaped(secret)) return { kind: found.kind };
+      const kind: SecretKind =
+        name === "password"
+          ? "named-password"
+          : name === "token"
+            ? "named-token"
+            : name === "api-key"
+              ? "named-api-key"
+              : "named-secret";
+      return { kind, evidence: "named" };
+    }
+    default: {
+      const line = (found.before ?? "").slice(-CORROBORATION_WINDOW).split(/\r?\n/).pop() ?? "";
+      return CORROBORATING_CONTEXT.test(line)
+        ? { kind: found.kind, evidence: "corroborated" }
+        : { kind: found.kind };
+    }
+  }
 }
 
 // ── Collecting values as the transcripts are read ─────────────────────────────
@@ -679,6 +903,8 @@ export function createSecretsCollector(options: CollectorOptions): SecretsCollec
   // twice in a Claude Code transcript, and the same output recurs across sessions; each is
   // scanned once.
   const remembered = new Map<string, Remembered>();
+  // Sub-agents' transcripts: their prompts were written by the agent that started them.
+  const subagents = new Set<number>();
 
   const take = (index: number, text: LineText): void => {
     for (const cwd of text.workingDirs) collected.workingDirs.add(cwd);
@@ -705,20 +931,36 @@ export function createSecretsCollector(options: CollectorOptions): SecretsCollec
         let candidate = collected.candidates.get(key);
         if (candidate === undefined) {
           const reason = placeholderReason(found);
+          const sighting = evidenceOf(found);
           const decided: SecretClass | undefined =
-            reason !== undefined ? "placeholder" : isLocalDev(found) ? "local-dev" : undefined;
+            reason !== undefined || sighting.public === true
+              ? "placeholder"
+              : isLocalDev(found)
+                ? "local-dev"
+                : undefined;
           const keep = decided === undefined && held < (options.maxHeldValues ?? MAX_HELD_VALUES);
           if (keep) held += 1;
           candidate = {
-            kind: found.kind,
+            kind: sighting.kind,
+            evidence: sighting.evidence,
             via: new Set(),
             files: new Set(),
             decided,
             // Past the cap a value is not held, so it cannot be searched for in the repos.
             value: keep ? found.value : undefined,
-            setAside: reason === "named-not-credential-shaped" ? reason : undefined,
+            setAside:
+              reason === "named-not-credential-shaped" || sighting.public === true
+                ? "named-not-credential-shaped"
+                : undefined,
           };
           collected.candidates.set(key, candidate);
+        } else if (candidate.evidence === undefined && candidate.decided === undefined) {
+          // A later sighting can show what the first did not: a name, or a flag before it.
+          const sighting = evidenceOf(found);
+          if (sighting.evidence !== undefined) {
+            candidate.evidence = sighting.evidence;
+            candidate.kind = sighting.kind;
+          }
         }
         candidate.via.add(piece.via);
         candidate.files.add(index);
@@ -733,14 +975,15 @@ export function createSecretsCollector(options: CollectorOptions): SecretsCollec
       if (index === undefined) {
         index = collected.paths.size;
         collected.paths.set(path, index);
+        if (/[\\/]subagents[\\/][^\\/]+$/.test(path)) subagents.add(index);
       }
       return index;
     },
     line(index, line) {
-      take(index, lineText(options.agent, line));
+      take(index, lineText(options.agent, line, { subagent: subagents.has(index) }));
     },
     record(index, record) {
-      take(index, recordText(options.agent, record));
+      take(index, recordText(options.agent, record, { subagent: subagents.has(index) }));
     },
     read(index) {
       collected.done.add(index);
@@ -862,17 +1105,17 @@ async function classifySecrets(
     if (index !== undefined) fileOrder.set(index, order);
   });
 
-  // An unnamed random string seen only in output or replies is most often an id or a hash.
+  // A value with no evidence (`evidenceOf`) is not counted, however it got there: a
+  // random-looking string with nothing marking it is most often an id or a hash, and a value
+  // under a name that is not a credential's is most often code or a setting.
   for (const candidate of candidates.values()) {
-    if (
-      candidate.kind === "random-string" &&
-      candidate.decided === undefined &&
-      !randomStringIsCredential(candidate.via)
-    ) {
-      candidate.decided = "placeholder";
-      candidate.value = undefined;
-      candidate.setAside = "unnamed-output-only";
-    }
+    if (candidate.decided !== undefined || candidate.evidence !== undefined) continue;
+    candidate.decided = "placeholder";
+    candidate.value = undefined;
+    candidate.setAside =
+      candidate.kind === "random-string" || candidate.kind === "other"
+        ? "unnamed-output-only"
+        : "named-not-credential-shaped";
   }
 
   const pending = new Map<string, Candidate>();

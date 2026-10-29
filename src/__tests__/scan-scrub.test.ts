@@ -304,7 +304,7 @@ describe("the dry run", () => {
     const run = await scan(s, "claude", ["--scrub"]);
     expect(run.stdout).toContain("4 likely-real credentials in 2 transcript files.");
     expect(run.stdout).toContain(
-      "session-0.jsonl  5 replacements: 1 aws-access-key, 2 github-token, 1 named-secret, 1 slack-token",
+      "session-0.jsonl  5 replacements: 1 aws-access-key, 2 github-token, 1 named-token, 1 slack-bot-token",
     );
     expect(run.stdout).toContain("session-1.jsonl  1 replacement: 1 github-token");
     expect(run.stdout).toContain(
@@ -354,7 +354,7 @@ describe("--apply", () => {
     for (const value of replace) expect(text).not.toContain(value);
     for (const value of leave) expect(text).toContain(value);
     // Cursor records no command output, so the key printed by a command is not in its files.
-    const kinds = ["github-token", "named-secret", "slack-token"] as const;
+    const kinds = ["github-token", "named-token", "slack-bot-token"] as const;
     for (const kind of agent === "cursor" ? kinds : [...kinds, "aws-access-key" as const]) {
       expect(text).toContain(scrubPlaceholder(kind));
     }

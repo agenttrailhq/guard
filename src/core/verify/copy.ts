@@ -50,13 +50,13 @@ export const TONE_LABELS: Readonly<Record<VerifyStatus, string>> = {
 
 /** What each kind of credential is called on the page. Never the name a value was given. */
 export const KIND_LABELS: Readonly<Record<SecretKind, string>> = {
-  "aws-access-key": "AWS access key",
+  "aws-access-key": "AWS access key ID",
   "aws-secret-key": "AWS secret key",
   "private-key": "Private key",
   "github-token": "GitHub token",
   "slack-token": "Slack token",
   "api-key": "API key",
-  jwt: "JSON web token",
+  jwt: "JWT (role: unknown)",
   "bearer-token": "Bearer token",
   "auth-header": "Authorization header",
   "database-url": "Database URL with a password",
@@ -65,6 +65,23 @@ export const KIND_LABELS: Readonly<Record<SecretKind, string>> = {
   "named-secret": "A named secret",
   "random-string": "Random-looking secret",
   other: "Other credential",
+  "npm-token": "npm token",
+  "stripe-live-key": "Stripe live key",
+  "stripe-test-key": "Stripe test-mode key",
+  "slack-bot-token": "Slack bot token",
+  "slack-user-token": "Slack user token",
+  "slack-webhook": "Slack webhook URL",
+  "openai-key": "OpenAI API key",
+  "anthropic-key": "Anthropic API key",
+  "google-api-key": "Google API key",
+  "gitlab-token": "GitLab token",
+  "huggingface-token": "Hugging Face token",
+  "sendgrid-key": "SendGrid API key",
+  "jwt-service-role": "JWT (role: service role)",
+  "jwt-authenticated": "JWT (role: authenticated)",
+  "named-password": "A named secret (password)",
+  "named-token": "A named secret (token)",
+  "named-api-key": "A named secret (API key)",
 };
 
 /** How a credential got into a transcript, as the page says it. */
@@ -73,6 +90,7 @@ export const PROVENANCE_PHRASES: Readonly<Record<SecretProvenance, string>> = {
   "typed-into-command": "typed into a command",
   "printed-by-command": "printed by a command",
   "in-agent-reply": "in an agent reply",
+  "added-by-app": "in text the app added to a prompt",
 };
 
 /** One row of "What it found, never the values": three parts, each a fixed label or a count. */

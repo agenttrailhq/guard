@@ -260,12 +260,14 @@ describe("the terminal line", () => {
       ),
     );
     expect(line).toContain(
-      "4 values not counted as likely real: 3 unnamed and seen only in output or replies, 1 named but not shaped like a credential",
+      "4 values not counted as likely real: 3 random-looking with nothing marking a credential, 1 under a name or format that does not mark a credential, or not shaped like one",
     );
     const one = verificationSummary(
       verification({ setAside: { unnamedOutputOnly: 0, namedNotCredentialShaped: 1 } }, "clean"),
     );
-    expect(one).toContain("1 value not counted as likely real: 1 named but not shaped");
+    expect(one).toContain(
+      "1 value not counted as likely real: 1 under a name or format that does not mark a credential",
+    );
     expect(one).not.toContain("unnamed");
     expect(verificationSummary(verification())).not.toContain("not counted");
   });
