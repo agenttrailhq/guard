@@ -1,3 +1,4 @@
+// cspell:words passw pousr aprs orization authori ation
 // cspell:words letmein qwerty passwd foobar Fingerprinter changeme abababab automount statted
 /**
  * The secrets check: every credential-shaped value in the transcripts, sorted into four

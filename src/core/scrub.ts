@@ -1,3 +1,4 @@
+// cspell:words pousr
 // cspell:words nghp mghp nrtfb prefilter dempotency nohup ugnskcd cret uroot
 /**
  * The secret scrubber: the `standard` pattern set, applied to a single string.
