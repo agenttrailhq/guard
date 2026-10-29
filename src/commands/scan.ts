@@ -41,6 +41,7 @@
  * headless box with no opener is not a failure of the scan.
  */
 
+import { randomBytes } from "node:crypto";
 import { basename, dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { unhandledAgent } from "../core/agent.js";
@@ -84,16 +85,21 @@ import {
   mcpReviewDisclosures,
   type ScanCorpus,
   type ScanResult,
+  seedDecisions,
 } from "../core/scan-report.js";
 import { formatCount, formatTokens, totalTokens } from "../core/tokens.js";
-import { parseSession } from "../core/transcript/parse.js";
+import { readClaudeSession } from "../core/transcript/claude-session.js";
 import { defaultProjectsRoot, scanTranscripts } from "../core/transcript/scan.js";
 import type { ParsedSession } from "../core/transcript/transcript-types.js";
 import type { AgentSource, GuardRule } from "../core/types.js";
 import { parseUserRulesData } from "../core/user-rules-data.js";
 import { CODEX_TESTED_ON, CODEX_UNVERIFIED_TEXT } from "../core/verify/copy.js";
 import { createFingerprinter } from "../core/verify/fingerprint.js";
-import { createSecretsCollector, type SecretsCollector } from "../core/verify/secrets.js";
+import {
+  createSecretsCollector,
+  mergeCollected,
+  type SecretsCollector,
+} from "../core/verify/secrets.js";
 import type { Verification, VerifyIO } from "../core/verify/types.js";
 import {
   UNAVAILABLE_VERIFY_IO,
@@ -104,6 +110,7 @@ import {
 } from "../core/verify/verify.js";
 import { VERSION } from "../core/version.js";
 import type { ScanIO } from "../scan-io.js";
+import type { ShareInput, WorkersRead } from "../scan-workers.js";
 import type { ScrubIO } from "../scrub-io.js";
 import { agentChoiceMessage, chosenAgent } from "./agent-choice.js";
 import { createProgress, NO_PROGRESS, type Progress } from "./scan-progress.js";
@@ -458,14 +465,12 @@ export interface ScanDeps {
    */
   readonly createVerifyIO?: () => VerifyIO;
   /**
-   * Reads the transcripts for the secrets check on worker threads (`secrets-workers.ts`), while
-   * the other checks run. The CLI entries pass it; without it the secrets check collects from
-   * the records the scan's own reader parses, in one thread.
+   * Reads Claude Code sessions on worker threads (`scan-workers.ts`): parses them, evaluates
+   * their calls, and, when the checks run, reads their values for the secrets check while the
+   * other checks run. The CLI entries pass it; without it everything is read in one thread, the
+   * secrets check collecting from the records the scan's own reader parses.
    */
-  readonly collectSecrets?: (
-    agent: AgentSource,
-    files: readonly string[],
-  ) => Promise<SecretsCollector>;
+  readonly readSessions?: (input: ShareInput, onSession: () => void) => Promise<WorkersRead>;
   /** Runs the checks. For tests; production uses `verifyScan`. */
   readonly verify?: (input: VerifyInput) => Promise<VerifyOutcome>;
   /**
@@ -524,107 +529,6 @@ function countTranscriptFiles(io: ScanIO, dir: string, depth = 0): number {
 }
 
 /**
- * Read one session file and fold in its sub-agents' transcripts.
- *
- * A sub-agent's tool calls ran on this machine inside this session, written to
- * `<project>/<session>/subagents/*.jsonl`, so they are read into the same session — exactly
- * as the Cursor reader folds a session's sub-agents. `opened` counts every file this
- * actually read (the main file plus each sub-agent file), so the coverage tally is honest.
- * `session` is absent when the main file could not be folded into a session (quarantined);
- * its sub-agents are then left to the not-read count. `files` lists the files that were folded
- * into the session.
- */
-async function readClaudeSession(
-  io: ScanIO,
-  item: { readonly file: string; readonly sessionId: string },
-  collector?: SecretsCollector,
-): Promise<{ session?: ParsedSession; opened: number; files: readonly string[] }> {
-  const source = { readLines: (p: string) => io.readLines(p) };
-  /** Parse one file, handing its records to the secrets collector when there is one. */
-  const parse = async (path: string, id: string): Promise<ParsedSession> => {
-    if (collector === undefined) return await parseSession(path, id, source);
-    const index = collector.file(path);
-    const parsed = await parseSession(path, id, source, (record) =>
-      collector.record(index, record),
-    );
-    collector.read(index);
-    return parsed;
-  };
-
-  let session: ParsedSession;
-  try {
-    session = await parse(item.file, item.sessionId);
-  } catch {
-    // QuarantineError or any other read failure: the main file was attempted and yielded
-    // no session. Count the one file; leave its sub-agents to the not-read count.
-    return { opened: 1, files: [] };
-  }
-  let opened = 1;
-  const files = [item.file];
-
-  const subDir = join(dirname(item.file), basename(item.file, ".jsonl"), "subagents");
-  let names: readonly string[];
-  try {
-    names = io.readdir(subDir);
-  } catch {
-    // No sub-agents folder (the common case) is not a failure.
-    names = [];
-  }
-
-  const turns = [...session.turns];
-  const userPrompts = [...session.userPrompts];
-  const seenTurns = new Set(turns.map((t) => t.messageUuid).filter((u) => u !== ""));
-  const seenPrompts = new Set(userPrompts.map((p) => p.messageUuid).filter((u) => u !== ""));
-  // A sub-agent's calls have their results in its own file. They are folded in by tool-use id,
-  // so a call made inside a sub-agent is judged by its recorded result. The main file is read
-  // first and keeps its result for an id that appears twice; so does the earlier of two
-  // sub-agent files, in name order.
-  const toolResults = new Map(session.toolResults);
-  let skippedLines = session.skippedLines;
-
-  for (const name of [...names].sort()) {
-    if (!name.endsWith(".jsonl")) continue;
-    const subPath = join(subDir, name);
-    try {
-      if (io.stat(subPath).isDirectory()) continue;
-    } catch {
-      continue; // vanished or unreadable between listing and stat
-    }
-    opened += 1;
-    let sub: ParsedSession;
-    try {
-      sub = await parse(subPath, name);
-    } catch {
-      continue; // a sub-agent file that yields no session adds nothing; it was still opened
-    }
-    files.push(subPath);
-    skippedLines += sub.skippedLines;
-    // De-dup by message uuid so one turn's tokens and tool calls count once even if a main
-    // transcript inlined the sub-agent, or a file is somehow read twice. A turn with no
-    // uuid is always kept — there is no id to fold on.
-    for (const turn of sub.turns) {
-      if (turn.messageUuid !== "" && seenTurns.has(turn.messageUuid)) continue;
-      if (turn.messageUuid !== "") seenTurns.add(turn.messageUuid);
-      turns.push(turn);
-    }
-    for (const prompt of sub.userPrompts) {
-      if (prompt.messageUuid !== "" && seenPrompts.has(prompt.messageUuid)) continue;
-      if (prompt.messageUuid !== "") seenPrompts.add(prompt.messageUuid);
-      userPrompts.push(prompt);
-    }
-    for (const [id, result] of sub.toolResults) {
-      if (!toolResults.has(id)) toolResults.set(id, result);
-    }
-  }
-
-  return {
-    session: { ...session, turns, userPrompts, toolResults, skippedLines },
-    opened,
-    files,
-  };
-}
-
-/**
  * Where an app keeps its sessions, when `--dir` did not say.
  *
  * A checked switch, so an app added to `AGENTS` fails to compile until someone says where
@@ -656,6 +560,7 @@ async function readCorpusFor(
   io: ScanIO,
   collector?: SecretsCollector,
   progress: Progress = NO_PROGRESS,
+  workers?: CorpusWorkers,
 ): Promise<ScanCorpus> {
   progress.phase("Reading sessions");
   switch (agent) {
@@ -667,19 +572,38 @@ async function readCorpusFor(
       return {
         agent: "claude",
         capabilities: { tokens: true, skips: false },
-        ...(await readCorpus(io, root, collector, progress)),
+        ...(await readCorpus(io, root, collector, progress, workers)),
       };
     default:
       return unhandledAgent(agent);
   }
 }
 
-/** Read and parse every transcript under `root`, counting what could not be read. */
+/**
+ * Worker threads to read the sessions on (`ScanDeps.readSessions`), with what their rules are
+ * compiled from, and what to do with what they hand back: `decided` takes their decisions, and
+ * `collected` their parts for the secrets check, when it runs (`key`).
+ */
+interface CorpusWorkers {
+  readonly read: (input: ShareInput, onSession: () => void) => Promise<WorkersRead>;
+  readonly rules: ShareInput["rules"];
+  readonly config: ShareInput["config"];
+  readonly key?: Uint8Array;
+  readonly decided: (decisions: WorkersRead["decisions"]) => void;
+  readonly collected: (parts: WorkersRead["collected"]) => void;
+}
+
+/**
+ * Read and parse every transcript under `root`, counting what could not be read. With
+ * `workers`, the sessions are read on worker threads, and any a worker could not read are read
+ * here, in the same order, so the corpus is the one a single thread reads.
+ */
 async function readCorpus(
   io: ScanIO,
   root: string,
   collector?: SecretsCollector,
   progress: Progress = NO_PROGRESS,
+  workers?: CorpusWorkers,
 ): Promise<{
   sessions: ParsedSession[];
   quarantined: number;
@@ -700,18 +624,39 @@ async function readCorpus(
   // into them — so the not-read tally below is against what was read, not just the sessions.
   let opened = 0;
 
-  const total = inventory.projects.reduce((n, project) => n + project.sessions.length, 0);
+  const items = inventory.projects.flatMap((project) => project.sessions);
+  const total = items.length;
   let done = 0;
-  for (const project of inventory.projects) {
-    for (const item of project.sessions) {
-      progress.phase("Reading sessions", done, total);
+  progress.phase("Reading sessions", done, total);
+  let fromWorkers: WorkersRead["reads"] = [];
+  if (workers !== undefined) {
+    const read = await workers.read(
+      {
+        items: items.map((item) => ({ file: item.file, sessionId: item.sessionId })),
+        rules: workers.rules,
+        config: workers.config,
+        ...(workers.key === undefined ? {} : { key: workers.key }),
+      },
+      () => {
+        done += 1;
+        progress.phase("Reading sessions", done, total);
+      },
+    );
+    fromWorkers = read.reads;
+    workers.decided(read.decisions);
+    workers.collected(read.collected);
+  }
+  for (const [at, item] of items.entries()) {
+    let read = fromWorkers[at];
+    if (read === undefined) {
+      read = await readClaudeSession(io, item, collector);
       done += 1;
-      const read = await readClaudeSession(io, item, collector);
-      opened += read.opened;
-      for (const path of read.files) files.push(path);
-      if (read.session !== undefined) sessions.push(read.session);
-      else quarantined++;
+      progress.phase("Reading sessions", done, total);
     }
+    opened += read.opened;
+    for (const path of read.files) files.push(path);
+    if (read.session !== undefined) sessions.push(read.session);
+    else quarantined++;
   }
 
   // What the reader OPENED, against what is actually on disk. Never negative: a file
@@ -1184,9 +1129,43 @@ export async function runScan(
   // When the checks will run, the secrets check collects from the records this read parses, so
   // the transcripts are read once. Only Claude Code's reader hands its records over.
   const verifying = !flags.scrub && shouldVerify(flags, byDefault);
+  // With worker threads (Claude Code only), the sessions are read there, and so are the values
+  // the secrets check classes, under one fingerprint key for the run.
+  const threaded = agent === "claude" && !flags.scrub && deps.readSessions !== undefined;
+  const key = randomBytes(32);
   const secretsCollector =
-    verifying && agent === "claude" && deps.collectSecrets === undefined
-      ? createSecretsCollector({ agent, fingerprint: createFingerprinter() })
+    verifying && agent === "claude" && !threaded
+      ? createSecretsCollector({ agent, fingerprint: createFingerprinter(key) })
+      : undefined;
+  let secretsCollected: VerifyInput["secretsCollector"] = secretsCollector;
+  // Settles once the workers' decisions are in the cache. The checks that evaluate whole calls
+  // wait for it; those that need none start before.
+  let decisionsIn: Promise<void> = Promise.resolve();
+  const workers: CorpusWorkers | undefined =
+    threaded && deps.readSessions !== undefined
+      ? {
+          read: deps.readSessions,
+          rules: [...shipped, ...userRules],
+          config,
+          ...(verifying ? { key } : {}),
+          decided: (decisions) => {
+            decisionsIn = decisions.then((all) => {
+              for (const made of all) seedDecisions(catalog, allowlist, made);
+            });
+          },
+          collected: (parts) => {
+            if (!verifying) return;
+            // Called by the secrets check when its turn comes, so this thread helps then.
+            secretsCollected = async () => {
+              const joined = createSecretsCollector({
+                agent: "claude",
+                fingerprint: createFingerprinter(key),
+              });
+              for (const part of await parts()) mergeCollected(joined, part);
+              return joined;
+            };
+          },
+        }
       : undefined;
   // Progress on stderr while the scan runs: off with --quiet, in the plugin's scan, and for
   // --scrub, which says what it does on stdout.
@@ -1195,12 +1174,14 @@ export async function runScan(
       ? NO_PROGRESS
       : createProgress((text) => io.writeStderr?.(text), io.isStderrTTY?.() === true);
   const started = Date.now();
-  const corpus: ScanCorpus = await readCorpusFor(agent, readRoot, io, secretsCollector, progress);
-  // With worker threads, the secrets check's reading starts now and runs beside the others.
-  const secretsCollected =
-    verifying && deps.collectSecrets !== undefined
-      ? deps.collectSecrets(agent, corpus.files ?? [])
-      : secretsCollector;
+  const corpus: ScanCorpus = await readCorpusFor(
+    agent,
+    readRoot,
+    io,
+    secretsCollector,
+    progress,
+    workers,
+  );
   if (flags.scrub && deps.scrub !== undefined) {
     const scrubIO = deps.scrub.createIO();
     return await deps.scrub.run({
@@ -1233,6 +1214,7 @@ export async function runScan(
         // its own: the others cannot spend the time its search of the repos needs.
         secretsIO: deps.createVerifyIO?.() ?? UNAVAILABLE_VERIFY_IO,
         ...(secretsCollected === undefined ? {} : { secretsCollector: secretsCollected }),
+        decisionsReady: decisionsIn,
         onCheck: (step, total, label) => progress.phase(`Checking ${step} of ${total}: ${label}`),
       });
     } catch {
@@ -1246,6 +1228,7 @@ export async function runScan(
   // The shipped rule OBJECTS, so a finding is labelled `library` by identity: a user rule
   // that reuses a shipped id is still the user's own rule.
   progress.phase("Writing the report");
+  await decisionsIn;
   const result = aggregateScan(corpus, catalog, allowlist, new Set(shipped), outcome?.verification);
   const meta: ReportMeta = { version: VERSION, generatedAt: now };
   // Done before anything goes to stdout, so the line never mixes with the output.

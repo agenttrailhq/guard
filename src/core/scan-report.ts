@@ -420,15 +420,34 @@ const NO_READER_SKIPS: ReaderSkips = {
  * tool, command and file path, the only parts the span context is built from. The scan and
  * each check evaluate the same calls again; a repeat is looked up rather than run against
  * every rule. Kept in memory for the run only, and cleared when it grows past
- * `MAX_CACHED_DECISIONS`.
+ * `MAX_CACHED_DECISIONS` decisions or `MAX_CACHED_CHARS` characters of keys.
  */
-const DECISIONS = new WeakMap<
-  readonly CompiledRule[],
-  WeakMap<CompiledAllowlist, Map<string, GuardDecision>>
->();
+const DECISIONS = new WeakMap<readonly CompiledRule[], WeakMap<CompiledAllowlist, DecisionStore>>();
+
+/** The decisions kept for one catalog and allowlist, and the characters their keys hold. */
+interface DecisionStore {
+  readonly map: Map<string, GuardDecision>;
+  chars: number;
+  /** How many times it has been cleared. */
+  cleared: number;
+}
 
 /** Most decisions kept for one catalog and allowlist. */
-const MAX_CACHED_DECISIONS = 100_000;
+const MAX_CACHED_DECISIONS = 1_000_000;
+
+/** Most characters of keys kept for one catalog and allowlist. */
+const MAX_CACHED_CHARS = 64 * 1024 * 1024;
+
+/** Is there room in `store` for one more decision under `key`? */
+function hasRoom(store: DecisionStore, key: string): boolean {
+  return store.map.size < MAX_CACHED_DECISIONS && store.chars + key.length <= MAX_CACHED_CHARS;
+}
+
+/** Keep `decision` under `key`. */
+function keep(store: DecisionStore, key: string, decision: GuardDecision): void {
+  store.map.set(key, decision);
+  store.chars += key.length;
+}
 
 /** Longest command or path a decision is kept for; a longer one is evaluated each time. */
 const MAX_CACHED_INPUT = 16_384;
@@ -437,7 +456,7 @@ const MAX_CACHED_INPUT = 16_384;
 function decisionCache(
   catalog: readonly CompiledRule[],
   allowlist: CompiledAllowlist,
-): Map<string, GuardDecision> {
+): DecisionStore {
   let byAllowlist = DECISIONS.get(catalog);
   if (byAllowlist === undefined) {
     byAllowlist = new WeakMap();
@@ -445,7 +464,7 @@ function decisionCache(
   }
   let decisions = byAllowlist.get(allowlist);
   if (decisions === undefined) {
-    decisions = new Map();
+    decisions = { map: new Map(), chars: 0, cleared: 0 };
     byAllowlist.set(allowlist, decisions);
   }
   return decisions;
@@ -457,6 +476,63 @@ function decisionKey(mapped: MappedCall): string | undefined {
   const path = mapped.args.file_path;
   if ((command?.length ?? 0) + (path?.length ?? 0) > MAX_CACHED_INPUT) return undefined;
   return JSON.stringify([mapped.tool, command ?? null, path ?? null]);
+}
+
+/** One decision the cache holds: what the call is (`decisionKey`), and the verdict on it. */
+export type DecisionEntry = readonly [key: string, decision: GuardDecision];
+
+/**
+ * The decisions made against one catalog and allowlist, to hand to another thread of this
+ * process: every one, or only those made since `since` (from a `decisionsMade` taken before).
+ * A decision is the verdict alone: rule ids, actions and the content-free reason.
+ */
+export function exportDecisions(
+  catalog: readonly CompiledRule[],
+  allowlist: CompiledAllowlist,
+  since?: DecisionsMade,
+): DecisionEntry[] {
+  const store = decisionCache(catalog, allowlist);
+  // A cache cleared since then holds only decisions made since, so all of them are new.
+  const from =
+    since !== undefined && since.store === store && since.cleared === store.cleared
+      ? since.size
+      : 0;
+  return [...store.map].slice(from);
+}
+
+/** A mark of how many decisions one catalog and allowlist had, for `exportDecisions`. */
+export interface DecisionsMade {
+  readonly store: object;
+  readonly size: number;
+  readonly cleared: number;
+}
+
+/** How many decisions have been made against one catalog and allowlist so far. */
+export function decisionsMade(
+  catalog: readonly CompiledRule[],
+  allowlist: CompiledAllowlist,
+): DecisionsMade {
+  const store = decisionCache(catalog, allowlist);
+  return { store, size: store.map.size, cleared: store.cleared };
+}
+
+/**
+ * Take decisions another thread made (`exportDecisions`), against the same rules and allowlist
+ * compiled there from the same input, so the calls they cover are looked up here rather than
+ * evaluated again. A decision already held is kept, and nothing is taken once the cache is
+ * full.
+ */
+export function seedDecisions(
+  catalog: readonly CompiledRule[],
+  allowlist: CompiledAllowlist,
+  entries: Iterable<DecisionEntry>,
+): void {
+  const decisions = decisionCache(catalog, allowlist);
+  for (const [key, decision] of entries) {
+    if (decisions.map.has(key)) continue;
+    if (!hasRoom(decisions, key)) return;
+    keep(decisions, key, decision);
+  }
 }
 
 /**
@@ -473,12 +549,16 @@ export function evaluateAction(
   const decisions = decisionCache(catalog, allowlist);
   const evaluate = (mapped: MappedCall): EvaluatedCandidate => {
     const key = decisionKey(mapped);
-    let decision = key === undefined ? undefined : decisions.get(key);
+    let decision = key === undefined ? undefined : decisions.map.get(key);
     if (decision === undefined) {
       decision = evaluateCall(catalog, buildGuardSpanContext(mapped), mapped, allowlist);
       if (key !== undefined) {
-        if (decisions.size >= MAX_CACHED_DECISIONS) decisions.clear();
-        decisions.set(key, decision);
+        if (!hasRoom(decisions, key)) {
+          decisions.map.clear();
+          decisions.chars = 0;
+          decisions.cleared += 1;
+        }
+        keep(decisions, key, decision);
       }
     }
     return { mapped, decision };

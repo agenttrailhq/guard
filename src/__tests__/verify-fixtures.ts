@@ -46,7 +46,11 @@ export interface CorpusOptions {
 }
 
 /** A Claude Code transcript for one session. */
-function claudeLines(events: readonly SessionEvent[], session: string, cwd: string): string[] {
+export function claudeLines(
+  events: readonly SessionEvent[],
+  session: string,
+  cwd: string,
+): string[] {
   const lines: string[] = [];
   const base = { sessionId: session, cwd, timestamp: "2026-10-01T00:00:00.000Z" };
   events.forEach((event, i) => {

@@ -1287,8 +1287,9 @@ describe("what scan is allowed to reach", () => {
     expect(SCAN_GRAPH.every((f) => f.startsWith(SRC))).toBe(true);
   });
 
-  it("core/transcript holds exactly the three modules scan needs", () => {
+  it("core/transcript holds exactly the four modules scan needs", () => {
     expect(readdirSync(join(SRC, "core", "transcript")).sort()).toEqual([
+      "claude-session.ts",
       "parse.ts",
       "scan.ts",
       "transcript-types.ts",

@@ -572,3 +572,29 @@ export function isEdit(call: SessionCall): call is SessionCall & { readonly edit
 export function isShell(call: SessionCall): call is SessionCall & { readonly command: string } {
   return call.command !== undefined;
 }
+
+/**
+ * Evaluate every action call in `sessions` against the whole catalog, on its text and, where a
+ * shell command spells its words with quotes or escapes, on its words (`decodedMatches`), as
+ * `aggregateScan`, `tallyMatchedCalls` and `readCalls` evaluate them. Only the decision cache
+ * keeps the results: a worker thread runs this on its share of the sessions and hands the cache
+ * over (`exportDecisions`), so the main thread looks those calls up instead.
+ */
+export function primeDecisions(
+  agent: AgentSource,
+  sessions: readonly ScanCorpus["sessions"][number][],
+  catalog: readonly CompiledRule[],
+  allowlist: CompiledAllowlist,
+): void {
+  for (const session of sessions) {
+    for (const turn of session.turns) {
+      for (const use of turn.toolUses) {
+        for (const call of toolUseCalls(agent, use)) {
+          if (call.kind !== "action") continue;
+          const { mapped } = evaluateAction(catalog, allowlist, call.candidates);
+          decodedMatches(catalog, allowlist, mapped);
+        }
+      }
+    }
+  }
+}

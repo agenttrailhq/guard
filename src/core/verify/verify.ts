@@ -54,9 +54,19 @@ export interface VerifyInput {
   readonly home?: string;
   /**
    * What `scan` already collected for the secrets check while it read the transcripts. Files it
-   * holds are not read again.
+   * holds are not read again. A function is called when the secrets check's turn comes, so
+   * whatever it still has to collect can use this thread then.
    */
-  readonly secretsCollector?: SecretsCollector | Promise<SecretsCollector>;
+  readonly secretsCollector?:
+    | SecretsCollector
+    | Promise<SecretsCollector>
+    | (() => Promise<SecretsCollector>);
+  /**
+   * Settles once decisions `scan` had made elsewhere, on worker threads, are in the decision
+   * cache. The checks that evaluate whole calls against the catalog wait for it; the git-backed
+   * checks, which need none, run first.
+   */
+  readonly decisionsReady?: Promise<unknown>;
   /** For tests: folders whose contents are scratch. Production uses `TEMP_ROOTS`. */
   readonly scratchRoots?: readonly string[];
 }
@@ -110,8 +120,8 @@ function chargeTime(io: VerifyIO, ms: number): void {
 export async function verifyScan(input: VerifyInput): Promise<VerifyOutcome> {
   const agent = input.corpus.agent ?? "claude";
   const steps = [
-    "which commands ran",
     "skipped checks, lost work and destructive commands",
+    "which commands ran",
     "what commands and edits did",
     "cloud and permissions",
     "production infrastructure",
@@ -127,8 +137,6 @@ export async function verifyScan(input: VerifyInput): Promise<VerifyOutcome> {
     input.onCheck?.(step, steps.length, steps[step - 1] as string);
   };
   next();
-  const matched = tallyMatchedCalls(input.corpus, input.catalog, input.allowlist);
-  next();
   const git = await checkGitBacked({
     corpus: input.corpus,
     io: input.io,
@@ -136,6 +144,9 @@ export async function verifyScan(input: VerifyInput): Promise<VerifyOutcome> {
     home: input.home ?? homedir(),
     ...(input.scratchRoots === undefined ? {} : { scratchRoots: input.scratchRoots }),
   });
+  next();
+  await input.decisionsReady;
+  const matched = tallyMatchedCalls(input.corpus, input.catalog, input.allowlist);
 
   // The checks that read what commands and edits did share one reading of the calls. That
   // reading and the checks that need nothing else run in-process first.
@@ -173,7 +184,8 @@ export async function verifyScan(input: VerifyInput): Promise<VerifyOutcome> {
   // The secrets check last: its reading may have run on worker threads all along. Its search of
   // the repos runs here, after the others, so no other check's work is timed against its budget.
   next();
-  const collector = await input.secretsCollector;
+  const pending = input.secretsCollector;
+  const collector = await (typeof pending === "function" ? pending() : pending);
   const secrets = await checkSecrets({
     agent,
     files: input.corpus.files ?? [],
