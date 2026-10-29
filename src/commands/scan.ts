@@ -92,6 +92,8 @@ import type { ParsedSession } from "../core/transcript/transcript-types.js";
 import type { AgentSource, GuardRule } from "../core/types.js";
 import { parseUserRulesData } from "../core/user-rules-data.js";
 import { CODEX_TESTED_ON, CODEX_UNVERIFIED_TEXT } from "../core/verify/copy.js";
+import { createFingerprinter } from "../core/verify/fingerprint.js";
+import { createSecretsCollector, type SecretsCollector } from "../core/verify/secrets.js";
 import type { Verification, VerifyIO } from "../core/verify/types.js";
 import {
   UNAVAILABLE_VERIFY_IO,
@@ -519,12 +521,23 @@ function countTranscriptFiles(io: ScanIO, dir: string, depth = 0): number {
 async function readClaudeSession(
   io: ScanIO,
   item: { readonly file: string; readonly sessionId: string },
+  collector?: SecretsCollector,
 ): Promise<{ session?: ParsedSession; opened: number; files: readonly string[] }> {
   const source = { readLines: (p: string) => io.readLines(p) };
+  /** Parse one file, handing its records to the secrets collector when there is one. */
+  const parse = async (path: string, id: string): Promise<ParsedSession> => {
+    if (collector === undefined) return await parseSession(path, id, source);
+    const index = collector.file(path);
+    const parsed = await parseSession(path, id, source, (record) =>
+      collector.record(index, record),
+    );
+    collector.read(index);
+    return parsed;
+  };
 
   let session: ParsedSession;
   try {
-    session = await parseSession(item.file, item.sessionId, source);
+    session = await parse(item.file, item.sessionId);
   } catch {
     // QuarantineError or any other read failure: the main file was attempted and yielded
     // no session. Count the one file; leave its sub-agents to the not-read count.
@@ -564,7 +577,7 @@ async function readClaudeSession(
     opened += 1;
     let sub: ParsedSession;
     try {
-      sub = await parseSession(subPath, name, source);
+      sub = await parse(subPath, name);
     } catch {
       continue; // a sub-agent file that yields no session adds nothing; it was still opened
     }
@@ -621,7 +634,12 @@ function sessionRootFor(agent: AgentSource, home: string): string {
  * The stamp is what `aggregateScan` and the report dispatch on, so it is set HERE, beside
  * the reader that produced it, and never inferred further down.
  */
-async function readCorpusFor(agent: AgentSource, root: string, io: ScanIO): Promise<ScanCorpus> {
+async function readCorpusFor(
+  agent: AgentSource,
+  root: string,
+  io: ScanIO,
+  collector?: SecretsCollector,
+): Promise<ScanCorpus> {
   switch (agent) {
     case "cursor":
       return await readCursorCorpus(root, io);
@@ -631,7 +649,7 @@ async function readCorpusFor(agent: AgentSource, root: string, io: ScanIO): Prom
       return {
         agent: "claude",
         capabilities: { tokens: true, skips: false },
-        ...(await readCorpus(io, root)),
+        ...(await readCorpus(io, root, collector)),
       };
     default:
       return unhandledAgent(agent);
@@ -642,6 +660,7 @@ async function readCorpusFor(agent: AgentSource, root: string, io: ScanIO): Prom
 async function readCorpus(
   io: ScanIO,
   root: string,
+  collector?: SecretsCollector,
 ): Promise<{
   sessions: ParsedSession[];
   quarantined: number;
@@ -664,7 +683,7 @@ async function readCorpus(
 
   for (const project of inventory.projects) {
     for (const item of project.sessions) {
-      const read = await readClaudeSession(io, item);
+      const read = await readClaudeSession(io, item, collector);
       opened += read.opened;
       for (const path of read.files) files.push(path);
       if (read.session !== undefined) sessions.push(read.session);
@@ -1135,7 +1154,14 @@ export async function runScan(
 
   // `--scrub` writes paths into its manifest and restore commands, so they must be absolute.
   const readRoot = flags.scrub ? resolve(io.cwd(), root) : root;
-  const corpus: ScanCorpus = await readCorpusFor(agent, readRoot, io);
+  // When the checks will run, the secrets check collects from the records this read parses, so
+  // the transcripts are read once. Only Claude Code's reader hands its records over.
+  const verifying = !flags.scrub && shouldVerify(flags, byDefault);
+  const secretsCollector =
+    verifying && agent === "claude"
+      ? createSecretsCollector({ agent, fingerprint: createFingerprinter() })
+      : undefined;
+  const corpus: ScanCorpus = await readCorpusFor(agent, readRoot, io, secretsCollector);
   if (flags.scrub && deps.scrub !== undefined) {
     const scrubIO = deps.scrub.createIO();
     return await deps.scrub.run({
@@ -1164,6 +1190,7 @@ export async function runScan(
         allowlist,
         readLines: (path) => io.readLines(path),
         io: deps.createVerifyIO?.() ?? UNAVAILABLE_VERIFY_IO,
+        ...(secretsCollector === undefined ? {} : { secretsCollector }),
       });
     } catch {
       // The checks promise never to throw. If one does anyway, the scan still writes its page,

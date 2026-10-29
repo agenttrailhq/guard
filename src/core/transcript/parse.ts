@@ -90,12 +90,16 @@ function resultToString(content: unknown): string {
 /**
  * Parse one transcript file into a {@link ParsedSession}.
  *
+ * `onRecord`, when given, is handed every record the file parses to, in order, so a reader that
+ * needs more of a line than the session keeps does not parse the file again.
+ *
  * @throws {QuarantineError} when no coherent message spine is recoverable.
  */
 export async function parseSession(
   path: string,
   fallbackSessionId: string,
   source: LineSource = fileLineSource,
+  onRecord?: (record: object) => void,
 ): Promise<ParsedSession> {
   let sessionId: string | null = null;
   let version: string | null = null;
@@ -130,6 +134,7 @@ export async function parseSession(
       skippedLines++;
       continue;
     }
+    onRecord?.(obj);
 
     // Session identity + reporting fields, sniffed forward from message lines
     // (line 1 is a `summary`/`custom-title` record lacking cwd/branch/version).

@@ -54,6 +54,11 @@ interface ScrubPattern {
    * skipping it on text that cannot match keeps scrubbing fast.
    */
   readonly prefilter?: RegExp;
+  /**
+   * Optional: a cheaper regex that gives the same result on a text `needs` says no to, because
+   * the part it leaves out cannot match there.
+   */
+  readonly lighter?: { readonly needs: RegExp; readonly regex: RegExp };
 }
 
 /** Canonical placeholder shape: `[REDACTED:<kind>:<hint>]`. */
@@ -206,6 +211,10 @@ const ENV_SECRET_ASSIGNMENT = (() => {
   );
 })();
 
+/** A word every `.env`-style secret name holds: the cheap test before `ENV_SECRET_ASSIGNMENT`. */
+const ENV_SECRET_KEY_WORD =
+  /PASSWORD|PASSWD|SECRET|TOKEN|API[_-]?KEY|APIKEY|ACCESS[_-]?KEY|PRIVATE[_-]?KEY|CREDENTIAL/i;
+
 /** The slot sentinel. Every value class below excludes it. */
 const SLOT = String.fromCharCode(0xe000);
 
@@ -283,15 +292,23 @@ const MYSQL_PASSWORD_FLAG = new RegExp(
  * flag with an account's shape, the account field of an AWS ARN, and `--project` for the
  * Google Cloud tools.
  */
-const CLOUD_ACCOUNT_ID = new RegExp(
-  [
-    `${NAME_LEAD}([A-Za-z0-9_]*(?:ACCOUNT[_-]?ID|CF_ACCOUNT|CLOUDFLARE_ACCOUNT|AWS_ACCOUNT|GOOGLE_CLOUD_PROJECT|GCLOUD_PROJECT|GCP_PROJECT|CORE_PROJECT))(["']?\\s*[=:]\\s*)(["']?)([^\\s"',;<[${SLOT}][^\\s"',;${SLOT}]*)\\3`,
-    `(--(?:account-id|account|owner-id|account-number))(=|\\s+)(["']?)(\\d{12}|[0-9a-f]{32})\\7(?![A-Za-z0-9])`,
-    `(?<=\\barn:aws[a-z-]*:[a-z0-9-]*:[a-z0-9-]*:)\\d{12}(?![A-Za-z0-9])`,
-    `(?<=\\b(?:gcloud|gsutil|bq|firebase)\\b[^\\n;|&${SLOT}]{0,200}?)(--project(?:_id|-id)?)(=|\\s+)(["']?)([a-z][a-z0-9-]{4,28}[a-z0-9])\\11(?![A-Za-z0-9-])`,
-  ].join("|"),
-  "gi",
-);
+const CLOUD_ACCOUNT_ID_PARTS = [
+  `${NAME_LEAD}([A-Za-z0-9_]*(?:ACCOUNT[_-]?ID|CF_ACCOUNT|CLOUDFLARE_ACCOUNT|AWS_ACCOUNT|GOOGLE_CLOUD_PROJECT|GCLOUD_PROJECT|GCP_PROJECT|CORE_PROJECT))(["']?\\s*[=:]\\s*)(["']?)([^\\s"',;<[${SLOT}][^\\s"',;${SLOT}]*)\\3`,
+  `(--(?:account-id|account|owner-id|account-number))(=|\\s+)(["']?)(\\d{12}|[0-9a-f]{32})\\7(?![A-Za-z0-9])`,
+  `(?<=\\barn:aws[a-z-]*:[a-z0-9-]*:[a-z0-9-]*:)\\d{12}(?![A-Za-z0-9])`,
+  `(?<=\\b(?:gcloud|gsutil|bq|firebase)\\b[^\\n;|&${SLOT}]{0,200}?)(--project(?:_id|-id)?)(=|\\s+)(["']?)([a-z][a-z0-9-]{4,28}[a-z0-9])\\11(?![A-Za-z0-9-])`,
+];
+const CLOUD_ACCOUNT_ID = new RegExp(CLOUD_ACCOUNT_ID_PARTS.join("|"), "gi");
+
+/**
+ * The same pattern without its Google Cloud alternative, for a text that names none of those
+ * tools. That alternative starts with a lookbehind for the tool's name and can match nothing
+ * without it, so the result is the same; its groups (9 to 12) are simply never set.
+ */
+const CLOUD_ACCOUNT_ID_WITHOUT_GCP = new RegExp(CLOUD_ACCOUNT_ID_PARTS.slice(0, 3).join("|"), "gi");
+
+/** The Google Cloud tools `CLOUD_ACCOUNT_ID`'s last alternative needs before `--project`. */
+const GCP_TOOL = /\b(?:gcloud|gsutil|bq|firebase)\b/i;
 
 /**
  * A long-random-string candidate (32+ base62 / base64url characters, nothing glued to either
@@ -352,6 +369,7 @@ const PATTERNS: readonly ScrubPattern[] = [
   {
     id: "aws-access-key-id",
     regex: AWS_ACCESS_KEY_ID,
+    prefilter: /AKIA|ABIA|ACCA|AGPA|AIDA|AIPA|ANPA|ANVA|AROA|ASCA|ASIA/,
     // No hint: the last-4 of the id fingerprints the key, so nothing of it is disclosed.
     placeholder: () => redacted("secret:aws"),
   },
@@ -363,26 +381,31 @@ const PATTERNS: readonly ScrubPattern[] = [
   {
     id: "jwt",
     regex: JWT,
+    prefilter: /eyJ/,
     placeholder: () => redacted("secret:jwt", "claims-not-stored"),
   },
   {
     id: "github-token",
     regex: GITHUB_TOKEN,
+    prefilter: /gh[pousr]_|github_pat_/,
     placeholder: () => redacted("secret:github"),
   },
   {
     id: "slack-token",
     regex: SLACK_TOKEN,
+    prefilter: /xox[baprs]-/,
     placeholder: () => redacted("secret:slack"),
   },
   {
     id: "openai-key",
     regex: OPENAI_KEY,
+    prefilter: /sk-/,
     placeholder: () => redacted("secret:api-key"),
   },
   {
     id: "connection-string",
     regex: CONNECTION_STRING,
+    prefilter: /:\/\//,
     // No hint: the host is captured (group 2) only to anchor the password class to the
     // last `@`; it is a real hostname and is not echoed into the placeholder.
     placeholder: () => redacted("secret:connection-string"),
@@ -390,17 +413,20 @@ const PATTERNS: readonly ScrubPattern[] = [
   {
     id: "basic-auth-url",
     regex: BASIC_AUTH_URL,
+    prefilter: /:\/\//,
     // Keep the scheme so the URL stays recognizable; redact user:pass@.
     placeholder: (g) => `${g[1].toLowerCase()}://${redacted("secret:basic-auth")}@`,
   },
   {
     id: "bearer-token",
     regex: BEARER_TOKEN,
+    prefilter: /bearer/i,
     placeholder: () => `Bearer ${redacted("secret:bearer")}`,
   },
   {
     id: "aws-secret-access-key",
     regex: AWS_SECRET_ACCESS_KEY,
+    prefilter: /secret[_-]?access[_-]?key/i,
     // Preserve the key name (g1) + the original separator (g2, incl. the value's
     // opening quote); redact only the 40-char value. Re-emitting g2 rather than a
     // hard-coded `=` keeps `key: "val"` from becoming `key="val` (dangling quote).
@@ -409,6 +435,7 @@ const PATTERNS: readonly ScrubPattern[] = [
   {
     id: "env-secret",
     regex: ENV_SECRET_ASSIGNMENT,
+    prefilter: ENV_SECRET_KEY_WORD,
     // Preserve the key name (g1) and the original separator (g2); redact only the value
     // (g4/g6/g7), putting back its quotes (g3/g5), so quoted JSON stays valid.
     placeholder: (g) => {
@@ -439,6 +466,7 @@ const PATTERNS: readonly ScrubPattern[] = [
     id: "cloud-account-id",
     regex: CLOUD_ACCOUNT_ID,
     prefilter: /account|project|owner-id|arn:aws/i,
+    lighter: { needs: GCP_TOOL, regex: CLOUD_ACCOUNT_ID_WITHOUT_GCP },
     placeholder: (g) => {
       const label = redacted("pii:account");
       if (g[1] !== undefined) return aroundValue(g[1], g[2] ?? "", g[3], label);
@@ -457,16 +485,19 @@ const PATTERNS: readonly ScrubPattern[] = [
   {
     id: "email",
     regex: EMAIL,
+    prefilter: /@/,
     placeholder: () => redacted("pii:email"),
   },
   {
     id: "ssn",
     regex: SSN,
+    prefilter: /\d{3}[- ]\d{2}[- ]\d{4}/,
     placeholder: () => redacted("pii:ssn"),
   },
   {
     id: "credit-card",
     regex: CREDIT_CARD,
+    prefilter: /\d{13}|\d{3}[ -]\d{3}/,
     placeholder: () => redacted("pii:credit-card"),
   },
 ];
@@ -530,13 +561,18 @@ function applyPattern(
   pattern: ScrubPattern,
   tally: Record<string, number>,
   slots: string[],
+  shortcuts: boolean,
 ): string {
   // A text that cannot hold a match skips the full scan (see `ScrubPattern.prefilter`).
-  if (pattern.prefilter && !pattern.prefilter.test(text)) return text;
+  if (shortcuts && pattern.prefilter && !pattern.prefilter.test(text)) return text;
   const needsLuhn = LUHN_VALIDATED_IDS.has(pattern.id);
+  const regex =
+    shortcuts && pattern.lighter !== undefined && !pattern.lighter.needs.test(text)
+      ? pattern.lighter.regex
+      : pattern.regex;
   // `String.replace` resets the regex's lastIndex, so the shared global regex is
   // safe to reuse across calls. Do NOT swap any of these for `.test()`/`.exec()`.
-  return text.replace(pattern.regex, (...args) => {
+  return text.replace(regex, (...args) => {
     // args = [match, ...groups, offset, fullString] — and a trailing
     // `namedGroups` object ONLY if the regex declares a named group. See the
     // TRIPWIRE on PATTERNS: no pattern here declares one.
@@ -564,6 +600,19 @@ function applyPattern(
  * @returns `{ text, redactions, total }`. The secret value is never surfaced.
  */
 export function scrubText(text: string): ScrubResult {
+  return scrub(text, true);
+}
+
+/**
+ * `scrubText` without the prefilters and lighter regexes, which are pure shortcuts. For the test
+ * that holds them to giving the same result.
+ */
+export function scrubTextWithoutShortcuts(text: string): ScrubResult {
+  return scrub(text, false);
+}
+
+/** `scrubText`, with or without its shortcuts. */
+function scrub(text: string, shortcuts: boolean): ScrubResult {
   if (text.length === 0) {
     return { text, redactions: {}, total: 0 };
   }
@@ -577,7 +626,7 @@ export function scrubText(text: string): ScrubResult {
   let out = text.includes(SENTINEL_CHAR) ? text.split(SENTINEL_CHAR).join("") : text;
 
   for (const pattern of PATTERNS) {
-    out = applyPattern(out, pattern, tally, slots);
+    out = applyPattern(out, pattern, tally, slots, shortcuts);
   }
 
   // Nothing matched — return the original text verbatim (do NOT leak the

@@ -41,12 +41,12 @@
  * asked to replace in the transcripts.
  */
 
-import { redactSecrets } from "../redact-secrets.js";
+import { FALLBACK_MIN_LENGTH, redactSecrets } from "../redact-secrets.js";
 import { scrubText } from "../scrub.js";
 import type { AgentSource } from "../types.js";
 import type { Fingerprinter } from "./fingerprint.js";
 import { isNetworkPath } from "./paths.js";
-import { lineText } from "./sources.js";
+import { type LineText, lineText, recordText } from "./sources.js";
 import {
   type FixtureCheck,
   MAX_SECRET_ITEMS,
@@ -149,6 +149,33 @@ export function alignValues(
   return place(0, head.length) ? spans : undefined;
 }
 
+/**
+ * What every secret pattern needs somewhere in a text, case-sensitive: the AWS access key id
+ * prefixes, a private key block, a JWT header, GitHub and Slack token prefixes, and `sk-`.
+ */
+const SECRET_ANCHOR_CASED =
+  /AKIA|ABIA|ACCA|AGPA|AIDA|AIPA|ANPA|ANVA|AROA|ASCA|ASIA|-----BEGIN|eyJ|gh[pousr]_|github_pat_|xox[baprs]-|sk-/;
+
+/**
+ * The same, case-insensitive: a URL with a scheme (credentials in a URL or connection string),
+ * a bearer token, an `Authorization` header, a MySQL password flag, and the words the name rules
+ * key on.
+ */
+const SECRET_ANCHOR_ANY_CASE =
+  /:\/\/|bearer|authori[sz]ation|mysql|mariadb|passw|secret|token|api[_-]?key|apikey|access[_-]?key|private[_-]?key|credential|[_-]key/i;
+
+/** A run long enough to be a random-looking secret. */
+const LONG_RUN = new RegExp(`[A-Za-z0-9_-]{${FALLBACK_MIN_LENGTH}}`);
+
+/**
+ * Could `text` hold a value any secret pattern in `scrubText` or `redactSecrets` takes out?
+ * A necessary condition: every one of those patterns needs one of these anchors, so a text
+ * with none of them holds no secret and the full passes are skipped. A test holds it to that.
+ */
+export function mayHoldSecret(text: string): boolean {
+  return SECRET_ANCHOR_CASED.test(text) || SECRET_ANCHOR_ANY_CASE.test(text) || LONG_RUN.test(text);
+}
+
 /** What `findValues` returns: the values, and whether the text could not be lined up. */
 export interface FoundValues {
   readonly values: readonly FoundValue[];
@@ -163,6 +190,7 @@ export interface FoundValues {
  */
 export function findValues(text: string): FoundValues {
   const clean = text.includes(SCRUB_SENTINEL) ? text.split(SCRUB_SENTINEL).join("") : text;
+  if (!mayHoldSecret(clean)) return { values: [], unaligned: false };
   const redacted = redactSecrets(scrubText(clean).text);
   if (redacted === clean) return { values: [], unaligned: false };
 
@@ -586,13 +614,171 @@ export function secretsStatus(
   return "clean";
 }
 
+// ── Collecting values as the transcripts are read ─────────────────────────────
+
+/**
+ * Collects credential-shaped values from transcript text, one file at a time. `scan` feeds it
+ * the records it parses anyway, so the transcripts are read once; `checkSecrets` feeds it from
+ * its own reading for any file it was not given. Values are held only in memory, under keyed
+ * fingerprints, until the check is finished.
+ */
+export interface SecretsCollector {
+  readonly agent: AgentSource;
+  /** Start a file. Returns its index; the same path returns the same index. */
+  file(path: string): number;
+  /** One raw line of file `index`. */
+  line(index: number, line: string): void;
+  /** One record of file `index`, already parsed from its line. */
+  record(index: number, record: unknown): void;
+  /** File `index` was read to the end. */
+  read(index: number): void;
+}
+
+/** A remembered text's values. */
+type Remembered = FoundValues;
+
+/** Nothing found in a text. */
+const NOTHING: Remembered = { values: [], unaligned: false };
+
+/** Most texts with values remembered; texts that held nothing count against `MAX_EMPTY_TEXTS`. */
+const MAX_REMEMBERED_VALUES = 20_000;
+
+/** What a collector has gathered, for `finishSecrets`. */
+interface Collected {
+  readonly candidates: Map<string, Candidate>;
+  readonly workingDirs: Set<string>;
+  readonly paths: Map<string, number>;
+  readonly done: Set<number>;
+  /** Texts that could not be lined up, by file. */
+  readonly unplaced: Map<number, number>;
+}
+
+/** The collector's own state, beside the interface. */
+const COLLECTED = new WeakMap<SecretsCollector, Collected>();
+
+/** What a collector needs. */
+export interface CollectorOptions {
+  readonly agent: AgentSource;
+  readonly fingerprint: Fingerprinter;
+  /** For tests: the cap on values held for the fixture test. */
+  readonly maxHeldValues?: number;
+}
+
+/** A new collector. */
+export function createSecretsCollector(options: CollectorOptions): SecretsCollector {
+  const collected: Collected = {
+    candidates: new Map(),
+    workingDirs: new Set(),
+    paths: new Map(),
+    done: new Set(),
+    unplaced: new Map(),
+  };
+  let held = 0;
+  let rememberedValues = 0;
+  // Keyed hashes of long texts already scanned, with what they held. A tool's output is stored
+  // twice in a Claude Code transcript, and the same output recurs across sessions; each is
+  // scanned once.
+  const remembered = new Map<string, Remembered>();
+
+  const take = (index: number, text: LineText): void => {
+    for (const cwd of text.workingDirs) collected.workingDirs.add(cwd);
+    for (const piece of text.pieces) {
+      const remember = piece.text.length >= MIN_REMEMBERED_TEXT;
+      const textKey = remember ? options.fingerprint(piece.text) : "";
+      let result = remember ? remembered.get(textKey) : undefined;
+      if (result === undefined) {
+        result = findValues(piece.text);
+        if (remember && !result.unaligned) {
+          if (result.values.length === 0) {
+            if (remembered.size < MAX_EMPTY_TEXTS) remembered.set(textKey, NOTHING);
+          } else if (rememberedValues < MAX_REMEMBERED_VALUES) {
+            remembered.set(textKey, result);
+            rememberedValues += 1;
+          }
+        }
+      }
+      if (result.unaligned) {
+        collected.unplaced.set(index, (collected.unplaced.get(index) ?? 0) + 1);
+      }
+      for (const found of result.values) {
+        const key = options.fingerprint(found.value);
+        let candidate = collected.candidates.get(key);
+        if (candidate === undefined) {
+          const reason = placeholderReason(found);
+          const decided: SecretClass | undefined =
+            reason !== undefined ? "placeholder" : isLocalDev(found) ? "local-dev" : undefined;
+          const keep = decided === undefined && held < (options.maxHeldValues ?? MAX_HELD_VALUES);
+          if (keep) held += 1;
+          candidate = {
+            kind: found.kind,
+            via: new Set(),
+            files: new Set(),
+            decided,
+            // Past the cap a value is not held, so it cannot be searched for in the repos.
+            value: keep ? found.value : undefined,
+            setAside: reason === "named-not-credential-shaped" ? reason : undefined,
+          };
+          collected.candidates.set(key, candidate);
+        }
+        candidate.via.add(piece.via);
+        candidate.files.add(index);
+      }
+    }
+  };
+
+  const collector: SecretsCollector = {
+    agent: options.agent,
+    file(path) {
+      let index = collected.paths.get(path);
+      if (index === undefined) {
+        index = collected.paths.size;
+        collected.paths.set(path, index);
+      }
+      return index;
+    },
+    line(index, line) {
+      take(index, lineText(options.agent, line));
+    },
+    record(index, record) {
+      take(index, recordText(options.agent, record));
+    },
+    read(index) {
+      collected.done.add(index);
+    },
+  };
+  COLLECTED.set(collector, collected);
+  return collector;
+}
+
+/** Read `path` into `collector` line by line. `false` when the file could not be read. */
+async function collectFile(
+  collector: SecretsCollector,
+  path: string,
+  readLines: (path: string) => AsyncIterable<string>,
+): Promise<boolean> {
+  const index = collector.file(path);
+  try {
+    for await (const line of readLines(path)) collector.line(index, line);
+    collector.read(index);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// ── The check ────────────────────────────────────────────────────────────────
+
 /**
  * Run the secrets check. See the module header.
  *
- * Never throws: a file that cannot be read is counted, and a repo that cannot be searched is
- * counted. Either keeps the result from reading as clean.
+ * With a `collector` that `scan` filled while it read the transcripts, each file it read is
+ * used as it is and only the others are read here. Never throws: a file that cannot be read is
+ * counted, and a repo that cannot be searched is counted. Either keeps the result from reading
+ * as clean.
  */
-export async function checkSecrets(input: SecretsInput): Promise<SecretsCheck> {
+export async function checkSecrets(
+  input: SecretsInput & { readonly collector?: SecretsCollector },
+): Promise<SecretsCheck> {
   return (await classifySecrets(input, false)).check;
 }
 
@@ -629,67 +815,52 @@ export async function findLikelyReal(input: SecretsInput): Promise<LikelyRealVal
 }
 
 /** The secrets check; with `keep`, also the likely-real values themselves. */
-async function classifySecrets(input: SecretsInput, keep: boolean): Promise<LikelyRealValues> {
-  const candidates = new Map<string, Candidate>();
-  const workingDirs = new Set<string>();
+async function classifySecrets(
+  input: SecretsInput & { readonly collector?: SecretsCollector },
+  keep: boolean,
+): Promise<LikelyRealValues> {
+  const collector =
+    input.collector ??
+    createSecretsCollector({
+      agent: input.agent,
+      fingerprint: input.fingerprint,
+      ...(input.maxHeldValues === undefined ? {} : { maxHeldValues: input.maxHeldValues }),
+    });
+  const collected = COLLECTED.get(collector) as Collected;
+
+  // The files this check is about, by their index in the collector. Any file the collector was
+  // not given whole is read now.
+  const included = new Set<number>();
   let filesRead = 0;
   let filesNotRead = 0;
-  let unplaced = 0;
-  let held = 0;
-  // Keyed hashes of long texts already found to hold nothing. A tool's output is stored twice
-  // in a Claude Code transcript, and the same output recurs across sessions; each is scanned
-  // once. Only texts that held nothing are remembered, so no value is kept by this.
-  const empty = new Set<string>();
-
-  for (const [index, path] of input.files.entries()) {
-    try {
-      for await (const line of input.readLines(path)) {
-        const { pieces, workingDirs: named } = lineText(input.agent, line);
-        for (const cwd of named) workingDirs.add(cwd);
-        for (const piece of pieces) {
-          const remember = piece.text.length >= MIN_REMEMBERED_TEXT;
-          const textKey = remember ? input.fingerprint(piece.text) : "";
-          if (remember && empty.has(textKey)) continue;
-          const result = findValues(piece.text);
-          if (result.unaligned) unplaced += 1;
-          if (
-            remember &&
-            result.values.length === 0 &&
-            !result.unaligned &&
-            empty.size < MAX_EMPTY_TEXTS
-          ) {
-            empty.add(textKey);
-          }
-          for (const found of result.values) {
-            const key = input.fingerprint(found.value);
-            let candidate = candidates.get(key);
-            if (candidate === undefined) {
-              const reason = placeholderReason(found);
-              const decided: SecretClass | undefined =
-                reason !== undefined ? "placeholder" : isLocalDev(found) ? "local-dev" : undefined;
-              const keep = decided === undefined && held < (input.maxHeldValues ?? MAX_HELD_VALUES);
-              if (keep) held += 1;
-              candidate = {
-                kind: found.kind,
-                via: new Set(),
-                files: new Set(),
-                decided,
-                // Past the cap a value is not held, so it cannot be searched for in the repos.
-                value: keep ? found.value : undefined,
-                setAside: reason === "named-not-credential-shaped" ? reason : undefined,
-              };
-              candidates.set(key, candidate);
-            }
-            candidate.via.add(piece.via);
-            candidate.files.add(index);
-          }
-        }
-      }
+  for (const path of input.files) {
+    const known = collected.paths.get(path);
+    if (known !== undefined && collected.done.has(known)) {
+      included.add(known);
       filesRead += 1;
-    } catch {
+      continue;
+    }
+    if (await collectFile(collector, path, input.readLines)) {
+      included.add(collector.file(path));
+      filesRead += 1;
+    } else {
       filesNotRead += 1;
     }
   }
+  let unplaced = 0;
+  for (const [index, count] of collected.unplaced) if (included.has(index)) unplaced += count;
+
+  // Only values seen in the files this check is about count, by those files alone.
+  const candidates = new Map<string, Candidate>();
+  for (const [key, candidate] of collected.candidates) {
+    for (const index of candidate.files) if (!included.has(index)) candidate.files.delete(index);
+    if (candidate.files.size > 0) candidates.set(key, candidate);
+  }
+  const fileOrder = new Map<number, number>();
+  input.files.forEach((path, order) => {
+    const index = collected.paths.get(path);
+    if (index !== undefined) fileOrder.set(index, order);
+  });
 
   // An unnamed random string seen only in output or replies is most often an id or a hash.
   for (const candidate of candidates.values()) {
@@ -713,7 +884,7 @@ async function classifySecrets(input: SecretsInput, keep: boolean): Promise<Like
   }
   const searched = await searchFixtures(
     input.io,
-    workingDirs,
+    collected.workingDirs,
     pending,
     input.now ?? (() => Date.now()),
   );
@@ -740,7 +911,10 @@ async function classifySecrets(input: SecretsInput, keep: boolean): Promise<Like
         kept.push({
           value: candidate.value,
           kind: candidate.kind,
-          files: [...candidate.files].sort((a, b) => a - b).map((i) => input.files[i] as string),
+          files: [...candidate.files]
+            .map((index) => fileOrder.get(index) ?? Number.MAX_SAFE_INTEGER)
+            .sort((a, b) => a - b)
+            .map((order) => input.files[order] as string),
         });
       }
     }

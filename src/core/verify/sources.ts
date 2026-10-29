@@ -227,6 +227,15 @@ export function lineText(agent: AgentSource, line: string): LineText {
   } catch {
     return EMPTY;
   }
+  return recordText(agent, record);
+}
+
+/**
+ * The text in one transcript record already parsed from its line, for one app: what
+ * `lineText` gives for the line. The scan's own reader hands its parsed records here, so a
+ * line is parsed once.
+ */
+export function recordText(agent: AgentSource, record: unknown): LineText {
   if (!isRecord(record)) return EMPTY;
   switch (agent) {
     case "claude":
