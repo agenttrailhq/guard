@@ -3,7 +3,7 @@
 // cspell:words apikey passwd pwd autoscale svc configmap configmaps daemonset
 // cspell:words statefulset replicaset serviceaccount rolebinding clusterrole
 // cspell:words clusterrolebinding cronjob namespaces endpoints pvc hpa crd
-// cspell:words eipalloc dumpall createuser vacuumdb reindexdb Uapp
+// cspell:words eipalloc dumpall createuser vacuumdb reindexdb Uapp mongodump mongorestore
 /**
  * `redactIdentifiers` — identifying NAMES that are not path-shaped, out of anything
  * `scan` displays or writes.
