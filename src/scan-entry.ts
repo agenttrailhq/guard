@@ -28,6 +28,7 @@ if (isSecretsWorker()) {
   // The skill's output is read by the agent, so the AgentTrail OS line is left out.
   const code = await runScan(process.argv.slice(2), createRealScanIO(), {
     productLine: false,
+    progress: false,
     createVerifyIO: () => createRealVerifyIO(),
     collectSecrets: (agent, files) => collectInWorkers(new URL(import.meta.url), agent, files),
   });
