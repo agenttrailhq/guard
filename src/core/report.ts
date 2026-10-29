@@ -185,19 +185,19 @@ export const PRODUCT_NOTE = {
   eyebrow: "AgentTrail OS",
   heading:
     "AgentTrail Guard stops the mistake. AgentTrail OS remembers it and turns it into a rule.",
-  body: "This report is one look at the transcripts on one machine. AgentTrail OS watches every agent session, turns each repeated mistake into a guardrail, and proves the fix on your own history. It is a separate product, and nothing in this report was sent to it.",
+  body: "AgentTrail OS applies the same guardrail library to every agent on your team, decides each call on the server so nobody can switch it off locally, and keeps the record. It is free for one developer. Nothing in this report was sent to it.",
   steps: [
     {
-      title: "Connect your projects",
-      text: "Every agent session on the team is recorded in one place, with the guardrails that matched.",
+      title: "Connect each project",
+      text: "Run npx -y @agenttrail/cli@latest login --agent claude. Recent sessions are imported, so the team view starts with history.",
     },
     {
-      title: "Backtest a guardrail",
-      text: "See which past commands it would have caught before it applies to anyone's work.",
+      title: "Backtest before you enforce",
+      text: "Pick a guardrail, such as secrets read into a transcript, and see which of last month's calls it would have caught across everyone before it touches anyone's work.",
     },
     {
-      title: "Approve before it runs",
-      text: "A matching command waits for a teammate to allow it, and the decision is kept.",
+      title: "Hold, then approve",
+      text: "A matching call waits in the approval queue for a teammate's yes, and the decision stays in the audit trail.",
     },
   ],
   start: { label: "Start free with AgentTrail OS", path: "/signup", content: "os-signup" },
@@ -1910,18 +1910,18 @@ function owaspSection(payload: ReportPayload): string {
   const touched = (list: readonly { readonly id: string }[]): number =>
     payload.owasp.filter((t) => list.some((risk) => risk.id === t.id)).length;
   const risks = [...payload.owasp].sort(
-    (a, b) => b.callCount - a.callCount || a.id.localeCompare(b.id),
+    (a, b) => b.ruleMatches - a.ruleMatches || a.id.localeCompare(b.id),
   );
-  const most = Math.max(1, ...risks.map((t) => t.callCount));
+  const most = Math.max(1, ...risks.map((t) => t.ruleMatches));
   const cards = risks
     .map(
       (
         t,
       ) => `<label class="card risk" for="ff-risk-${escapeHtml(t.id)}" data-risk="${escapeHtml(t.id)}">
-<span class="risk-top"><span class="risk-id">${escapeHtml(t.id)}</span><span class="risk-count"><span class="risk-n">${escapeHtml(formatCount(t.callCount))}</span> <span class="risk-unit">${t.callCount === 1 ? "call" : "calls"}</span></span></span>
+<span class="risk-top"><span class="risk-id">${escapeHtml(t.id)}</span><span class="risk-count"><span class="risk-n">${escapeHtml(formatCount(t.ruleMatches))}</span> <span class="risk-unit">${t.ruleMatches === 1 ? "match" : "matches"}</span></span></span>
 <span class="risk-title">${escapeHtml(owaspTitle(t.id))}</span>
 <span class="risk-sub">${escapeHtml(counted(t.guardrailCount, "guardrail", "guardrails"))}</span>
-<span class="risk-meter" aria-hidden="true"><span style="width: ${((t.callCount / most) * 100).toFixed(1)}%"></span></span>
+<span class="risk-meter" aria-hidden="true"><span style="width: ${((t.ruleMatches / most) * 100).toFixed(1)}%"></span></span>
 </label>`,
     )
     .join("\n");
@@ -2529,10 +2529,8 @@ export const OS_REVIEW: SentenceTemplate<readonly CardView[]> = {
   render: (cards) => {
     const review = cards.filter((card) => card.tone === "review");
     if (review.length === 0) return undefined;
-    const titles = review.map((card, i) =>
-      i === 0 ? CATEGORY_TITLES[card.category] : CATEGORY_TITLES[card.category].toLowerCase(),
-    );
-    return `${andList(titles)} ${review.length === 1 ? "needs" : "need"} a person to review: once a call has changed something remote, a scan on one machine can only report it.`;
+    const titles = review.map((card) => CATEGORY_TITLES[card.category].toLowerCase());
+    return `This machine could not confirm what happened in ${andList(titles)}. Once a call has changed something remote, a scan can only report it.`;
   },
 };
 

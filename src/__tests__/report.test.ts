@@ -826,7 +826,7 @@ describe("the AgentTrail OS block", () => {
   });
 
   it("says that nothing in the report was sent to the product it names", () => {
-    expect(HTML).toContain("nothing in this report was sent to it");
+    expect(HTML).toContain("Nothing in this report was sent to it.");
   });
 });
 
