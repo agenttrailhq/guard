@@ -1235,7 +1235,12 @@ through the secret scrubber, then a path redactor, then an identifier redactor, 
 MCP tool call has its payload values structurally redacted: `<path>` stands for a
 filesystem path or URL, `<name>` / `<host>` / `<user>` / `<message>` / `<comment>` for an
 identifying operand of a command, `<value>` for a redacted MCP payload value, and
-`[REDACTED:…]` for a secret. Working directories and file paths appear nowhere in it, and
+`[REDACTED:…]` for a secret. A file-tool call (Edit, Write, Read and the like) is shown as
+the tool and the kind of file the guardrail that matched it looks for, such as
+`Edit <test config>` or `Write <agent memory file>`; only a short list of well-known names
+that identify no one is kept as it is, such as `vitest.config.ts`, `package.json`,
+`CLAUDE.md`, `MEMORY.md`, `.env.local` and `.github/workflows/<file>.yml`. Working
+directories and file paths appear nowhere in it, and
 the projects your sessions came from are a *count* and never names, because the install
 is per-machine and your projects are your business.
 

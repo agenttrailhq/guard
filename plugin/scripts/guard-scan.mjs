@@ -6549,10 +6549,10 @@ function stringOr(value) {
 function commandCall(tool, value) {
   return typeof value === "string" ? { tool, args: { full_command: capEnd(value) } } : { tool, args: {} };
 }
-function mcpCall(group, toolName, args2) {
+function mcpCall(group, toolName2, args2) {
   const raw = typeof args2 === "string" ? args2 : safeStringify(isRecord3(args2) ? args2 : {});
   return {
-    tool: `mcp__${stringOr(group)}__${stringOr(toolName)}`,
+    tool: `mcp__${stringOr(group)}__${stringOr(toolName2)}`,
     args: { full_command: capMiddle(raw) }
   };
 }
@@ -8223,6 +8223,51 @@ function strictestCandidate(results) {
     if (strictness(result.decision) > strictness(kept.decision)) kept = result;
   }
   return kept;
+}
+
+// src/core/file-shape.ts
+var KNOWN_NAMES = [
+  /^(?:vitest|vite)\.(?:config|workspace)\.(?:js|ts|mjs|mts|cjs|cts|json)$/,
+  /^jest\.config\.(?:js|ts|mjs|mts|cjs|cts|json)$/,
+  /^package\.json$/,
+  /^tsconfig\.json$/,
+  /^(?:CLAUDE|CLAUDE\.local|AGENTS|GEMINI|MEMORY)\.md$/,
+  /^\.mcp\.json$/,
+  /^\.env(?:\.(?:local|development|dev|production|prod|staging|test|example|sample))*$/
+];
+var WORKFLOW = /(?:^|[\\/])\.github[\\/]workflows[\\/][^\\/]+\.(yml|yaml)$/;
+var FILE_KINDS = {
+  "ti.test-config-edit": "test config",
+  "ac.memory-store-edit": "agent memory file",
+  "fs.ci-definition": "CI workflow",
+  "se.credential-file": "credentials file",
+  "block-env-file-read": "env file",
+  "block-prod-config-edit": "production config",
+  "require-auth-on-pii-endpoints": "API route file",
+  "fs.agent-self-config": "agent settings file",
+  "fs.system-paths": "system file",
+  "fs.vcs-internals": "git internals file",
+  "ac.instruction-file-edit": "agent instructions file",
+  "ac.skill-install": "agent skill file",
+  "ac.mcp-server-add": "MCP config file"
+};
+var UNKNOWN_FILE_KIND = "file";
+function lastSegment(path) {
+  return path.split(/[\\/]/).pop() ?? "";
+}
+function knownFileName(path) {
+  const workflow = WORKFLOW.exec(path.trim());
+  if (workflow !== null) return `.github/workflows/<file>.${workflow[1]}`;
+  const name = lastSegment(path.trim());
+  return KNOWN_NAMES.some((known) => known.test(name)) ? name : void 0;
+}
+function toolName(tool) {
+  return /^[A-Za-z][A-Za-z0-9_]{0,40}$/.test(tool) ? tool : "File tool";
+}
+function fileShapeOf(tool, path, ruleId) {
+  const name = knownFileName(path);
+  const shown = name ?? `<${FILE_KINDS[ruleId] ?? UNKNOWN_FILE_KIND}>`;
+  return `${toolName(tool)} ${shown}`;
 }
 
 // src/core/normalize.ts
@@ -10257,8 +10302,12 @@ function aggregateScan(corpus, catalog, allowlist, shipped = /* @__PURE__ */ new
       const group = decided.get(key);
       if (group === void 0) decided.set(key, { action: strictest, ruleIds: deciders, calls: 1 });
       else group.calls++;
-      const text2 = displayTextOf(mapped);
-      shapeCalls.set(text2, (shapeCalls.get(text2) ?? 0) + 1);
+      const filePath = mapped.args.full_command === void 0 ? mapped.args.file_path : void 0;
+      const shared = filePath === void 0 ? displayTextOf(mapped) : void 0;
+      const textFor = (ruleId) => shared ?? fileShapeOf(mapped.tool, filePath ?? "", ruleId);
+      for (const text2 of new Set(decision.matches.map((m) => textFor(m.ruleId)))) {
+        shapeCalls.set(text2, (shapeCalls.get(text2) ?? 0) + 1);
+      }
       callOwasp.push(decision.matches.flatMap((m) => ruleOf.get(m.ruleId)?.rule.owasp ?? []));
       for (const match of decision.matches) {
         let acc = byRule.get(match.ruleId);
@@ -10267,6 +10316,7 @@ function aggregateScan(corpus, catalog, allowlist, shipped = /* @__PURE__ */ new
           byRule.set(match.ruleId, acc);
         }
         acc.count++;
+        const text2 = textFor(match.ruleId);
         acc.shapes.set(text2, (acc.shapes.get(text2) ?? 0) + 1);
       }
     }
