@@ -11,6 +11,38 @@ For this package, breaking means a change to the installed hook entry (which sil
 the guard checking an existing install until it is re-approved) or a removed command or flag;
 adding a command, a flag, or support for a new agent is a feature.
 
+## [0.4.16](https://github.com/agenttrailhq/guard/compare/v0.4.15...v0.4.16) (2026-10-30)
+
+### Features
+
+* lay the scan report out to the v3 design ([96db185](https://github.com/agenttrailhq/guard/commit/96db185ea856acb8895bae18e3ff80dcfd9c6cab))
+* show scan progress on stderr ([62636e4](https://github.com/agenttrailhq/guard/commit/62636e4d7be2749b44d80541e595c3941452a51b))
+* write the suggested post as a performance review ([cd262a8](https://github.com/agenttrailhq/guard/commit/cd262a86455f2d46eeec2009e50edd711586f0b0))
+
+### Bug Fixes
+
+* count a credential as likely real only on evidence ([e653dbe](https://github.com/agenttrailhq/guard/commit/e653dbebcdb24ed90fc8e8c5c8cbbbca0c118e8e))
+* count OWASP risks in matches and word the OS panel as designed ([df2ebf1](https://github.com/agenttrailhq/guard/commit/df2ebf1351cfa5b3d211909c8a77d5eda8a73837))
+* give each report card short rows of its own ([3f7094f](https://github.com/agenttrailhq/guard/commit/3f7094feedfd0a8b18c114d8ebbbb08ad3de4215))
+* keep the headline phrase whole and fold the long notes away ([a3cade7](https://github.com/agenttrailhq/guard/commit/a3cade7a2db748e572a1a52e02c6bcd866faa6c6))
+* keep the report's meta row on one line ([f83861a](https://github.com/agenttrailhq/guard/commit/f83861a42728db4edf95abb348747e5fa586d9e1))
+* match the design's phone layout for outcomes, OWASP risks and the post ([c0b9e30](https://github.com/agenttrailhq/guard/commit/c0b9e300ad7b375b2cea9777cb6ef3d91228feff))
+* match the report's site footer to the website's ([05e0912](https://github.com/agenttrailhq/guard/commit/05e0912e946e858fdb5a862e5abb04f237a262a6))
+* redact database logins, AWS profiles and AWS resource ids ([0c48aaa](https://github.com/agenttrailhq/guard/commit/0c48aaa1d8e2cd154a665daaa9edcf00b25f2182))
+* say the new credential kinds and ways in on the report's lead ([80f83f6](https://github.com/agenttrailhq/guard/commit/80f83f637f26e9f18100c8df825d094db406cc5f))
+* show what kind of file a file-tool call touched ([5416782](https://github.com/agenttrailhq/guard/commit/541678296d3812866eda801c38f0294a35da4f55))
+* state the credentials headline the way the design does ([7c53230](https://github.com/agenttrailhq/guard/commit/7c53230c0206e66a4d6dd00f7144e960522a44a5))
+
+### Performance Improvements
+
+* evaluate each tool call once and read each command once ([1a063ec](https://github.com/agenttrailhq/guard/commit/1a063ec3bac9696656118d9b2ae060022c6c5c4c))
+* keep a scan's command readings until they outgrow a size bound ([22b6cbf](https://github.com/agenttrailhq/guard/commit/22b6cbfbd02b95371324412873b34259efa5617a))
+* read sessions and decide their tool calls on worker threads ([64264d3](https://github.com/agenttrailhq/guard/commit/64264d36409958e87b79e5346e9cbedd5facec4c))
+* read transcripts for the secrets check on worker threads ([99a5c7f](https://github.com/agenttrailhq/guard/commit/99a5c7f770d03aadf55b63e5223b8db7259e38f4))
+* read transcripts once and skip text no secret pattern can match ([a115d61](https://github.com/agenttrailhq/guard/commit/a115d61d07c9952d816c828c19be7fa4286270a7))
+* try only the guardrails that can match a call's tool ([cef448a](https://github.com/agenttrailhq/guard/commit/cef448a9f7d92a8e6b46c30d7fce0fe3d6e89862))
+* use at most three worker threads for the secrets check ([3258c2c](https://github.com/agenttrailhq/guard/commit/3258c2caf26305e720f833c6d0e89285d81fc1ff))
+
 ## [0.4.15](https://github.com/agenttrailhq/guard/compare/v0.4.14...v0.4.15) (2026-10-29)
 
 ### Features
