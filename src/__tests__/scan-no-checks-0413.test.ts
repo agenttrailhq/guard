@@ -24,6 +24,10 @@
  * one 0.4.13 row can be several here. So before `--json` is compared, each file-tool shape is
  * mapped back to `<Tool> <path>` and the rows that then share a shape are merged, their counts
  * added (`as0413`). Everything else is compared as it is.
+ *
+ * The page's footer no longer prints the bundled library's line, but neither the terminal
+ * summary nor `--json` changed with it (`--json` still carries `catalog`), so nothing here
+ * maps it out: the page is pinned to this build's own output.
  */
 
 import { mkdtempSync, readdirSync, readFileSync } from "node:fs";

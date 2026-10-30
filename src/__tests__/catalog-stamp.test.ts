@@ -177,21 +177,24 @@ describe("the version printed is the catalog's, provably", () => {
   });
 });
 
-describe("all three surfaces read the SAME stamp", () => {
-  // `status`, `scan` and `init` all print the stamp. Each renders through
+describe("the surfaces that carry the stamp read the SAME one", () => {
+  // `status` and `init` print the stamp and `scan --json` carries it. Each renders through
   // `formatCatalogStamp(catalogStamp(), now)`, so the risk is not that one of them is
   // missing — the per-surface tests in `setup-commands.test.ts` and `report.test.ts`
   // cover that — but that one of them grows its own copy of the line and drifts.
-  // These assert the shared-source property that no single-surface test can.
+  // These assert the shared-source property that no single-surface test can. The scan
+  // report's page does not print the stamp: beside the guard's version, the library's age
+  // read as the age of the guard or of the report.
   // Derived from the catalog's real publish date (a day after), so the shared line is a
   // normal "1 day ago" — not the clock-skew branch, whose apostrophe would be
   // HTML-escaped in the report and defeat the byte-for-byte `toContain`.
   const now = new Date(Date.parse(CATALOG_PUBLISHED_AT) + DAY);
   const expected = formatCatalogStamp(catalogStamp(), now);
 
-  it("the scan report footer renders exactly the shared line", () => {
+  it("the scan report page does not carry the line", () => {
     const html = renderReport(EMPTY_RESULT, { version: VERSION, generatedAt: now });
-    expect(html).toContain(expected);
+    expect(html).not.toContain(expected);
+    expect(html).not.toContain(`guardrail library v${CATALOG_VERSION}`);
   });
 
   it("the scan --json payload carries exactly the same string, not a second shape", () => {
@@ -201,17 +204,12 @@ describe("all three surfaces read the SAME stamp", () => {
     expect((json as { catalog: string }).catalog).toBe(expected);
   });
 
-  it("the report footer keeps the tool version and the catalog version distinct", () => {
-    // They sit side by side and answer different questions. A footer that printed the
-    // guard's version twice would look right and be wrong.
+  it("the report footer names the tool's version and nothing after it", () => {
     const html = renderReport(EMPTY_RESULT, { version: VERSION, generatedAt: now });
-    expect(html).toContain(`agenttrail-guard ${VERSION}`);
-    expect(html).toContain(`guardrail library v${CATALOG_VERSION}`);
-    // Both strings are present and distinct in the footer; the two versions may share a
-    // number (both `0.1.0` today) without the footer collapsing them.
+    expect(html).toContain(`<span id="footer-version">agenttrail-guard ${VERSION}</span>`);
   });
 
-  it("the report footer carries no product note and no prompt beside the stamp", () => {
+  it("the report footer carries no product note and no prompt beside the version", () => {
     // A Claude Code report carries one product note, and it sits BEFORE the footer. The
     // footer says what the tool is and where the source lives: a prompt is exactly the
     // thing that would get appended to a version line, so the footer is checked on its own.
@@ -221,7 +219,7 @@ describe("all three surfaces read the SAME stamp", () => {
       html.indexOf('<div class="report-meta">'),
       html.indexOf("</div>", html.indexOf('<div class="report-meta">')),
     );
-    expect(footer).toContain(expected);
+    expect(footer).toContain(`agenttrail-guard ${VERSION}`);
     expect(footer).not.toContain('class="card product"');
     expect(footer).not.toContain(PRODUCT_NOTE.primary.label);
     expect(footer).not.toContain(PRODUCT_NOTE.heading);

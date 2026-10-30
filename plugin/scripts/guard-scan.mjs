@@ -19378,7 +19378,6 @@ function reportPayload(result, meta, builders = CARD_BUILDERS) {
     tool: "agenttrail-guard",
     version: meta.version,
     generatedAt: meta.generatedAt.toISOString(),
-    catalog: formatCatalogStamp(catalogStamp(), meta.generatedAt),
     agent: result.agent,
     sessions: result.sessions,
     projects: result.projects,
@@ -20584,9 +20583,9 @@ function productNoteSection(result, cards) {
 <div class="product-ctas">${outLink(siteLink(start.path, a, start.content), escapeHtml(start.label), "btn btn-primary")}${outLink(siteLink(primary.path, a, primary.content), escapeHtml(primary.label), "btn btn-secondary")}${outLink(siteLink(secondary.path, a, secondary.content), escapeHtml(secondary.label), "btn btn-secondary")}</div>
 </aside>`;
 }
-function reportMeta(payload, meta) {
+function reportMeta(meta) {
   return `<div class="report-meta">
-<p class="footer-brand">${LOGO_MARK_SVG}<span id="footer-version">agenttrail-guard ${escapeHtml(meta.version)} &middot; ${escapeHtml(payload.catalog)}</span></p>
+<p class="footer-brand">${LOGO_MARK_SVG}<span id="footer-version">agenttrail-guard ${escapeHtml(meta.version)}</span></p>
 <p>A finding is a guardrail that matched. It is not proof that anything went wrong, and each guardrail&#39;s entry in the library states what it can miss.</p>
 <p>${outLink(REPOSITORY_URL, "Source on GitHub", void 0, ' id="source-link"')}</p>
 </div>`;
@@ -20662,7 +20661,7 @@ function renderReport(result, meta, options = {}) {
     privacySection(result, payload, meta, variant),
     scanned ? tokensSection(result) : "",
     productNoteSection(result, cards),
-    reportMeta(payload, meta)
+    reportMeta(meta)
   ].filter((section) => section !== "");
   const printHead = `<div class="page print-only"><div class="print-head"><span role="img" aria-label="AgentTrail">${LOGO_LOCKUP_SVG}</span><span id="print-meta">${escapeHtml(pageTitle(result, meta))}</span></div></div>`;
   const body = `${topBar(payload)}
