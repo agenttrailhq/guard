@@ -6759,7 +6759,16 @@ var import_picomatch2 = __toESM(require_picomatch2(), 1);
 // src/engine/matchers.ts
 var import_picomatch = __toESM(require_picomatch2(), 1);
 var DETAIL_ATTR = "detail";
+var MCP_INPUT_ATTR = "mcp_input";
 var FILE_PATH_ATTR = "file_path";
+function effectiveChannel(condition) {
+  if (condition.channel !== void 0) return condition.channel;
+  return condition.label?.toLowerCase().startsWith("mcp__") === true ? "content" : "command";
+}
+function channelText(span, channel) {
+  if (channel === "content") return span.attributes[MCP_INPUT_ATTR] ?? span.attributes[DETAIL_ATTR];
+  return span.attributes[DETAIL_ATTR];
+}
 var FILE_GLOB_OPTIONS = { dot: true, nocase: true };
 var LABEL_GLOB_OPTIONS = { dot: true, nocase: true };
 function matchKind(conditionKind, span) {
@@ -6776,8 +6785,8 @@ function matchLabel(conditionLabel, span) {
     reason: matched ? `label: "${conditionLabel}" matched` : `label: expected "${conditionLabel}", got "${span.label}"`
   };
 }
-function matchDetailContains(requiredSubstrings, span) {
-  const detail = span.attributes[DETAIL_ATTR];
+function matchDetailContains(requiredSubstrings, span, channel = "command") {
+  const detail = channelText(span, channel);
   if (detail === void 0) {
     return { matched: false, reason: "detail_contains: detail attribute missing" };
   }
@@ -6798,8 +6807,8 @@ function matchDetailContains(requiredSubstrings, span) {
     reason: `detail_contains: all ${requiredSubstrings.length} substring(s) found`
   };
 }
-function matchDetailMatches(patterns, span) {
-  const detail = span.attributes[DETAIL_ATTR];
+function matchDetailMatches(patterns, span, channel = "command") {
+  const detail = channelText(span, channel);
   if (detail === void 0) {
     return { matched: false, reason: "detail_matches: detail attribute missing" };
   }
@@ -21010,14 +21019,22 @@ function evaluateConditionCompiled(condition, span, compiledGlobMatcher) {
     reasons.push(labelResult.reason);
   }
   if (condition.detail_contains !== void 0) {
-    const detailResult = matchDetailContains(condition.detail_contains, span);
+    const detailResult = matchDetailContains(
+      condition.detail_contains,
+      span,
+      effectiveChannel(condition)
+    );
     if (!detailResult.matched) {
       return detailResult;
     }
     reasons.push(detailResult.reason);
   }
   if (condition.detail_matches !== void 0) {
-    const regexResult = matchDetailMatches(condition.detail_matches, span);
+    const regexResult = matchDetailMatches(
+      condition.detail_matches,
+      span,
+      effectiveChannel(condition)
+    );
     if (!regexResult.matched) {
       return regexResult;
     }
