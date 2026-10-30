@@ -1,5 +1,6 @@
 import {
   createCompiledFileGlobMatcher,
+  effectiveChannel,
   matchDetailContains,
   matchDetailMatches,
   matchFileGlob,
@@ -34,7 +35,11 @@ function evaluateCondition(
   }
 
   if (condition.detail_contains !== undefined) {
-    const detailResult = matchDetailContains(condition.detail_contains, span);
+    const detailResult = matchDetailContains(
+      condition.detail_contains,
+      span,
+      effectiveChannel(condition),
+    );
     if (!detailResult.matched) {
       return detailResult;
     }
@@ -42,7 +47,11 @@ function evaluateCondition(
   }
 
   if (condition.detail_matches !== undefined) {
-    const regexResult = matchDetailMatches(condition.detail_matches, span);
+    const regexResult = matchDetailMatches(
+      condition.detail_matches,
+      span,
+      effectiveChannel(condition),
+    );
     if (!regexResult.matched) {
       return regexResult;
     }
@@ -94,7 +103,11 @@ function evaluateConditionCompiled(
   }
 
   if (condition.detail_contains !== undefined) {
-    const detailResult = matchDetailContains(condition.detail_contains, span);
+    const detailResult = matchDetailContains(
+      condition.detail_contains,
+      span,
+      effectiveChannel(condition),
+    );
     if (!detailResult.matched) {
       return detailResult;
     }
@@ -102,7 +115,11 @@ function evaluateConditionCompiled(
   }
 
   if (condition.detail_matches !== undefined) {
-    const regexResult = matchDetailMatches(condition.detail_matches, span);
+    const regexResult = matchDetailMatches(
+      condition.detail_matches,
+      span,
+      effectiveChannel(condition),
+    );
     if (!regexResult.matched) {
       return regexResult;
     }

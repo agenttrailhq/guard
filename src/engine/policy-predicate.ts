@@ -104,6 +104,12 @@ const DetailMatchPatternSchema = z
     }
   });
 
+export const CHANNELS = ["command", "content"] as const;
+
+export const ChannelSchema = z.enum(CHANNELS);
+
+export type Channel = (typeof CHANNELS)[number];
+
 export const MatchConditionSchema = z
   .object({
     kind: z.string().min(1),
@@ -116,6 +122,7 @@ export const MatchConditionSchema = z
       .optional(),
     file_glob: z.string().min(1).optional(),
     numeric: z.array(NumericComparisonSchema).min(1).optional(),
+    channel: ChannelSchema.optional(),
   })
   .strict();
 
