@@ -19320,10 +19320,7 @@ function copyVerification(verification, capLists) {
       egress: copyCategory(categories.egress, capLists)
     },
     ...verification.dependencies === void 0 ? {} : {
-      dependencies: copyFacts(
-        verification.dependencies,
-        capLists
-      )
+      dependencies: copyFacts(verification.dependencies, capLists)
     }
   };
 }
