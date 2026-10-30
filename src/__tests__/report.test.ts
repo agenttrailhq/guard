@@ -764,17 +764,16 @@ describe("what the report says", () => {
     expect(HTML).toContain(REPOSITORY_URL);
   });
 
-  it("carries the BUNDLED catalog's version and age, distinct from the tool's", () => {
-    // The two versions sit side by side in the footer and answer different questions:
-    // `agenttrail-guard 0.1.0` is the tool, `guardrail library v0.1.0` is the corpus that
-    // determines which rules this user actually has. Render at a `generatedAt` a day
-    // after the catalog's real publish date so the age is a deterministic "1 day ago",
-    // independent of when this release happened.
+  it("names the tool's version only, not the bundled library's version or age", () => {
+    // Beside the tool's version, the library's publish age read as the age of the tool or of
+    // the report. The stamp stays in `init`, `status` and `--json`.
     const now = new Date(Date.parse(CATALOG_PUBLISHED_AT) + 24 * 60 * 60 * 1000);
     const html = renderReport(POPULATED, { version: "0.1.0", generatedAt: now });
-    expect(html).toContain(`guardrail library v${CATALOG_VERSION}, published `);
-    expect(html).toMatch(/guardrail library v\d+\.\d+\.\d+, published (today|\d+ days? ago)/);
+    expect(html).toContain('<span id="footer-version">agenttrail-guard 0.1.0</span>');
+    expect(html).not.toContain(`guardrail library v${CATALOG_VERSION}`);
+    expect(html).not.toMatch(/guardrail library v\d/);
     expect(html).not.toContain("not yet stamped");
+    expect(html).not.toContain('"catalog"');
   });
 
   it("gives the catalog's info severity its own tone", () => {
@@ -1039,8 +1038,8 @@ describe("the JSON payload", () => {
     expect(json.tool).toBe("agenttrail-guard");
     expect(json.version).toBe("0.1.0");
     expect(json.generatedAt).toBe("2026-09-08T09:00:00.000Z");
-    // The same line the HTML footer renders — a pipeline consumer gets exactly what a
-    // reader of the report gets, including the catalog's real version.
+    // The same line `init` and `status` print, with the catalog's real version. The page's
+    // footer does not carry it; a pipeline still can read it here.
     expect(json.catalog).toContain(`guardrail library v${CATALOG_VERSION}, published `);
     expect(json.catalog).not.toContain("not yet stamped");
   });

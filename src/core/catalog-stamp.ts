@@ -26,9 +26,10 @@
  * for `commands/*` and the hook entry.
  *
  * ── Where the surfaces are ───────────────────────────────────────────────────
- * Three commands print this line: `init` (`commands/init.ts`), `status`
- * (`commands/status.ts`), and `scan` (`core/report.ts`'s footer, rendered into both
- * the terminal summary and the HTML report).
+ * Two commands print this line: `init` (`commands/init.ts`) and `status`
+ * (`commands/status.ts`). `scan --json` carries it as the `catalog` field
+ * (`core/report.ts`'s `renderJson`). The scan report does not print it: beside the
+ * guard's version, the library's age read as the age of the guard or of the report.
  */
 
 import { CATALOG_PUBLISHED_AT, CATALOG_VERSION } from "@agenttrail/guardrails/guardrails";

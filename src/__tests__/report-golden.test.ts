@@ -5,16 +5,13 @@
  * reviewed like code: `vitest -u` rewrites it. The corpus is made up, and the golden file is
  * held to the same leak patterns as every committed fixture.
  *
- * The bundled guardrail library's version line is replaced with a fixed one, so a library
- * release does not change the golden file. The line is replaced as written in the data block
- * and as escaped in the page, which differ when a library published after the fixed date adds
- * a note with an apostrophe in it.
+ * The page does not carry the bundled guardrail library's version line (that is `init`,
+ * `status` and `--json`), so a library release does not change the golden file.
  */
 
 import { describe, expect, it } from "vitest";
-import { catalogStamp, formatCatalogStamp } from "../core/catalog-stamp.js";
 import { compileAllowlist } from "../core/evaluate.js";
-import { escapeHtml, type RenderOptions, type ReportMeta, renderReport } from "../core/report.js";
+import { type RenderOptions, type ReportMeta, renderReport } from "../core/report.js";
 import { LOGO_LOCKUP_SVG, LOGO_MARK_SVG } from "../core/report-brand.js";
 import { compileCatalog } from "../core/rules.js";
 import { aggregateScan, type ScanResult } from "../core/scan-report.js";
@@ -115,8 +112,7 @@ const RESULT = aggregateScan(
 );
 
 /**
- * The page with its constant parts replaced: the bundled library's version line, and the
- * bodies of the stylesheet, the script and the logo, which are pinned by their own tests
+ * The page with its constant parts replaced: the bodies of the stylesheet, the script and the logo, which are pinned by their own tests
  * (`report.test.ts` for the styles and logo, the policy hash for the script). What is left
  * is the markup this corpus produces.
  */
@@ -125,12 +121,7 @@ function render(
   result: ScanResult = RESULT,
   options: RenderOptions = {},
 ): string {
-  const line = formatCatalogStamp(catalogStamp(), META.generatedAt);
   return renderReport(result, META, { ...options, variant })
-    .split(line)
-    .join("guardrail library vX.Y.Z")
-    .split(escapeHtml(line))
-    .join("guardrail library vX.Y.Z")
     .replace(/<style>[\s\S]*?<\/style>/, "<style>(stylesheet)</style>")
     .replace(/<script>[\s\S]*?<\/script>/, "<script>(script)</script>")
     .replace(/script-src 'sha256-[^']+'/, "script-src 'sha256-(hash)'")
@@ -189,10 +180,11 @@ describe("the golden report", () => {
     );
   });
 
-  it("replaces the library's version line, so a library release leaves the golden pages alone", () => {
+  it("carries no library version line, so a library release leaves the golden pages alone", () => {
     for (const variant of ["document", "artifact"] as const) {
-      expect(render(variant)).not.toMatch(/guardrail library v\d/);
-      expect(render(variant)).toContain("guardrail library vX.Y.Z");
+      expect(render(variant)).not.toMatch(/guardrail library v/);
+      expect(render(variant)).not.toContain('"catalog"');
+      expect(render(variant)).toContain('<span id="footer-version">agenttrail-guard 9.9.9</span>');
     }
   });
 

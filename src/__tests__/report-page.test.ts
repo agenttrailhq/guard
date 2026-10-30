@@ -853,7 +853,6 @@ describe("what the file carries is one capped projection", () => {
     "tool",
     "version",
     "generatedAt",
-    "catalog",
     "agent",
     "severity",
     "action",
