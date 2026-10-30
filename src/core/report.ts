@@ -76,7 +76,7 @@ import {
   owaspTitle,
 } from "./owasp.js";
 import { ICONS, LOGO_LOCKUP_SVG, LOGO_MARK_SVG, reportStyles, riskStyles } from "./report-brand.js";
-import { POST_LIMIT, REPORT_SCRIPT } from "./report-script.js";
+import { POST_LIMIT, REPORT_SCRIPT, SHARE_PREFIX } from "./report-script.js";
 import type {
   ActionCounts,
   DecidedCalls,
@@ -814,7 +814,10 @@ export function reportPayload(
 
 // ── Share text ────────────────────────────────────────────────────────────────
 
-/** How X weighs a post: most text one per character, a link 23, plus the hashtag. */
+/**
+ * How X weighs a post: most text one per character, the rest two. The post carries no link or
+ * hashtag, so this is all of it.
+ */
 export function postLength(text: string): number {
   let n = 0;
   for (const ch of text) {
@@ -826,36 +829,48 @@ export function postLength(text: string): number {
       (code >= 0x2032 && code <= 0x2037);
     n += light ? 1 : 2;
   }
-  return n + 1 + 23 + 1 + "#agenttrail".length;
+  return n;
 }
 
-/** The library "would block" guardrail with the most matches, if any. Never a user's own. */
-function topLibraryBlocker(result: ScanResult): ScanFinding | undefined {
-  return result.findings
-    .filter((f) => f.action === "block" && f.source === "library")
-    .sort(
-      (a, b) =>
-        b.count - a.count ||
-        severityRank(a.severity) - severityRank(b.severity) ||
-        a.ruleId.localeCompare(b.ruleId),
-    )[0];
+/**
+ * The post, from its middle lines: a fixed opening, how many tool calls were checked, the lines,
+ * and a fixed close with the command that runs the same scan.
+ */
+function sharePost(result: ScanResult, lines: readonly string[]): string {
+  // The short name the post uses: "Codex", where the page says "Codex CLI".
+  const name = result.agent === "codex" ? "Codex" : agentName(result.agent);
+  return [
+    `Gave ${name} its first performance review.`,
+    "",
+    `@agenttrailhq Guard checked ${formatCount(result.toolCalls)} of its tool calls, locally:`,
+    ...lines,
+    "",
+    "How did yours do?",
+    "npm i -g @agenttrail/guard",
+    `agenttrail-guard scan --agent ${result.agent}`,
+  ].join("\n");
 }
 
-/** The tail the totals post ends with. The verified post ends ". Nothing uploaded.", to fit. */
-const SHARE_TAIL = ". Checked locally, nothing uploaded.";
+/** The post with as many of `lines` as fit, first ones first, or `undefined` when none does. */
+function fitted(result: ScanResult, lines: readonly string[]): string | undefined {
+  for (let n = lines.length; n > 0; n--) {
+    const text = sharePost(result, lines.slice(0, n));
+    if (postLength(text) <= POST_LIMIT) return text;
+  }
+  return undefined;
+}
 
 /**
  * The prefilled post. The user can edit it before posting.
  *
- * With verified counts that may lead (`shareCounts`, by the headline's own rule in
- * `leadingCards`: result-backed, not clean, not could-not-check, never on a Codex scan, and
- * confirmed, except a skipped-checks or lost-work count read from git state, which may lead
- * where its card could not confirm), it states them, most important first, as many as fit in a
+ * Its middle lines are the verified counts that may lead (`shareCounts`, by the headline's own
+ * rule in `leadingCards`: result-backed, not clean, not could-not-check, never on a Codex scan,
+ * and confirmed, except a skipped-checks or lost-work count read from git state, which may lead
+ * where its card could not confirm), one per line, most important first, as many as fit in a
  * post. Otherwise it is the totals post (`totalsShareText`).
  *
- * Built from counts, the agent's display name, fixed phrases and at most one shipped guardrail
- * title — never a command, a path, a project name, a card's own sentence, or a guardrail the
- * user wrote, whose title can name internal things.
+ * Built from counts, the agent's display name and fixed phrases: never a command, a path, a
+ * project name, a card's own sentence, or a guardrail's title.
  */
 export function shareText(
   result: ScanResult,
@@ -866,51 +881,30 @@ export function shareText(
     verified === undefined || !isPositiveCount(result.toolCalls)
       ? []
       : shareCounts(verified.cards, verified.context);
-  const calls = counted(result.toolCalls, "tool call", "tool calls");
-  const head = `AgentTrail Guard checked ${calls} from ${agentName(result.agent)} on my machine`;
-  for (let n = counts.length; n > 0; n--) {
-    const text = `${head}: ${counts.slice(0, n).join(" · ")}. Nothing uploaded.`;
-    if (postLength(text) <= POST_LIMIT) return text;
-  }
-  return totalsShareText(result);
+  return fitted(result, counts) ?? totalsShareText(result);
 }
 
 /**
- * The totals post: totals, and the top blocked LIBRARY guardrail's title.
- *
- * Built from counts, the agent's display name and one shipped title — never a command, a
- * path, a project name, or a guardrail the user wrote, whose title can name internal things.
+ * The totals post: how many actions it would have blocked, asked about and warned on, one per
+ * line. Built from counts and fixed phrases only.
  */
 export function totalsShareText(result: ScanResult): string {
   const { block, require_approval: ask, warn } = result.riskyByAction;
-  const calls = counted(result.toolCalls, "tool call", "tool calls");
-  const head = `I scanned ${calls} from ${agentName(result.agent)} with AgentTrail Guard`;
-  const tail = SHARE_TAIL;
-  const top = topLibraryBlocker(result);
-
-  const compose = (withTitle: boolean): string => {
-    const parts: string[] = [];
-    if (block > 0) {
-      const detail =
-        withTitle && top !== undefined
-          ? ` (${formatCount(top.count)} of those: ${top.title.replace(/`/g, "")})`
-          : "";
-      parts.push(`${formatCount(block)} would block${detail}`);
-    }
-    if (ask > 0) parts.push(`${formatCount(ask)} would ask`);
-    if (warn > 0) parts.push(`${formatCount(warn)} would warn`);
-    const body = parts.length === 0 ? ": nothing matched a guardrail" : `: ${parts.join(" · ")}`;
-    return `${head}${body}${tail}`;
-  };
-
-  const full = compose(true);
-  return postLength(full) <= POST_LIMIT ? full : compose(false);
+  const lines: string[] = [];
+  const actions = (n: number): string => `${formatCount(n)} ${n === 1 ? "action" : "actions"}`;
+  if (block > 0) lines.push(`${actions(block)} it would have blocked`);
+  if (ask > 0) lines.push(`${actions(ask)} it would have asked me about`);
+  if (warn > 0) lines.push(`${actions(warn)} it would have warned me about`);
+  if (lines.length === 0) lines.push("nothing that matched a guardrail");
+  return fitted(result, lines) ?? sharePost(result, lines.slice(0, 1));
 }
 
-/** The Post-on-X link for a text. User text only ever sits inside the encoded parameter. */
-export function shareLink(text: string, agent: AgentSource): string {
-  const url = siteLink("/agenttrail-guard", agent, "share");
-  return `https://x.com/intent/post?text=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}&hashtags=agenttrail`;
+/**
+ * The Post-on-X link for a text: the text alone, encoded, line breaks and all, so the post is
+ * exactly that text. User text only ever sits inside the encoded parameter.
+ */
+export function shareLink(text: string): string {
+  return `${SHARE_PREFIX}${encodeURIComponent(text)}`;
 }
 
 // ── Small pieces ──────────────────────────────────────────────────────────────
@@ -1413,7 +1407,7 @@ ${copyable("cmd-scan-hero", `agenttrail-guard scan --agent ${result.agent}`, "Co
 ${metaRow}
 ${h1}${leadHtml === "" ? "" : `\n${leadHtml}`}
 <div class="hero-cta">${fixButton}
-${outLink(shareLink(payload.shareText, result.agent), `${ICONS.x}<span>Share on X<span class="sr-only"> (opens in a new tab)</span></span>`, "btn btn-secondary btn-lg share-x", ' id="hero-share"')}
+${outLink(shareLink(payload.shareText), `${ICONS.x}<span>Share on X<span class="sr-only"> (opens in a new tab)</span></span>`, "btn btn-secondary btn-lg share-x", ' id="hero-share"')}
 ${copyable("cmd-init-hero", `agenttrail-guard init --agent ${result.agent}`, "Copy the init command", " hero-copy")}
 </div>
 </div>
@@ -2301,7 +2295,7 @@ function shareSectionHtml(
   // A post with verified counts holds counts only; the totals post may name one library guardrail.
   const what =
     payload.shareText === totalsShareText(result)
-      ? "Totals and at most one library guardrail&#39;s name"
+      ? "Totals from this scan, and nothing else"
       : "Counts from the checks on this machine, and nothing else";
   const rows = Math.max(3, payload.shareText.split("\n").length + 1);
   return `<section id="share" class="share">
@@ -2311,7 +2305,7 @@ ${sectionHead("Share your result", `${what}: no commands, paths, project names o
 <label class="sr-only" for="share-text">Post text</label>
 <textarea class="post-text" id="share-text" rows="${rows}"${editable ? "" : " readonly"}>${escapeHtml(payload.shareText)}</textarea>
 <div class="post-foot">
-${outLink(shareLink(payload.shareText, result.agent), `${ICONS.x}<span>Post on X<span class="sr-only"> (opens in a new tab)</span></span>`, "btn btn-primary", ' id="share-link"')}
+${outLink(shareLink(payload.shareText), `${ICONS.x}<span>Post on X<span class="sr-only"> (opens in a new tab)</span></span>`, "btn btn-primary", ' id="share-link"')}
 <button class="btn btn-secondary js-only" id="share-copy" type="button" data-copy="share-text" data-label="Copy text" aria-label="Copy text of the post">Copy text</button>
 <span class="post-count" id="share-count" data-over="${length > POST_LIMIT ? "true" : "false"}">${escapeHtml(`${length} / ${POST_LIMIT}`)}</span>
 </div>

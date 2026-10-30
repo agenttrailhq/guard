@@ -1322,10 +1322,12 @@ describe("a guardrail the user wrote that reuses a library id", () => {
     html.match(/<textarea class="post-text" id="share-text"[^>]*>([\s\S]*?)<\/textarea>/)?.[1] ??
     "";
 
-  it("negative control — without it, the library guardrail is linked and named in the post", async () => {
+  it("negative control — without it, the library guardrail is linked, and no title is in the post", async () => {
     const html = await reportWith(undefined);
     expect(html).toContain("/guardrails/destructive-data/t-rm-rf");
-    expect(post(html)).toContain("Recursive delete");
+    // The post names no guardrail at all, so this side of the control is the same either way.
+    expect(post(html)).toContain("@agenttrailhq Guard checked");
+    expect(post(html)).not.toContain("Recursive delete");
   });
 
   it("is reported as the user's own: no library link, no description, not in the post", async () => {

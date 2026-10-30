@@ -227,11 +227,10 @@ describe("the report is self-contained — nothing outside the file is loaded", 
         } else if (href === SECURITY_MAIL) {
           expect(html).toContain(`>${SECURITY_MAIL.slice("mailto:".length)}</a>`);
         } else if (href.startsWith(X_INTENT)) {
+          // The post's text is the only parameter: no link back and no hashtag.
           const url = new URL(href);
-          expect(url.searchParams.get("hashtags")).toBe("agenttrail");
-          const back = new URL(url.searchParams.get("url") ?? "");
-          expect(back.origin).toBe(SITE_URL);
-          expect(Object.fromEntries(back.searchParams)).toMatchObject(utmFor(agent));
+          expect([...url.searchParams.keys()]).toEqual(["text"]);
+          expect(url.searchParams.get("text")).toContain("@agenttrailhq Guard checked");
         } else {
           const url = new URL(href);
           expect(url.origin, href).toBe(SITE_URL);
@@ -490,10 +489,14 @@ describe("the logo is drawn inline and references nothing", () => {
     expect(svg).not.toMatch(/xmlns|href|url\s*\(|<use\b|<image\b|<title\b|<script|\son[a-z]+=/i);
   });
 
-  /** The page's own words: no markup, script, styles, commands, the lockup's tag or the OS link. */
+  /**
+   * The page's own words: no markup, script, styles, commands, the lockup's tag, the OS link, or
+   * the post preview, which is text for X, where `@agenttrailhq` stands for the name.
+   */
   const prose = (html: string): string =>
     withoutScripts(html)
       .replace(/<style>[\s\S]*?<\/style>/, "")
+      .replace(/<textarea class="post-text"[^>]*>[\s\S]*?<\/textarea>/, "")
       .replace(/<code[^>]*>[\s\S]*?<\/code>/g, "")
       .replaceAll(`>${PRODUCT_NOTE.secondary.label}<`, "><")
       .replace(/<[^>]+>/g, " ");
@@ -502,6 +505,14 @@ describe("the logo is drawn inline and references nothing", () => {
   it.each(RENDERINGS)("%s names the products in full in its prose", (_n, html) => {
     expect(prose(html)).not.toMatch(BARE);
     expect(prose(html)).toContain("AgentTrail Guard");
+  });
+
+  it.each(
+    RENDERINGS,
+  )("%s names Guard in its post only after the @agenttrailhq handle", (_n, html) => {
+    const post = html.match(/<textarea class="post-text"[^>]*>([\s\S]*?)<\/textarea>/)?.[1] ?? "";
+    expect(post).toContain("@agenttrailhq Guard checked");
+    expect(post.replaceAll("@agenttrailhq Guard", "")).not.toMatch(BARE);
   });
 
   it("negative control — a bare product name is caught", () => {
@@ -634,8 +645,8 @@ describe("what the report says", () => {
     expect(HTML).toContain("Recursive delete");
     expect(HTML).toContain("t.rm-rf");
     expect(HTML).toContain("critical");
-    expect(HTML).toContain("would block");
-    expect(HTML).toContain("would ask");
+    expect(HTML).toContain("Would block");
+    expect(HTML).toContain("Would ask");
   });
 
   it("shows a repeat as one shape with its count, not as two rows", () => {
@@ -732,7 +743,7 @@ describe("what the report says", () => {
       '<span class="badge sev-unknown"><span class="sr-only">Severity: </span>Unknown</span>',
     );
     expect(html).not.toContain("informational");
-    expect(html).toContain("would warn");
+    expect(html).toContain("Would warn");
   });
 
   it("uses the singular verb for exactly one skipped file or line", () => {
