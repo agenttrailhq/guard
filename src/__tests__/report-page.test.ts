@@ -578,7 +578,8 @@ describe("a guardrail the user wrote is never shown as a library one", () => {
     expect(row).not.toContain("/guardrails/");
     expect(row).not.toContain("How this guardrail decides");
     expect(shareText(result)).not.toContain("billing");
-    expect(shareText(result)).toContain("Library guardrail a.lib");
+    // No guardrail's title reaches the post, a library one included.
+    expect(shareText(result)).not.toContain("Library guardrail a.lib");
   });
 
   it("keeps a quote-bearing id as text, never as markup or an attribute break", () => {
@@ -634,7 +635,7 @@ describe("a severity the user wrote never reaches the file", () => {
 });
 
 describe("the suggested post", () => {
-  it("carries totals and the top blocked library guardrail's title, and nothing else", () => {
+  it("is the template with the totals, one per line, and no guardrail's title", () => {
     const result = resultWith(
       [lib("a.top", "block", 4, { title: "Delete with `rm -rf`" }), lib("a.next", "block", 1)],
       // 5 block matches on 4 tool calls: the post counts calls.
@@ -642,53 +643,31 @@ describe("the suggested post", () => {
       { toolCalls: 1234 },
     );
     expect(shareText(result)).toBe(
-      "I scanned 1,234 tool calls from Claude Code with AgentTrail Guard: 4 would block (4 of those: Delete with rm -rf) · 2 would ask. Checked locally, nothing uploaded.",
+      [
+        "Gave Claude Code its first performance review.",
+        "",
+        "@agenttrailhq Guard checked 1,234 of its tool calls, locally:",
+        "4 actions it would have blocked",
+        "2 actions it would have asked me about",
+        "",
+        "How did yours do?",
+        "npm i -g @agenttrail/guard",
+        "agenttrail-guard scan --agent claude",
+      ].join("\n"),
     );
+    expect(shareText(result)).not.toContain("rm -rf");
   });
 
-  it("names the library blocker that blocked the most, before a more serious one", () => {
+  it("never names a guardrail, a library one or the user's own", () => {
     const text = shareText(
       resultWith(
-        [
-          lib("a.many", "block", 5, { severity: "medium", title: "Blocked most often" }),
-          lib("a.crit", "block", 2, { severity: "critical", title: "Most serious" }),
-        ],
-        { block: 7, require_approval: 0, warn: 0 },
+        [lib("a.many", "block", 5, { title: "Blocked most often" }), own("t.mine", "block", 3)],
+        { block: 8, require_approval: 0, warn: 0 },
       ),
     );
-    expect(text).toContain("(5 of those: Blocked most often)");
-  });
-
-  it("keeps the title when the post is exactly at X's limit, and drops it one character over", () => {
-    const withTitle = (length: number) =>
-      shareText(
-        resultWith([lib("a.b", "block", 1, { title: "x".repeat(length) })], {
-          block: 1,
-          require_approval: 0,
-          warn: 0,
-        }),
-      );
-    // Each character of the title adds one to the post's length while the title is kept.
-    const length = 280 - postLength(withTitle(1)) + 1;
-    expect(postLength(withTitle(length))).toBe(280);
-    expect(withTitle(length)).toContain("x".repeat(length));
-    expect(withTitle(length + 1)).not.toContain("of those");
-  });
-
-  it("leaves the title out when no library guardrail would block", () => {
-    const text = shareText(
-      resultWith([own("t.mine", "block", 3)], { block: 3, require_approval: 0, warn: 0 }),
-    );
-    expect(text).toContain("3 would block");
-    expect(text).not.toContain("of those");
+    expect(text).toContain("8 actions it would have blocked");
+    expect(text).not.toContain("Blocked most often");
     expect(text).not.toContain("Team guardrail");
-  });
-
-  it("drops the title rather than run past X's limit", () => {
-    const long = lib("a.long", "block", 1, { title: "x".repeat(300) });
-    const text = shareText(resultWith([long], { block: 1, require_approval: 0, warn: 0 }));
-    expect(text).not.toContain("xxx");
-    expect(postLength(text)).toBeLessThanOrEqual(280);
   });
 
   it("carries no command, path or project name", () => {
@@ -697,7 +676,9 @@ describe("the suggested post", () => {
       require_approval: 0,
       warn: 0,
     });
-    for (const leak of ["cmd-a.top", "<path>", "/"]) expect(shareText(result)).not.toContain(leak);
+    // The one `/` the post holds is the package name in its fixed install line.
+    const text = shareText(result).replace("npm i -g @agenttrail/guard", "");
+    for (const leak of ["cmd-a.top", "<path>", "/"]) expect(text).not.toContain(leak);
   });
 
   it("is shown for every agent, with a plain Post-on-X link and its weighted length", () => {
@@ -709,10 +690,10 @@ describe("the suggested post", () => {
     }
   });
 
-  it("counts a link as 23 and wide characters as two, as X does", () => {
-    const base = postLength("");
-    expect(postLength("abc") - base).toBe(3);
-    expect(postLength("日本") - base).toBe(4);
+  it("counts wide characters as two, as X does, and adds nothing for a link", () => {
+    expect(postLength("")).toBe(0);
+    expect(postLength("abc")).toBe(3);
+    expect(postLength("日本")).toBe(4);
   });
 });
 
@@ -1450,9 +1431,9 @@ describe("the published copy says what only the downloaded file can do", () => {
     expect(doc).not.toContain(line);
   });
 
-  it("says what the post carries: totals and at most one library guardrail's name", () => {
+  it("says what the post carries: totals and nothing else", () => {
     expect(doc).toContain(
-      "Totals and at most one library guardrail&#39;s name: no commands, paths, project names or guardrails you wrote.",
+      "Totals from this scan, and nothing else: no commands, paths, project names or guardrails you wrote.",
     );
   });
 });
@@ -1607,7 +1588,9 @@ describe("a hostile string in every free-text field stays text", () => {
     );
     expect(area).not.toBeNull();
     expect(decodeEntities(area?.[1] ?? "")).toBe(shareText(result));
-    expect(shareText(result)).toContain(`Library ${HOSTILE.replace(/`/g, "")}`);
+    // No guardrail title, hostile or not, reaches the post.
+    expect(shareText(result)).not.toContain(HOSTILE.replace(/`/g, ""));
+    expect(decodeEntities(area?.[1] ?? "")).toContain("\n");
   });
 });
 

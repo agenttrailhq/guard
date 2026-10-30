@@ -77,36 +77,88 @@ const post = (cards: readonly CardView[], context: CardContext = RECORDED) =>
 /** Each basis's phrase, written out, so a change to the words shows up here. */
 const LINES: Readonly<Record<Leading, readonly [string, string]>> = {
   secrets: [
-    "1 likely-real credential left in its transcripts",
-    "3 likely-real credentials left in its transcripts",
+    "1 real credential left in its transcripts",
+    "3 real credentials left in its transcripts",
   ],
   "skipped-checks": [
-    "1 commit shipped to main without its checks",
-    "3 commits shipped to main without their checks",
+    "1 commit shipped without its checks",
+    "3 commits shipped without their checks",
   ],
   "lost-work": [
-    "1 piece of deleted work still recoverable",
-    "3 pieces of deleted work still recoverable",
+    "1 piece of deleted work it could still bring back",
+    "3 pieces of deleted work it could still bring back",
   ],
-  cloud: ["1 IAM change ran and needs a review", "3 IAM changes ran and need a review"],
-  tests: ["1 lowered test floor", "3 lowered test floors"],
-  destructive: ["1 unguarded recursive delete", "3 unguarded recursive deletes"],
+  cloud: ["1 IAM change that needs a review", "3 IAM changes that need a review"],
+  tests: ["1 test floor it lowered", "3 test floors it lowered"],
+  destructive: [
+    "1 recursive delete with nothing guarding it",
+    "3 recursive deletes with nothing guarding them",
+  ],
 };
+
+/** The post's fixed opening, before its middle lines. */
+const OPENING = (agent = "Claude Code", calls = "7") =>
+  `Gave ${agent} its first performance review.\n\n@agenttrailhq Guard checked ${calls} of its tool calls, locally:\n`;
+
+/** The post's fixed close, after its middle lines. */
+const CLOSE = (flag = "claude") =>
+  `\n\nHow did yours do?\nnpm i -g @agenttrail/guard\nagenttrail-guard scan --agent ${flag}`;
+
+/** The whole post for these middle lines. */
+const POST = (lines: readonly string[], agent = "Claude Code", flag = "claude") =>
+  `${OPENING(agent)}${lines.join("\n")}${CLOSE(flag)}`;
+
+/** A post's middle lines. */
+const middle = (text: string): string[] =>
+  text.slice(text.indexOf(":\n") + 2, text.indexOf("\n\nHow did yours do?")).split("\n");
+
+describe("the post follows the template", () => {
+  it("is the fixed opening, the counts one per line, and the fixed close", () => {
+    expect(post([claim("secrets", 4), claim("skipped-checks", 5)])).toBe(
+      [
+        "Gave Claude Code its first performance review.",
+        "",
+        "@agenttrailhq Guard checked 7 of its tool calls, locally:",
+        "4 real credentials left in its transcripts",
+        "5 commits shipped without their checks",
+        "",
+        "How did yours do?",
+        "npm i -g @agenttrail/guard",
+        "agenttrail-guard scan --agent claude",
+      ].join("\n"),
+    );
+  });
+
+  it.each([
+    ["claude", "Claude Code"],
+    ["cursor", "Cursor"],
+    ["codex", "Codex"],
+  ] as const)("names the app and its --agent for a %s scan", (agent, name) => {
+    const text = totalsShareText({ ...RESULT, agent });
+    expect(text.startsWith(`Gave ${name} its first performance review.`)).toBe(true);
+    expect(text.endsWith(`agenttrail-guard scan --agent ${agent}`)).toBe(true);
+  });
+
+  it("writes the tool-call count with separators", () => {
+    expect(totalsShareText({ ...RESULT, toolCalls: 54321 })).toContain(
+      "Guard checked 54,321 of its tool calls, locally:",
+    );
+  });
+});
 
 describe("the post states each verified count that may lead", () => {
   it.each(HEADLINE_ORDER)("%s, in the singular and the plural", (category) => {
     const [one, many] = LINES[category];
-    expect(post([claim(category, 1)])).toBe(
-      `AgentTrail Guard checked 7 tool calls from Claude Code on my machine: ${one}. Nothing uploaded.`,
-    );
-    expect(post([claim(category, 3)])).toContain(`: ${many}.`);
+    expect(post([claim(category, 1)])).toBe(POST([one]));
+    expect(post([claim(category, 3)])).toBe(POST([many]));
   });
 
   it("several, most important first, apart from the order the cards come in", () => {
     const text = post([claim("destructive", 2), claim("secrets", 3), claim("cloud", 1)]);
-    expect(text).toContain(
-      ": 3 likely-real credentials left in its transcripts · 1 IAM change ran and needs a review · 2 unguarded recursive deletes.",
-    );
+    expect(middle(text)).toEqual([
+      "3 real credentials left in its transcripts",
+      "1 IAM change that needs a review",
+    ]);
   });
 
   it("the cloud phrase says IAM changes ran and need a review, never that harm was done", () => {
@@ -194,45 +246,63 @@ describe("the totals post when nothing verified may be stated", () => {
   });
 });
 
+describe("the totals post's lines", () => {
+  it("say how many actions it would have blocked, asked about and warned about, as many as fit", () => {
+    const result = { ...RESULT, riskyByAction: { block: 445, require_approval: 1, warn: 9 } };
+    const text = totalsShareText(result);
+    expect(middle(text)).toEqual([
+      "445 actions it would have blocked",
+      "1 action it would have asked me about",
+    ]);
+    expect(postLength(text)).toBeLessThanOrEqual(POST_LIMIT);
+    const warned = { ...RESULT, riskyByAction: { block: 0, require_approval: 0, warn: 1 } };
+    expect(middle(totalsShareText(warned))).toEqual(["1 action it would have warned me about"]);
+  });
+
+  it("leave out an action that never came up, and say so when nothing matched", () => {
+    const some = { ...RESULT, riskyByAction: { block: 0, require_approval: 2, warn: 0 } };
+    expect(middle(totalsShareText(some))).toEqual(["2 actions it would have asked me about"]);
+    const none = { ...RESULT, riskyByAction: { block: 0, require_approval: 0, warn: 0 } };
+    expect(middle(totalsShareText(none))).toEqual(["nothing that matched a guardrail"]);
+  });
+
+  it("name no guardrail, not even a library one", () => {
+    for (const finding of RESULT.findings) {
+      expect(TOTALS).not.toContain(finding.title);
+    }
+  });
+});
+
 describe("the post fits in an X post", () => {
   it("drops the least important counts until it fits, and never goes over", () => {
     const huge = HEADLINE_ORDER.map((c) => claim(c, 987_654_321));
     const text = post(huge);
     expect(postLength(text)).toBeLessThanOrEqual(POST_LIMIT);
-    expect(text).toContain("987,654,321 likely-real credentials left in its transcripts");
-    expect(text).not.toContain("unguarded recursive deletes");
+    expect(text).toContain("987,654,321 real credentials left in its transcripts");
+    expect(text).not.toContain("recursive deletes");
   });
 
   it("keeps whole a post that weighs exactly the limit", () => {
-    const cards = [claim("secrets", 1000), claim("skipped-checks", 1000), claim("lost-work", 1000)];
-    const text = post(cards);
+    const text = post([claim("secrets", 1000), claim("skipped-checks", 100_000)]);
     expect(postLength(text)).toBe(POST_LIMIT);
-    expect(text).toContain("1,000 pieces of deleted work still recoverable");
+    expect(text).toContain("100,000 commits shipped without their checks");
   });
 
   it("drops the last count when keeping it would weigh one over the limit", () => {
-    const cards = [
-      claim("secrets", 1000),
-      claim("skipped-checks", 1000),
-      claim("lost-work", 10000),
+    const lines = [
+      sharePhrase("likely-real-credentials", 10_000),
+      sharePhrase("commits-on-main-without-checks", 100_000),
     ];
-    const whole = `AgentTrail Guard checked 7 tool calls from Claude Code on my machine: ${[
-      sharePhrase("likely-real-credentials", 1000),
-      sharePhrase("commits-on-main-without-checks", 1000),
-      sharePhrase("recoverable-deleted-work", 10000),
-    ].join(" · ")}. Nothing uploaded.`;
-    expect(postLength(whole)).toBe(POST_LIMIT + 1);
-    const text = post(cards);
-    expect(text).not.toContain("deleted work");
-    expect(text).toContain("1,000 commits shipped to main without their checks");
-    expect(postLength(text)).toBeLessThanOrEqual(POST_LIMIT);
+    expect(postLength(POST(lines))).toBe(POST_LIMIT + 1);
+    const text = post([claim("secrets", 10_000), claim("skipped-checks", 100_000)]);
+    expect(text).toBe(POST(lines.slice(0, 1)));
   });
 
   it("states as many as fit, in order: the next one would not have", () => {
     const cards = HEADLINE_ORDER.map((c) => claim(c, 2));
     const text = post(cards);
     expect(postLength(text)).toBeLessThanOrEqual(POST_LIMIT);
-    const stated = text.split(": ")[1]?.replace(". Nothing uploaded.", "").split(" · ") ?? [];
+    const stated = middle(text);
     expect(stated.length).toBeGreaterThan(1);
     expect(stated.length).toBeLessThan(6);
     // In priority order, with no gap.
@@ -240,8 +310,7 @@ describe("the post fits in an X post", () => {
       HEADLINE_ORDER.slice(0, stated.length).map((c) => sharePhrase(HEADLINE_BASIS[c], 2)),
     );
     const next = sharePhrase(HEADLINE_BASIS[HEADLINE_ORDER[stated.length] ?? "secrets"], 2);
-    const longer = text.replace(". Nothing uploaded.", ` · ${next}. Nothing uploaded.`);
-    expect(postLength(longer)).toBeGreaterThan(POST_LIMIT);
+    expect(postLength(POST([...stated, next]))).toBeGreaterThan(POST_LIMIT);
   });
 });
 
@@ -272,16 +341,14 @@ describe("counts and fixed phrases only", () => {
     }
   });
 
-  it("with the fixed head, tail and phrases taken out, only counts and separators are left", () => {
+  it("with the fixed opening, close and phrases taken out, only counts and line breaks are left", () => {
     const text = post(HEADLINE_ORDER.map(loud));
-    let rest = text
-      .replace("AgentTrail Guard checked 7 tool calls from Claude Code on my machine: ", "")
-      .replace(". Nothing uploaded.", "");
+    let rest = text.replace(OPENING(), "").replace(CLOSE(), "");
     expect(rest.length).toBeGreaterThan(20);
     for (const [one, many] of Object.values(LINES)) {
       for (const phrase of [one, many]) rest = rest.split(phrase.replace(/^\d+ /, "")).join("");
     }
-    expect(rest).toMatch(/^[\d,· ]+$/);
+    expect(rest).toMatch(/^[\d,\n ]+$/);
   });
 
   it("a guardrail the user wrote never reaches a verified post", () => {
@@ -318,18 +385,17 @@ describe("on the page", () => {
   it("the verified page's post states its verified counts, in the box and the X link", () => {
     const payload = reportPayload(VERIFIED_RESULT, VERIFIED_META, TEST_ONLY_BUILDERS);
     expect(payload.shareText).toBe(
-      "AgentTrail Guard checked 7 tool calls from Claude Code on my machine: 3 likely-real credentials left in its transcripts · 3 commits shipped to main without their checks · 3 pieces of deleted work still recoverable. Nothing uploaded.",
+      POST([
+        "3 real credentials left in its transcripts",
+        "3 commits shipped without their checks",
+      ]),
     );
     expect(postLength(payload.shareText)).toBeLessThanOrEqual(POST_LIMIT);
     const section = shareSection(renderReport(VERIFIED_RESULT, VERIFIED_META, OPTIONS));
     expect(section).toContain("Counts from the checks on this machine, and nothing else");
-    expect(section).toContain(
-      ">AgentTrail Guard checked 7 tool calls from Claude Code on my machine: 3 likely-real",
-    );
+    expect(section).toContain(">Gave Claude Code its first performance review.\n\n@agenttrailhq");
     // The X link is a plain link holding the same text, with no script needed.
-    expect(section).toContain(
-      `href="${shareLink(payload.shareText, "claude").replace(/&/g, "&amp;")}"`,
-    );
+    expect(section).toContain(`href="${shareLink(payload.shareText)}"`);
     expect(section).not.toMatch(/\son[a-z]+=/i);
   });
 
@@ -342,9 +408,12 @@ describe("on the page", () => {
     // Read from the page, not from the function that made it: no raw space or separator.
     expect(href).not.toMatch(/[\s·]/);
     expect(new URL(href).searchParams.get("text")).toBe(payload.shareText);
-    // The post itself does hold spaces and the separator, so the check above is not vacuous.
+    // The text is the only parameter: no link or hashtag is added to the post.
+    expect([...new URL(href).searchParams.keys()]).toEqual(["text"]);
+    expect(href).toContain("%0A");
+    // The post itself does hold spaces and line breaks, so the check above is not vacuous.
     expect(payload.shareText).toMatch(/ /);
-    expect(payload.shareText).toContain("·");
+    expect(payload.shareText).toContain("\n");
   });
 
   it.each([
@@ -355,12 +424,12 @@ describe("on the page", () => {
     expect(reportPayload(result, VERIFIED_META, TEST_ONLY_BUILDERS).shareText).toBe(
       totalsShareText(result),
     );
-    expect(shareSection(html)).toContain("Totals and at most one library guardrail&#39;s name");
+    expect(shareSection(html)).toContain("Totals from this scan, and nothing else");
   });
 
   it("a card that could not confirm is left out of the page's post", () => {
     const text = reportPayload(HIDING_RESULT, VERIFIED_META, TEST_ONLY_BUILDERS).shareText;
-    expect(text).toContain("3 likely-real credentials left in its transcripts");
+    expect(text).toContain("3 real credentials left in its transcripts");
     expect(text).not.toContain("deleted work");
   });
 });
@@ -369,9 +438,9 @@ describe("a Cursor scan, whose sessions record no command output", () => {
   const CURSOR: CardContext = { ranEvidence: "none" };
 
   it("still states a credential, which is found in text rather than in a call that ran", () => {
-    expect(post([claim("secrets", 3)], CURSOR)).toContain(
-      ": 3 likely-real credentials left in its transcripts.",
-    );
+    expect(middle(post([claim("secrets", 3)], CURSOR))).toEqual([
+      "3 real credentials left in its transcripts",
+    ]);
   });
 
   it("never states a count its card could not confirm for want of output", () => {
@@ -379,14 +448,15 @@ describe("a Cursor scan, whose sessions record no command output", () => {
       unconfirmed: { reason: "no-output", forms: [] },
     });
     expect(post([unconfirmed], CURSOR)).toBe(TOTALS);
-    expect(post([claim("secrets", 3), unconfirmed], CURSOR)).not.toContain("recursive");
+    expect(post([claim("secrets", 3), unconfirmed], CURSOR)).not.toContain("recursive delete");
   });
 
   it("on the page, the post states only confirmed counts, and never a zero", () => {
     const text = reportPayload(CURSOR_RESULT, VERIFIED_META, TEST_ONLY_BUILDERS).shareText;
-    expect(text).toContain("AgentTrail Guard checked 7 tool calls from Cursor on my machine: ");
-    expect(text).toContain("3 likely-real credentials left in its transcripts");
-    expect(text).not.toMatch(/: 0 |· 0 /);
+    expect(text.startsWith(OPENING("Cursor"))).toBe(true);
+    expect(text.endsWith(CLOSE("cursor"))).toBe(true);
+    expect(text).toContain("3 real credentials left in its transcripts");
+    expect(text).not.toMatch(/\n0 /);
     expect(postLength(text)).toBeLessThanOrEqual(POST_LIMIT);
   });
 });
@@ -413,7 +483,7 @@ describe("a Codex scan whose credentials card is to act on shares the totals pos
       cardBuilders: TEST_ONLY_BUILDERS,
       localFixCategories: LOCAL_FIX_CATEGORIES,
     });
-    expect(html).toContain("Totals and at most one library guardrail&#39;s name");
+    expect(html).toContain("Totals from this scan, and nothing else");
     expect(html).not.toContain("credentials left in its transcripts");
   });
 });

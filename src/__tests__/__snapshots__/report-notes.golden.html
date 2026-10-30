@@ -36,7 +36,7 @@
 <p class="lead" id="lead">What your coding agent actually did, and which guardrails would have fired.</p>
 <div class="hero-cta">
 <a class="btn btn-primary btn-lg" href="#what-happened">See what to fix</a>
-<a class="btn btn-secondary btn-lg share-x" href="https://x.com/intent/post?text=I%20scanned%208%20tool%20calls%20from%20Claude%20Code%20with%20AgentTrail%20Guard%3A%201%20would%20block%20(1%20of%20those%3A%20Deleting%20an%20absolute%20path)%20%C2%B7%206%20would%20ask%20%C2%B7%201%20would%20warn.%20Checked%20locally%2C%20nothing%20uploaded.&amp;url=https%3A%2F%2Fwww.agenttrail.sh%2Fagenttrail-guard%3Futm_source%3Dguard%26utm_medium%3Dscan-report%26utm_campaign%3Dclaude%26utm_content%3Dshare&amp;hashtags=agenttrail" target="_blank" rel="noopener noreferrer" id="hero-share"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24h-6.66l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg><span>Share on X<span class="sr-only"> (opens in a new tab)</span></span></a>
+<a class="btn btn-secondary btn-lg share-x" href="https://x.com/intent/post?text=Gave%20Claude%20Code%20its%20first%20performance%20review.%0A%0A%40agenttrailhq%20Guard%20checked%208%20of%20its%20tool%20calls%2C%20locally%3A%0A1%20action%20it%20would%20have%20blocked%0A6%20actions%20it%20would%20have%20asked%20me%20about%0A%0AHow%20did%20yours%20do%3F%0Anpm%20i%20-g%20%40agenttrail%2Fguard%0Aagenttrail-guard%20scan%20--agent%20claude" target="_blank" rel="noopener noreferrer" id="hero-share"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24h-6.66l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg><span>Share on X<span class="sr-only"> (opens in a new tab)</span></span></a>
 <div class="copy hero-copy"><span class="prompt" aria-hidden="true"></span><code id="cmd-init-hero">agenttrail-guard init --agent claude</code><button type="button" class="js-only" data-copy="cmd-init-hero" data-label="Copy" aria-label="Copy the init command">Copy</button></div>
 </div>
 </div>
@@ -303,15 +303,23 @@
 <div class="learn"><a href="https://www.agenttrail.sh/get-started/guard?utm_source=guard&amp;utm_medium=scan-report&amp;utm_campaign=claude&amp;utm_content=next-commands" target="_blank" rel="noopener noreferrer">Every command <span aria-hidden="true">&#8599;</span><span class="sr-only"> (opens in a new tab)</span></a><a href="https://www.agenttrail.sh/guardrails?utm_source=guard&amp;utm_medium=scan-report&amp;utm_campaign=claude&amp;utm_content=next-library" target="_blank" rel="noopener noreferrer">The guardrail library <span aria-hidden="true">&#8599;</span><span class="sr-only"> (opens in a new tab)</span></a><a href="https://www.agenttrail.sh/get-started/guard?utm_source=guard&amp;utm_medium=scan-report&amp;utm_campaign=claude&amp;utm_content=next-agents" target="_blank" rel="noopener noreferrer">Set up Cursor or Codex <span aria-hidden="true">&#8599;</span><span class="sr-only"> (opens in a new tab)</span></a></div>
 </section>
 <section id="share" class="share">
-<div class="section-head"><div><h2>Share your result</h2><p>Totals and at most one library guardrail&#39;s name: no commands, paths, project names or guardrails you wrote. Edit it before posting.</p></div></div>
+<div class="section-head"><div><h2>Share your result</h2><p>Totals from this scan, and nothing else: no commands, paths, project names or guardrails you wrote. Edit it before posting.</p></div></div>
 <figure class="card post">
 <figcaption class="post-head"><span>Post preview</span><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24h-6.66l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg></figcaption>
 <label class="sr-only" for="share-text">Post text</label>
-<textarea class="post-text" id="share-text" rows="3">I scanned 8 tool calls from Claude Code with AgentTrail Guard: 1 would block (1 of those: Deleting an absolute path) · 6 would ask · 1 would warn. Checked locally, nothing uploaded.</textarea>
+<textarea class="post-text" id="share-text" rows="10">Gave Claude Code its first performance review.
+
+@agenttrailhq Guard checked 8 of its tool calls, locally:
+1 action it would have blocked
+6 actions it would have asked me about
+
+How did yours do?
+npm i -g @agenttrail/guard
+agenttrail-guard scan --agent claude</textarea>
 <div class="post-foot">
-<a class="btn btn-primary" href="https://x.com/intent/post?text=I%20scanned%208%20tool%20calls%20from%20Claude%20Code%20with%20AgentTrail%20Guard%3A%201%20would%20block%20(1%20of%20those%3A%20Deleting%20an%20absolute%20path)%20%C2%B7%206%20would%20ask%20%C2%B7%201%20would%20warn.%20Checked%20locally%2C%20nothing%20uploaded.&amp;url=https%3A%2F%2Fwww.agenttrail.sh%2Fagenttrail-guard%3Futm_source%3Dguard%26utm_medium%3Dscan-report%26utm_campaign%3Dclaude%26utm_content%3Dshare&amp;hashtags=agenttrail" target="_blank" rel="noopener noreferrer" id="share-link"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24h-6.66l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg><span>Post on X<span class="sr-only"> (opens in a new tab)</span></span></a>
+<a class="btn btn-primary" href="https://x.com/intent/post?text=Gave%20Claude%20Code%20its%20first%20performance%20review.%0A%0A%40agenttrailhq%20Guard%20checked%208%20of%20its%20tool%20calls%2C%20locally%3A%0A1%20action%20it%20would%20have%20blocked%0A6%20actions%20it%20would%20have%20asked%20me%20about%0A%0AHow%20did%20yours%20do%3F%0Anpm%20i%20-g%20%40agenttrail%2Fguard%0Aagenttrail-guard%20scan%20--agent%20claude" target="_blank" rel="noopener noreferrer" id="share-link"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24h-6.66l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg><span>Post on X<span class="sr-only"> (opens in a new tab)</span></span></a>
 <button class="btn btn-secondary js-only" id="share-copy" type="button" data-copy="share-text" data-label="Copy text" aria-label="Copy text of the post">Copy text</button>
-<span class="post-count" id="share-count" data-over="false">217 / 280</span>
+<span class="post-count" id="share-count" data-over="false">258 / 280</span>
 </div>
 </figure>
 </section>
@@ -609,7 +617,7 @@
   "turnsWithSplit": 0,
   "turns": 1
  },
- "shareText": "I scanned 8 tool calls from Claude Code with AgentTrail Guard: 1 would block (1 of those: Deleting an absolute path) · 6 would ask · 1 would warn. Checked locally, nothing uploaded.",
+ "shareText": "Gave Claude Code its first performance review.\n\n@agenttrailhq Guard checked 8 of its tool calls, locally:\n1 action it would have blocked\n6 actions it would have asked me about\n\nHow did yours do?\nnpm i -g @agenttrail/guard\nagenttrail-guard scan --agent claude",
  "owasp": [],
  "verification": {
   "matchedCalls": {

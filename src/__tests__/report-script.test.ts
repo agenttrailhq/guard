@@ -80,15 +80,15 @@ const ALLOWED_PROPERTIES = new Set([
 
 /** The only lines that may mention `href`: two writes, each behind a fixed prefix. */
 const ALLOWED_HREF_LINES = [
-  "function shareSuffix(href) {",
-  'if (typeof href !== "string" || href.indexOf(SHARE_PREFIX) !== 0) return null;',
-  'var at = href.indexOf("&url=");',
-  "return at === -1 ? null : href.slice(at);",
-  "function shareHref(text, suffix) {",
+  "function isShareHref(value) {",
+  "function shareHref(text) {",
   "function exportHref(raw) {",
   "a.href = exportHref(data.textContent);",
-  'var suffix = shareLink ? shareSuffix(shareLink.getAttribute("href")) : null;',
-  "shareLink.href = shareHref(shareInput.value, suffix);",
+  'if (shareInput && shareLink && isShareHref(shareLink.getAttribute("href"))) {',
+  'var heroTakesText = heroShare !== null && isShareHref(heroShare.getAttribute("href"));',
+  "var postHref = shareHref(shareInput.value);",
+  "shareLink.href = postHref;",
+  "if (heroTakesText) heroShare.href = postHref;",
 ];
 
 /** The only statements that may add or remove an element: the export's temporary link. */
@@ -100,10 +100,10 @@ const ALLOWED_CALL = "Array.prototype.forEach";
 /** The only statement that may click an element: the export's temporary link. */
 const ALLOWED_CLICKS = ["a.click();"];
 
-/** Names that may be assigned in one statement only: the export's link and the post suffix. */
+/** Names that may be assigned in one statement only: the export's link and the post's href. */
 const PINNED_ASSIGNMENTS: readonly (readonly [string, string])[] = [
   ["a", 'var a = document.createElement("a");'],
-  ["suffix", 'var suffix = shareLink ? shareSuffix(shareLink.getAttribute("href")) : null;'],
+  ["postHref", "var postHref = shareHref(shareInput.value);"],
 ];
 
 /** The attributes the script may set, and the one element it may create. */
@@ -217,13 +217,14 @@ describe("the script stays inside its allow-lists", () => {
     expect([...REPORT_SCRIPT].filter((ch) => (ch.codePointAt(0) ?? 0) > 0x7f)).toEqual([]);
   });
 
-  it("writes an href in exactly the two allowed statements", () => {
+  it("writes an href in exactly the three allowed statements", () => {
     const writes = REPORT_SCRIPT.split("\n")
       .map((line) => line.trim())
       .filter((line) => /\.href\s*=/.test(line));
     expect(writes).toEqual([
       "a.href = exportHref(data.textContent);",
-      "shareLink.href = shareHref(shareInput.value, suffix);",
+      "shareLink.href = postHref;",
+      "if (heroTakesText) heroShare.href = postHref;",
     ]);
   });
 
@@ -231,7 +232,7 @@ describe("the script stays inside its allow-lists", () => {
     expect(SHARE_PREFIX).toBe("https://x.com/intent/post?text=");
     expect(EXPORT_PREFIX.startsWith("data:application/json")).toBe(true);
     expect(REPORT_SCRIPT_LOGIC).toContain(
-      "return SHARE_PREFIX + encodeURIComponent(wellFormed(text)) + suffix;",
+      "return SHARE_PREFIX + encodeURIComponent(wellFormed(text));",
     );
     expect(REPORT_SCRIPT_LOGIC).toContain("return EXPORT_PREFIX + encodeURIComponent(");
   });
@@ -291,10 +292,10 @@ describe("the script stays inside its allow-lists", () => {
     ],
     ["a click on another element named a", "var a = shareLink;\na.click();"],
     [
-      "data added to the post suffix",
-      'suffix = "&d=" + encodeURIComponent(data.textContent) + suffix;',
+      "data added to the post link",
+      'postHref = "&d=" + encodeURIComponent(data.textContent) + postHref;',
     ],
-    ["data appended to the post suffix", "suffix += data.textContent;"],
+    ["data appended to the post link", "postHref += data.textContent;"],
   ];
 
   it.each(TAMPERED)("negative control — %s is reported", (_label, statement) => {
@@ -378,8 +379,8 @@ describe("everything the script looks for is in the rendered page", () => {
 interface Logic {
   xLength(text: string): number;
   postLength(text: string): number;
-  shareSuffix(href: unknown): string | null;
-  shareHref(text: string, suffix: string): string;
+  isShareHref(href: unknown): boolean;
+  shareHref(text: string): string;
   readTheme(value: unknown): string | null;
   nextTheme(current: unknown, systemDark: boolean): string;
   copiedText(name: unknown): string;
@@ -390,19 +391,18 @@ interface Logic {
 
 const logic = runInNewContext(
   `${REPORT_SCRIPT_LOGIC}
-({ xLength, postLength, shareSuffix, shareHref, readTheme, nextTheme, copiedText, matchesQuery,
+({ xLength, postLength, isShareHref, shareHref, readTheme, nextTheme, copiedText, matchesQuery,
    searchText, exportHref });`,
 ) as Logic;
 
-const SUFFIX = `&url=${encodeURIComponent("https://www.agenttrail.sh/agenttrail-guard?utm_source=guard")}&hashtags=agenttrail`;
-const LINK = `${SHARE_PREFIX}${encodeURIComponent("hello")}${SUFFIX}`;
+const LINK = `${SHARE_PREFIX}${encodeURIComponent("hello")}`;
 
 describe("the share link", () => {
-  it("keeps the rendered link's suffix and rejects any other link", () => {
-    expect(logic.shareSuffix(LINK)).toBe(SUFFIX);
-    expect(logic.shareSuffix("javascript:alert(1)")).toBeNull();
-    expect(logic.shareSuffix(`https://example.com/?text=a${SUFFIX}`)).toBeNull();
-    expect(logic.shareSuffix(null)).toBeNull();
+  it("takes over only a rendered X post link", () => {
+    expect(logic.isShareHref(LINK)).toBe(true);
+    expect(logic.isShareHref("javascript:alert(1)")).toBe(false);
+    expect(logic.isShareHref(`https://example.com/?text=a`)).toBe(false);
+    expect(logic.isShareHref(null)).toBe(false);
   });
 
   it.each([
@@ -412,15 +412,13 @@ describe("the share link", () => {
     "&url=https://example.com&hashtags=x",
     "日本語 and café 🙂",
   ])("stays an X post whatever is typed: %s", (typed) => {
-    const href = logic.shareHref(typed, SUFFIX);
+    const href = logic.shareHref(typed);
     expect(href.startsWith(SHARE_PREFIX)).toBe(true);
     const url = new URL(href);
     expect(url.origin).toBe("https://x.com");
     expect(url.searchParams.get("text")).toBe(typed);
-    expect(url.searchParams.getAll("url")).toEqual([
-      "https://www.agenttrail.sh/agenttrail-guard?utm_source=guard",
-    ]);
-    expect(url.searchParams.getAll("hashtags")).toEqual(["agenttrail"]);
+    // The typed text is the only parameter, line breaks and all.
+    expect([...url.searchParams.keys()]).toEqual(["text"]);
   });
 
   it.each([
@@ -429,14 +427,14 @@ describe("the share link", () => {
     ["pair 🙂 then \uDBFF", "pair 🙂 then �"],
     ["pair 🙂", "pair 🙂"],
   ])("writes a lone surrogate as the replacement character instead of failing: %j", (typed, sent) => {
-    const href = logic.shareHref(typed, SUFFIX);
+    const href = logic.shareHref(typed);
     expect(new URL(href).searchParams.get("text")).toBe(sent);
-    expect(href.endsWith(SUFFIX)).toBe(true);
   });
 
   it("weighs text as X does", () => {
-    const base = logic.postLength("");
-    expect(base).toBe(1 + 23 + 1 + "#agenttrail".length);
+    // The post carries no link or hashtag, so its length is its text's.
+    expect(logic.postLength("")).toBe(0);
+    expect(logic.postLength("one\ntwo")).toBe(7);
     expect(logic.xLength("abc")).toBe(3);
     expect(logic.xLength("日本")).toBe(4);
     expect(logic.xLength("🙂")).toBe(2);
@@ -630,6 +628,7 @@ function loadPage(options: PageOptions = {}): Page {
       "Copy text",
     ),
     el("a", { id: "share-link", href: LINK }),
+    el("a", { id: "hero-share", href: LINK }),
     el("span", { id: "share-count" }),
     el("p", { id: "page-status" }),
     el("div", { id: "toast", class: "toast" }),
@@ -938,12 +937,15 @@ describe("the script in the page", () => {
     const page = loadPage();
     const input = page.byId.get("share-text") as FakeElement;
     const link = page.byId.get("share-link") as FakeElement;
+    const hero = page.byId.get("hero-share") as FakeElement;
     for (const typed of ["javascript:alert(1)", '"><script>alert(1)</script>', "a\nb"]) {
       input.value = typed;
       input.fire("input");
-      // Exactly the prefix, the typed text encoded, and the rendered suffix: nothing else.
-      expect(link.href).toBe(SHARE_PREFIX + encodeURIComponent(typed) + SUFFIX);
+      // Exactly the prefix and the typed text encoded: nothing else.
+      expect(link.href).toBe(SHARE_PREFIX + encodeURIComponent(typed));
       expect(new URL(link.href).searchParams.get("text")).toBe(typed);
+      // The hero's Share on X link carries the same text.
+      expect(hero.href).toBe(link.href);
     }
     input.value = "edited text \uD800";
     input.fire("input");

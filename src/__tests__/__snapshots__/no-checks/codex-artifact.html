@@ -735,7 +735,7 @@ M99.68 0L97.26 0L97.26-16.80L99.68-17.26L99.68 0Z"/>
 <p class="lead" id="lead">What your coding agent actually did, and which guardrails would have fired.</p>
 <div class="hero-cta">
 <a class="btn btn-primary btn-lg" href="#findings">See what to fix</a>
-<a class="btn btn-secondary btn-lg share-x" href="https://x.com/intent/post?text=I%20scanned%204%20tool%20calls%20from%20Codex%20CLI%20with%20AgentTrail%20Guard%3A%203%20would%20block%20(2%20of%20those%3A%20rm%20-rf%20against%20an%20absolute%20path).%20Checked%20locally%2C%20nothing%20uploaded.&amp;url=https%3A%2F%2Fwww.agenttrail.sh%2Fagenttrail-guard%3Futm_source%3Dguard%26utm_medium%3Dscan-report%26utm_campaign%3Dcodex%26utm_content%3Dshare&amp;hashtags=agenttrail" target="_blank" rel="noopener noreferrer" id="hero-share"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24h-6.66l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg><span>Share on X<span class="sr-only"> (opens in a new tab)</span></span></a>
+<a class="btn btn-secondary btn-lg share-x" href="https://x.com/intent/post?text=Gave%20Codex%20its%20first%20performance%20review.%0A%0A%40agenttrailhq%20Guard%20checked%204%20of%20its%20tool%20calls%2C%20locally%3A%0A3%20actions%20it%20would%20have%20blocked%0A%0AHow%20did%20yours%20do%3F%0Anpm%20i%20-g%20%40agenttrail%2Fguard%0Aagenttrail-guard%20scan%20--agent%20codex" target="_blank" rel="noopener noreferrer" id="hero-share"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24h-6.66l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg><span>Share on X<span class="sr-only"> (opens in a new tab)</span></span></a>
 <div class="copy hero-copy"><span class="prompt" aria-hidden="true"></span><code id="cmd-init-hero">agenttrail-guard init --agent codex</code><button type="button" class="js-only" data-copy="cmd-init-hero" data-label="Copy" aria-label="Copy the init command">Copy</button></div>
 </div>
 </div>
@@ -918,15 +918,22 @@ metacharacter stays inside the quotes, so <code>git commit -m &quot;x&quot; &amp
 <div class="learn"><a href="https://www.agenttrail.sh/get-started/guard?utm_source=guard&amp;utm_medium=scan-report&amp;utm_campaign=codex&amp;utm_content=next-commands" target="_blank" rel="noopener noreferrer">Every command <span aria-hidden="true">&#8599;</span><span class="sr-only"> (opens in a new tab)</span></a><a href="https://www.agenttrail.sh/guardrails?utm_source=guard&amp;utm_medium=scan-report&amp;utm_campaign=codex&amp;utm_content=next-library" target="_blank" rel="noopener noreferrer">The guardrail library <span aria-hidden="true">&#8599;</span><span class="sr-only"> (opens in a new tab)</span></a><a href="https://www.agenttrail.sh/get-started/guard?utm_source=guard&amp;utm_medium=scan-report&amp;utm_campaign=codex&amp;utm_content=next-agents" target="_blank" rel="noopener noreferrer">Set up Claude Code or Cursor <span aria-hidden="true">&#8599;</span><span class="sr-only"> (opens in a new tab)</span></a></div>
 </section>
 <section id="share" class="share">
-<div class="section-head"><div><h2>Share your result</h2><p>Totals and at most one library guardrail&#39;s name: no commands, paths, project names or guardrails you wrote. This published copy cannot change the post. In the report file it was made from, the post can be edited before posting.</p></div></div>
+<div class="section-head"><div><h2>Share your result</h2><p>Totals from this scan, and nothing else: no commands, paths, project names or guardrails you wrote. This published copy cannot change the post. In the report file it was made from, the post can be edited before posting.</p></div></div>
 <figure class="card post">
 <figcaption class="post-head"><span>Post preview</span><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24h-6.66l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg></figcaption>
 <label class="sr-only" for="share-text">Post text</label>
-<textarea class="post-text" id="share-text" rows="3" readonly>I scanned 4 tool calls from Codex CLI with AgentTrail Guard: 3 would block (2 of those: rm -rf against an absolute path). Checked locally, nothing uploaded.</textarea>
+<textarea class="post-text" id="share-text" rows="9" readonly>Gave Codex its first performance review.
+
+@agenttrailhq Guard checked 4 of its tool calls, locally:
+3 actions it would have blocked
+
+How did yours do?
+npm i -g @agenttrail/guard
+agenttrail-guard scan --agent codex</textarea>
 <div class="post-foot">
-<a class="btn btn-primary" href="https://x.com/intent/post?text=I%20scanned%204%20tool%20calls%20from%20Codex%20CLI%20with%20AgentTrail%20Guard%3A%203%20would%20block%20(2%20of%20those%3A%20rm%20-rf%20against%20an%20absolute%20path).%20Checked%20locally%2C%20nothing%20uploaded.&amp;url=https%3A%2F%2Fwww.agenttrail.sh%2Fagenttrail-guard%3Futm_source%3Dguard%26utm_medium%3Dscan-report%26utm_campaign%3Dcodex%26utm_content%3Dshare&amp;hashtags=agenttrail" target="_blank" rel="noopener noreferrer" id="share-link"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24h-6.66l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg><span>Post on X<span class="sr-only"> (opens in a new tab)</span></span></a>
+<a class="btn btn-primary" href="https://x.com/intent/post?text=Gave%20Codex%20its%20first%20performance%20review.%0A%0A%40agenttrailhq%20Guard%20checked%204%20of%20its%20tool%20calls%2C%20locally%3A%0A3%20actions%20it%20would%20have%20blocked%0A%0AHow%20did%20yours%20do%3F%0Anpm%20i%20-g%20%40agenttrail%2Fguard%0Aagenttrail-guard%20scan%20--agent%20codex" target="_blank" rel="noopener noreferrer" id="share-link"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24h-6.66l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg><span>Post on X<span class="sr-only"> (opens in a new tab)</span></span></a>
 <button class="btn btn-secondary js-only" id="share-copy" type="button" data-copy="share-text" data-label="Copy text" aria-label="Copy text of the post">Copy text</button>
-<span class="post-count" id="share-count" data-over="false">192 / 280</span>
+<span class="post-count" id="share-count" data-over="false">213 / 280</span>
 </div>
 </figure>
 </section>

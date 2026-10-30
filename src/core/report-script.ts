@@ -42,8 +42,6 @@ var SHARE_PREFIX = ${JSON.stringify(SHARE_PREFIX)};
 var EXPORT_PREFIX = ${JSON.stringify(EXPORT_PREFIX)};
 var THEME_KEY = ${JSON.stringify(THEME_KEY)};
 var POST_LIMIT = ${POST_LIMIT};
-var URL_WEIGHT = 23;
-var HASHTAG = "#agenttrail";
 
 function charWeight(code) {
   if (code <= 0x10ff) return 1;
@@ -62,13 +60,11 @@ function xLength(text) {
 }
 
 function postLength(text) {
-  return xLength(text) + 1 + URL_WEIGHT + 1 + HASHTAG.length;
+  return xLength(text);
 }
 
-function shareSuffix(href) {
-  if (typeof href !== "string" || href.indexOf(SHARE_PREFIX) !== 0) return null;
-  var at = href.indexOf("&url=");
-  return at === -1 ? null : href.slice(at);
+function isShareHref(value) {
+  return typeof value === "string" && value.indexOf(SHARE_PREFIX) === 0;
 }
 
 function wellFormed(text) {
@@ -80,8 +76,8 @@ function wellFormed(text) {
   return out;
 }
 
-function shareHref(text, suffix) {
-  return SHARE_PREFIX + encodeURIComponent(wellFormed(text)) + suffix;
+function shareHref(text) {
+  return SHARE_PREFIX + encodeURIComponent(wellFormed(text));
 }
 
 function readTheme(value) {
@@ -353,11 +349,14 @@ each(".cmd", function (cmd) {
 
 var shareInput = byId("share-text");
 var shareLink = byId("share-link");
+var heroShare = byId("hero-share");
 var shareCount = byId("share-count");
-var suffix = shareLink ? shareSuffix(shareLink.getAttribute("href")) : null;
-if (shareInput && shareLink && suffix !== null) {
+if (shareInput && shareLink && isShareHref(shareLink.getAttribute("href"))) {
+  var heroTakesText = heroShare !== null && isShareHref(heroShare.getAttribute("href"));
   shareInput.addEventListener("input", function () {
-    shareLink.href = shareHref(shareInput.value, suffix);
+    var postHref = shareHref(shareInput.value);
+    shareLink.href = postHref;
+    if (heroTakesText) heroShare.href = postHref;
     var length = postLength(shareInput.value);
     if (shareCount) {
       shareCount.textContent = length + " / " + POST_LIMIT;

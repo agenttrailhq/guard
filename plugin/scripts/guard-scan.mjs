@@ -7838,8 +7838,6 @@ var SHARE_PREFIX = ${JSON.stringify(SHARE_PREFIX)};
 var EXPORT_PREFIX = ${JSON.stringify(EXPORT_PREFIX)};
 var THEME_KEY = ${JSON.stringify(THEME_KEY)};
 var POST_LIMIT = ${POST_LIMIT};
-var URL_WEIGHT = 23;
-var HASHTAG = "#agenttrail";
 
 function charWeight(code) {
   if (code <= 0x10ff) return 1;
@@ -7858,13 +7856,11 @@ function xLength(text) {
 }
 
 function postLength(text) {
-  return xLength(text) + 1 + URL_WEIGHT + 1 + HASHTAG.length;
+  return xLength(text);
 }
 
-function shareSuffix(href) {
-  if (typeof href !== "string" || href.indexOf(SHARE_PREFIX) !== 0) return null;
-  var at = href.indexOf("&url=");
-  return at === -1 ? null : href.slice(at);
+function isShareHref(value) {
+  return typeof value === "string" && value.indexOf(SHARE_PREFIX) === 0;
 }
 
 function wellFormed(text) {
@@ -7876,8 +7872,8 @@ function wellFormed(text) {
   return out;
 }
 
-function shareHref(text, suffix) {
-  return SHARE_PREFIX + encodeURIComponent(wellFormed(text)) + suffix;
+function shareHref(text) {
+  return SHARE_PREFIX + encodeURIComponent(wellFormed(text));
 }
 
 function readTheme(value) {
@@ -8147,11 +8143,14 @@ each(".cmd", function (cmd) {
 
 var shareInput = byId("share-text");
 var shareLink = byId("share-link");
+var heroShare = byId("hero-share");
 var shareCount = byId("share-count");
-var suffix = shareLink ? shareSuffix(shareLink.getAttribute("href")) : null;
-if (shareInput && shareLink && suffix !== null) {
+if (shareInput && shareLink && isShareHref(shareLink.getAttribute("href"))) {
+  var heroTakesText = heroShare !== null && isShareHref(heroShare.getAttribute("href"));
   shareInput.addEventListener("input", function () {
-    shareLink.href = shareHref(shareInput.value, suffix);
+    var postHref = shareHref(shareInput.value);
+    shareLink.href = postHref;
+    if (heroTakesText) heroShare.href = postHref;
     var length = postLength(shareInput.value);
     if (shareCount) {
       shareCount.textContent = length + " / " + POST_LIMIT;
@@ -19062,20 +19061,23 @@ function verifiedNotes(findings, verification, cards) {
 // src/core/verify/share-copy.ts
 var SHARE_PHRASES = {
   "likely-real-credentials": [
-    "likely-real credential left in its transcripts",
-    "likely-real credentials left in its transcripts"
+    "real credential left in its transcripts",
+    "real credentials left in its transcripts"
   ],
   "commits-on-main-without-checks": [
-    "commit shipped to main without its checks",
-    "commits shipped to main without their checks"
+    "commit shipped without its checks",
+    "commits shipped without their checks"
   ],
   "recoverable-deleted-work": [
-    "piece of deleted work still recoverable",
-    "pieces of deleted work still recoverable"
+    "piece of deleted work it could still bring back",
+    "pieces of deleted work it could still bring back"
   ],
-  "iam-changes": ["IAM change ran and needs a review", "IAM changes ran and need a review"],
-  "lowered-test-floors": ["lowered test floor", "lowered test floors"],
-  "unguarded-recursive-deletes": ["unguarded recursive delete", "unguarded recursive deletes"]
+  "iam-changes": ["IAM change that needs a review", "IAM changes that need a review"],
+  "lowered-test-floors": ["test floor it lowered", "test floors it lowered"],
+  "unguarded-recursive-deletes": [
+    "recursive delete with nothing guarding it",
+    "recursive deletes with nothing guarding them"
+  ]
 };
 function sharePhrase(basis, count3) {
   const [one, many] = SHARE_PHRASES[basis];
@@ -19444,47 +19446,44 @@ function postLength(text2) {
     const light = code <= 4351 || code >= 8192 && code <= 8205 || code >= 8208 && code <= 8223 || code >= 8242 && code <= 8247;
     n2 += light ? 1 : 2;
   }
-  return n2 + 1 + 23 + 1 + "#agenttrail".length;
+  return n2;
 }
-function topLibraryBlocker(result) {
-  return result.findings.filter((f) => f.action === "block" && f.source === "library").sort(
-    (a, b) => b.count - a.count || severityRank(a.severity) - severityRank(b.severity) || a.ruleId.localeCompare(b.ruleId)
-  )[0];
+function sharePost(result, lines2) {
+  const name = result.agent === "codex" ? "Codex" : agentName(result.agent);
+  return [
+    `Gave ${name} its first performance review.`,
+    "",
+    `@agenttrailhq Guard checked ${formatCount(result.toolCalls)} of its tool calls, locally:`,
+    ...lines2,
+    "",
+    "How did yours do?",
+    "npm i -g @agenttrail/guard",
+    `agenttrail-guard scan --agent ${result.agent}`
+  ].join("\n");
 }
-var SHARE_TAIL = ". Checked locally, nothing uploaded.";
-function shareText(result, verified) {
-  const counts = verified === void 0 || !isPositiveCount(result.toolCalls) ? [] : shareCounts(verified.cards, verified.context);
-  const calls = counted3(result.toolCalls, "tool call", "tool calls");
-  const head = `AgentTrail Guard checked ${calls} from ${agentName(result.agent)} on my machine`;
-  for (let n2 = counts.length; n2 > 0; n2--) {
-    const text2 = `${head}: ${counts.slice(0, n2).join(" \xB7 ")}. Nothing uploaded.`;
+function fitted(result, lines2) {
+  for (let n2 = lines2.length; n2 > 0; n2--) {
+    const text2 = sharePost(result, lines2.slice(0, n2));
     if (postLength(text2) <= POST_LIMIT) return text2;
   }
-  return totalsShareText(result);
+  return void 0;
+}
+function shareText(result, verified) {
+  const counts = verified === void 0 || !isPositiveCount(result.toolCalls) ? [] : shareCounts(verified.cards, verified.context);
+  return fitted(result, counts) ?? totalsShareText(result);
 }
 function totalsShareText(result) {
   const { block, require_approval: ask, warn } = result.riskyByAction;
-  const calls = counted3(result.toolCalls, "tool call", "tool calls");
-  const head = `I scanned ${calls} from ${agentName(result.agent)} with AgentTrail Guard`;
-  const tail = SHARE_TAIL;
-  const top = topLibraryBlocker(result);
-  const compose = (withTitle) => {
-    const parts = [];
-    if (block > 0) {
-      const detail = withTitle && top !== void 0 ? ` (${formatCount(top.count)} of those: ${top.title.replace(/`/g, "")})` : "";
-      parts.push(`${formatCount(block)} would block${detail}`);
-    }
-    if (ask > 0) parts.push(`${formatCount(ask)} would ask`);
-    if (warn > 0) parts.push(`${formatCount(warn)} would warn`);
-    const body = parts.length === 0 ? ": nothing matched a guardrail" : `: ${parts.join(" \xB7 ")}`;
-    return `${head}${body}${tail}`;
-  };
-  const full = compose(true);
-  return postLength(full) <= POST_LIMIT ? full : compose(false);
+  const lines2 = [];
+  const actions = (n2) => `${formatCount(n2)} ${n2 === 1 ? "action" : "actions"}`;
+  if (block > 0) lines2.push(`${actions(block)} it would have blocked`);
+  if (ask > 0) lines2.push(`${actions(ask)} it would have asked me about`);
+  if (warn > 0) lines2.push(`${actions(warn)} it would have warned me about`);
+  if (lines2.length === 0) lines2.push("nothing that matched a guardrail");
+  return fitted(result, lines2) ?? sharePost(result, lines2.slice(0, 1));
 }
-function shareLink(text2, agent) {
-  const url = siteLink("/agenttrail-guard", agent, "share");
-  return `https://x.com/intent/post?text=${encodeURIComponent(text2)}&url=${encodeURIComponent(url)}&hashtags=agenttrail`;
+function shareLink(text2) {
+  return `${SHARE_PREFIX}${encodeURIComponent(text2)}`;
 }
 function skippedPhrases(skipped) {
   const unrecognized = skipped.unmappedTools.reduce((sum, tool) => sum + tool.count, 0);
@@ -19809,7 +19808,7 @@ ${metaRow}
 ${h1}${leadHtml === "" ? "" : `
 ${leadHtml}`}
 <div class="hero-cta">${fixButton}
-${outLink(shareLink(payload.shareText, result.agent), `${ICONS.x}<span>Share on X<span class="sr-only"> (opens in a new tab)</span></span>`, "btn btn-secondary btn-lg share-x", ' id="hero-share"')}
+${outLink(shareLink(payload.shareText), `${ICONS.x}<span>Share on X<span class="sr-only"> (opens in a new tab)</span></span>`, "btn btn-secondary btn-lg share-x", ' id="hero-share"')}
 ${copyable("cmd-init-hero", `agenttrail-guard init --agent ${result.agent}`, "Copy the init command", " hero-copy")}
 </div>
 </div>
@@ -20395,7 +20394,7 @@ function shareSectionHtml(result, payload, variant) {
   const length = postLength(payload.shareText);
   const editable = variant === "document";
   const edit = editable ? "Edit it before posting." : "This published copy cannot change the post. In the report file it was made from, the post can be edited before posting.";
-  const what = payload.shareText === totalsShareText(result) ? "Totals and at most one library guardrail&#39;s name" : "Counts from the checks on this machine, and nothing else";
+  const what = payload.shareText === totalsShareText(result) ? "Totals from this scan, and nothing else" : "Counts from the checks on this machine, and nothing else";
   const rows = Math.max(3, payload.shareText.split("\n").length + 1);
   return `<section id="share" class="share">
 ${sectionHead("Share your result", `${what}: no commands, paths, project names or guardrails you wrote. ${edit}`)}
@@ -20404,7 +20403,7 @@ ${sectionHead("Share your result", `${what}: no commands, paths, project names o
 <label class="sr-only" for="share-text">Post text</label>
 <textarea class="post-text" id="share-text" rows="${rows}"${editable ? "" : " readonly"}>${escapeHtml(payload.shareText)}</textarea>
 <div class="post-foot">
-${outLink(shareLink(payload.shareText, result.agent), `${ICONS.x}<span>Post on X<span class="sr-only"> (opens in a new tab)</span></span>`, "btn btn-primary", ' id="share-link"')}
+${outLink(shareLink(payload.shareText), `${ICONS.x}<span>Post on X<span class="sr-only"> (opens in a new tab)</span></span>`, "btn btn-primary", ' id="share-link"')}
 <button class="btn btn-secondary js-only" id="share-copy" type="button" data-copy="share-text" data-label="Copy text" aria-label="Copy text of the post">Copy text</button>
 <span class="post-count" id="share-count" data-over="${length > POST_LIMIT ? "true" : "false"}">${escapeHtml(`${length} / ${POST_LIMIT}`)}</span>
 </div>

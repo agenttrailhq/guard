@@ -362,8 +362,10 @@ The report opens with what Guard would have done: how many actions it would have
 asked you about, or warned on. It then lists the guardrails to fix first, the OWASP risks
 the matched guardrails name, every matched guardrail with filters (by action and by OWASP
 risk) and sort, repeated command shapes, next steps, and a suggested post. The post carries
-counts only: the verified counts that may lead the report, as many as fit, or otherwise the
-totals and at most one library guardrail's name. Each OWASP id shown is one the guardrail
+counts only, one per line between a fixed opening and the command that runs the same scan:
+the verified counts that may lead the report, as many as fit, or otherwise how many actions
+it would have blocked, asked about and warned about. It names no guardrail, and its Post on X
+link carries the text and nothing else. Each OWASP id shown is one the guardrail
 carries itself; the section covers coding-agent actions only, not full OWASP coverage. Its
 PDF and JSON buttons save the report as shown. One inline script runs the filters, copy
 buttons and exports. The page's Content-Security-Policy allows that script and blocks the

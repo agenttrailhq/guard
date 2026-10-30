@@ -12,23 +12,26 @@
 import { formatCount } from "../tokens.js";
 import { type CardContext, type CardView, type HeadlineBasis, leadingCards } from "./cards.js";
 
-/** Each basis as the post states it, for one and for many. */
+/** Each basis as a line of the post states it, after its count, for one and for many. */
 const SHARE_PHRASES: Readonly<Record<HeadlineBasis, readonly [string, string]>> = {
   "likely-real-credentials": [
-    "likely-real credential left in its transcripts",
-    "likely-real credentials left in its transcripts",
+    "real credential left in its transcripts",
+    "real credentials left in its transcripts",
   ],
   "commits-on-main-without-checks": [
-    "commit shipped to main without its checks",
-    "commits shipped to main without their checks",
+    "commit shipped without its checks",
+    "commits shipped without their checks",
   ],
   "recoverable-deleted-work": [
-    "piece of deleted work still recoverable",
-    "pieces of deleted work still recoverable",
+    "piece of deleted work it could still bring back",
+    "pieces of deleted work it could still bring back",
   ],
-  "iam-changes": ["IAM change ran and needs a review", "IAM changes ran and need a review"],
-  "lowered-test-floors": ["lowered test floor", "lowered test floors"],
-  "unguarded-recursive-deletes": ["unguarded recursive delete", "unguarded recursive deletes"],
+  "iam-changes": ["IAM change that needs a review", "IAM changes that need a review"],
+  "lowered-test-floors": ["test floor it lowered", "test floors it lowered"],
+  "unguarded-recursive-deletes": [
+    "recursive delete with nothing guarding it",
+    "recursive deletes with nothing guarding them",
+  ],
 };
 
 /** One verified count as the post states it. */
