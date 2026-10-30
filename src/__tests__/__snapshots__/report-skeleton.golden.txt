@@ -461,11 +461,9 @@ body
                 span.lbl
                 a
               ul.shapes
-                li
+                li ×2
                   code.cmd
-                    span.tok
-                    span.tok
-                      span.ph
+                    span.tok ×2
                   span.times
           details#finding-t-git-checkout.frow
             summary
@@ -520,15 +518,6 @@ body
               th.n
               th.g
           tbody#repeat-body
-            tr
-              td
-                code.cmd
-                  span.tok
-                  span.tok
-                    span.ph
-              td.n
-              td.g
-                a.linkish
             tr
               td
                 code.cmd

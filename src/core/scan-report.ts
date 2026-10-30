@@ -50,6 +50,7 @@ import type { CursorLineCounts } from "./cursor-transcript/parse.js";
 import { cursorSessionCalls, mapCursorSessionTool } from "./cursor-transcript/scan.js";
 import type { CompiledAllowlist } from "./evaluate.js";
 import { evaluateCall } from "./evaluate.js";
+import { fileShapeOf } from "./file-shape.js";
 import { mapToolCall, TRUNCATION_MARKER } from "./mapper.js";
 import { buildGuardSpanContext } from "./normalize.js";
 import { type OwaspId, type OwaspTally, owaspTally } from "./owasp.js";
@@ -724,8 +725,17 @@ export function aggregateScan(
       // Scrubbing is the most expensive thing in this loop and the result is identical
       // per rule, so doing it inside the inner loop would be a per-rule cost for a
       // per-call value.
-      const text = displayTextOf(mapped);
-      shapeCalls.set(text, (shapeCalls.get(text) ?? 0) + 1);
+      //
+      // A file-tool call is the one exception: its path is redacted whole, so it is shown as
+      // the kind of file the guardrail that matched it looks for (`fileShapeOf`), and so has
+      // one shape per guardrail. The call counts once under each shape it has.
+      const filePath = mapped.args.full_command === undefined ? mapped.args.file_path : undefined;
+      const shared = filePath === undefined ? displayTextOf(mapped) : undefined;
+      const textFor = (ruleId: string): string =>
+        shared ?? fileShapeOf(mapped.tool, filePath ?? "", ruleId);
+      for (const text of new Set(decision.matches.map((m) => textFor(m.ruleId)))) {
+        shapeCalls.set(text, (shapeCalls.get(text) ?? 0) + 1);
+      }
       callOwasp.push(decision.matches.flatMap((m) => ruleOf.get(m.ruleId)?.rule.owasp ?? []));
       for (const match of decision.matches) {
         let acc = byRule.get(match.ruleId);
@@ -734,6 +744,7 @@ export function aggregateScan(
           byRule.set(match.ruleId, acc);
         }
         acc.count++;
+        const text = textFor(match.ruleId);
         acc.shapes.set(text, (acc.shapes.get(text) ?? 0) + 1);
       }
     }

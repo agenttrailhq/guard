@@ -18,6 +18,12 @@
  * The goldens were made with guardrail library 0.2.6, which 0.4.13 bundles. With another
  * library the guardrails that match differ, so the first test says so rather than reporting
  * a page difference.
+ *
+ * One difference from 0.4.13 is intended: a file-tool call's shape. 0.4.13 showed every one as
+ * `<Tool> <path>`; this build shows the kind of file, or a well-known name (`file-shape.ts`), so
+ * one 0.4.13 row can be several here. So before `--json` is compared, each file-tool shape is
+ * mapped back to `<Tool> <path>` and the rows that then share a shape are merged, their counts
+ * added (`as0413`). Everything else is compared as it is.
  */
 
 import { mkdtempSync, readdirSync, readFileSync } from "node:fs";
@@ -27,6 +33,8 @@ import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { runScan } from "../commands/scan.js";
 import { catalogStamp } from "../core/catalog-stamp.js";
+import { FILE_KINDS, knownFileName, UNKNOWN_FILE_KIND } from "../core/file-shape.js";
+import { PATH_PLACEHOLDER } from "../core/redact-path.js";
 import { VERSION } from "../core/version.js";
 import { createRealScanIO, type ScanIO } from "../scan-io.js";
 import { filesUnder, LEAKS, scanned } from "./fixture-hygiene.js";
@@ -102,6 +110,62 @@ async function scanNoChecks(
   };
 }
 
+/** Every shape a file-tool call may now have, after its tool's name. */
+const FILE_SHAPE = new RegExp(
+  `^([A-Za-z][A-Za-z0-9_]*|File tool) (${[
+    ...new Set([...Object.values(FILE_KINDS), UNKNOWN_FILE_KIND]),
+  ]
+    .map((kind) => `<${kind}>`)
+    .join("|")}|\\.github/workflows/<file>\\.ya?ml|[A-Za-z0-9._-]+)$`,
+);
+
+/** A shape as 0.4.13 showed it: a file-tool call's as `<Tool> <path>`, any other as it is. */
+function shapeIn0413(text: string): string {
+  const m = FILE_SHAPE.exec(text);
+  if (m === null) return text;
+  const shown = m[2] ?? "";
+  const known = shown.startsWith("<") || knownFileName(`/x/${shown}`) === shown;
+  return known ? `${m[1]} ${PATH_PLACEHOLDER}` : text;
+}
+
+/** Rows that share `key` merged, in first-seen order, with `add` folding each later one in. */
+function merged<T>(rows: readonly T[], key: (row: T) => string, add: (into: T, row: T) => T): T[] {
+  const out = new Map<string, T>();
+  for (const row of rows) {
+    const k = key(row);
+    const seen = out.get(k);
+    out.set(k, seen === undefined ? row : add(seen, row));
+  }
+  return [...out.values()];
+}
+
+/** Most-frequent-first, then lexical, as `aggregateScan` orders rows. */
+const byCountThenText = (a: { count: number; text: string }, b: { count: number; text: string }) =>
+  b.count - a.count || a.text.localeCompare(b.text);
+
+/** `--json` output as 0.4.13 would have printed it: file-tool shapes mapped back and merged. */
+function as0413(json: string): string {
+  const doc = JSON.parse(json) as {
+    result: {
+      findings: { examples: { text: string; count: number }[] }[];
+      recurring: { text: string; count: number; calls: number; ruleId: string }[];
+    };
+  };
+  for (const finding of doc.result.findings) {
+    finding.examples = merged(
+      finding.examples.map((e) => ({ ...e, text: shapeIn0413(e.text) })),
+      (e) => e.text,
+      (a, b) => ({ ...a, count: a.count + b.count }),
+    ).sort(byCountThenText);
+  }
+  doc.result.recurring = merged(
+    doc.result.recurring.map((r) => ({ ...r, text: shapeIn0413(r.text) })),
+    (r) => JSON.stringify([r.ruleId, r.text]),
+    (a, b) => ({ ...a, count: a.count + b.count, calls: a.calls + b.calls }),
+  ).sort(byCountThenText);
+  return `${JSON.stringify(doc, null, 2)}\n`;
+}
+
 /** A golden file's text. */
 const golden = (name: string): string => readFileSync(join(GOLDENS, name), "utf8");
 
@@ -138,7 +202,8 @@ describe("scan --no-checks is 0.4.13's scan, byte for byte", () => {
     const run = await scanNoChecks(agent, mode);
     expect(run.code).toBe(0);
     expect(run.checks, "no check ran").toBe(0);
-    expect(run.stdout).toBe(golden(`${agent}-${mode}.stdout.txt`));
+    const printed = mode === "json" ? as0413(run.stdout) : run.stdout;
+    expect(printed).toBe(golden(`${agent}-${mode}.stdout.txt`));
     const file = MODES[mode].file;
     if (file === undefined) {
       expect(run.written.size, "--json writes no file").toBe(0);
@@ -150,6 +215,21 @@ describe("scan --no-checks is 0.4.13's scan, byte for byte", () => {
       expect(page).not.toContain(".vrow {");
       await expect(page).toMatchFileSnapshot(join(PAGES, `${agent}-${mode}.html`));
     }
+  });
+
+  it("maps a file-tool shape back to 0.4.13's, and only a file-tool shape", () => {
+    expect(shapeIn0413("Read .env")).toBe("Read <path>");
+    expect(shapeIn0413("Edit <test config>")).toBe("Edit <path>");
+    expect(shapeIn0413("Edit .github/workflows/<file>.yml")).toBe("Edit <path>");
+    expect(shapeIn0413("rm -rf <path>")).toBe("rm -rf <path>");
+    expect(shapeIn0413("Read notes.md")).toBe("Read notes.md");
+  });
+
+  it("negative control: the JSON comparison still sees a changed count", async () => {
+    const run = await scanNoChecks("claude", "json");
+    const changed = run.stdout.replace('"count": 1,', '"count": 2,');
+    expect(changed).not.toBe(run.stdout);
+    expect(as0413(changed)).not.toBe(golden("claude-json.stdout.txt"));
   });
 
   it("negative control: the comparison sees one changed byte of a page", async () => {

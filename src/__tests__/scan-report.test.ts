@@ -282,7 +282,7 @@ describe("everything in the result is redacted", () => {
     expect(result.projects).toBe(1);
   });
 
-  it("a file-tool finding renders as tool plus redacted path", () => {
+  it("a file-tool finding renders as the tool and a well-known file name, and nothing else of the path", () => {
     const result = aggregateScan(
       corpusOf([
         session([turn([toolUse("Read", { file_path: "/Users/priya/acme/.env.production" }, "1")])]),
@@ -290,7 +290,8 @@ describe("everything in the result is redacted", () => {
       CATALOG,
       NO_ALLOWLIST,
     );
-    expect(result.findings[0]?.examples[0]?.text).toBe("Read <path>");
+    expect(result.findings[0]?.examples[0]?.text).toBe("Read .env.production");
+    expect(JSON.stringify(result)).not.toMatch(/priya|acme/);
   });
 
   it("no currency WORD appears anywhere in a result", () => {
@@ -551,19 +552,20 @@ describe("tool calls by their strictest action", () => {
       corpusOf([
         session([
           turn([
-            toolUse("Read", { file_path: "/srv/one/CLAUDE.md" }, "1"),
-            toolUse("Read", { file_path: "/srv/two/CLAUDE.md" }, "2"),
+            toolUse("Read", { file_path: "/srv/one/notes.md" }, "1"),
+            toolUse("Read", { file_path: "/srv/two/notes.md" }, "2"),
             toolUse("Read", { file_path: "/srv/one/ci.yml" }, "3"),
             toolUse("Read", { file_path: "/srv/two/ci.yml" }, "4"),
           ]),
         ]),
       ]),
-      compileCatalog([reads("**/CLAUDE.md", "t.instructions"), reads("**/ci.yml", "t.ci")]),
+      // Guardrails the user wrote: no kind of their own, so both read as `<file>`.
+      compileCatalog([reads("**/notes.md", "t.instructions"), reads("**/ci.yml", "t.ci")]),
       NO_ALLOWLIST,
     );
     expect(result.recurring.map((r) => [r.ruleId, r.text, r.count, r.calls])).toEqual([
-      ["t.instructions", "Read <path>", 2, 4],
-      ["t.ci", "Read <path>", 2, 4],
+      ["t.instructions", "Read <file>", 2, 4],
+      ["t.ci", "Read <file>", 2, 4],
     ]);
   });
 

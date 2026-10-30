@@ -65,7 +65,7 @@
 <div class="card stat"><div class="stat-value">1</div><div class="stat-label">Session</div><div class="stat-note">in 2 projects</div></div>
 <div class="card stat"><div class="stat-value">5</div><div class="stat-label">Risky actions</div><div class="stat-note">Calls that matched a guardrail</div></div>
 <div class="card stat"><div class="stat-value">3</div><div class="stat-label">Guardrails matched</div><div class="stat-note">1 block, 1 ask, 1 warn</div></div>
-<div class="card stat"><div class="stat-value">2</div><div class="stat-label">Repeated command shapes</div><div class="stat-note">Listed under Repeat offenders</div></div>
+<div class="card stat"><div class="stat-value">1</div><div class="stat-label">Repeated command shape</div><div class="stat-note">Listed under Repeat offenders</div></div>
 </div>
 <section id="what-happened" aria-labelledby="h-verified">
 <div class="section-head"><div><h2 id="h-verified">What actually happened</h2><p>A match only means a guardrail fired. Each card says what checking it on this machine found, how things stand now, and how to fix it.</p></div></div>
@@ -247,7 +247,8 @@
 </details>
 <p class="owasp-line"><span class="lbl">OWASP:</span> <a href="https://www.agenttrail.sh/security/owasp?utm_source=guard&amp;utm_medium=scan-report&amp;utm_campaign=claude&amp;utm_content=owasp-risk#llm02" target="_blank" rel="noopener noreferrer" aria-describedby="finding-t-env-file-title">LLM02 Sensitive Information Disclosure</a></p>
 <ul class="shapes">
-<li><code class="cmd"><span class="tok">Read</span> <span class="tok"><span class="ph">&lt;path&gt;</span></span></code><span class="times">2&times;</span></li>
+<li><code class="cmd"><span class="tok">Read</span> <span class="tok">.env</span></code><span class="times">1&times;</span></li>
+<li><code class="cmd"><span class="tok">Read</span> <span class="tok">.env.local</span></code><span class="times">1&times;</span></li>
 </ul>
 </div>
 </details>
@@ -276,7 +277,6 @@
 <table class="repeat-table">
 <thead><tr><th scope="col">Command shape</th><th scope="col" class="n">Times</th><th scope="col" class="g">Guardrail</th></tr></thead>
 <tbody id="repeat-body">
-<tr><td><code class="cmd"><span class="tok">Read</span> <span class="tok"><span class="ph">&lt;path&gt;</span></span></code></td><td class="n">2&times;</td><td class="g"><a class="linkish" href="#finding-t-env-file">Reading a .env file</a></td></tr>
 <tr><td><code class="cmd"><span class="tok">rm</span> <span class="tok">-rf</span> <span class="tok"><span class="ph">&lt;path&gt;</span></span></code></td><td class="n">2&times;</td><td class="g"><a class="linkish" href="#finding-t-rm-rf">Recursive delete</a></td></tr>
 </tbody>
 </table>
