@@ -124,6 +124,7 @@ import {
   toneLabel,
   UNSAFE_FIXES_FILE_NOTE,
 } from "./verify/copy.js";
+import type { DependencyFacts } from "./verify/deps.js";
 import { verifiedNotes } from "./verify/notes.js";
 import { shareCounts } from "./verify/share-copy.js";
 import {
@@ -640,10 +641,7 @@ function copyVerification(verification: Verification, capLists: boolean): Verifi
     ...(verification.dependencies === undefined
       ? {}
       : {
-          dependencies: copyFacts(
-            verification.dependencies,
-            capLists,
-          ) as Verification["dependencies"],
+          dependencies: copyFacts(verification.dependencies, capLists) as DependencyFacts,
         }),
   };
 }
