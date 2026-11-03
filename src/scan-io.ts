@@ -35,6 +35,7 @@ import {
   createReadStream,
   fchmodSync,
   fsyncSync,
+  mkdirSync,
   openSync,
   readdirSync,
   readFileSync,
@@ -83,6 +84,11 @@ export interface ScanIO {
   readLine(): Promise<string | undefined>;
   /** Write `text` to `path` at mode `0600`. `false` on any failure; never throws. */
   writeFile(path: string, text: string): boolean;
+  /**
+   * Create a directory and any missing parents, at mode `0700`. `false` on any failure;
+   * never throws. A seam without it creates nothing.
+   */
+  makeDir?(path: string): boolean;
   /** Open a local file in the desktop's default handler. `false` if it could not. */
   openInBrowser(path: string): boolean;
   /** The environment, for the colour decision. */
@@ -238,6 +244,15 @@ export function createRealScanIO(): ScanIO {
 
     writeFile(path: string, text: string): boolean {
       return writePrivateFile(path, text);
+    },
+
+    makeDir(path: string): boolean {
+      try {
+        mkdirSync(path, { recursive: true, mode: 0o700 });
+        return true;
+      } catch {
+        return false;
+      }
     },
 
     openInBrowser(path: string): boolean {

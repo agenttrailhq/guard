@@ -23591,7 +23591,8 @@ Could not write the report to ${reportPath}
       statePath: productLineStatePath(home),
       now,
       readFile: (path) => io.readFile(path),
-      writeFile: (path, text2) => io.writeFile(path, text2)
+      // A scan can run before anything else has created the guard folder.
+      writeFile: (path, text2) => io.makeDir?.(dirname6(path)) !== false && io.writeFile(path, text2)
     },
     {
       surface: "scan",
@@ -23622,6 +23623,7 @@ import {
   createReadStream as createReadStream2,
   fchmodSync,
   fsyncSync,
+  mkdirSync,
   openSync,
   readdirSync as readdirSync2,
   readFileSync,
@@ -23729,6 +23731,14 @@ function createRealScanIO() {
     },
     writeFile(path, text2) {
       return writePrivateFile(path, text2);
+    },
+    makeDir(path) {
+      try {
+        mkdirSync(path, { recursive: true, mode: 448 });
+        return true;
+      } catch {
+        return false;
+      }
     },
     openInBrowser(path) {
       try {

@@ -1352,7 +1352,8 @@ export async function runScan(
       statePath: productLineStatePath(home),
       now,
       readFile: (path) => io.readFile(path),
-      writeFile: (path, text) => io.writeFile(path, text),
+      // A scan can run before anything else has created the guard folder.
+      writeFile: (path, text) => io.makeDir?.(dirname(path)) !== false && io.writeFile(path, text),
     },
     {
       surface: "scan",
