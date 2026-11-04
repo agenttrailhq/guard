@@ -1,2 +1,56 @@
-# All changes require review from a code owner.
-*  @samc621
+# Every change needs a code owner's approval. Any maintainer below can approve
+# most changes; the paths after that need @samc621. Later lines win.
+
+*                                   @samc621 @kashyap-techsuite @loveneeshdhir
+
+# Release, CI and the supply chain: what gets built, installed and published.
+/.github/                           @samc621
+/scripts/                           @samc621
+/.releaserc.json                    @samc621
+/package.json                       @samc621
+/pnpm-lock.yaml                     @samc621
+/pnpm-workspace.yaml                @samc621
+/tsup.config.ts                     @samc621
+/SECURITY.md                        @samc621
+/LICENSE                            @samc621
+
+# What runs inside the agent: the hook, the plugin and the decision path.
+/plugin/                            @samc621
+/src/engine/                        @samc621
+/src/hook-entry.ts                  @samc621
+/src/io.ts                          @samc621
+/src/commands/hook.ts               @samc621
+/src/core/agent.ts                  @samc621
+/src/core/allow-guard.ts            @samc621
+/src/core/catalog.ts                @samc621
+/src/core/config.ts                 @samc621
+/src/core/evaluate.ts               @samc621
+/src/core/events.ts                 @samc621
+/src/core/mapper.ts                 @samc621
+/src/core/normalize.ts              @samc621
+/src/core/*emit.ts                  @samc621
+/src/core/*mapper.ts                @samc621
+/src/core/cursor-entry.ts           @samc621
+/src/core/os-step-aside.ts          @samc621
+/src/core/paths.ts                  @samc621
+/src/core/rules.ts                  @samc621
+/src/core/types.ts                  @samc621
+/src/core/user-rules*.ts            @samc621
+
+# Installing into an agent: what is written to its settings and hooks.
+/src/commands/init.ts               @samc621
+/src/commands/uninstall.ts          @samc621
+/src/setup-io.ts                    @samc621
+/src/plugin/                        @samc621
+/src/codex/                         @samc621
+/src/cursor/                        @samc621
+/src/core/claude-settings.ts        @samc621
+
+# Privacy: redaction, scrubbing and the only network path.
+/src/net/                           @samc621
+/src/scrub-io.ts                    @samc621
+/src/commands/crash-report.ts       @samc621
+/src/commands/scan-scrub.ts         @samc621
+/src/core/crash-*.ts                @samc621
+/src/core/redact*.ts                @samc621
+/src/core/scrub*.ts                 @samc621
