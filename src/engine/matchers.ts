@@ -1,12 +1,27 @@
 // cspell:words nocase picomatch
 
 import picomatch from "picomatch";
-import type { NumericComparison } from "./policy-predicate.js";
+import type { Channel, NumericComparison } from "./policy-predicate.js";
 import type { Span } from "./trace.js";
 
 const DETAIL_ATTR = "detail";
 
+const MCP_INPUT_ATTR = "mcp_input";
+
 const FILE_PATH_ATTR = "file_path";
+
+export function effectiveChannel(condition: {
+  readonly channel?: Channel | undefined;
+  readonly label?: string | undefined;
+}): Channel {
+  if (condition.channel !== undefined) return condition.channel;
+  return condition.label?.toLowerCase().startsWith("mcp__") === true ? "content" : "command";
+}
+
+function channelText(span: Span, channel: Channel): string | undefined {
+  if (channel === "content") return span.attributes[MCP_INPUT_ATTR] ?? span.attributes[DETAIL_ATTR];
+  return span.attributes[DETAIL_ATTR];
+}
 
 const FILE_GLOB_OPTIONS: picomatch.PicomatchOptions = { dot: true, nocase: true };
 
@@ -38,8 +53,9 @@ export function matchLabel(
 export function matchDetailContains(
   requiredSubstrings: readonly string[],
   span: Span,
+  channel: Channel = "command",
 ): { matched: boolean; reason: string } {
-  const detail = span.attributes[DETAIL_ATTR];
+  const detail = channelText(span, channel);
 
   if (detail === undefined) {
     return { matched: false, reason: "detail_contains: detail attribute missing" };
@@ -68,8 +84,9 @@ export function matchDetailContains(
 export function matchDetailMatches(
   patterns: readonly string[],
   span: Span,
+  channel: Channel = "command",
 ): { matched: boolean; reason: string } {
-  const detail = span.attributes[DETAIL_ATTR];
+  const detail = channelText(span, channel);
 
   if (detail === undefined) {
     return { matched: false, reason: "detail_matches: detail attribute missing" };
