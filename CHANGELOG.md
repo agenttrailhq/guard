@@ -11,6 +11,12 @@ For this package, breaking means a change to the installed hook entry (which sil
 the guard checking an existing install until it is re-approved) or a removed command or flag;
 adding a command, a flag, or support for a new agent is a feature.
 
+## [0.4.20](https://github.com/agenttrailhq/guard/compare/v0.4.19...v0.4.20) (2026-11-11)
+
+### Bug Fixes
+
+* read a condition's channel in the engine ([4ce4d93](https://github.com/agenttrailhq/guard/commit/4ce4d93356a9301e935f4b01437ffcdaa7ab0175))
+
 ## [0.4.19](https://github.com/agenttrailhq/guard/compare/v0.4.18...v0.4.19) (2026-11-04)
 
 ### Bug Fixes
