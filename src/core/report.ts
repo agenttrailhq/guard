@@ -37,8 +37,9 @@
  * `--json` on stdout stays the whole result.
  *
  * ── Links ────────────────────────────────────────────────────────────────────
- * Every link to the site is built by `siteLink`, which adds `utm_source`, `utm_medium`,
- * `utm_campaign` (the agent) and `utm_content` (where on the page). A link loads nothing until
+ * Every link to the site is built by `siteLink`, which tags it through `siteUrl` (`site.ts`)
+ * with `utm_source`, `utm_medium`, `utm_campaign` (the agent) and `utm_content` (where on the
+ * page). Pages linked from more than one place come from `SITE_PAGES`. A link loads nothing until
  * it is clicked. Library pages are linked for shipped guardrails only. The two OWASP lists
  * are the only links off the site, to where OWASP publishes them, and carry no tags.
  *
@@ -87,6 +88,7 @@ import type {
   ScanResult,
   ScanSkipped,
 } from "./scan-report.js";
+import { SITE_PAGES, SITE_URL, siteUrl } from "./site.js";
 import { formatCount, type TokenTotals } from "./tokens.js";
 import type { AgentSource, GuardAction } from "./types.js";
 import { CARD_BUILDERS } from "./verify/builders.js";
@@ -145,9 +147,6 @@ import {
 /** Where the source lives. Rendered as text. */
 export const REPOSITORY_URL = "https://github.com/agenttrailhq/guard";
 
-/** The site every outbound link points at, through `siteLink`. */
-export const SITE_URL = "https://www.agenttrail.sh";
-
 /** The report's filename, used by `commands/scan.ts`. */
 export const REPORT_FILENAME = "agenttrail-guard-report.html";
 
@@ -201,9 +200,9 @@ export const PRODUCT_NOTE = {
       text: "A matching call waits in the approval queue for a teammate's yes, and the decision stays in the audit trail.",
     },
   ],
-  start: { label: "Start free with AgentTrail OS", path: "/signup", content: "os-signup" },
-  primary: { label: "Book a team demo", path: "/agenttrail-os", content: "os-demo" },
-  secondary: { label: "Guard vs OS", path: "/guard-vs-os", content: "os-compare" },
+  start: { label: "Start free with AgentTrail OS", path: SITE_PAGES.signup, content: "os-signup" },
+  primary: { label: "Book a team demo", path: SITE_PAGES.os, content: "os-demo" },
+  secondary: { label: "Guard vs OS", path: SITE_PAGES.compare, content: "os-compare" },
 } as const;
 
 /** The site's own accounts, linked from the footer. */
@@ -358,11 +357,7 @@ export function ruleSlug(id: string): string {
  * The tags go before a `#fragment`, so a link to a row of a page keeps its query.
  */
 export function siteLink(path: string, agent: AgentSource, content: string): string {
-  const tags = `utm_source=guard&utm_medium=scan-report&utm_campaign=${agent}&utm_content=${content}`;
-  const hash = path.indexOf("#");
-  const base = hash === -1 ? path : path.slice(0, hash);
-  const fragment = hash === -1 ? "" : path.slice(hash);
-  return `${SITE_URL}${base}${base.includes("?") ? "&" : "?"}${tags}${fragment}`;
+  return siteUrl(path, { medium: "scan-report", campaign: agent, content });
 }
 
 /** A full site URL as a path for `siteLink`. Throws on a URL that is not on the site. */
@@ -2588,8 +2583,8 @@ ${social(SOCIAL_LINKS.npm, "AgentTrail on npm", ICONS.npm)}
 </div>
 </div>
 <div class="sf-cols">
-${column("Product", [link("/agenttrail-guard", "footer-guard", "AgentTrail Guard"), link("/agenttrail-os", "footer-os", "AgentTrail OS"), link("/about#how-it-works", "footer-tour", "Product tour"), link("/guard-vs-os", "footer-compare", "Guard vs OS"), link("/pricing", "footer-pricing", "Pricing"), link("/#contact", "footer-demo", "Book a team demo")])}
-${column("Resources", [link("/about", "footer-about", "About"), link("/blog", "footer-blog", "Blog"), link("/guardrails", "footer-library", "Guardrail library"), link("/security/owasp", "footer-owasp", "OWASP Top 10"), link("/brand", "footer-brand", "Brand assets"), `<li>${outLink(SOCIAL_LINKS.github, "GitHub")}</li>`])}
+${column("Product", [link("/agenttrail-guard", "footer-guard", "AgentTrail Guard"), link(SITE_PAGES.os, "footer-os", "AgentTrail OS"), link("/about#how-it-works", "footer-tour", "Product tour"), link(SITE_PAGES.compare, "footer-compare", "Guard vs OS"), link("/pricing", "footer-pricing", "Pricing"), link("/#contact", "footer-demo", "Book a team demo")])}
+${column("Resources", [link("/about", "footer-about", "About"), link("/blog", "footer-blog", "Blog"), link("/guardrails", "footer-library", "Guardrail library"), link(SITE_PAGES.owasp, "footer-owasp", "OWASP Top 10"), link("/brand", "footer-brand", "Brand assets"), `<li>${outLink(SOCIAL_LINKS.github, "GitHub")}</li>`])}
 ${column("Trust", [link("/security", "footer-security", "Security & Trust"), link("/subprocessors", "footer-subprocessors", "Subprocessors"), link("/legal/privacy", "footer-privacy", "Privacy Policy"), link("/legal/terms", "footer-terms", "Terms of Service"), link("/legal/dpa", "footer-dpa", "Data Processing Addendum")])}
 </div>
 </div>

@@ -3,9 +3,14 @@
  * print after their own output.
  *
  * ── One constant ─────────────────────────────────────────────────────────────
- * `PRODUCT_LINE` holds the destination and every wording. Changing where the line points
- * is a change to `destination` and nothing else; `product-line.test.ts` pins the text and
- * checks that no other source file spells the destination.
+ * `PRODUCT_LINE` holds every wording, and what the line ends with. Its destination is the
+ * AgentTrail OS page on the site (`site.ts`), the same page the report links, tagged by the
+ * same `siteUrl`. `product-line.test.ts` pins the text and checks that no other source file
+ * spells the site, the page or the product line.
+ *
+ * ── Link or setup ────────────────────────────────────────────────────────────
+ * `end: "link"` ends the line with the destination, tagged with the command. `end: "setup"`
+ * ends it with `run <setupCommand>` instead, and nothing else changes.
  *
  * ── When it is printed ───────────────────────────────────────────────────────
  * Only when all of these hold, and the caller decides the first one:
@@ -22,6 +27,7 @@
  * nothing that does I/O or reaches the network: the caller passes its own read and write.
  */
 
+import { SITE_PAGES, SITE_URL, siteUrl } from "./site.js";
 import { formatCount } from "./tokens.js";
 
 /** The commands that can print the line. Also the `utm_content` of its URL. */
@@ -33,10 +39,17 @@ const SUPPORTED_AGENTS: ReadonlySet<string> = new Set(["claude", "cursor"]);
 const plural = (n: number, one: string, many: string): string =>
   `${formatCount(n)} ${n === 1 ? one : many}`;
 
-/** The destination, the wording, and the limits. The only place any of them is written. */
+/** What the line ends with: a link to `destination`, or the command that sets up AgentTrail OS. */
+export type ProductLineEnd = "link" | "setup";
+
+/** The wording and the limits. The only place any of them is written. */
 export const PRODUCT_LINE = {
-  destination: "https://agenttrail.sh/agenttrail-os",
-  utm: "utm_source=guard&utm_medium=cli",
+  /** The AgentTrail OS page, untagged. */
+  destination: `${SITE_URL}${SITE_PAGES.os}`,
+  /** What every line ends with. `"setup"` names `setupCommand` instead of linking. */
+  end: "link" as ProductLineEnd,
+  /** The command a `"setup"` line names. */
+  setupCommand: "agenttrail setup",
   /** `config.json` key. Only `false` turns the line off. */
   configKey: "productLine",
   /** At most one showing per command in this many hours. */
@@ -44,24 +57,32 @@ export const PRODUCT_LINE = {
   /** How far back `status` counts decisions. */
   statusWindowDays: 7,
   text: {
-    init: (url: string): string =>
-      `Want a teammate to approve risky actions, and every session on record? AgentTrail OS (Team plan): ${url}`,
-    statusAsks: (asks: number, url: string): string =>
-      `This week guard asked about ${plural(asks, "action", "actions")}. In AgentTrail OS a teammate approves them from the app (Team plan): ${url}`,
-    statusBlocks: (blocks: number, url: string): string =>
-      `Guard blocked ${plural(blocks, "action", "actions")} this week. AgentTrail OS finds the failures agents repeat and suggests the guardrail that stops them: ${url}`,
-    scanAsks: (asks: number, url: string): string =>
-      `${formatCount(asks)} of these would have waited for a teammate's approval in AgentTrail OS (Team plan), not a prompt: ${url}`,
-    scanMatches: (url: string): string =>
-      `AgentTrail OS finds the failures agents repeat and suggests the guardrail that stops them: ${url}`,
-    add: (id: string, url: string): string =>
-      `Share it: with everyone, run agenttrail-guard guardrails export ${id}; with your team, AgentTrail OS syncs guardrails to every teammate (Team plan): ${url}`,
+    init: (end: string): string =>
+      `Want a teammate to approve risky actions, and every session on record? AgentTrail OS (Team plan): ${end}`,
+    statusAsks: (asks: number, end: string): string =>
+      `This week guard asked about ${plural(asks, "action", "actions")}. In AgentTrail OS a teammate approves them from the app (Team plan): ${end}`,
+    statusBlocks: (blocks: number, end: string): string =>
+      `Guard blocked ${plural(blocks, "action", "actions")} this week. AgentTrail OS finds the failures agents repeat and suggests the guardrail that stops them: ${end}`,
+    scanAsks: (asks: number, end: string): string =>
+      `${formatCount(asks)} of these would have waited for a teammate's approval in AgentTrail OS (Team plan), not a prompt: ${end}`,
+    scanMatches: (end: string): string =>
+      `AgentTrail OS finds the failures agents repeat and suggests the guardrail that stops them: ${end}`,
+    add: (id: string, end: string): string =>
+      `Share it: with everyone, run agenttrail-guard guardrails export ${id}; with your team, AgentTrail OS syncs guardrails to every teammate (Team plan): ${end}`,
   },
 } as const;
 
+/** The constant's shape, so a test can pass a copy with one field changed. */
+export type ProductLine = typeof PRODUCT_LINE;
+
 /** The destination as one surface links it. */
 export function productLineUrl(surface: ProductLineSurface): string {
-  return `${PRODUCT_LINE.destination}?${PRODUCT_LINE.utm}&utm_content=${surface}`;
+  return siteUrl(SITE_PAGES.os, { medium: "cli", content: surface });
+}
+
+/** What a line on `surface` ends with: its link, or `run <setupCommand>`. */
+function productLineEnd(line: ProductLine, surface: ProductLineSurface): string {
+  return line.end === "setup" ? `run ${line.setupCommand}` : productLineUrl(surface);
 }
 
 /** What each surface knows that the line may be grounded in. */
@@ -80,21 +101,24 @@ export type ProductLineFacts =
  * The line for these facts, or `undefined` when there is nothing grounded to say: a Codex
  * install or scan, a `status` with no ask or block this week, a scan that matched nothing.
  */
-export function productLineText(facts: ProductLineFacts): string | undefined {
-  const url = productLineUrl(facts.surface);
-  const t = PRODUCT_LINE.text;
+export function productLineText(
+  facts: ProductLineFacts,
+  line: ProductLine = PRODUCT_LINE,
+): string | undefined {
+  const end = productLineEnd(line, facts.surface);
+  const t = line.text;
   switch (facts.surface) {
     case "init":
-      return SUPPORTED_AGENTS.has(facts.agent) ? t.init(url) : undefined;
+      return SUPPORTED_AGENTS.has(facts.agent) ? t.init(end) : undefined;
     case "status":
-      if (facts.asks > 0) return t.statusAsks(facts.asks, url);
-      if (facts.blocks > 0) return t.statusBlocks(facts.blocks, url);
+      if (facts.asks > 0) return t.statusAsks(facts.asks, end);
+      if (facts.blocks > 0) return t.statusBlocks(facts.blocks, end);
       return undefined;
     case "scan":
       if (!SUPPORTED_AGENTS.has(facts.agent) || facts.matches === 0) return undefined;
-      return facts.asks > 0 ? t.scanAsks(facts.asks, url) : t.scanMatches(url);
+      return facts.asks > 0 ? t.scanAsks(facts.asks, end) : t.scanMatches(end);
     case "add":
-      return t.add(facts.guardrailId, url);
+      return t.add(facts.guardrailId, end);
     default:
       return undefined;
   }

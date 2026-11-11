@@ -2,7 +2,8 @@
  * The AgentTrail OS line: its wording, its limits, and the two places it must never reach.
  *
  * The commands' own tests drive each surface end to end; this file pins the constant, the
- * once-a-day rule, the off switch, and the hook.
+ * once-a-day rule, the off switch, and the hook. It also checks that every link to AgentTrail OS,
+ * in the terminal and in the report, starts from the one site address in `core/site.ts`.
  */
 
 import { readdirSync, readFileSync, statSync } from "node:fs";
@@ -12,9 +13,12 @@ import { describe, expect, it } from "vitest";
 import { runHook } from "../commands/hook.js";
 import { serializeDefaultConfig } from "../core/config.js";
 import { inspectConfig } from "../core/config-report.js";
+import { compileAllowlist } from "../core/evaluate.js";
 import {
   PRODUCT_LINE,
+  type ProductLine,
   type ProductLineContext,
+  type ProductLineFacts,
   productLineDue,
   productLineEnabled,
   productLineText,
@@ -24,19 +28,34 @@ import {
   takeProductLine,
   writeOrFalse,
 } from "../core/product-line.js";
+import { PRODUCT_NOTE, renderReport } from "../core/report.js";
+import { compileCatalog } from "../core/rules.js";
+import { aggregateScan } from "../core/scan-report.js";
+import { SITE_PAGES, SITE_URL } from "../core/site.js";
 import type { GuardRule } from "../core/types.js";
 import type { GuardIO } from "../io.js";
+import { TEST_CATALOG } from "./scan-fixtures.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PKG_ROOT = join(HERE, "..", "..");
 const NOW = new Date("2026-03-10T12:00:00.000Z");
 const HOURS = (h: number) => new Date(NOW.getTime() - h * 3_600_000).toISOString();
 
+/** Every set of facts that has a line, one per wording. */
+const EVERY_LINE: readonly ProductLineFacts[] = [
+  { surface: "init", agent: "claude" },
+  { surface: "status", asks: 1, blocks: 1 },
+  { surface: "status", asks: 0, blocks: 1 },
+  { surface: "scan", agent: "claude", matches: 1, asks: 1 },
+  { surface: "scan", agent: "claude", matches: 1, asks: 0 },
+  { surface: "add", guardrailId: "x" },
+];
+
 describe("the wording", () => {
   it("links every surface to one destination, tagged by command", () => {
-    expect(PRODUCT_LINE.destination).toBe("https://agenttrail.sh/agenttrail-os");
+    expect(PRODUCT_LINE.destination).toBe("https://www.agenttrail.sh/agenttrail-os");
     expect(productLineUrl("init")).toBe(
-      "https://agenttrail.sh/agenttrail-os?utm_source=guard&utm_medium=cli&utm_content=init",
+      "https://www.agenttrail.sh/agenttrail-os?utm_source=guard&utm_medium=cli&utm_content=init",
     );
     expect(productLineUrl("add")).toContain("utm_content=add");
   });
@@ -88,16 +107,39 @@ describe("the wording", () => {
   });
 
   it("every line is one line", () => {
-    for (const facts of [
-      { surface: "init", agent: "claude" },
-      { surface: "status", asks: 1, blocks: 1 },
-      { surface: "status", asks: 0, blocks: 1 },
-      { surface: "scan", agent: "claude", matches: 1, asks: 1 },
-      { surface: "scan", agent: "claude", matches: 1, asks: 0 },
-      { surface: "add", guardrailId: "x" },
-    ] as const) {
+    for (const facts of EVERY_LINE) {
       expect(productLineText(facts)).not.toMatch(/[\r\n]/);
     }
+  });
+});
+
+describe("link or setup", () => {
+  /** The constant with its one switch flipped. */
+  const SETUP: ProductLine = { ...PRODUCT_LINE, end: "setup" };
+
+  it("links by default", () => {
+    expect(PRODUCT_LINE.end).toBe("link");
+    for (const facts of EVERY_LINE) {
+      expect(productLineText(facts)).toMatch(/: https:\/\/\S+$/);
+    }
+  });
+
+  it("flipping `end` to setup names the setup command in every line, and changes nothing else", () => {
+    for (const facts of EVERY_LINE) {
+      const link = productLineText(facts) as string;
+      const setup = productLineText(facts, SETUP) as string;
+      expect(setup).toBe(
+        `${link.slice(0, -productLineUrl(facts.surface).length)}run ${PRODUCT_LINE.setupCommand}`,
+      );
+      expect(setup).not.toContain(SITE_URL);
+      expect(setup).not.toContain("utm_");
+    }
+    expect(productLineText({ surface: "init", agent: "claude" }, SETUP)).toBe(
+      "Want a teammate to approve risky actions, and every session on record? AgentTrail OS (Team plan): run agenttrail setup",
+    );
+    // Where there is nothing to say, there is still nothing to say.
+    expect(productLineText({ surface: "init", agent: "codex" }, SETUP)).toBeUndefined();
+    expect(productLineText({ surface: "status", asks: 0, blocks: 0 }, SETUP)).toBeUndefined();
   });
 });
 
@@ -111,14 +153,79 @@ describe("one constant", () => {
     });
   }
 
-  it("only core/product-line.ts spells the destination or the product name", () => {
-    const spelled = sources(join(PKG_ROOT, "src"))
-      .filter((f) => {
-        const text = readFileSync(f, "utf8");
-        return text.includes("agenttrail.sh/agenttrail-os") || text.includes("AgentTrail OS (");
-      })
+  /** The source files whose text `spells` says yes to. */
+  function spelledIn(spells: (text: string) => boolean): string[] {
+    return sources(join(PKG_ROOT, "src"))
+      .filter((f) => spells(readFileSync(f, "utf8")))
       .map((f) => relative(PKG_ROOT, f));
-    expect(spelled).toEqual(["src/core/product-line.ts"]);
+  }
+
+  /** The site's address, with or without `www.`. */
+  const spellsSite = (text: string): boolean => /https?:\/\/(www\.)?agenttrail\.sh/.test(text);
+  /** Any of the AgentTrail OS pages: the destination, sign-up, the comparison. */
+  const spellsOsPage = (text: string): boolean =>
+    [SITE_PAGES.os, SITE_PAGES.signup, SITE_PAGES.compare].some((page) => text.includes(page));
+
+  it("only core/product-line.ts spells the product line", () => {
+    expect(spelledIn((text) => text.includes("AgentTrail OS ("))).toEqual([
+      "src/core/product-line.ts",
+    ]);
+  });
+
+  it("only core/site.ts spells the site's address", () => {
+    expect(spelledIn(spellsSite)).toEqual(["src/core/site.ts"]);
+  });
+
+  it("only core/site.ts spells an AgentTrail OS page, so the line, the report and its footer share them", () => {
+    expect(spelledIn(spellsOsPage)).toEqual(["src/core/site.ts"]);
+  });
+
+  it("negative control — the detectors fire on a spelled address or page", () => {
+    expect(spellsSite(`destination: "https://agenttrail.sh/agenttrail-os"`)).toBe(true);
+    expect(spellsSite(`const SITE = "https://www.agenttrail.sh";`)).toBe(true);
+    expect(spellsSite(`SECURITY_EMAIL = "security@agenttrail.sh"`)).toBe(false);
+    expect(spellsOsPage(`link("/agenttrail-os", "footer-os", "AgentTrail OS")`)).toBe(true);
+    expect(spellsOsPage(`path: "/guard-vs-os"`)).toBe(true);
+    expect(spellsOsPage(`path: "/signup"`)).toBe(true);
+  });
+
+  it("the line's destination is the site's AgentTrail OS page, tagged on every surface", () => {
+    expect(PRODUCT_LINE.destination).toBe(`${SITE_URL}${SITE_PAGES.os}`);
+    for (const surface of ["init", "status", "scan", "add"] as const) {
+      expect(productLineUrl(surface)).toBe(
+        `${PRODUCT_LINE.destination}?utm_source=guard&utm_medium=cli&utm_content=${surface}`,
+      );
+    }
+  });
+
+  it("the report's AgentTrail OS block and its footer link the same pages on the same site", () => {
+    expect(PRODUCT_NOTE.start.path).toBe(SITE_PAGES.signup);
+    expect(PRODUCT_NOTE.primary.path).toBe(SITE_PAGES.os);
+    expect(PRODUCT_NOTE.secondary.path).toBe(SITE_PAGES.compare);
+
+    const result = aggregateScan(
+      { sessions: [], quarantined: 0, notRead: 0, projects: 0, agent: "claude" },
+      compileCatalog(TEST_CATALOG),
+      compileAllowlist([]),
+    );
+    const html = renderReport(result, {
+      version: "0.0.0",
+      generatedAt: new Date("2026-03-10T12:00:00.000Z"),
+    });
+    const links = [...html.matchAll(/href="(https?:[^"]+)"/g)]
+      .map((m) => new URL((m[1] ?? "").replaceAll("&amp;", "&")))
+      .filter((url) => spellsOsPage(url.pathname))
+      .map((url) => `${url.origin}${url.pathname} ${url.searchParams.get("utm_content")}`)
+      .sort();
+    expect(links).toEqual(
+      [
+        `${PRODUCT_LINE.destination} footer-os`,
+        `${PRODUCT_LINE.destination} os-demo`,
+        `${SITE_URL}${SITE_PAGES.compare} footer-compare`,
+        `${SITE_URL}${SITE_PAGES.compare} os-compare`,
+        `${SITE_URL}${SITE_PAGES.signup} os-signup`,
+      ].sort(),
+    );
   });
 });
 
@@ -298,7 +405,13 @@ describe("never in a hook answer", () => {
   ];
 
   /** Every fragment of every line, so no partial copy can slip through either. */
-  const FORBIDDEN = [PRODUCT_LINE.destination, "AgentTrail OS", "Team plan", "agenttrail-os"];
+  const FORBIDDEN = [
+    PRODUCT_LINE.destination,
+    PRODUCT_LINE.setupCommand,
+    "AgentTrail OS",
+    "Team plan",
+    "agenttrail-os",
+  ];
 
   it.each([...CASES, ...EXTRA])("agent %s: %s", async (agent, stdin) => {
     const written: string[] = [];
