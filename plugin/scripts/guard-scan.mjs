@@ -7077,8 +7077,33 @@ function formatCatalogStamp(stamp, now) {
   return `${label}, published ${days} day${days === 1 ? "" : "s"} ago`;
 }
 
+// src/core/site.ts
+var SITE_URL = "https://www.agenttrail.sh";
+var SITE_PAGES = {
+  /** AgentTrail OS: the terminal line, the report's product block and its footer. */
+  os: "/agenttrail-os",
+  /** AgentTrail OS sign-up. */
+  signup: "/signup",
+  /** How the guard and AgentTrail OS differ. */
+  compare: "/guard-vs-os",
+  /** How the guardrails map to OWASP. */
+  owasp: "/security/owasp"
+};
+function siteUrl(path, tags) {
+  const query = [
+    "utm_source=guard",
+    `utm_medium=${tags.medium}`,
+    ...tags.campaign === void 0 ? [] : [`utm_campaign=${tags.campaign}`],
+    `utm_content=${tags.content}`
+  ].join("&");
+  const hash = path.indexOf("#");
+  const base = hash === -1 ? path : path.slice(0, hash);
+  const fragment = hash === -1 ? "" : path.slice(hash);
+  return `${SITE_URL}${base}${base.includes("?") ? "&" : "?"}${query}${fragment}`;
+}
+
 // src/core/owasp.ts
-var OWASP_PAGE_URL = "https://www.agenttrail.sh/security/owasp";
+var OWASP_PAGE_URL = `${SITE_URL}${SITE_PAGES.owasp}`;
 function owaspAnchorUrl(id) {
   return `${OWASP_PAGE_URL}#${id.toLowerCase()}`;
 }
@@ -19100,7 +19125,6 @@ function shareCounts(cards, context) {
 
 // src/core/report.ts
 var REPOSITORY_URL = "https://github.com/agenttrailhq/guard";
-var SITE_URL = "https://www.agenttrail.sh";
 var REPORT_FILENAME = "agenttrail-guard-report.html";
 var ARTIFACT_FILENAME = "agenttrail-guard-artifact.html";
 var FIXES_FILENAME = FIXES_FILE;
@@ -19122,9 +19146,9 @@ var PRODUCT_NOTE = {
       text: "A matching call waits in the approval queue for a teammate's yes, and the decision stays in the audit trail."
     }
   ],
-  start: { label: "Start free with AgentTrail OS", path: "/signup", content: "os-signup" },
-  primary: { label: "Book a team demo", path: "/agenttrail-os", content: "os-demo" },
-  secondary: { label: "Guard vs OS", path: "/guard-vs-os", content: "os-compare" }
+  start: { label: "Start free with AgentTrail OS", path: SITE_PAGES.signup, content: "os-signup" },
+  primary: { label: "Book a team demo", path: SITE_PAGES.os, content: "os-demo" },
+  secondary: { label: "Guard vs OS", path: SITE_PAGES.compare, content: "os-compare" }
 };
 var SOCIAL_LINKS = {
   github: "https://github.com/agenttrailhq",
@@ -19184,11 +19208,7 @@ function ruleSlug(id) {
   return id.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
 }
 function siteLink(path, agent, content) {
-  const tags = `utm_source=guard&utm_medium=scan-report&utm_campaign=${agent}&utm_content=${content}`;
-  const hash = path.indexOf("#");
-  const base = hash === -1 ? path : path.slice(0, hash);
-  const fragment = hash === -1 ? "" : path.slice(hash);
-  return `${SITE_URL}${base}${base.includes("?") ? "&" : "?"}${tags}${fragment}`;
+  return siteUrl(path, { medium: "scan-report", campaign: agent, content });
 }
 function sitePath(url) {
   if (!url.startsWith(`${SITE_URL}/`)) throw new Error(`Not a page on the site: ${url}`);
@@ -20619,8 +20639,8 @@ ${social(SOCIAL_LINKS.npm, "AgentTrail on npm", ICONS.npm)}
 </div>
 </div>
 <div class="sf-cols">
-${column("Product", [link("/agenttrail-guard", "footer-guard", "AgentTrail Guard"), link("/agenttrail-os", "footer-os", "AgentTrail OS"), link("/about#how-it-works", "footer-tour", "Product tour"), link("/guard-vs-os", "footer-compare", "Guard vs OS"), link("/pricing", "footer-pricing", "Pricing"), link("/#contact", "footer-demo", "Book a team demo")])}
-${column("Resources", [link("/about", "footer-about", "About"), link("/blog", "footer-blog", "Blog"), link("/guardrails", "footer-library", "Guardrail library"), link("/security/owasp", "footer-owasp", "OWASP Top 10"), link("/brand", "footer-brand", "Brand assets"), `<li>${outLink(SOCIAL_LINKS.github, "GitHub")}</li>`])}
+${column("Product", [link("/agenttrail-guard", "footer-guard", "AgentTrail Guard"), link(SITE_PAGES.os, "footer-os", "AgentTrail OS"), link("/about#how-it-works", "footer-tour", "Product tour"), link(SITE_PAGES.compare, "footer-compare", "Guard vs OS"), link("/pricing", "footer-pricing", "Pricing"), link("/#contact", "footer-demo", "Book a team demo")])}
+${column("Resources", [link("/about", "footer-about", "About"), link("/blog", "footer-blog", "Blog"), link("/guardrails", "footer-library", "Guardrail library"), link(SITE_PAGES.owasp, "footer-owasp", "OWASP Top 10"), link("/brand", "footer-brand", "Brand assets"), `<li>${outLink(SOCIAL_LINKS.github, "GitHub")}</li>`])}
 ${column("Trust", [link("/security", "footer-security", "Security & Trust"), link("/subprocessors", "footer-subprocessors", "Subprocessors"), link("/legal/privacy", "footer-privacy", "Privacy Policy"), link("/legal/terms", "footer-terms", "Terms of Service"), link("/legal/dpa", "footer-dpa", "Data Processing Addendum")])}
 </div>
 </div>
@@ -20893,8 +20913,12 @@ function productLineStatePath(homedir4) {
 var SUPPORTED_AGENTS = /* @__PURE__ */ new Set(["claude", "cursor"]);
 var plural = (n2, one, many) => `${formatCount(n2)} ${n2 === 1 ? one : many}`;
 var PRODUCT_LINE = {
-  destination: "https://agenttrail.sh/agenttrail-os",
-  utm: "utm_source=guard&utm_medium=cli",
+  /** The AgentTrail OS page, untagged. */
+  destination: `${SITE_URL}${SITE_PAGES.os}`,
+  /** What every line ends with. `"setup"` names `setupCommand` instead of linking. */
+  end: "link",
+  /** The command a `"setup"` line names. */
+  setupCommand: "agenttrail setup",
   /** `config.json` key. Only `false` turns the line off. */
   configKey: "productLine",
   /** At most one showing per command in this many hours. */
@@ -20902,32 +20926,35 @@ var PRODUCT_LINE = {
   /** How far back `status` counts decisions. */
   statusWindowDays: 7,
   text: {
-    init: (url) => `Want a teammate to approve risky actions, and every session on record? AgentTrail OS (Team plan): ${url}`,
-    statusAsks: (asks, url) => `This week guard asked about ${plural(asks, "action", "actions")}. In AgentTrail OS a teammate approves them from the app (Team plan): ${url}`,
-    statusBlocks: (blocks, url) => `Guard blocked ${plural(blocks, "action", "actions")} this week. AgentTrail OS finds the failures agents repeat and suggests the guardrail that stops them: ${url}`,
-    scanAsks: (asks, url) => `${formatCount(asks)} of these would have waited for a teammate's approval in AgentTrail OS (Team plan), not a prompt: ${url}`,
-    scanMatches: (url) => `AgentTrail OS finds the failures agents repeat and suggests the guardrail that stops them: ${url}`,
-    add: (id, url) => `Share it: with everyone, run agenttrail-guard guardrails export ${id}; with your team, AgentTrail OS syncs guardrails to every teammate (Team plan): ${url}`
+    init: (end) => `Want a teammate to approve risky actions, and every session on record? AgentTrail OS (Team plan): ${end}`,
+    statusAsks: (asks, end) => `This week guard asked about ${plural(asks, "action", "actions")}. In AgentTrail OS a teammate approves them from the app (Team plan): ${end}`,
+    statusBlocks: (blocks, end) => `Guard blocked ${plural(blocks, "action", "actions")} this week. AgentTrail OS finds the failures agents repeat and suggests the guardrail that stops them: ${end}`,
+    scanAsks: (asks, end) => `${formatCount(asks)} of these would have waited for a teammate's approval in AgentTrail OS (Team plan), not a prompt: ${end}`,
+    scanMatches: (end) => `AgentTrail OS finds the failures agents repeat and suggests the guardrail that stops them: ${end}`,
+    add: (id, end) => `Share it: with everyone, run agenttrail-guard guardrails export ${id}; with your team, AgentTrail OS syncs guardrails to every teammate (Team plan): ${end}`
   }
 };
 function productLineUrl(surface) {
-  return `${PRODUCT_LINE.destination}?${PRODUCT_LINE.utm}&utm_content=${surface}`;
+  return siteUrl(SITE_PAGES.os, { medium: "cli", content: surface });
 }
-function productLineText(facts) {
-  const url = productLineUrl(facts.surface);
-  const t = PRODUCT_LINE.text;
+function productLineEnd(line2, surface) {
+  return line2.end === "setup" ? `run ${line2.setupCommand}` : productLineUrl(surface);
+}
+function productLineText(facts, line2 = PRODUCT_LINE) {
+  const end = productLineEnd(line2, facts.surface);
+  const t = line2.text;
   switch (facts.surface) {
     case "init":
-      return SUPPORTED_AGENTS.has(facts.agent) ? t.init(url) : void 0;
+      return SUPPORTED_AGENTS.has(facts.agent) ? t.init(end) : void 0;
     case "status":
-      if (facts.asks > 0) return t.statusAsks(facts.asks, url);
-      if (facts.blocks > 0) return t.statusBlocks(facts.blocks, url);
+      if (facts.asks > 0) return t.statusAsks(facts.asks, end);
+      if (facts.blocks > 0) return t.statusBlocks(facts.blocks, end);
       return void 0;
     case "scan":
       if (!SUPPORTED_AGENTS.has(facts.agent) || facts.matches === 0) return void 0;
-      return facts.asks > 0 ? t.scanAsks(facts.asks, url) : t.scanMatches(url);
+      return facts.asks > 0 ? t.scanAsks(facts.asks, end) : t.scanMatches(end);
     case "add":
-      return t.add(facts.guardrailId, url);
+      return t.add(facts.guardrailId, end);
     default:
       return void 0;
   }

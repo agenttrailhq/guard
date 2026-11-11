@@ -217,10 +217,16 @@ describe("the AgentTrail OS line is unreachable from the hook", () => {
     expect(graph).not.toContain(join("src", "core", "product-line.ts"));
   });
 
+  it("core/site.ts, where its link starts, is not in the hook graph either", () => {
+    const graph = hookBundleGraph().map((f) => relative(PKG_ROOT, f));
+    expect(graph).not.toContain(join("src", "core", "site.ts"));
+  });
+
   it("negative control — the commands that print it do reach it", () => {
     for (const command of ["init.ts", "status.ts", "scan.ts", "rules.ts"]) {
       const graph = hookBundleGraph(join(PKG_ROOT, "src", "commands", command));
       expect(graph).toContain(join(PKG_ROOT, "src", "core", "product-line.ts"));
+      expect(graph).toContain(join(PKG_ROOT, "src", "core", "site.ts"));
     }
   });
 });

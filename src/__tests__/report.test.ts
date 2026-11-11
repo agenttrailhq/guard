@@ -32,7 +32,6 @@ import {
   renderReport,
   reportPayload,
   reviewStrings,
-  SITE_URL,
 } from "../core/report.js";
 import {
   DARK_TOKENS,
@@ -48,6 +47,7 @@ import {
   type ScanFinding,
   type ScanResult,
 } from "../core/scan-report.js";
+import { SITE_URL } from "../core/site.js";
 import { bash, session, TEST_CATALOG, toolUse, turn } from "./scan-fixtures.js";
 import {
   LOCAL_FIX_CATEGORIES,

@@ -36,7 +36,6 @@ import {
   reviewStrings,
   ruleSlug,
   SHELL_SAFE_ID,
-  SITE_URL,
   shareText,
   TUNING_MIN_ASKS,
   tuningHint,
@@ -54,6 +53,7 @@ import {
   type ScanSkipped,
   type UnmappedTool,
 } from "../core/scan-report.js";
+import { SITE_URL } from "../core/site.js";
 import type { TokenTotals } from "../core/tokens.js";
 import type { GuardRule } from "../core/types.js";
 import { decodeEntities } from "./html-text.js";

@@ -17,11 +17,12 @@ import {
   owaspIndex,
   owaspTitle,
 } from "@agenttrail/guardrails/guardrails";
+import { SITE_PAGES, SITE_URL } from "./site.js";
 
 export { isOwaspId, OWASP_AGENTIC, OWASP_IDS, OWASP_LLM, type OwaspId, owaspTitle };
 
 /** The page that explains, risk by risk, what the guardrails do and do not cover. */
-export const OWASP_PAGE_URL = "https://www.agenttrail.sh/security/owasp";
+export const OWASP_PAGE_URL = `${SITE_URL}${SITE_PAGES.owasp}`;
 
 /** The link to one risk's row on that page, e.g. `…/security/owasp#asi02`. */
 export function owaspAnchorUrl(id: OwaspId): string {
