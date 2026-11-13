@@ -15,9 +15,11 @@
  * 0.4.13, so they are pinned to this build's own output in `__snapshots__/no-checks/`
  * (`vitest -u` rewrites them), and checked to carry no verified section.
  *
- * The goldens were made with guardrail library 0.2.6, which 0.4.13 bundles. With another
- * library the guardrails that match differ, so the first test says so rather than reporting
- * a page difference.
+ * The goldens were made with guardrail library 0.2.6, which 0.4.13 bundles. A newer library
+ * brings its own text: the `catalog` line and each library guardrail's description. Before
+ * `--json` is compared, those two are replaced with placeholders on both sides
+ * (`withoutLibraryText`). Which guardrails matched, and every count, are still compared byte for
+ * byte, so a library that matches differently still fails here.
  *
  * One difference from 0.4.13 is intended: a file-tool call's shape. 0.4.13 showed every one as
  * `<Tool> <path>`; this build shows the kind of file, or a well-known name (`file-shape.ts`), so
@@ -26,8 +28,8 @@
  * added (`as0413`). Everything else is compared as it is.
  *
  * The page's footer no longer prints the bundled library's line, but neither the terminal
- * summary nor `--json` changed with it (`--json` still carries `catalog`), so nothing here
- * maps it out: the page is pinned to this build's own output.
+ * summary nor `--json` changed with it (`--json` still carries `catalog`, replaced as above):
+ * the page is pinned to this build's own output.
  */
 
 import { mkdtempSync, readdirSync, readFileSync } from "node:fs";
@@ -170,6 +172,21 @@ function as0413(json: string): string {
   return `${JSON.stringify(doc, null, 2)}\n`;
 }
 
+/** `--json` output with the library's own text (`catalog`, guardrail descriptions) replaced. */
+function withoutLibraryText(json: string): string {
+  const doc = JSON.parse(json) as {
+    catalog?: string;
+    result: { findings: { source?: string; description?: string }[] };
+  };
+  if (doc.catalog !== undefined) doc.catalog = "<library>";
+  for (const finding of doc.result.findings) {
+    if (finding.source === "library" && finding.description !== undefined) {
+      finding.description = "<library text>";
+    }
+  }
+  return `${JSON.stringify(doc, null, 2)}\n`;
+}
+
 /** A golden file's text. */
 const golden = (name: string): string => readFileSync(join(GOLDENS, name), "utf8");
 
@@ -183,11 +200,13 @@ afterAll(() => {
 });
 
 describe("scan --no-checks is 0.4.13's scan, byte for byte", () => {
-  it("the goldens were made with the guardrail library this build bundles", () => {
-    expect(
-      catalogStamp().version,
-      `The goldens are 0.4.13's output over guardrail library ${GOLDEN_LIBRARY}. Another library matches other guardrails, so this comparison no longer holds: pin --no-checks against a release built with it.`,
-    ).toBe(GOLDEN_LIBRARY);
+  it("the goldens were made with the guardrail library they name", () => {
+    for (const agent of AGENTS) {
+      const doc = JSON.parse(golden(`${agent}-json.stdout.txt`)) as { catalog: string };
+      expect(doc.catalog).toContain(`guardrail library v${GOLDEN_LIBRARY},`);
+    }
+    // This build may bundle a newer library; only its text is replaced before comparing.
+    expect(catalogStamp().version).toMatch(/^\d+\.\d+\.\d+$/);
   });
 
   it("there is a golden for every app and mode, and nothing else", () => {
@@ -206,8 +225,12 @@ describe("scan --no-checks is 0.4.13's scan, byte for byte", () => {
     const run = await scanNoChecks(agent, mode);
     expect(run.code).toBe(0);
     expect(run.checks, "no check ran").toBe(0);
-    const printed = mode === "json" ? as0413(run.stdout) : run.stdout;
-    expect(printed).toBe(golden(`${agent}-${mode}.stdout.txt`));
+    const expected = golden(`${agent}-${mode}.stdout.txt`);
+    if (mode === "json") {
+      expect(withoutLibraryText(as0413(run.stdout))).toBe(withoutLibraryText(expected));
+    } else {
+      expect(run.stdout).toBe(expected);
+    }
     const file = MODES[mode].file;
     if (file === undefined) {
       expect(run.written.size, "--json writes no file").toBe(0);
@@ -233,7 +256,21 @@ describe("scan --no-checks is 0.4.13's scan, byte for byte", () => {
     const run = await scanNoChecks("claude", "json");
     const changed = run.stdout.replace('"count": 1,', '"count": 2,');
     expect(changed).not.toBe(run.stdout);
-    expect(as0413(changed)).not.toBe(golden("claude-json.stdout.txt"));
+    const golden0413 = withoutLibraryText(golden("claude-json.stdout.txt"));
+    expect(withoutLibraryText(as0413(run.stdout))).toBe(golden0413);
+    expect(withoutLibraryText(as0413(changed))).not.toBe(golden0413);
+  });
+
+  it("negative control: replacing the library's text keeps which guardrail matched", async () => {
+    const run = await scanNoChecks("claude", "json");
+    const doc = JSON.parse(run.stdout) as { result: { findings: { ruleId: string }[] } };
+    const first = doc.result.findings[0];
+    expect(first, "the corpus matches at least one guardrail").toBeDefined();
+    if (first !== undefined) first.ruleId = `${first.ruleId}-renamed`;
+    const changed = `${JSON.stringify(doc, null, 2)}\n`;
+    expect(withoutLibraryText(as0413(changed))).not.toBe(
+      withoutLibraryText(golden("claude-json.stdout.txt")),
+    );
   });
 
   it("negative control: the comparison sees one changed byte of a page", async () => {
