@@ -1850,7 +1850,7 @@ function detectAgent(payload) {
   return void 0;
 }
 
-// node_modules/@agenttrail/guardrails/dist/chunk-XIRL7M4H.js
+// node_modules/@agenttrail/guardrails/dist/chunk-VN3HZNI6.js
 var SHELL_AND_MCP = "{Bash,PowerShell,mcp__*}";
 var OUTSIDE = "[^\"'|;&`$<>()]";
 var OUTSIDE_PIPEABLE = "[^\"';&`$<>()]";
@@ -1891,6 +1891,12 @@ var QUOTED_MENTION = [
   HTTP_BODY_MENTION
 ];
 var LEADING_FLAGS = "(?:\\s+-{1,2}[A-Za-z][\\w-]{0,24}(?:=\\S{1,40})?(?:\\s+[^-\\s]\\S{0,40})?){0,6}";
+var RM_WORD = "(?:^|[^\\w.-])rm";
+var RM_ARG = "[^\\s;&|<>]{1,200}";
+var RM_ARGS = `(?:[ \\t]+${RM_ARG}){0,12}`;
+var RM_ARG_REST = "[^\\s;&|<>]{0,200}";
+var RM_RECURSIVE = "(?:-[a-z]{0,8}r[a-z]{0,8}|--recursive)";
+var ARG_END = "(?:[ \\t;&|)]|$)";
 function bash(command) {
   return { tool: "Bash", command };
 }
@@ -2337,7 +2343,23 @@ var blockDestructiveSql = {
       bash('psql -c "DROP TABLE users;"'),
       bash("psql -h db.internal -c 'TRUNCATE TABLE sessions;'"),
       bash("mysql -e 'drop database app;'"),
-      bash("psql -c 'Drop Table sessions;'")
+      bash("psql -c 'Drop Table sessions;'"),
+      // A database server's SQL argument: the generic `sql` field on an unmapped tool, then
+      // each mapped database tool in `MCP_COMMAND_FIELDS`.
+      mcp({ sql: "DROP TABLE users;" }),
+      mcp({ sql: "DROP TABLE users;" }, "mcp__postgres__query"),
+      mcp({ query: "DROP TABLE sessions;" }, "mcp__sqlite__read_query"),
+      mcp({ query: "DROP TABLE users;" }, "mcp__sqlite__write_query"),
+      mcp(
+        { query: "DROP TABLE IF EXISTS users; CREATE TABLE users (id INTEGER)" },
+        "mcp__sqlite__create_table"
+      ),
+      mcp({ project_id: "proj", query: "TRUNCATE TABLE sessions;" }, "mcp__supabase__execute_sql"),
+      mcp(
+        { project_id: "proj", name: "drop_legacy_users", query: "DROP TABLE legacy_users;" },
+        "mcp__supabase__apply_migration"
+      ),
+      mcp({ project_id: "proj", sql: "DROP DATABASE app;" }, "mcp__neon__run_sql")
     ],
     allow: [
       ...mentions("psql -c DROP TABLE users;"),
@@ -2416,7 +2438,12 @@ var ddDatabaseDrop = {
       bash("mongosh --eval 'db.dropDatabase()'"),
       bash("aws rds delete-db-instance --db-instance-identifier prod-1"),
       bash("aws --profile prod rds delete-db-instance --db-instance-identifier prod-1"),
-      mcp({ command: "dropdb myapp_production" })
+      mcp({ command: "dropdb myapp_production" }),
+      // The same command under the other generic argument names, on an unmapped tool.
+      mcp({ cmd: "dropdb myapp_production" }),
+      mcp({ script: "dropdb myapp_production" }),
+      // A mapped tool: `MCP_COMMAND_FIELDS` names the field that runs it.
+      mcp({ command: "dropdb myapp_production" }, "mcp__commands__run_command")
     ],
     allow: [
       ...mentions("dropdb myapp_production"),
@@ -2553,13 +2580,18 @@ var ddRmRfAbsolute = {
   defaultAction: "block",
   owasp: ["ASI02", "LLM03"],
   title: "rm -rf against an absolute path",
-  description: 'Recursive-force delete rooted at `/` rather than at a relative path. Deliberately does NOT fire on `rm -rf ./node_modules` or `rm -rf build`, which are safe and happen many times a day. Both the r and the f flag are required, so `rm -f /tmp/app.pid` is not blocked either. Known misses: the long forms (`rm --recursive --force /`), a quoted target (`rm -rf "/"`), and a variable target (`rm -rf $DIR`) whose value is only known at run time \u2014 for those, see require-approval-rm-rf, which holds them for approval instead. A quoted MENTION is not a use: a search, a `git commit -m` message, an `echo` or a `curl --data` body that only names this command is left alone. That holds only while every shell metacharacter stays inside the quotes, so `git commit -m "x" && \u2026` is still caught; and the carrier must be the first word, so `sudo grep \u2026` is not exempt.',
+  description: 'Recursive delete rooted at `/` rather than at a relative path, with or without the force flag. The recursive flag (`-r`, `-R`, a cluster such as `-rf` or `-Rv`, or `--recursive`) and the absolute target may sit anywhere among the arguments of one `rm`: split across arguments (`rm -r -f /srv`), after `--`, after a relative operand, or after the target, and a quoted target (`rm -rf "/srv"`) counts too. Deliberately does NOT fire on `rm -rf ./node_modules` or `rm -rf build`, which are safe and happen many times a day, or on `rm -f /tmp/app.pid`, which has no recursive flag. Known misses: a variable or `~` target (`rm -rf $DIR`) whose value is only known at run time \u2014 for those, see require-approval-rm-rf, which holds them for approval instead; an `rm` with more than twelve arguments before the flag or the target; a command continued onto the next line with a backslash; and a delete through `find -delete` or a file tool. A quoted MENTION is not a use: a search, a `git commit -m` message, an `echo` or a `curl --data` body that only names this command is left alone. That holds only while every shell metacharacter stays inside the quotes, so `git commit -m "x" && \u2026` is still caught; and the carrier must be the first word, so `sudo grep \u2026` is not exempt.',
   match: {
     any_of: [
       {
         kind: "execute_tool",
         label: SHELL_AND_MCP,
-        detail_matches: ["\\brm\\s+-[a-z]*r[a-z]*f\\s+/", "\\brm\\s+-[a-z]*f[a-z]*r\\s+/"]
+        detail_matches: [
+          // A recursive flag, then an absolute target later in the same rm.
+          `${RM_WORD}${RM_ARGS}[ \\t]+${RM_RECURSIVE}${RM_ARGS}[ \\t]+["']?/`,
+          // An absolute target, then a recursive flag after it.
+          `${RM_WORD}${RM_ARGS}[ \\t]+["']?/${RM_ARG_REST}${RM_ARGS}[ \\t]+${RM_RECURSIVE}${ARG_END}`
+        ]
       }
     ],
     none_of: [...QUOTED_MENTION]
@@ -2572,15 +2604,45 @@ var ddRmRfAbsolute = {
       bash("rm -rf /usr/local/bin"),
       bash('git commit -m "x" && rm -rf /'),
       bash('echo "rm -rf /" | bash'),
-      mcp({ command: "rm -rf /" })
+      bash("rm -r -f /srv/data"),
+      bash("rm -f -r /srv/data"),
+      bash("rm -R -f /srv/data"),
+      bash("rm -r /srv/data"),
+      bash("rm -rf -- /srv/data"),
+      bash("rm -r -- /srv/data"),
+      bash("rm --recursive --force /srv/data"),
+      bash("rm -v -r -f /srv/data"),
+      bash("rm -rf ./tmp /srv/data"),
+      bash("rm /srv/data -rf"),
+      bash('rm -r "/srv/data"'),
+      bash("sudo rm -r -f /srv/data"),
+      bash("/bin/rm -r /srv/data"),
+      mcp({ command: "rm -rf /" }),
+      // The same command under the other generic argument names, on an unmapped tool.
+      mcp({ cmd: "rm -rf /" }),
+      mcp({ script: "rm -rf /" }),
+      // A mapped tool: `MCP_COMMAND_FIELDS` names the field that runs it.
+      mcp({ command: "rm -rf /", timeout_ms: 5e3 }, "mcp__desktop-commander__start_process"),
+      mcp({ command: "rm -r -f /srv/data" }),
+      mcp(
+        { command: "rm -r -f /srv/data", timeout_ms: 5e3 },
+        "mcp__desktop-commander__start_process"
+      )
     ],
     allow: [
       ...mentions("rm -rf /"),
+      ...mentions("rm -r -f /srv/data"),
       bash("rm -rf ./node_modules"),
       bash("rm -rf build/"),
       bash("rm -f /tmp/app.pid"),
       bash("rm -rf $TMPDIR/scratch"),
       bash('wc -l < log; echo "--- rm -rf / ---"; grep -c x log'),
+      bash("rm -r ./build"),
+      bash("rm -v /tmp/a.log"),
+      bash("rm -rf build 2> /dev/null"),
+      bash("rm -rf build 2>/dev/null"),
+      bash("rm -rf build && ls /"),
+      bash("docker run --rm -v /srv:/data img cp -r /a /b"),
       mcp({ command: "rm -rf ./node_modules" })
     ]
   }
@@ -3291,7 +3353,12 @@ var psSudoWrite = {
       bash("sudo cp dist/app /usr/local/bin/app"),
       bash("sudo rm -rf /var/lib/app"),
       bash('sudo sh -c "echo x > /etc/motd"'),
-      mcp({ command: "sudo cp dist/app /usr/local/bin/app" })
+      mcp({ command: "sudo cp dist/app /usr/local/bin/app" }),
+      // The same command under the other generic argument names, on an unmapped tool.
+      mcp({ cmd: "sudo cp dist/app /usr/local/bin/app" }),
+      mcp({ script: "sudo cp dist/app /usr/local/bin/app" }),
+      // A mapped tool: `MCP_COMMAND_FIELDS` names the field that runs it.
+      mcp({ command_line: "sudo cp dist/app /usr/local/bin/app" }, "mcp__commands__run_process")
     ],
     allow: [
       ...mentions("echo 127.0.0.1 x | sudo tee -a /etc/hosts"),
@@ -3508,7 +3575,12 @@ var piKubectlDelete = {
       bash("kubectl scale deploy/api --replicas=0"),
       bash("kubectl -n prod delete deployment api"),
       bash("kubectl --context prod-eu drain node-3 --ignore-daemonsets"),
-      mcp({ command: "kubectl delete deployment api" })
+      mcp({ command: "kubectl delete deployment api" }),
+      // The same command under the other generic argument names, on an unmapped tool.
+      mcp({ cmd: "kubectl delete deployment api" }),
+      mcp({ script: "kubectl delete deployment api" }),
+      // A mapped tool: `MCP_COMMAND_FIELDS` names the field that runs it.
+      mcp({ command: "kubectl delete deployment api" }, "mcp__desktop-commander__execute_command")
     ],
     allow: [
       ...mentions("kubectl delete deployment api"),
@@ -4095,7 +4167,12 @@ var gbGitNoVerify = {
       bash('git commit -n -m "wip"'),
       bash('git -C /repo commit --no-verify -m "wip"'),
       bash("git --no-pager push --no-verify origin main"),
-      mcp({ command: 'git commit --no-verify -m "wip"' })
+      mcp({ command: 'git commit --no-verify -m "wip"' }),
+      // The same command under the other generic argument names, on an unmapped tool.
+      mcp({ cmd: 'git commit --no-verify -m "wip"' }),
+      mcp({ script: 'git commit --no-verify -m "wip"' }),
+      // A mapped tool: `MCP_COMMAND_FIELDS` names the field that runs it.
+      mcp({ command: 'git commit --no-verify -m "wip"' }, "mcp__iterm__write_to_terminal")
     ],
     allow: [
       mentionInSearch("git commit --no-verify -m wip"),
@@ -4242,19 +4319,38 @@ var blockHardcodedSecrets = {
   title: "Block hard-coded secrets in commands",
   description: "Blocks a shell command carrying a credential with the right SHAPE \u2014 an AWS access-key id (AKIA/ASIA plus 16 more characters), a GitHub token (gh?_ with a body of at least 36 characters, or github_pat_ with a long one), a Stripe live key, or PEM PRIVATE key material. Three arms are CASE-SENSITIVE and use detail_contains deliberately: these prefixes are upper- or lower-case by specification, so case IS the signal, and the length check in the same condition is what makes the difference between a mention and a key. Requiring the body is why auditing your own repo for a leak (`grep -rn AKIA .`) is not itself blocked, and requiring PRIVATE KEY beside -----BEGIN is why a public certificate is not. MISSES formats not listed (Slack, OpenAI, Google) and any secret that is not self-identifying, such as a bare password; and it sees command text only, never the contents of a file edit. A quoted MENTION is exempt on only TWO of the four carriers this corpus recognises, and this is the only case where they are not equivalent \u2014 because here the carrier IS the exposure rather than a mention of it. A search (`grep -rn AKIA .`) and an `echo` are exempt: the key goes nowhere, and searching for one is how you find it to rotate. A `git commit -m` message and a `curl --data` body are NOT: a key in a commit message is written into history and then pushed, and a key in a POST body has already left the machine. The cost of that, stated in the other direction: documenting a REAL-looking key in a commit message is still blocked, and the only ways through are to redact the body of the key or to use a placeholder that fails the length check. Exemption also holds only while every shell metacharacter stays inside the quotes, and a single leading `sudo` aside, the carrier must be the first word.",
   match: {
+    // Every arm reads the `content` channel: a key leaks wherever it is written, so on an MCP
+    // call the whole input is checked (a key pasted into a message or an issue body), not only
+    // the fields that execute. For Bash and PowerShell the two channels are the same text.
     any_of: [
-      { kind: "execute_tool", detail_contains: ["AKIA"], detail_matches: ["AKIA[0-9A-Z]{16}"] },
-      { kind: "execute_tool", detail_contains: ["ASIA"], detail_matches: ["ASIA[0-9A-Z]{16}"] },
       {
         kind: "execute_tool",
-        detail_matches: ["\\bgh[opsur]_[a-z0-9]{36,}\\b", "\\bgithub_pat_[a-z0-9_]{50,}"]
+        detail_contains: ["AKIA"],
+        detail_matches: ["AKIA[0-9A-Z]{16}"],
+        channel: "content"
+      },
+      {
+        kind: "execute_tool",
+        detail_contains: ["ASIA"],
+        detail_matches: ["ASIA[0-9A-Z]{16}"],
+        channel: "content"
+      },
+      {
+        kind: "execute_tool",
+        detail_matches: ["\\bgh[opsur]_[a-z0-9]{36,}\\b", "\\bgithub_pat_[a-z0-9_]{50,}"],
+        channel: "content"
       },
       {
         kind: "execute_tool",
         detail_contains: ["sk_live_"],
-        detail_matches: ["sk_live_[a-z0-9]{16,}"]
+        detail_matches: ["sk_live_[a-z0-9]{16,}"],
+        channel: "content"
       },
-      { kind: "execute_tool", detail_contains: ["-----BEGIN ", "PRIVATE KEY"] }
+      {
+        kind: "execute_tool",
+        detail_contains: ["-----BEGIN ", "PRIVATE KEY"],
+        channel: "content"
+      }
     ],
     // Only TWO of the four carriers are exempt here, and this is the one guardrail where
     // that is true. For every other guardrail a carrier is inert — a commit message naming
@@ -4274,7 +4370,15 @@ var blockHardcodedSecrets = {
       // match — precisely because they are quoted mentions, which everywhere else
       // in this corpus means "leave it alone".
       mentionInCommit("export AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE"),
-      mentionInPost("export AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE")
+      mentionInPost("export AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE"),
+      // A key in the prose of an MCP call that runs nothing: the `content` channel reads it.
+      mcp(
+        {
+          title: "Deploy failed",
+          description: `The job log printed GH_TOKEN=ghp_${"EXAMPLE".repeat(6)} before it exited.`
+        },
+        "mcp__issues__create_issue"
+      )
     ],
     allow: [
       mentionInSearch("export AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE"),
@@ -4291,7 +4395,7 @@ var requireAuthOnPiiEndpoints = {
   id: "require-auth-on-pii-endpoints",
   category: "secret-exposure",
   severity: "medium",
-  defaultAction: "require_approval",
+  defaultAction: "warn",
   owasp: ["ASI02", "ASI03", "LLM02"],
   title: "Review API endpoint changes for auth",
   description: "Routes edits to API route/handler SOURCE files to human approval so a reviewer can confirm authentication is present on new or changed endpoints. Matched by path: a source file under routes/, handlers/ or controllers/; an api/ directory nested inside a source tree (src/api/, app/api/, pages/api/); Next's route.ts convention; and the <name>.controller.* / <name>.routes.* spellings. Reading is excluded \u2014 the Read and Grep tools never match \u2014 so opening an endpoint's source to read it does not ask for approval; every other file tool does, including one this corpus does not know. HEURISTIC: a path signal only \u2014 it cannot inspect the edit for a missing auth check or exposed PII, so treat a match as confirm auth on this endpoint, not as a finding. It deliberately does NOT match every file in a package merely NAMED api, nor a client-side router table such as routes.tsx, which defines no endpoint; and it MISSES endpoints declared inline in a server file or by a framework convention not listed above.",
@@ -5205,14 +5309,16 @@ var blockForcePush = {
   defaultAction: "block",
   owasp: ["ASI02", "LLM03"],
   title: "Block git force-push",
-  description: 'Overwrites a remote branch\'s history, destroying commits other people may already have pulled. The command must contain `git push` and the force flag must sit in the same pipeline segment, so searching for the phrase is not blocked. A global flag between `git` and `push` is tolerated (`git -C <dir> push --force`, `git --no-pager push \u2026`), and an absolute tool path such as `/usr/bin/git` still matches. The safer `--force-with-lease` form IS still blocked; exempting it needs a negative lookahead this corpus does not use. MISSES an alias such as `git pf`, and a force-push issued by a wrapper script whose own text does not say `git push`. A quoted MENTION is not a use: a search, a `git commit -m` message, an `echo` or a `curl --data` body that only names this command is left alone. That holds only while every shell metacharacter stays inside the quotes, so `git commit -m "x" && \u2026` is still caught; and the carrier must be the first word, so `sudo grep \u2026` is not exempt.',
+  description: "Overwrites a remote branch's history, destroying commits other people may already have pulled. The command must contain `git push` and the force flag must sit in the same pipeline segment, so searching for the phrase is not blocked. A global flag between `git` and `push` is tolerated (`git -C <dir> push --force`, `git --no-pager push \u2026`), and an absolute tool path such as `/usr/bin/git` still matches. Also blocks a refspec that starts with a plus sign (`git push origin +main`, git's own force syntax), `f` inside a short-flag cluster (`-uf`), and `--mirror`, which overwrites and deletes remote refs. A plus sign inside a branch name, or anywhere but the start of an argument, is not matched. The safer `--force-with-lease` form IS still blocked; exempting it needs a negative lookahead this corpus does not use. MISSES an alias such as `git pf`; a force configured rather than typed (a plus refspec in the remote's push configuration, or a mirror remote); a ref update through the hosting provider's API; a force-push issued by a wrapper script whose own text does not say `git push`; and deleting a remote branch (`git push origin :main`, `git push --delete`), which this guardrail does not claim. A quoted MENTION is not a use: a search, a `git commit -m` message, an `echo` or a `curl --data` body that only names this command is left alone. That holds only while every shell metacharacter stays inside the quotes, so `git commit -m \"x\" && \u2026` is still caught; and the carrier must be the first word, so `sudo grep \u2026` is not exempt.",
   match: {
     any_of: [
       {
         kind: "execute_tool",
         detail_matches: [
-          `\\bgit${LEADING_FLAGS}\\s+push\\b[^|;&]*--force`,
-          `\\bgit${LEADING_FLAGS}\\s+push\\b[^|;&]*\\s-f\\b`
+          // One pattern, so each `git push` in a long command is scanned once, not once per
+          // form. The forms: `--force`, `f` in a short-flag cluster, a positional argument
+          // that starts with a plus sign (a forced refspec), and `--mirror`.
+          `\\bgit${LEADING_FLAGS}\\s+push\\b[^|;&]*(?:--force|\\s-[a-z]{0,8}f[a-z]{0,8}\\b|\\s["']?\\+[^\\s"']|--mirror\\b)`
         ]
       }
     ],
@@ -5226,17 +5332,33 @@ var blockForcePush = {
       bash("git push origin main --force-with-lease"),
       bash("git -C /repo push --force origin main"),
       bash("git --no-pager push --force"),
-      bash("/usr/bin/git push -f origin main")
+      bash("/usr/bin/git push -f origin main"),
+      bash("git push origin +main"),
+      bash("git push origin +HEAD:main"),
+      bash("git push origin +refs/heads/main:refs/heads/main"),
+      bash("git push -uf origin main"),
+      bash("git push --mirror origin"),
+      bash('git push origin "+main"'),
+      bash("git -C /repo push origin +main"),
+      bash("/usr/bin/git push origin +main"),
+      bash('bash -c "git push origin +main"'),
+      bash("sudo git push origin +main")
     ],
     allow: [
       ...mentions("git push origin main --force"),
+      ...mentions("git push origin +main"),
       bash("git push origin main"),
       bash("git push --tags"),
       bash("grep -rn 'push -f' ."),
-      bash("git push --set-upstream origin feature/x")
+      bash("git push --set-upstream origin feature/x"),
+      bash("git push origin feature+x"),
+      bash("git push origin main:feature+x"),
+      bash("git push -u origin main"),
+      bash("git push --follow-tags")
     ]
   }
 };
+var BUILD_DIR = "(?:\\./)?(?:node_modules|dist|build|out|coverage|target|\\.next|\\.turbo|\\.cache|\\.vite|\\.parcel-cache)";
 var requireApprovalRmRf = {
   id: "require-approval-rm-rf",
   category: "working-tree",
@@ -5244,16 +5366,14 @@ var requireApprovalRmRf = {
   defaultAction: "require_approval",
   owasp: ["ASI02", "LLM03"],
   title: "Hold `rm -rf` for approval",
-  description: 'Recursive-force delete: held for approval rather than blocked, which is the honest strength for an operation that is destructive but often legitimate. Catches -rf, -Rf, -rvf and the reversed -fr spelling in any case, `rm --recursive`, and PowerShell\'s `Remove-Item -Recurse`. Clearing a build directory is EXEMPT (node_modules, dist, build, out, coverage, target, .next, .turbo, .cache, .vite, .parcel-cache): that shape appears about 220 times in real Claude Code traces against about 3 for a dangerous delete, and a check that asks every time is one people switch off. An absolute path, a $VARIABLE, a ~ path or a source directory still asks. Does NOT match a delete via a file tool, or flags split across arguments such as `rm -r -f x`. A quoted MENTION is not a use: a search, a `git commit -m` message, an `echo` or a `curl --data` body that only names this command is left alone. That holds only while every shell metacharacter stays inside the quotes, so `git commit -m "x" && \u2026` is still caught; and the carrier must be the first word, so `sudo grep \u2026` is not exempt.',
+  description: 'Recursive delete: held for approval rather than blocked, which is the right strength for an operation that is destructive but often legitimate. Catches a recursive flag in any argument of the `rm`, with or without force: `-rf`, `-Rf`, `-fr`, `-r -f`, `-r` alone and `--recursive`, before or after the target, and PowerShell\'s `Remove-Item -Recurse`. Clearing a build directory is EXEMPT (node_modules, dist, build, out, coverage, target, .next, .turbo, .cache, .vite, .parcel-cache, and paths inside them) when every target of that `rm` is one: that shape appears about 220 times in real Claude Code traces against about 3 for a dangerous delete, and a check that asks every time is one people switch off. An absolute path, a $VARIABLE, a ~ path, a source directory, a `..` path out of a build directory, or a build directory followed by another target still asks. `git rm -r --cached` alone, which touches only the index, is exempt. Known misses: a delete via a file tool; a build-directory clean-up chained before a second delete in the same command, because the exemption covers the whole command; and an `rm` with more than twelve arguments before the recursive flag. A quoted MENTION is not a use: a search, a `git commit -m` message, an `echo` or a `curl --data` body that only names this command is left alone. That holds only while every shell metacharacter stays inside the quotes, so `git commit -m "x" && \u2026` is still caught; and the carrier must be the first word, so `sudo grep \u2026` is not exempt.',
   match: {
     any_of: [
       {
         kind: "execute_tool",
         label: SHELL_AND_MCP,
         detail_matches: [
-          "\\brm\\s+-[a-z]*r[a-z]*f",
-          "\\brm\\s+-[a-z]*f[a-z]*r",
-          "\\brm\\s+--recursive\\b",
+          `${RM_WORD}${RM_ARGS}[ \\t]+${RM_RECURSIVE}${ARG_END}`,
           "\\bremove-item\\b[^|;&]*-recurse"
         ]
       }
@@ -5264,7 +5384,9 @@ var requireApprovalRmRf = {
         kind: "execute_tool",
         label: SHELL_AND_MCP,
         detail_matches: [
-          "\\brm\\s+-\\S+\\s+(\\./)?(node_modules|dist|build|out|coverage|target|\\.next|\\.turbo|\\.cache|\\.vite|\\.parcel-cache)(/|\\b)"
+          `${RM_WORD}(?:[ \\t]+-{1,2}[a-z][a-z-]{0,24}){1,8}(?:[ \\t]+--)?(?:[ \\t]+${BUILD_DIR}(?:/\\.?[\\w-][\\w.-]{0,60}){0,4}/?){1,11}[ \\t]*(?:$|[;&|)"'}\\\\])`,
+          // A single `git rm --cached`, with no shell metacharacter, touches only the index.
+          "^\\s*git(?:\\s+-\\S{1,40}){0,6}\\s+rm\\s[^;&|<>()`$\"'\\n]{0,250}--cached\\b[^;&|<>()`$\"'\\n]{0,250}$"
         ]
       }
     ]
@@ -5274,7 +5396,17 @@ var requireApprovalRmRf = {
       bash("rm -Rf /home/user/projects"),
       bash("rm -fr src/generated"),
       bash("rm -rf $HOME/Projects/old-client"),
-      pwsh("Remove-Item -Recurse -Force C:/projects/old")
+      pwsh("Remove-Item -Recurse -Force C:/projects/old"),
+      bash("rm -r -f src/generated"),
+      bash("rm -r ~/old-client"),
+      bash("rm -R $HOME/scratch"),
+      bash("rm src/generated -rf"),
+      bash("rm -rf node_modules ~/projects"),
+      bash("rm -rf node_modules/../.."),
+      bash("rm -rf node_modules/.."),
+      mcp({ command: "rm -rf node_modules ~/projects" }),
+      bash("git rm -r src/legacy"),
+      bash("git rm -r --cached vendor && rm -r src")
     ],
     allow: [
       ...mentions("rm -Rf /home/user/projects"),
@@ -5283,7 +5415,18 @@ var requireApprovalRmRf = {
       bash("rm -rf build/"),
       bash("rm -rf dist"),
       bash("./confirm -rf x"),
-      bash("rm package-lock.json")
+      bash("rm package-lock.json"),
+      bash("rm -r -f node_modules"),
+      bash("rm -f -r ./dist"),
+      bash("rm -r node_modules dist"),
+      bash("rm -rf dist/assets"),
+      bash("rm -rf node_modules && pnpm install"),
+      bash("git rm -r --cached vendor"),
+      bash("docker run --rm -it node:20 npm test"),
+      bash("rm -v notes.txt"),
+      bash("rm -rf node_modules/.vite"),
+      bash('bash -c "rm -r -f node_modules"'),
+      mcp({ command: "rm -r -f node_modules" })
     ]
   }
 };
@@ -5447,7 +5590,15 @@ var wtResetHard = {
       bash("git -c core.pager=cat reset --hard"),
       bash("/usr/bin/git reset --hard"),
       pwsh("git reset --hard"),
-      mcp({ command: "git reset --hard HEAD~2" })
+      mcp({ command: "git reset --hard HEAD~2" }),
+      // The same command under the other generic argument names, on an unmapped tool.
+      mcp({ cmd: "git reset --hard HEAD~2" }),
+      mcp({ script: "git reset --hard HEAD~2" }),
+      // A mapped tool: `MCP_COMMAND_FIELDS` names the field that runs it.
+      mcp(
+        { pid: 4242, input: "git reset --hard HEAD~2" },
+        "mcp__desktop-commander__interact_with_process"
+      )
     ],
     allow: [
       ...mentions("git reset --hard"),

@@ -841,15 +841,18 @@ M99.68 0L97.26 0L97.26-16.80L99.68-17.26L99.68 0Z"/>
 <details class="frow" id="finding-dd-rm-rf-absolute" data-action="block" data-risks="ASI02 LLM03" data-cat="destructive-data" data-top="risk category count name" style="--o-risk: 0; --o-category: 1; --o-count: 0; --o-name: 2">
 <summary><div><div class="ftitle" id="finding-dd-rm-rf-absolute-title">rm -rf against an absolute path</div><div class="fsub"><span class="fid">dd.rm-rf-absolute</span><span class="pack">Destructive data</span><span class="otag">ASI02</span><span class="otag">LLM03</span></div></div><div class="fmeta"><span class="badge sev-critical"><span class="sr-only">Severity: </span>Critical</span><span class="act act-block">Would block</span><span class="fbar" aria-hidden="true"><span style="width: 100.0%"></span></span><span class="fcount">2<span class="unit"> matches</span></span></div></summary>
 <div class="fbody">
-<p class="library-text why">Recursive-force delete rooted at <code>/</code> rather than at a relative path.</p>
+<p class="library-text why">Recursive delete rooted at <code>/</code> rather than at a relative path, with or without the force flag.</p>
 <details class="libdesc"><summary>How this guardrail decides, and what it misses<span class="sr-only">: rm -rf against an absolute path</span></summary>
-<p class="library-text">Recursive-force delete rooted at <code>/</code> rather than at a relative path. Deliberately does NOT fire on <code>rm -rf ./node_modules</code> or <code>rm -rf
-build</code>, which are safe and happen many times a day. Both the r and the f flag are required, so <code>rm -f /tmp/app.pid</code> is not blocked either.
-Known misses: the long forms (<code>rm --recursive --force /</code>), a quoted target (<code>rm -rf &quot;/&quot;</code>), and a variable target (<code>rm -rf
-$DIR</code>) whose value is only known at run time — for those, see require-approval-rm-rf, which holds them for approval instead. A quoted MENTION is not a
-use: a search, a <code>git commit -m</code> message, an <code>echo</code> or a <code>curl --data</code> body that only names this command is left alone. That
-holds only while every shell metacharacter stays inside the quotes, so <code>git commit -m &quot;x&quot; &amp;&amp; …</code> is still caught; and the carrier
-must be the first word, so <code>sudo grep …</code> is not exempt.</p>
+<p class="library-text">Recursive delete rooted at <code>/</code> rather than at a relative path, with or without the force flag. The recursive flag (<code>-r</code>, <code>-R</code>,
+a cluster such as <code>-rf</code> or <code>-Rv</code>, or <code>--recursive</code>) and the absolute target may sit anywhere among the arguments of one
+<code>rm</code>: split across arguments (<code>rm -r -f /srv</code>), after <code>--</code>, after a relative operand, or after the target, and a quoted target
+(<code>rm -rf &quot;/srv&quot;</code>) counts too. Deliberately does NOT fire on <code>rm -rf ./node_modules</code> or <code>rm -rf build</code>, which are safe
+and happen many times a day, or on <code>rm -f /tmp/app.pid</code>, which has no recursive flag. Known misses: a variable or <code>~</code> target (<code>rm -rf
+$DIR</code>) whose value is only known at run time — for those, see require-approval-rm-rf, which holds them for approval instead; an <code>rm</code> with more
+than twelve arguments before the flag or the target; a command continued onto the next line with a backslash; and a delete through <code>find -delete</code> or
+a file tool. A quoted MENTION is not a use: a search, a <code>git commit -m</code> message, an <code>echo</code> or a <code>curl --data</code> body that only
+names this command is left alone. That holds only while every shell metacharacter stays inside the quotes, so <code>git commit -m &quot;x&quot; &amp;&amp;
+…</code> is still caught; and the carrier must be the first word, so <code>sudo grep …</code> is not exempt.</p>
 <p><a href="https://www.agenttrail.sh/guardrails/destructive-data/dd-rm-rf-absolute?utm_source=guard&amp;utm_medium=scan-report&amp;utm_campaign=codex&amp;utm_content=guardrail" target="_blank" rel="noopener noreferrer">Open it in the guardrail library</a></p>
 </details>
 <p class="owasp-line"><span class="lbl">OWASP:</span> <a href="https://www.agenttrail.sh/security/owasp?utm_source=guard&amp;utm_medium=scan-report&amp;utm_campaign=codex&amp;utm_content=owasp-risk#asi02" target="_blank" rel="noopener noreferrer" aria-describedby="finding-dd-rm-rf-absolute-title">ASI02 Tool Misuse and Exploitation</a> <span class="sep" aria-hidden="true">&middot;</span> <a href="https://www.agenttrail.sh/security/owasp?utm_source=guard&amp;utm_medium=scan-report&amp;utm_campaign=codex&amp;utm_content=owasp-risk#llm03" target="_blank" rel="noopener noreferrer" aria-describedby="finding-dd-rm-rf-absolute-title">LLM03 Excessive Agency</a></p>
@@ -861,16 +864,19 @@ must be the first word, so <code>sudo grep …</code> is not exempt.</p>
 <details class="frow" id="finding-require-approval-rm-rf" data-action="ask" data-risks="ASI02 LLM03" data-cat="working-tree" data-top="risk category count name" style="--o-risk: 1; --o-category: 3; --o-count: 1; --o-name: 1">
 <summary><div><div class="ftitle" id="finding-require-approval-rm-rf-title">Hold <code>rm -rf</code> for approval</div><div class="fsub"><span class="fid">require-approval-rm-rf</span><span class="pack">Working tree</span><span class="otag">ASI02</span><span class="otag">LLM03</span></div></div><div class="fmeta"><span class="badge sev-high"><span class="sr-only">Severity: </span>High</span><span class="act act-ask">Would ask</span><span class="fbar" aria-hidden="true"><span style="width: 100.0%"></span></span><span class="fcount">2<span class="unit"> matches</span></span></div></summary>
 <div class="fbody">
-<p class="library-text why">Recursive-force delete: held for approval rather than blocked, which is the honest strength for an operation that is destructive but often legitimate.</p>
+<p class="library-text why">Recursive delete: held for approval rather than blocked, which is the right strength for an operation that is destructive but often legitimate.</p>
 <details class="libdesc"><summary>How this guardrail decides, and what it misses<span class="sr-only">: Hold <code>rm -rf</code> for approval</span></summary>
-<p class="library-text">Recursive-force delete: held for approval rather than blocked, which is the honest strength for an operation that is destructive but often legitimate. Catches
--rf, -Rf, -rvf and the reversed -fr spelling in any case, <code>rm --recursive</code>, and PowerShell&#39;s <code>Remove-Item -Recurse</code>. Clearing a build
-directory is EXEMPT (node_modules, dist, build, out, coverage, target, .next, .turbo, .cache, .vite, .parcel-cache): that shape appears about 220 times in real
-Claude Code traces against about 3 for a dangerous delete, and a check that asks every time is one people switch off. An absolute path, a $VARIABLE, a ~ path or
-a source directory still asks. Does NOT match a delete via a file tool, or flags split across arguments such as <code>rm -r -f x</code>. A quoted MENTION is not
-a use: a search, a <code>git commit -m</code> message, an <code>echo</code> or a <code>curl --data</code> body that only names this command is left alone. That
-holds only while every shell metacharacter stays inside the quotes, so <code>git commit -m &quot;x&quot; &amp;&amp; …</code> is still caught; and the carrier
-must be the first word, so <code>sudo grep …</code> is not exempt.</p>
+<p class="library-text">Recursive delete: held for approval rather than blocked, which is the right strength for an operation that is destructive but often legitimate. Catches a
+recursive flag in any argument of the <code>rm</code>, with or without force: <code>-rf</code>, <code>-Rf</code>, <code>-fr</code>, <code>-r -f</code>,
+<code>-r</code> alone and <code>--recursive</code>, before or after the target, and PowerShell&#39;s <code>Remove-Item -Recurse</code>. Clearing a build
+directory is EXEMPT (node_modules, dist, build, out, coverage, target, .next, .turbo, .cache, .vite, .parcel-cache, and paths inside them) when every target of
+that <code>rm</code> is one: that shape appears about 220 times in real Claude Code traces against about 3 for a dangerous delete, and a check that asks every
+time is one people switch off. An absolute path, a $VARIABLE, a ~ path, a source directory, a <code>..</code> path out of a build directory, or a build
+directory followed by another target still asks. <code>git rm -r --cached</code> alone, which touches only the index, is exempt. Known misses: a delete via a
+file tool; a build-directory clean-up chained before a second delete in the same command, because the exemption covers the whole command; and an <code>rm</code>
+with more than twelve arguments before the recursive flag. A quoted MENTION is not a use: a search, a <code>git commit -m</code> message, an <code>echo</code>
+or a <code>curl --data</code> body that only names this command is left alone. That holds only while every shell metacharacter stays inside the quotes, so
+<code>git commit -m &quot;x&quot; &amp;&amp; …</code> is still caught; and the carrier must be the first word, so <code>sudo grep …</code> is not exempt.</p>
 <p><a href="https://www.agenttrail.sh/guardrails/working-tree/require-approval-rm-rf?utm_source=guard&amp;utm_medium=scan-report&amp;utm_campaign=codex&amp;utm_content=guardrail" target="_blank" rel="noopener noreferrer">Open it in the guardrail library</a></p>
 </details>
 <p class="owasp-line"><span class="lbl">OWASP:</span> <a href="https://www.agenttrail.sh/security/owasp?utm_source=guard&amp;utm_medium=scan-report&amp;utm_campaign=codex&amp;utm_content=owasp-risk#asi02" target="_blank" rel="noopener noreferrer" aria-describedby="finding-require-approval-rm-rf-title">ASI02 Tool Misuse and Exploitation</a> <span class="sep" aria-hidden="true">&middot;</span> <a href="https://www.agenttrail.sh/security/owasp?utm_source=guard&amp;utm_medium=scan-report&amp;utm_campaign=codex&amp;utm_content=owasp-risk#llm03" target="_blank" rel="noopener noreferrer" aria-describedby="finding-require-approval-rm-rf-title">LLM03 Excessive Agency</a></p>
@@ -1116,12 +1122,15 @@ M99.68 0L97.26 0L97.26-16.80L99.68-17.26L99.68 0Z"/>
    "source": "library",
    "category": "destructive-data",
    "descriptionLines": [
-    "Recursive-force delete rooted at `/` rather than at a relative path. Deliberately does NOT fire on `rm -rf ./node_modules` or `rm -rf build`, which are safe and",
-    "happen many times a day. Both the r and the f flag are required, so `rm -f /tmp/app.pid` is not blocked either. Known misses: the long forms (`rm --recursive",
-    "--force /`), a quoted target (`rm -rf \"/\"`), and a variable target (`rm -rf $DIR`) whose value is only known at run time — for those, see",
-    "require-approval-rm-rf, which holds them for approval instead. A quoted MENTION is not a use: a search, a `git commit -m` message, an `echo` or a `curl --data`",
-    "body that only names this command is left alone. That holds only while every shell metacharacter stays inside the quotes, so `git commit -m \"x\" && …` is still",
-    "caught; and the carrier must be the first word, so `sudo grep …` is not exempt."
+    "Recursive delete rooted at `/` rather than at a relative path, with or without the force flag. The recursive flag (`-r`, `-R`, a cluster such as `-rf` or `-Rv`,",
+    "or `--recursive`) and the absolute target may sit anywhere among the arguments of one `rm`: split across arguments (`rm -r -f /srv`), after `--`, after a",
+    "relative operand, or after the target, and a quoted target (`rm -rf \"/srv\"`) counts too. Deliberately does NOT fire on `rm -rf ./node_modules` or `rm -rf",
+    "build`, which are safe and happen many times a day, or on `rm -f /tmp/app.pid`, which has no recursive flag. Known misses: a variable or `~` target (`rm -rf",
+    "$DIR`) whose value is only known at run time — for those, see require-approval-rm-rf, which holds them for approval instead; an `rm` with more than twelve",
+    "arguments before the flag or the target; a command continued onto the next line with a backslash; and a delete through `find -delete` or a file tool. A quoted",
+    "MENTION is not a use: a search, a `git commit -m` message, an `echo` or a `curl --data` body that only names this command is left alone. That holds only while",
+    "every shell metacharacter stays inside the quotes, so `git commit -m \"x\" && …` is still caught; and the carrier must be the first word, so `sudo grep …` is not",
+    "exempt."
    ]
   },
   {
@@ -1144,13 +1153,16 @@ M99.68 0L97.26 0L97.26-16.80L99.68-17.26L99.68 0Z"/>
    "source": "library",
    "category": "working-tree",
    "descriptionLines": [
-    "Recursive-force delete: held for approval rather than blocked, which is the honest strength for an operation that is destructive but often legitimate. Catches",
-    "-rf, -Rf, -rvf and the reversed -fr spelling in any case, `rm --recursive`, and PowerShell's `Remove-Item -Recurse`. Clearing a build directory is EXEMPT",
-    "(node_modules, dist, build, out, coverage, target, .next, .turbo, .cache, .vite, .parcel-cache): that shape appears about 220 times in real Claude Code traces",
-    "against about 3 for a dangerous delete, and a check that asks every time is one people switch off. An absolute path, a $VARIABLE, a ~ path or a source directory",
-    "still asks. Does NOT match a delete via a file tool, or flags split across arguments such as `rm -r -f x`. A quoted MENTION is not a use: a search, a `git",
-    "commit -m` message, an `echo` or a `curl --data` body that only names this command is left alone. That holds only while every shell metacharacter stays inside",
-    "the quotes, so `git commit -m \"x\" && …` is still caught; and the carrier must be the first word, so `sudo grep …` is not exempt."
+    "Recursive delete: held for approval rather than blocked, which is the right strength for an operation that is destructive but often legitimate. Catches a",
+    "recursive flag in any argument of the `rm`, with or without force: `-rf`, `-Rf`, `-fr`, `-r -f`, `-r` alone and `--recursive`, before or after the target, and",
+    "PowerShell's `Remove-Item -Recurse`. Clearing a build directory is EXEMPT (node_modules, dist, build, out, coverage, target, .next, .turbo, .cache, .vite,",
+    ".parcel-cache, and paths inside them) when every target of that `rm` is one: that shape appears about 220 times in real Claude Code traces against about 3 for a",
+    "dangerous delete, and a check that asks every time is one people switch off. An absolute path, a $VARIABLE, a ~ path, a source directory, a `..` path out of a",
+    "build directory, or a build directory followed by another target still asks. `git rm -r --cached` alone, which touches only the index, is exempt. Known misses:",
+    "a delete via a file tool; a build-directory clean-up chained before a second delete in the same command, because the exemption covers the whole command; and an",
+    "`rm` with more than twelve arguments before the recursive flag. A quoted MENTION is not a use: a search, a `git commit -m` message, an `echo` or a `curl --data`",
+    "body that only names this command is left alone. That holds only while every shell metacharacter stays inside the quotes, so `git commit -m \"x\" && …` is still",
+    "caught; and the carrier must be the first word, so `sudo grep …` is not exempt."
    ]
   },
   {
