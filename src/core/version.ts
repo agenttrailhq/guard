@@ -11,4 +11,4 @@
  */
 
 /** Kept in step with package.json by `cli.test.ts`. */
-export const VERSION = "0.4.21";
+export const VERSION = "0.4.22";
