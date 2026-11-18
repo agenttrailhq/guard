@@ -4,53 +4,56 @@
 *                                   @samc621 @kashyap-techsuite @loveneeshdhir
 
 # Release, CI and the supply chain: what gets built, installed and published.
-/.github/                           @samc621
-/scripts/                           @samc621
-/.releaserc.json                    @samc621
-/package.json                       @samc621
-/pnpm-lock.yaml                     @samc621
-/pnpm-workspace.yaml                @samc621
-/tsup.config.ts                     @samc621
-/SECURITY.md                        @samc621
-/LICENSE                            @samc621
+/.github/                           @samc621 @kashyap-techsuite @loveneeshdhir
+/scripts/                           @samc621 @kashyap-techsuite @loveneeshdhir
+/.releaserc.json                    @samc621 @kashyap-techsuite @loveneeshdhir
+/package.json                       @samc621 @kashyap-techsuite @loveneeshdhir
+/pnpm-lock.yaml                     @samc621 @kashyap-techsuite @loveneeshdhir
+/pnpm-workspace.yaml                @samc621 @kashyap-techsuite @loveneeshdhir
+/tsup.config.ts                     @samc621 @kashyap-techsuite @loveneeshdhir
+/SECURITY.md                        @samc621 @kashyap-techsuite @loveneeshdhir
+/LICENSE                            @samc621 @kashyap-techsuite @loveneeshdhir
 
 # What runs inside the agent: the hook, the plugin and the decision path.
-/plugin/                            @samc621
-/src/engine/                        @samc621
-/src/hook-entry.ts                  @samc621
-/src/io.ts                          @samc621
-/src/commands/hook.ts               @samc621
-/src/core/agent.ts                  @samc621
-/src/core/allow-guard.ts            @samc621
-/src/core/catalog.ts                @samc621
-/src/core/config.ts                 @samc621
-/src/core/evaluate.ts               @samc621
-/src/core/events.ts                 @samc621
-/src/core/mapper.ts                 @samc621
-/src/core/normalize.ts              @samc621
-/src/core/*emit.ts                  @samc621
-/src/core/*mapper.ts                @samc621
-/src/core/cursor-entry.ts           @samc621
-/src/core/os-step-aside.ts          @samc621
-/src/core/paths.ts                  @samc621
-/src/core/rules.ts                  @samc621
-/src/core/types.ts                  @samc621
-/src/core/user-rules*.ts            @samc621
+/plugin/                            @samc621 @kashyap-techsuite @loveneeshdhir
+/src/engine/                        @samc621 @kashyap-techsuite @loveneeshdhir
+/src/hook-entry.ts                  @samc621 @kashyap-techsuite @loveneeshdhir
+/src/io.ts                          @samc621 @kashyap-techsuite @loveneeshdhir
+/src/commands/hook.ts               @samc621 @kashyap-techsuite @loveneeshdhir
+/src/core/agent.ts                  @samc621 @kashyap-techsuite @loveneeshdhir
+/src/core/allow-guard.ts            @samc621 @kashyap-techsuite @loveneeshdhir
+/src/core/catalog.ts                @samc621 @kashyap-techsuite @loveneeshdhir
+/src/core/config.ts                 @samc621 @kashyap-techsuite @loveneeshdhir
+/src/core/evaluate.ts               @samc621 @kashyap-techsuite @loveneeshdhir
+/src/core/events.ts                 @samc621 @kashyap-techsuite @loveneeshdhir
+/src/core/mapper.ts                 @samc621 @kashyap-techsuite @loveneeshdhir
+/src/core/normalize.ts              @samc621 @kashyap-techsuite @loveneeshdhir
+/src/core/*emit.ts                  @samc621 @kashyap-techsuite @loveneeshdhir
+/src/core/*mapper.ts                @samc621 @kashyap-techsuite @loveneeshdhir
+/src/core/cursor-entry.ts           @samc621 @kashyap-techsuite @loveneeshdhir
+/src/core/os-step-aside.ts          @samc621 @kashyap-techsuite @loveneeshdhir
+/src/core/paths.ts                  @samc621 @kashyap-techsuite @loveneeshdhir
+/src/core/rules.ts                  @samc621 @kashyap-techsuite @loveneeshdhir
+/src/core/types.ts                  @samc621 @kashyap-techsuite @loveneeshdhir
+/src/core/user-rules*.ts            @samc621 @kashyap-techsuite @loveneeshdhir
 
 # Installing into an agent: what is written to its settings and hooks.
-/src/commands/init.ts               @samc621
-/src/commands/uninstall.ts          @samc621
-/src/setup-io.ts                    @samc621
-/src/plugin/                        @samc621
-/src/codex/                         @samc621
-/src/cursor/                        @samc621
-/src/core/claude-settings.ts        @samc621
+/src/commands/init.ts               @samc621 @kashyap-techsuite @loveneeshdhir
+/src/commands/uninstall.ts          @samc621 @kashyap-techsuite @loveneeshdhir
+/src/setup-io.ts                    @samc621 @kashyap-techsuite @loveneeshdhir
+/src/plugin/                        @samc621 @kashyap-techsuite @loveneeshdhir
+/src/codex/                         @samc621 @kashyap-techsuite @loveneeshdhir
+/src/cursor/                        @samc621 @kashyap-techsuite @loveneeshdhir
+/src/core/claude-settings.ts        @samc621 @kashyap-techsuite @loveneeshdhir
 
 # Privacy: redaction, scrubbing and the only network path.
-/src/net/                           @samc621
-/src/scrub-io.ts                    @samc621
-/src/commands/crash-report.ts       @samc621
-/src/commands/scan-scrub.ts         @samc621
-/src/core/crash-*.ts                @samc621
-/src/core/redact*.ts                @samc621
-/src/core/scrub*.ts                 @samc621
+/src/net/                           @samc621 @kashyap-techsuite @loveneeshdhir
+/src/scrub-io.ts                    @samc621 @kashyap-techsuite @loveneeshdhir
+/src/commands/crash-report.ts       @samc621 @kashyap-techsuite @loveneeshdhir
+/src/commands/scan-scrub.ts         @samc621 @kashyap-techsuite @loveneeshdhir
+/src/core/crash-*.ts                @samc621 @kashyap-techsuite @loveneeshdhir
+/src/core/redact*.ts                @samc621 @kashyap-techsuite @loveneeshdhir
+/src/core/scrub*.ts                 @samc621 @kashyap-techsuite @loveneeshdhir
+
+# Changes to this file need @samc621.
+/.github/CODEOWNERS                 @samc621
