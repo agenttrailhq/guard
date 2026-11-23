@@ -847,12 +847,17 @@ M99.68 0L97.26 0L97.26-16.80L99.68-17.26L99.68 0Z"/>
 a cluster such as <code>-rf</code> or <code>-Rv</code>, or <code>--recursive</code>) and the absolute target may sit anywhere among the arguments of one
 <code>rm</code>: split across arguments (<code>rm -r -f /srv</code>), after <code>--</code>, after a relative operand, or after the target, and a quoted target
 (<code>rm -rf &quot;/srv&quot;</code>) counts too. Deliberately does NOT fire on <code>rm -rf ./node_modules</code> or <code>rm -rf build</code>, which are safe
-and happen many times a day, or on <code>rm -f /tmp/app.pid</code>, which has no recursive flag. Known misses: a variable or <code>~</code> target (<code>rm -rf
-$DIR</code>) whose value is only known at run time — for those, see require-approval-rm-rf, which holds them for approval instead; an <code>rm</code> with more
-than twelve arguments before the flag or the target; a command continued onto the next line with a backslash; and a delete through <code>find -delete</code> or
-a file tool. A quoted MENTION is not a use: a search, a <code>git commit -m</code> message, an <code>echo</code> or a <code>curl --data</code> body that only
-names this command is left alone. That holds only while every shell metacharacter stays inside the quotes, so <code>git commit -m &quot;x&quot; &amp;&amp;
-…</code> is still caught; and the carrier must be the first word, so <code>sudo grep …</code> is not exempt.</p>
+and happen many times a day, or on <code>rm -f /tmp/app.pid</code>, which has no recursive flag. Also not blocked: one <code>rm</code> whose every target is
+strictly inside the system temp folder (<code>/tmp</code>, <code>/private/tmp</code>, <code>/var/tmp</code>, the macOS per-user temp folder), such as <code>rm
+-rf /tmp/review-1</code>. Still blocked: the bare temp folder (<code>rm -rf /tmp</code>); <code>..</code> anywhere in a target; a glob, brace expansion or
+backslash in a target (<code>/tmp/{..,x}/etc</code>, <code>/tmp/.[.]/etc</code>); a variable after the root; a target outside temp in the same <code>rm</code>;
+a chained second command; and the same delete through an MCP tool. The exemption reads the text only, so a symbolic link inside temp that points out of it is
+not caught. Known misses: a variable or <code>~</code> target (<code>rm -rf $DIR</code>) whose value is only known at run time — for those, see
+require-approval-rm-rf, which holds them for approval instead; an <code>rm</code> with more than twelve arguments before the flag or the target; a command
+continued onto the next line with a backslash; and a delete through <code>find -delete</code> or a file tool. A quoted MENTION is not a use: a search, a
+<code>git commit -m</code> message, an <code>echo</code> or a <code>curl --data</code> body that only names this command is left alone. That holds only while
+every shell metacharacter stays inside the quotes, so <code>git commit -m &quot;x&quot; &amp;&amp; …</code> is still caught; and the carrier must be the first
+word, so <code>sudo grep …</code> is not exempt.</p>
 <p><a href="https://www.agenttrail.sh/guardrails/destructive-data/dd-rm-rf-absolute?utm_source=guard&amp;utm_medium=scan-report&amp;utm_campaign=codex&amp;utm_content=guardrail" target="_blank" rel="noopener noreferrer">Open it in the guardrail library</a></p>
 </details>
 <p class="owasp-line"><span class="lbl">OWASP:</span> <a href="https://www.agenttrail.sh/security/owasp?utm_source=guard&amp;utm_medium=scan-report&amp;utm_campaign=codex&amp;utm_content=owasp-risk#asi02" target="_blank" rel="noopener noreferrer" aria-describedby="finding-dd-rm-rf-absolute-title">ASI02 Tool Misuse and Exploitation</a> <span class="sep" aria-hidden="true">&middot;</span> <a href="https://www.agenttrail.sh/security/owasp?utm_source=guard&amp;utm_medium=scan-report&amp;utm_campaign=codex&amp;utm_content=owasp-risk#llm03" target="_blank" rel="noopener noreferrer" aria-describedby="finding-dd-rm-rf-absolute-title">LLM03 Excessive Agency</a></p>
@@ -872,11 +877,18 @@ recursive flag in any argument of the <code>rm</code>, with or without force: <c
 directory is EXEMPT (node_modules, dist, build, out, coverage, target, .next, .turbo, .cache, .vite, .parcel-cache, and paths inside them) when every target of
 that <code>rm</code> is one: that shape appears about 220 times in real Claude Code traces against about 3 for a dangerous delete, and a check that asks every
 time is one people switch off. An absolute path, a $VARIABLE, a ~ path, a source directory, a <code>..</code> path out of a build directory, or a build
-directory followed by another target still asks. <code>git rm -r --cached</code> alone, which touches only the index, is exempt. Known misses: a delete via a
-file tool; a build-directory clean-up chained before a second delete in the same command, because the exemption covers the whole command; and an <code>rm</code>
-with more than twelve arguments before the recursive flag. A quoted MENTION is not a use: a search, a <code>git commit -m</code> message, an <code>echo</code>
-or a <code>curl --data</code> body that only names this command is left alone. That holds only while every shell metacharacter stays inside the quotes, so
-<code>git commit -m &quot;x&quot; &amp;&amp; …</code> is still caught; and the carrier must be the first word, so <code>sudo grep …</code> is not exempt.</p>
+directory followed by another target still asks. <code>git rm -r --cached</code> alone, which touches only the index, is exempt. One <code>rm</code> or
+<code>Remove-Item</code> whose every target is strictly inside the system temp folder (<code>/tmp</code>, <code>/private/tmp</code>, <code>/var/tmp</code>, the
+macOS per-user temp folder, <code>${TMPDIR:?}</code> on the shell, and on PowerShell the Windows temp folders
+<code>C:\Users\&lt;name&gt;\AppData\Local\Temp</code> and <code>C:\Windows\Temp</code> on any drive) is exempt too, so clearing a throwaway checkout does not
+ask. Still asked: the bare temp folder; <code>..</code> anywhere in a target; a glob, brace expansion or backslash in a shell target; a comma, colon or curly
+quote in a PowerShell target; a variable after the root; <code>$TMPDIR</code>, <code>$TEMP</code>, <code>$TMP</code>, <code>$env:TEMP</code> and
+<code>$env:TMP</code>, which may be unset; any other variable such as <code>$SCRATCH</code>; a target outside temp; and a chained second command. Known misses:
+a delete via a file tool; a build-directory clean-up chained before a second delete in the same command, because the exemption covers the whole command; and an
+<code>rm</code> with more than twelve arguments before the recursive flag. A quoted MENTION is not a use: a search, a <code>git commit -m</code> message, an
+<code>echo</code> or a <code>curl --data</code> body that only names this command is left alone. That holds only while every shell metacharacter stays inside
+the quotes, so <code>git commit -m &quot;x&quot; &amp;&amp; …</code> is still caught; and the carrier must be the first word, so <code>sudo grep …</code> is not
+exempt.</p>
 <p><a href="https://www.agenttrail.sh/guardrails/working-tree/require-approval-rm-rf?utm_source=guard&amp;utm_medium=scan-report&amp;utm_campaign=codex&amp;utm_content=guardrail" target="_blank" rel="noopener noreferrer">Open it in the guardrail library</a></p>
 </details>
 <p class="owasp-line"><span class="lbl">OWASP:</span> <a href="https://www.agenttrail.sh/security/owasp?utm_source=guard&amp;utm_medium=scan-report&amp;utm_campaign=codex&amp;utm_content=owasp-risk#asi02" target="_blank" rel="noopener noreferrer" aria-describedby="finding-require-approval-rm-rf-title">ASI02 Tool Misuse and Exploitation</a> <span class="sep" aria-hidden="true">&middot;</span> <a href="https://www.agenttrail.sh/security/owasp?utm_source=guard&amp;utm_medium=scan-report&amp;utm_campaign=codex&amp;utm_content=owasp-risk#llm03" target="_blank" rel="noopener noreferrer" aria-describedby="finding-require-approval-rm-rf-title">LLM03 Excessive Agency</a></p>
@@ -1125,12 +1137,15 @@ M99.68 0L97.26 0L97.26-16.80L99.68-17.26L99.68 0Z"/>
     "Recursive delete rooted at `/` rather than at a relative path, with or without the force flag. The recursive flag (`-r`, `-R`, a cluster such as `-rf` or `-Rv`,",
     "or `--recursive`) and the absolute target may sit anywhere among the arguments of one `rm`: split across arguments (`rm -r -f /srv`), after `--`, after a",
     "relative operand, or after the target, and a quoted target (`rm -rf \"/srv\"`) counts too. Deliberately does NOT fire on `rm -rf ./node_modules` or `rm -rf",
-    "build`, which are safe and happen many times a day, or on `rm -f /tmp/app.pid`, which has no recursive flag. Known misses: a variable or `~` target (`rm -rf",
-    "$DIR`) whose value is only known at run time — for those, see require-approval-rm-rf, which holds them for approval instead; an `rm` with more than twelve",
-    "arguments before the flag or the target; a command continued onto the next line with a backslash; and a delete through `find -delete` or a file tool. A quoted",
-    "MENTION is not a use: a search, a `git commit -m` message, an `echo` or a `curl --data` body that only names this command is left alone. That holds only while",
-    "every shell metacharacter stays inside the quotes, so `git commit -m \"x\" && …` is still caught; and the carrier must be the first word, so `sudo grep …` is not",
-    "exempt."
+    "build`, which are safe and happen many times a day, or on `rm -f /tmp/app.pid`, which has no recursive flag. Also not blocked: one `rm` whose every target is",
+    "strictly inside the system temp folder (`/tmp`, `/private/tmp`, `/var/tmp`, the macOS per-user temp folder), such as `rm -rf /tmp/review-1`. Still blocked: the",
+    "bare temp folder (`rm -rf /tmp`); `..` anywhere in a target; a glob, brace expansion or backslash in a target (`/tmp/{..,x}/etc`, `/tmp/.[.]/etc`); a variable",
+    "after the root; a target outside temp in the same `rm`; a chained second command; and the same delete through an MCP tool. The exemption reads the text only, so",
+    "a symbolic link inside temp that points out of it is not caught. Known misses: a variable or `~` target (`rm -rf $DIR`) whose value is only known at run time —",
+    "for those, see require-approval-rm-rf, which holds them for approval instead; an `rm` with more than twelve arguments before the flag or the target; a command",
+    "continued onto the next line with a backslash; and a delete through `find -delete` or a file tool. A quoted MENTION is not a use: a search, a `git commit -m`",
+    "message, an `echo` or a `curl --data` body that only names this command is left alone. That holds only while every shell metacharacter stays inside the quotes,",
+    "so `git commit -m \"x\" && …` is still caught; and the carrier must be the first word, so `sudo grep …` is not exempt."
    ]
   },
   {
@@ -1158,11 +1173,16 @@ M99.68 0L97.26 0L97.26-16.80L99.68-17.26L99.68 0Z"/>
     "PowerShell's `Remove-Item -Recurse`. Clearing a build directory is EXEMPT (node_modules, dist, build, out, coverage, target, .next, .turbo, .cache, .vite,",
     ".parcel-cache, and paths inside them) when every target of that `rm` is one: that shape appears about 220 times in real Claude Code traces against about 3 for a",
     "dangerous delete, and a check that asks every time is one people switch off. An absolute path, a $VARIABLE, a ~ path, a source directory, a `..` path out of a",
-    "build directory, or a build directory followed by another target still asks. `git rm -r --cached` alone, which touches only the index, is exempt. Known misses:",
-    "a delete via a file tool; a build-directory clean-up chained before a second delete in the same command, because the exemption covers the whole command; and an",
-    "`rm` with more than twelve arguments before the recursive flag. A quoted MENTION is not a use: a search, a `git commit -m` message, an `echo` or a `curl --data`",
-    "body that only names this command is left alone. That holds only while every shell metacharacter stays inside the quotes, so `git commit -m \"x\" && …` is still",
-    "caught; and the carrier must be the first word, so `sudo grep …` is not exempt."
+    "build directory, or a build directory followed by another target still asks. `git rm -r --cached` alone, which touches only the index, is exempt. One `rm` or",
+    "`Remove-Item` whose every target is strictly inside the system temp folder (`/tmp`, `/private/tmp`, `/var/tmp`, the macOS per-user temp folder, `${TMPDIR:?}` on",
+    "the shell, and on PowerShell the Windows temp folders `C:\\Users\\\u003cname>\\AppData\\Local\\Temp` and `C:\\Windows\\Temp` on any drive) is exempt too, so clearing a",
+    "throwaway checkout does not ask. Still asked: the bare temp folder; `..` anywhere in a target; a glob, brace expansion or backslash in a shell target; a comma,",
+    "colon or curly quote in a PowerShell target; a variable after the root; `$TMPDIR`, `$TEMP`, `$TMP`, `$env:TEMP` and `$env:TMP`, which may be unset; any other",
+    "variable such as `$SCRATCH`; a target outside temp; and a chained second command. Known misses: a delete via a file tool; a build-directory clean-up chained",
+    "before a second delete in the same command, because the exemption covers the whole command; and an `rm` with more than twelve arguments before the recursive",
+    "flag. A quoted MENTION is not a use: a search, a `git commit -m` message, an `echo` or a `curl --data` body that only names this command is left alone. That",
+    "holds only while every shell metacharacter stays inside the quotes, so `git commit -m \"x\" && …` is still caught; and the carrier must be the first word, so",
+    "`sudo grep …` is not exempt."
    ]
   },
   {

@@ -21,11 +21,24 @@ import { SECURITY_EMAIL } from "../core/report.js";
 export const PLACEHOLDER_ID = /00000000-0000-4000-8000-\d{12}/g;
 
 /**
- * The text the patterns scan: a file with its placeholder ids removed, and the product's own
- * published security contact, which every report's footer carries, set aside.
+ * A Windows user folder written with the literal placeholder `<name>`, raw, HTML-escaped or
+ * JSON-escaped. The guardrail library's descriptions name the Windows temp folder this way
+ * (`C:\Users\<name>\AppData\Local\Temp`), and a report shows those descriptions. It names no
+ * one, so it is set aside like a placeholder id; a real user name still matches.
+ */
+const USER_FOLDER_PLACEHOLDER =
+  /[A-Za-z]:(?:\\\\|\\|\/)Users(?:\\\\|\\|\/)(?:<name>|&lt;name&gt;|\\u003cname>)/gi;
+
+/**
+ * The text the patterns scan: a file with its placeholder ids and placeholder user folders
+ * removed, and the product's own published security contact, which every report's footer
+ * carries, set aside.
  */
 export function scanned(text: string): string {
-  return text.replace(PLACEHOLDER_ID, "<id>").replaceAll(SECURITY_EMAIL, "<security-contact>");
+  return text
+    .replace(PLACEHOLDER_ID, "<id>")
+    .replace(USER_FOLDER_PLACEHOLDER, "<user-folder>")
+    .replaceAll(SECURITY_EMAIL, "<security-contact>");
 }
 
 /** Every file under `dir`, by its path from there, sorted. */
