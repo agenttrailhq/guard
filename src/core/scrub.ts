@@ -102,9 +102,78 @@ const NAME_LEAD = `(?:(?<![A-Za-z0-9_-])|${ESCAPE_BOUNDARY})`;
  * and a value `github]`, and mangled the placeholder.
  */
 const NOT_IN_PLACEHOLDER = String.raw`(?<!\[REDACTED:)`;
+
+/** The slot sentinel (U+E000). Every value class excludes it. */
+const SLOT = String.fromCharCode(0xe000);
+
+/**
+ * A quote as JSON writes it at any depth up to 3: `"` in JSON, `\"` in a JSON string that holds
+ * JSON, `\\\"` one level deeper, and so on (each level doubles the backslashes and adds one).
+ * Every name rule takes this where it used to take `["']`, so `{\"password\":\"…\"}` reads as
+ * a key and a value, as `{"password":"…"}` does. Bounded at 7 backslashes.
+ */
+const ESC_QUOTE = String.raw`(?:\\{0,7}["'])`;
+/**
+ * A backslash run that a quote does not follow (`\n`, `\\n`, `\\u00e9`): the only way a
+ * backslash enters an unquoted value. A run that a quote follows is an escaped quote, which
+ * closes the string the value is in, so no value can swallow it. The lookahead fixes where a run
+ * ends, so a text splits into runs in one way only, whatever the run's length.
+ */
+const ESC_UNIT = String.raw`\\+(?![\\"])`;
+
+/**
+ * A value in an escaped-quoted string, `\"…\"` at any depth up to 3, read with JSON's own string
+ * grammar at that depth. `group` is the number of the capture group holding the opener's
+ * backslashes (b of them; the value is the group after it). Escaped b levels deep, the inner
+ * string's backslash is b+1 backslashes and its quote is b backslashes and a quote. So the value
+ * is a run of units, each a plain character or an inner backslash followed by one inner character
+ * (a plain one, a backslash or a quote), and it closes at the first inner quote that is not
+ * escaped: exactly the opener again. A value that is itself JSON, or that ends in a backslash,
+ * closes where JSON closes it. Every unit is fixed by its first characters, so nothing
+ * backtracks across units. Bounded at 1,024 units.
+ */
+function escapedQuotedValue(group: number): string {
+  const opener = `\\${group}`;
+  const innerBackslash = `${opener}\\\\`;
+  const unit = `(?:[^"\\\\${SLOT}]|${innerBackslash}(?:[^"\\\\${SLOT}]|${innerBackslash}|${opener}"))`;
+  return `(\\\\{1,7})"(${unit}{4,1024})${opener}"`;
+}
+
+/**
+ * A double-quoted value read with JSON's string grammar (`\"` and `\\` are escapes inside it), so
+ * `{"password":"ab\"cd"}` and a value that is itself JSON are taken whole, to the quote that
+ * really closes them.
+ */
+const DOUBLE_QUOTED_UNIT = `(?:[^"\\\\${SLOT}]|\\\\[^${SLOT}])`;
+
+/**
+ * An unquoted value: no whitespace, quote, `,` or `;`, and a backslash only as `ESC_UNIT`, so the
+ * value stops before an escaped closing quote and the backslash stays in the text.
+ */
+const UNQUOTED_UNIT = `(?:[^\\s"',;\\\\${SLOT}]|${ESC_UNIT})`;
+
+/**
+ * A URL password too long for the bounded search for its `@` (the 512-character run in
+ * `CONNECTION_STRING` and `BASIC_AUTH_URL`): the token, 512 characters or more. When the run up to
+ * the first quote or backslash holds an `@`, only that run is taken, so the quote that closes a
+ * JSON string stays. Otherwise the whole token up to whitespace is taken, quotes and backslashes
+ * included, so a password holding one is still redacted (and the closing quote of a JSON string
+ * around it goes with it). Either way the match is taken whole, so the scan never restarts inside
+ * it and stays linear, and the rule's `accept` check keeps it only when it holds an `@`: a long
+ * URL with no credential is left as it is. The host and path are redacted with the password; a
+ * long URL followed by an `@` more than 512 characters later in the same whitespace-free token (in
+ * its path or query, or a later field of a no-space line) is redacted to the end of the token.
+ */
+const URL_LONG_PASSWORD = String.raw`(?:(?=[^\s"'\\]*@)[^\s"'\\]{512,}|[^\s]{512,})`;
+
+/** A URL rule's match is a credential only when it holds an `@` (see `URL_LONG_PASSWORD`). */
+function hasAt(match: string): boolean {
+  return match.includes("@");
+}
+
 // Only a value that IS a placeholder, followed by a quote, a separator or the end: a real
 // value glued onto a placeholder (`[REDACTED:secret:env]<secret>`) is still redacted whole.
-const NOT_A_PLACEHOLDER = String.raw`(?!["']?\[REDACTED:[a-z0-9:-]+\]["']?(?:[\s,;}\])]|$))`;
+const NOT_A_PLACEHOLDER = String.raw`(?!${ESC_QUOTE}?\[REDACTED:[a-z0-9:-]+\]${ESC_QUOTE}?(?:[\s,;}\])]|$))`;
 
 /** A pattern that starts at `LEAD`. `source` is written without a leading `\b`. */
 function led(source: string, flags: string): RegExp {
@@ -132,7 +201,7 @@ const AWS_ACCESS_KEY_ID = led(
  * JSON stays balanced), group 3 = the redacted value.
  */
 const AWS_SECRET_ACCESS_KEY = new RegExp(
-  "((?:aws[_-]?)?secret[_-]?access[_-]?key)([\"']?\\s*[=:]\\s*[\"']?)" +
+  `((?:aws[_-]?)?secret[_-]?access[_-]?key)(${ESC_QUOTE}?\\s*[=:]\\s*${ESC_QUOTE}?)` +
     "((?![0-9a-f]{40}(?![A-Za-z0-9/+=]))[A-Za-z0-9/+]{40})(?![A-Za-z0-9/+=])",
   "gi",
 );
@@ -166,9 +235,16 @@ const BEARER_TOKEN = led(String.raw`Bearer\s+([A-Za-z0-9._~+/-]{8,})=*`, "gi");
  * which allows `@` and `/`, is anchored to the LAST `@` — otherwise `P@ssw0rd` leaks
  * `ssw0rd` and `pa/ss` misses entirely, persisting the full credential — but the captured
  * host is used only for that anchoring, never echoed into the placeholder.
+ *
+ * The user may be empty (`redis://:password@cache`). The host stops at a quote, a backslash,
+ * `,` `}` or `]`, so a URL with no port inside JSON keeps the quote that closes its string. The
+ * search for the last `@` is bounded at 512 characters: unbounded, a text of repeated schemes
+ * (`redis://u:redis://u:…`) took quadratic time. A longer userinfo is taken with the rest of its
+ * token instead (`URL_LONG_PASSWORD`), and kept as a credential only if it holds an `@`
+ * (`hasAt`), so it is still redacted and the scan stays linear.
  */
 const CONNECTION_STRING = led(
-  String.raw`(postgres(?:ql)?|mysql|mongodb(?:\+srv)?|redis|rediss|amqp|amqps):\/\/[^\s/@:]+:[^\s]*@([^\s/:@]+)`,
+  String.raw`(postgres(?:ql)?|mysql|mongodb(?:\+srv)?|redis|rediss|amqp|amqps):\/\/[^\s/@:]*:(?:[^\s]{0,512}@([^\s/:@"'\\,}\]]+)|${URL_LONG_PASSWORD})`,
   "gi",
 );
 
@@ -182,18 +258,26 @@ const PEM_PRIVATE_KEY =
 /**
  * HTTP basic-auth credentials embedded in a URL (`user:pass@host`, any scheme).
  * Same robust userinfo shape as `CONNECTION_STRING`, so a password containing
- * `@` or `/` is fully consumed rather than leaving a residual `ssw0rd@`.
+ * `@` or `/` is fully consumed rather than leaving a residual `ssw0rd@`. The user may be empty,
+ * and the search for the `@` is bounded at 512 with `URL_LONG_PASSWORD` beyond it, as there. The rule's own placeholder is never read
+ * again as a user, so a second scrub leaves it as it is.
  */
-const BASIC_AUTH_URL = led(String.raw`(https?|ftp|wss?):\/\/[^\s/@:]+:[^\s]*@(?=[^\s/:@])`, "gi");
+const BASIC_AUTH_URL = led(
+  String.raw`(https?|ftp|wss?):\/\/(?!\[REDACTED:)[^\s/@:]*:(?:[^\s]{0,512}@(?=[^\s/:@])|(${URL_LONG_PASSWORD}))`,
+  "gi",
+);
 
 /**
  * `.env`-style secret assignment: a KEY whose name implies a secret, followed by
  * `=`/`:` and a value. The value is redacted; the key NAME and the ORIGINAL
  * separator are preserved so the trace stays debuggable and quoted JSON stays
  * balanced. Covers `.env` (`PASSWORD=v`), YAML/prose (`password: v`) and JSON
- * (`"password": "v"`). The value is a three-branch alternation so a quoted value
- * may contain SPACES while an unquoted one still stops at the first terminator.
- * Group 1 = key name, group 2 = separator, groups 3/4/5 = value branches.
+ * (`"password": "v"`), and escaped JSON at any depth up to 3 (`\"password\":\"v\"`). The value
+ * is an alternation so a quoted value may contain SPACES while an unquoted one still stops at the
+ * first terminator, and before an escaped closing quote. A double-quoted value is read with JSON's
+ * escapes, so `\"` inside it does not close it. Groups: 1 = key name, 2 = separator,
+ * 3 = the escaped opener's backslashes, 4 = escaped value, 5/6 = `"` opener and value,
+ * 7/8 = `'` opener and value, 9 = unquoted value.
  */
 const ENV_SECRET_ASSIGNMENT = (() => {
   const sentinel = String.fromCharCode(0xe000);
@@ -205,9 +289,12 @@ const ENV_SECRET_ASSIGNMENT = (() => {
   // Each opening quote is its own group so the placeholder can put the quotes back, and the
   // output of a quoted JSON value stays valid JSON.
   const value =
-    `(?:(")([^"${sentinel}]{4,})"` + `|(')([^'${sentinel}]{4,})'` + `|([^\\s"',;${sentinel}]{4,}))`;
+    `(?:${escapedQuotedValue(3)}` +
+    `|(")(${DOUBLE_QUOTED_UNIT}{4,})"` +
+    `|(')([^'${sentinel}]{4,})'` +
+    `|(${UNQUOTED_UNIT}{4,}))`;
   return new RegExp(
-    `${LEAD}${NOT_IN_PLACEHOLDER}${key}(["']?\\s*[=:]\\s*)${NOT_A_PLACEHOLDER}${value}`,
+    `${LEAD}${NOT_IN_PLACEHOLDER}${key}(${ESC_QUOTE}?\\s*[=:]\\s*)${NOT_A_PLACEHOLDER}${value}`,
     "gi",
   );
 })();
@@ -215,9 +302,6 @@ const ENV_SECRET_ASSIGNMENT = (() => {
 /** A word every `.env`-style secret name holds: the cheap test before `ENV_SECRET_ASSIGNMENT`. */
 const ENV_SECRET_KEY_WORD =
   /PASSWORD|PASSWD|SECRET|TOKEN|API[_-]?KEY|APIKEY|ACCESS[_-]?KEY|PRIVATE[_-]?KEY|CREDENTIAL/i;
-
-/** The slot sentinel. Every value class below excludes it. */
-const SLOT = String.fromCharCode(0xe000);
 
 /**
  * A value after a key NAME in the two forms a credential is given under:
@@ -231,9 +315,9 @@ const SLOT = String.fromCharCode(0xe000);
  * `ENV_SECRET_ASSIGNMENT`.
  */
 const KEY_NAME_ASSIGNMENT = new RegExp(
-  `${NAME_LEAD}${NOT_IN_PLACEHOLDER}([A-Z0-9]+(?:_[A-Z0-9]+)*_KEY(?==|["']\\s*:)|(?![Ii]dempotency-)[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*-[Kk][Ee][Yy](?=["']?\\s*:))` +
-    `(["']?\\s*[=:]\\s*)${NOT_A_PLACEHOLDER}(?!["']?[~.]{0,2}/)` +
-    `(?:(")([^"${SLOT}]{4,})"|(')([^'${SLOT}]{4,})'|([^\\s"',;${SLOT}]{4,}))`,
+  `${NAME_LEAD}${NOT_IN_PLACEHOLDER}([A-Z0-9]+(?:_[A-Z0-9]+)*_KEY(?==|${ESC_QUOTE}\\s*:)|(?![Ii]dempotency-)[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*-[Kk][Ee][Yy](?=${ESC_QUOTE}?\\s*:))` +
+    `(${ESC_QUOTE}?\\s*[=:]\\s*)${NOT_A_PLACEHOLDER}(?!${ESC_QUOTE}?[~.]{0,2}/)` +
+    `(?:${escapedQuotedValue(3)}|(")(${DOUBLE_QUOTED_UNIT}{4,})"|(')([^'${SLOT}]{4,})'|(${UNQUOTED_UNIT}{4,}))`,
   "g",
 );
 
@@ -243,8 +327,8 @@ const KEY_NAME_ASSIGNMENT = new RegExp(
  * redacted.
  */
 const AUTHORIZATION_HEADER = new RegExp(
-  `${NAME_LEAD}((?:Proxy-)?Authorization["']?\\s*[=:]\\s*["']?)((?:Basic|Token|Digest|Negotiate|ApiKey|Api-Key)\\s+)?` +
-    `(?!Bearer\\s)${NOT_A_PLACEHOLDER}([^\\s"',;${SLOT}]{8,})`,
+  `${NAME_LEAD}((?:Proxy-)?Authorization${ESC_QUOTE}?\\s*[=:]\\s*${ESC_QUOTE}?)((?:Basic|Token|Digest|Negotiate|ApiKey|Api-Key)\\s+)?` +
+    `(?!Bearer\\s)${NOT_A_PLACEHOLDER}(${UNQUOTED_UNIT}{8,})`,
   "gi",
 );
 
@@ -294,7 +378,7 @@ const MYSQL_PASSWORD_FLAG = new RegExp(
  * Google Cloud tools.
  */
 const CLOUD_ACCOUNT_ID_PARTS = [
-  `${NAME_LEAD}([A-Za-z0-9_]*(?:ACCOUNT[_-]?ID|CF_ACCOUNT|CLOUDFLARE_ACCOUNT|AWS_ACCOUNT|GOOGLE_CLOUD_PROJECT|GCLOUD_PROJECT|GCP_PROJECT|CORE_PROJECT))(["']?\\s*[=:]\\s*)(["']?)([^\\s"',;<[${SLOT}][^\\s"',;${SLOT}]*)\\3`,
+  `${NAME_LEAD}([A-Za-z0-9_]*(?:ACCOUNT[_-]?ID|CF_ACCOUNT|CLOUDFLARE_ACCOUNT|AWS_ACCOUNT|GOOGLE_CLOUD_PROJECT|GCLOUD_PROJECT|GCP_PROJECT|CORE_PROJECT))(${ESC_QUOTE}?\\s*[=:]\\s*)(\\\\{0,7}["']|)([^\\s"',;<[\\\\${SLOT}][^\\s"',;\\\\${SLOT}]*)\\3`,
   `(--(?:account-id|account|owner-id|account-number))(=|\\s+)(["']?)(\\d{12}|[0-9a-f]{32})\\7(?![A-Za-z0-9])`,
   `(?<=\\barn:aws[a-z-]*:[a-z0-9-]*:[a-z0-9-]*:)\\d{12}(?![A-Za-z0-9])`,
   `(?<=\\b(?:gcloud|gsutil|bq|firebase)\\b[^\\n;|&${SLOT}]{0,200}?)(--project(?:_id|-id)?)(=|\\s+)(["']?)([a-z][a-z0-9-]{4,28}[a-z0-9])\\11(?![A-Za-z0-9-])`,
@@ -323,6 +407,16 @@ const GENERIC_SECRET_CANDIDATE = new RegExp(
 
 /** A run long enough to be a `generic-secret` candidate: the cheap test before the full one. */
 const GENERIC_SECRET_PREFILTER = new RegExp(`[A-Za-z0-9_-]{${FALLBACK_MIN_LENGTH}}`);
+
+/**
+ * The quote a name rule's value was in, to put back around the placeholder: the escaped opener's
+ * backslashes and a quote (groups 3 and 4), a `"` (group 5) or a `'` (group 7). None for an
+ * unquoted value.
+ */
+function valueQuote(g: RegExpExecArray): string | undefined {
+  if (g[3] !== undefined) return `${g[3]}"`;
+  return g[5] ?? g[7];
+}
 
 /** Re-emit a NAME=value match's name, separator and quotes around a placeholder. */
 function aroundValue(
@@ -406,6 +500,8 @@ const PATTERNS: readonly ScrubPattern[] = [
   {
     id: "connection-string",
     regex: CONNECTION_STRING,
+    // The long-password branch takes a whole long token; it is a credential only with an `@`.
+    accept: hasAt,
     prefilter: /:\/\//,
     // No hint: the host is captured (group 2) only to anchor the password class to the
     // last `@`; it is a real hostname and is not echoed into the placeholder.
@@ -414,9 +510,14 @@ const PATTERNS: readonly ScrubPattern[] = [
   {
     id: "basic-auth-url",
     regex: BASIC_AUTH_URL,
+    // The long-password branch takes a whole long token; it is a credential only with an `@`.
+    accept: hasAt,
     prefilter: /:\/\//,
     // Keep the scheme so the URL stays recognizable; redact user:pass@.
-    placeholder: (g) => `${g[1].toLowerCase()}://${redacted("secret:basic-auth")}@`,
+    // A password too long to find its `@` (group 2) took the rest of the URL with it, so no `@`
+    // follows the placeholder.
+    placeholder: (g) =>
+      `${g[1].toLowerCase()}://${redacted("secret:basic-auth")}${g[2] === undefined ? "@" : ""}`,
   },
   {
     id: "bearer-token",
@@ -438,17 +539,15 @@ const PATTERNS: readonly ScrubPattern[] = [
     regex: ENV_SECRET_ASSIGNMENT,
     prefilter: ENV_SECRET_KEY_WORD,
     // Preserve the key name (g1) and the original separator (g2); redact only the value
-    // (g4/g6/g7), putting back its quotes (g3/g5), so quoted JSON stays valid.
-    placeholder: (g) => {
-      const quote = g[3] ?? g[5] ?? "";
-      return `${g[1]}${g[2]}${quote}${redacted("secret:env")}${quote}`;
-    },
+    // (g4/g6/g8/g9), putting back its quotes (`valueQuote`), so quoted JSON stays valid at
+    // every depth.
+    placeholder: (g) => aroundValue(g[1], g[2], valueQuote(g), redacted("secret:env")),
   },
   {
     id: "key-name-secret",
     regex: KEY_NAME_ASSIGNMENT,
     prefilter: /_KEY|-key/i,
-    placeholder: (g) => aroundValue(g[1] ?? "", g[2] ?? "", g[3] ?? g[5], redacted("secret:env")),
+    placeholder: (g) => aroundValue(g[1] ?? "", g[2] ?? "", valueQuote(g), redacted("secret:env")),
   },
   {
     id: "authorization-header",

@@ -244,6 +244,21 @@ export const NEGATIVE_FIXTURES: readonly NegativeFixture[] = [
     input: "The deploy finished and the rollback plan is in the runbook.",
     why: "The baseline: a scrubber that touches this is redacting on no signal at all.",
   },
+  {
+    name: "a URL with an empty host before a port, and no credentials",
+    input: "see redis://:6379 and http://:8080/x",
+    why: "An empty user is allowed, but a credential needs an `@` after it. With none, there is nothing to redact.",
+  },
+  {
+    name: "a key-file path in escaped JSON",
+    input: '{\\"SSH_KEY\\":\\"~/.ssh/id_ed25519\\"}',
+    why: "A value that is a path names a key FILE, not a key, escaped or not.",
+  },
+  {
+    name: "an escaped quote inside an ordinary JSON value",
+    input: '{"note": "6\\" pipe"}',
+    why: "No secret-named key: an escaped quote alone is not a signal.",
+  },
 ];
 
 /** A fixture whose expected behavior is more than one redaction. */
@@ -366,6 +381,184 @@ export const GLUED_TO_A_WORD: readonly string[] = [
   `prefix${["gh", "p_"].join("")}${"R2l0SHViVG9rZW4".padEnd(36, "q")}`,
 ];
 
+/** JSON as a JSON string holds it, `depth` levels down: depth 1 is `{\\"k\\":\\"v\\"}`. */
+export function escapedJson(value: unknown, depth: number): string {
+  let text = JSON.stringify(value);
+  for (let i = 0; i < depth; i++) text = JSON.stringify(text).slice(1, -1);
+  return text;
+}
+
+/** An escaped-JSON or empty-user case: its exact output and its tally. */
+export interface EscapedJsonFixture {
+  readonly name: string;
+  readonly input: string;
+  readonly output: string;
+  readonly expected: Readonly<Record<string, number>>;
+}
+
+const ESCAPED_SECRET = ["hunter2", "opaqueXYZ", "q9w8e7"].join("");
+const ESCAPED_AWS_SECRET = ["wJalrXUtnFEMI/", "K7MDENG/bPxRfi", "CYzq9w8e7Q+a"].join("");
+const ESCAPED_CASES: ReadonlyArray<
+  readonly [string, Record<string, string>, Record<string, string>, Record<string, number>]
+> = [
+  [
+    "a password",
+    { password: ESCAPED_SECRET },
+    { password: "[REDACTED:secret:env]" },
+    { "env-secret": 1 },
+  ],
+  [
+    "a _KEY name",
+    { VENDOR_KEY: ESCAPED_SECRET },
+    { VENDOR_KEY: "[REDACTED:secret:env]" },
+    { "key-name-secret": 1 },
+  ],
+  [
+    "Authorization: Basic",
+    { Authorization: "Basic dXNlcjpwYXNzd29yZA==" },
+    { Authorization: "Basic [REDACTED:secret:auth]" },
+    { "authorization-header": 1 },
+  ],
+  [
+    "an account id",
+    { account_id: "409681372205" },
+    { account_id: "[REDACTED:pii:account]" },
+    { "cloud-account-id": 1 },
+  ],
+  [
+    "an AWS secret access key",
+    { aws_secret_access_key: ESCAPED_AWS_SECRET },
+    { aws_secret_access_key: "[REDACTED:secret:aws-secret]" },
+    { "aws-secret-access-key": 1 },
+  ],
+  [
+    "an unquoted value before the closing quote",
+    { cmd: `export DB_PASSWORD=${ESCAPED_SECRET}` },
+    { cmd: "export DB_PASSWORD=[REDACTED:secret:env]" },
+    { "env-secret": 1 },
+  ],
+  [
+    "a value that is itself JSON",
+    { password: JSON.stringify({ inner: ESCAPED_SECRET }) },
+    { password: "[REDACTED:secret:env]" },
+    { "env-secret": 1 },
+  ],
+  [
+    "an empty-user URL with no port",
+    { url: `redis://:${ESCAPED_SECRET}@cache` },
+    { url: "[REDACTED:secret:connection-string]" },
+    { "connection-string": 1 },
+  ],
+];
+
+/**
+ * A name/value pair in escaped JSON (the text a JSON string holds when it carries JSON), at
+ * depths 1 to 3, and connection URLs with an empty user. The output is the same object with the
+ * value replaced, so it still parses at every depth.
+ */
+export const ESCAPED_JSON_FIXTURES: readonly EscapedJsonFixture[] = [
+  ...[1, 2, 3].flatMap((depth) =>
+    ESCAPED_CASES.map(([name, input, output, expected]) => ({
+      name: `${name}, depth ${depth}`,
+      input: escapedJson(input, depth),
+      output: escapedJson(output, depth),
+      expected,
+    })),
+  ),
+  {
+    name: "a redis URL with an empty user",
+    input: `redis://:${ESCAPED_SECRET}$x@cache:6379`,
+    output: "[REDACTED:secret:connection-string]:6379",
+    expected: { "connection-string": 1 },
+  },
+  {
+    name: "an https URL with an empty user",
+    input: `https://:${ESCAPED_SECRET}@registry.example.com/v2/`,
+    output: "https://[REDACTED:secret:basic-auth]@registry.example.com/v2/",
+    expected: { "basic-auth-url": 1 },
+  },
+  {
+    name: "an empty user, a port and an @ later in the query (redacted on purpose)",
+    input: "http://:8080/x?to=a@b.com",
+    output: "http://[REDACTED:secret:basic-auth]@b.com",
+    expected: { "basic-auth-url": 1 },
+  },
+  {
+    name: "an https URL with a password past the 512-character search for its @",
+    input: `curl https://svc:${"aB3%2Bz9%2FqXk7%3DmP2".repeat(30).slice(0, 600)}@h.example.com/x now`,
+    output: "curl https://[REDACTED:secret:basic-auth] now",
+    expected: { "basic-auth-url": 1 },
+  },
+  {
+    name: "a postgres URL with a long password holding a / in its first 512 characters",
+    input: `psql postgres://u:${"x/".repeat(300)}FAKEpass@db/app now`,
+    output: "psql [REDACTED:secret:connection-string] now",
+    expected: { "connection-string": 1 },
+  },
+  {
+    name: "an https URL with a long password holding a / in its first 512 characters",
+    input: `curl https://u:${"x/".repeat(300)}FAKEpass@h/x now`,
+    output: "curl https://[REDACTED:secret:basic-auth] now",
+    expected: { "basic-auth-url": 1 },
+  },
+  {
+    name: "an unquoted value with a run of 16 backslashes",
+    input: `PASSWORD=abcd${"\\".repeat(16)}Hx7FAKEpw9Qz`,
+    output: "PASSWORD=[REDACTED:secret:env]",
+    expected: { "env-secret": 1 },
+  },
+  {
+    name: "a JSON value holding an escaped quote",
+    input: '{"password":"Hx7\\"Hx7FAKEpw9Qz","user":"bob"}',
+    output: '{"password":"[REDACTED:secret:env]","user":"bob"}',
+    expected: { "env-secret": 1 },
+  },
+  ...[1, 2, 3].map((depth) => ({
+    name: `an escaped value ending in a backslash, before another key, depth ${depth}`,
+    input: escapedJson({ password: "Hx7FAKEpw9Qz\\", user: "bob" }, depth),
+    output: escapedJson({ password: "[REDACTED:secret:env]", user: "bob" }, depth),
+    expected: { "env-secret": 1 },
+  })),
+  ...["'", '"', "\\"].flatMap((mark): EscapedJsonFixture[] => [
+    {
+      name: `a postgres URL with a long password holding ${mark}`,
+      input: `psql postgres://u:${"x".repeat(600)}${mark}Hx7FAKEpw9Qz@db/app now`,
+      output: "psql [REDACTED:secret:connection-string] now",
+      expected: { "connection-string": 1 },
+    },
+    {
+      name: `an https URL with a long password holding ${mark}`,
+      input: `curl https://u:${"x".repeat(600)}${mark}Hx7FAKEpw9Qz@h/x now`,
+      output: "curl https://[REDACTED:secret:basic-auth] now",
+      expected: { "basic-auth-url": 1 },
+    },
+  ]),
+  {
+    name: "a long password holding a quote, in escaped JSON",
+    input: escapedJson({ url: `postgres://u:${"x".repeat(600)}"Hx7FAKEpw9Qz@db/app` }, 1),
+    output: '{\\"url\\":\\"[REDACTED:secret:connection-string]',
+    expected: { "connection-string": 1 },
+  },
+  {
+    name: "a long URL path with no credential is left as it is",
+    input: `see https://host:8080/${"seg/".repeat(200)}end now`,
+    output: `see https://host:8080/${"seg/".repeat(200)}end now`,
+    expected: {},
+  },
+  {
+    name: "a postgres URL with a password of about 970 characters",
+    input: `psql postgres://app:${Array.from({ length: 120 }, (_, i) => `horse${i}`).join("-")}@db/x now`,
+    output: "psql [REDACTED:secret:connection-string] now",
+    expected: { "connection-string": 1 },
+  },
+  {
+    name: "a URL in plain JSON with no port keeps its closing quote",
+    input: `{"url":"postgres://app:${ESCAPED_SECRET}@db"}`,
+    output: '{"url":"[REDACTED:secret:connection-string]"}',
+    expected: { "connection-string": 1 },
+  },
+];
+
 /**
  * Every input, flattened. Order is stable so a failing
  * case is identified the same way on every run.
@@ -375,6 +568,7 @@ export const CORPUS: readonly string[] = [
   ...NEGATIVE_FIXTURES.map((f) => f.input),
   ...INTERACTION_FIXTURES.map((f) => f.input),
   ...ESCAPE_BOUNDARY_FIXTURES.map((f) => f.input),
+  ...ESCAPED_JSON_FIXTURES.flatMap((f) => [f.input, f.output]),
   ...GLUED_TO_A_WORD,
   // Engine-level edge cases. They carry no catalog expectation of their own, but
   // the two scrubbers must still agree on them exactly.

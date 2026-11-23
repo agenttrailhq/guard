@@ -11093,7 +11093,22 @@ var ESCAPE_BOUNDARY = String.raw`(?<=\\[nrtfb])|(?<=\\u[0-9A-Fa-f]{4})|(?<=\x1b\
 var LEAD2 = `(?:\\b|${ESCAPE_BOUNDARY})`;
 var NAME_LEAD = `(?:(?<![A-Za-z0-9_-])|${ESCAPE_BOUNDARY})`;
 var NOT_IN_PLACEHOLDER = String.raw`(?<!\[REDACTED:)`;
-var NOT_A_PLACEHOLDER = String.raw`(?!["']?\[REDACTED:[a-z0-9:-]+\]["']?(?:[\s,;}\])]|$))`;
+var SLOT2 = String.fromCharCode(57344);
+var ESC_QUOTE = String.raw`(?:\\{0,7}["'])`;
+var ESC_UNIT = String.raw`\\+(?![\\"])`;
+function escapedQuotedValue(group) {
+  const opener = `\\${group}`;
+  const innerBackslash = `${opener}\\\\`;
+  const unit = `(?:[^"\\\\${SLOT2}]|${innerBackslash}(?:[^"\\\\${SLOT2}]|${innerBackslash}|${opener}"))`;
+  return `(\\\\{1,7})"(${unit}{4,1024})${opener}"`;
+}
+var DOUBLE_QUOTED_UNIT = `(?:[^"\\\\${SLOT2}]|\\\\[^${SLOT2}])`;
+var UNQUOTED_UNIT = `(?:[^\\s"',;\\\\${SLOT2}]|${ESC_UNIT})`;
+var URL_LONG_PASSWORD = String.raw`(?:(?=[^\s"'\\]*@)[^\s"'\\]{512,}|[^\s]{512,})`;
+function hasAt(match) {
+  return match.includes("@");
+}
+var NOT_A_PLACEHOLDER = String.raw`(?!${ESC_QUOTE}?\[REDACTED:[a-z0-9:-]+\]${ESC_QUOTE}?(?:[\s,;}\])]|$))`;
 function led(source, flags) {
   return new RegExp(`${LEAD2}${source}`, flags);
 }
@@ -11102,7 +11117,7 @@ var AWS_ACCESS_KEY_ID = led(
   "g"
 );
 var AWS_SECRET_ACCESS_KEY = new RegExp(
-  `((?:aws[_-]?)?secret[_-]?access[_-]?key)(["']?\\s*[=:]\\s*["']?)((?![0-9a-f]{40}(?![A-Za-z0-9/+=]))[A-Za-z0-9/+]{40})(?![A-Za-z0-9/+=])`,
+  `((?:aws[_-]?)?secret[_-]?access[_-]?key)(${ESC_QUOTE}?\\s*[=:]\\s*${ESC_QUOTE}?)((?![0-9a-f]{40}(?![A-Za-z0-9/+=]))[A-Za-z0-9/+]{40})(?![A-Za-z0-9/+=])`,
   "gi"
 );
 var OPENAI_KEY = led(String.raw`sk-(?:proj-)?[A-Za-z0-9_-]{20,64}\b`, "g");
@@ -11113,29 +11128,31 @@ var GITHUB_TOKEN = led(
 var SLACK_TOKEN = led(String.raw`xox[baprs]-[A-Za-z0-9-]{10,255}\b`, "g");
 var BEARER_TOKEN = led(String.raw`Bearer\s+([A-Za-z0-9._~+/-]{8,})=*`, "gi");
 var CONNECTION_STRING = led(
-  String.raw`(postgres(?:ql)?|mysql|mongodb(?:\+srv)?|redis|rediss|amqp|amqps):\/\/[^\s/@:]+:[^\s]*@([^\s/:@]+)`,
+  String.raw`(postgres(?:ql)?|mysql|mongodb(?:\+srv)?|redis|rediss|amqp|amqps):\/\/[^\s/@:]*:(?:[^\s]{0,512}@([^\s/:@"'\\,}\]]+)|${URL_LONG_PASSWORD})`,
   "gi"
 );
 var JWT = led(String.raw`eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{4,}\.[A-Za-z0-9_-]{4,}\b`, "g");
 var PEM_PRIVATE_KEY = /-----BEGIN (?:RSA |EC |DSA |OPENSSH |PGP |ENCRYPTED )?PRIVATE KEY-----[\s\S]{0,8192}?-----END (?:RSA |EC |DSA |OPENSSH |PGP |ENCRYPTED )?PRIVATE KEY-----/g;
-var BASIC_AUTH_URL = led(String.raw`(https?|ftp|wss?):\/\/[^\s/@:]+:[^\s]*@(?=[^\s/:@])`, "gi");
+var BASIC_AUTH_URL = led(
+  String.raw`(https?|ftp|wss?):\/\/(?!\[REDACTED:)[^\s/@:]*:(?:[^\s]{0,512}@(?=[^\s/:@])|(${URL_LONG_PASSWORD}))`,
+  "gi"
+);
 var ENV_SECRET_ASSIGNMENT = (() => {
   const sentinel2 = String.fromCharCode(57344);
   const key = "([A-Z0-9_]*(?:PASSWORD|PASSWD|SECRET|TOKEN|API[_-]?KEY|APIKEY|ACCESS[_-]?KEY|PRIVATE[_-]?KEY|CLIENT[_-]?SECRET|AUTH[_-]?TOKEN|CREDENTIALS?)[A-Z0-9_]*)";
-  const value = `(?:(")([^"${sentinel2}]{4,})"|(')([^'${sentinel2}]{4,})'|([^\\s"',;${sentinel2}]{4,}))`;
+  const value = `(?:${escapedQuotedValue(3)}|(")(${DOUBLE_QUOTED_UNIT}{4,})"|(')([^'${sentinel2}]{4,})'|(${UNQUOTED_UNIT}{4,}))`;
   return new RegExp(
-    `${LEAD2}${NOT_IN_PLACEHOLDER}${key}(["']?\\s*[=:]\\s*)${NOT_A_PLACEHOLDER}${value}`,
+    `${LEAD2}${NOT_IN_PLACEHOLDER}${key}(${ESC_QUOTE}?\\s*[=:]\\s*)${NOT_A_PLACEHOLDER}${value}`,
     "gi"
   );
 })();
 var ENV_SECRET_KEY_WORD = /PASSWORD|PASSWD|SECRET|TOKEN|API[_-]?KEY|APIKEY|ACCESS[_-]?KEY|PRIVATE[_-]?KEY|CREDENTIAL/i;
-var SLOT2 = String.fromCharCode(57344);
 var KEY_NAME_ASSIGNMENT2 = new RegExp(
-  `${NAME_LEAD}${NOT_IN_PLACEHOLDER}([A-Z0-9]+(?:_[A-Z0-9]+)*_KEY(?==|["']\\s*:)|(?![Ii]dempotency-)[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*-[Kk][Ee][Yy](?=["']?\\s*:))(["']?\\s*[=:]\\s*)${NOT_A_PLACEHOLDER}(?!["']?[~.]{0,2}/)(?:(")([^"${SLOT2}]{4,})"|(')([^'${SLOT2}]{4,})'|([^\\s"',;${SLOT2}]{4,}))`,
+  `${NAME_LEAD}${NOT_IN_PLACEHOLDER}([A-Z0-9]+(?:_[A-Z0-9]+)*_KEY(?==|${ESC_QUOTE}\\s*:)|(?![Ii]dempotency-)[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*-[Kk][Ee][Yy](?=${ESC_QUOTE}?\\s*:))(${ESC_QUOTE}?\\s*[=:]\\s*)${NOT_A_PLACEHOLDER}(?!${ESC_QUOTE}?[~.]{0,2}/)(?:${escapedQuotedValue(3)}|(")(${DOUBLE_QUOTED_UNIT}{4,})"|(')([^'${SLOT2}]{4,})'|(${UNQUOTED_UNIT}{4,}))`,
   "g"
 );
 var AUTHORIZATION_HEADER = new RegExp(
-  `${NAME_LEAD}((?:Proxy-)?Authorization["']?\\s*[=:]\\s*["']?)((?:Basic|Token|Digest|Negotiate|ApiKey|Api-Key)\\s+)?(?!Bearer\\s)${NOT_A_PLACEHOLDER}([^\\s"',;${SLOT2}]{8,})`,
+  `${NAME_LEAD}((?:Proxy-)?Authorization${ESC_QUOTE}?\\s*[=:]\\s*${ESC_QUOTE}?)((?:Basic|Token|Digest|Negotiate|ApiKey|Api-Key)\\s+)?(?!Bearer\\s)${NOT_A_PLACEHOLDER}(${UNQUOTED_UNIT}{8,})`,
   "gi"
 );
 var MYSQL_WORD = "(?:[Mm][Yy][Ss][Qq][Ll]|[Mm][Aa][Rr][Ii][Aa][Dd][Bb])";
@@ -11149,7 +11166,7 @@ var MYSQL_PASSWORD_FLAG = new RegExp(
   "g"
 );
 var CLOUD_ACCOUNT_ID_PARTS = [
-  `${NAME_LEAD}([A-Za-z0-9_]*(?:ACCOUNT[_-]?ID|CF_ACCOUNT|CLOUDFLARE_ACCOUNT|AWS_ACCOUNT|GOOGLE_CLOUD_PROJECT|GCLOUD_PROJECT|GCP_PROJECT|CORE_PROJECT))(["']?\\s*[=:]\\s*)(["']?)([^\\s"',;<[${SLOT2}][^\\s"',;${SLOT2}]*)\\3`,
+  `${NAME_LEAD}([A-Za-z0-9_]*(?:ACCOUNT[_-]?ID|CF_ACCOUNT|CLOUDFLARE_ACCOUNT|AWS_ACCOUNT|GOOGLE_CLOUD_PROJECT|GCLOUD_PROJECT|GCP_PROJECT|CORE_PROJECT))(${ESC_QUOTE}?\\s*[=:]\\s*)(\\\\{0,7}["']|)([^\\s"',;<[\\\\${SLOT2}][^\\s"',;\\\\${SLOT2}]*)\\3`,
   `(--(?:account-id|account|owner-id|account-number))(=|\\s+)(["']?)(\\d{12}|[0-9a-f]{32})\\7(?![A-Za-z0-9])`,
   `(?<=\\barn:aws[a-z-]*:[a-z0-9-]*:[a-z0-9-]*:)\\d{12}(?![A-Za-z0-9])`,
   `(?<=\\b(?:gcloud|gsutil|bq|firebase)\\b[^\\n;|&${SLOT2}]{0,200}?)(--project(?:_id|-id)?)(=|\\s+)(["']?)([a-z][a-z0-9-]{4,28}[a-z0-9])\\11(?![A-Za-z0-9-])`
@@ -11162,6 +11179,10 @@ var GENERIC_SECRET_CANDIDATE = new RegExp(
   "g"
 );
 var GENERIC_SECRET_PREFILTER = new RegExp(`[A-Za-z0-9_-]{${FALLBACK_MIN_LENGTH}}`);
+function valueQuote(g) {
+  if (g[3] !== void 0) return `${g[3]}"`;
+  return g[5] ?? g[7];
+}
 function aroundValue(name, separator, quote, label) {
   const q = quote ?? "";
   return `${name}${separator}${q}${label}${q}`;
@@ -11209,6 +11230,8 @@ var PATTERNS = [
   {
     id: "connection-string",
     regex: CONNECTION_STRING,
+    // The long-password branch takes a whole long token; it is a credential only with an `@`.
+    accept: hasAt,
     prefilter: /:\/\//,
     // No hint: the host is captured (group 2) only to anchor the password class to the
     // last `@`; it is a real hostname and is not echoed into the placeholder.
@@ -11217,9 +11240,13 @@ var PATTERNS = [
   {
     id: "basic-auth-url",
     regex: BASIC_AUTH_URL,
+    // The long-password branch takes a whole long token; it is a credential only with an `@`.
+    accept: hasAt,
     prefilter: /:\/\//,
     // Keep the scheme so the URL stays recognizable; redact user:pass@.
-    placeholder: (g) => `${g[1].toLowerCase()}://${redacted("secret:basic-auth")}@`
+    // A password too long to find its `@` (group 2) took the rest of the URL with it, so no `@`
+    // follows the placeholder.
+    placeholder: (g) => `${g[1].toLowerCase()}://${redacted("secret:basic-auth")}${g[2] === void 0 ? "@" : ""}`
   },
   {
     id: "bearer-token",
@@ -11241,17 +11268,15 @@ var PATTERNS = [
     regex: ENV_SECRET_ASSIGNMENT,
     prefilter: ENV_SECRET_KEY_WORD,
     // Preserve the key name (g1) and the original separator (g2); redact only the value
-    // (g4/g6/g7), putting back its quotes (g3/g5), so quoted JSON stays valid.
-    placeholder: (g) => {
-      const quote = g[3] ?? g[5] ?? "";
-      return `${g[1]}${g[2]}${quote}${redacted("secret:env")}${quote}`;
-    }
+    // (g4/g6/g8/g9), putting back its quotes (`valueQuote`), so quoted JSON stays valid at
+    // every depth.
+    placeholder: (g) => aroundValue(g[1], g[2], valueQuote(g), redacted("secret:env"))
   },
   {
     id: "key-name-secret",
     regex: KEY_NAME_ASSIGNMENT2,
     prefilter: /_KEY|-key/i,
-    placeholder: (g) => aroundValue(g[1] ?? "", g[2] ?? "", g[3] ?? g[5], redacted("secret:env"))
+    placeholder: (g) => aroundValue(g[1] ?? "", g[2] ?? "", valueQuote(g), redacted("secret:env"))
   },
   {
     id: "authorization-header",

@@ -292,15 +292,16 @@ describe("scrubbing: the field, then serialize", () => {
     for (const line of written) expect(() => JSON.parse(line)).not.toThrow();
   });
 
-  it("PINNED: scrubbing the SERIALIZED line instead would leave the secret", () => {
+  it("PINNED: scrubbing the SERIALIZED line holds only to a bounded depth", () => {
     // The negative control for the ordering above, and the reason it is not
-    // arbitrary. `JSON.stringify` escapes the value's quotes to \"; the `.env`
-    // heuristic's quoted branch needs a literal `"` and its unquoted branch excludes
-    // one, so an escaped quote matches NEITHER and nothing is redacted at all.
+    // arbitrary. `JSON.stringify` escapes the value's quotes to \". The scrubber
+    // reads an escaped quote up to three levels deep, so a line serialized once is
+    // redacted; one wrapped deeper than that is not. Field first holds at any depth.
     const command = 'export API_KEY="abcd1234efgh"';
-    const serializedFirst = scrubText(JSON.stringify({ command })).text;
-    expect(serializedFirst).toContain("abcd1234efgh");
-    expect(serializedFirst).not.toContain("[REDACTED:");
+    expect(scrubText(JSON.stringify({ command })).text).not.toContain("abcd1234efgh");
+    let deep = JSON.stringify({ command });
+    for (let i = 0; i < 4; i++) deep = JSON.stringify({ wrapped: deep });
+    expect(scrubText(deep).text).toContain("abcd1234efgh");
 
     // The order this module actually uses.
     const fieldFirst = JSON.stringify({ command: scrubText(command).text });

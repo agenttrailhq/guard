@@ -189,12 +189,12 @@ describe("SCRUB THE FIELD, THEN SERIALIZE — order, against the real scrubber",
   /**
    * The rule this pins, and why it is not a formatting preference.
    *
-   * `JSON.stringify` escapes a quote to `\"`. The `.env` heuristic in
-   * `core/scrub.ts` has a quoted branch that needs a literal `"` and an unquoted
-   * branch that EXCLUDES `"`, so neither matches the escaped form:
+   * `JSON.stringify` escapes a quote to `\"`. The scrubber reads an escaped quote
+   * too, but only up to three levels of escaping (seven backslashes); a field
+   * serialized deeper than that reaches it with its secret unrecognised:
    *
    *   field-first     → {"command":"export API_KEY=[REDACTED:secret:env]"}
-   *   serialize-first → {"command":"export API_KEY=\"abcd1234wxyz\""}   ← leaks
+   *   serialize-first → redacted for one to three levels, leaks beyond that
    *
    * Against the real `core/scrub.ts`. `buildCrashRecord` scrubs
    * the raw stack STRING and returns an object; `crash-store.ts` and
@@ -208,10 +208,16 @@ describe("SCRUB THE FIELD, THEN SERIALIZE — order, against the real scrubber",
     expect(scrubText(QUOTED_SECRET).text).not.toContain("abcd1234wxyz");
   });
 
-  it("and demonstrably FAILS on the serialized form — the reason for the order", () => {
-    // The negative control. If this ever starts passing, the hazard is gone and this
-    // whole block can be simplified; until then it is the proof the order matters.
-    expect(scrubText(JSON.stringify({ command: QUOTED_SECRET })).text).toContain("abcd1234wxyz");
+  it("redacts the serialized form only to a bounded depth — the reason for the order", () => {
+    // The negative control. Serialized once, the escaped quote is read and the value
+    // redacted; serialized past the bound, it is not. Scrubbing the field first holds
+    // at any depth, which is why it stays the rule.
+    expect(scrubText(JSON.stringify({ command: QUOTED_SECRET })).text).not.toContain(
+      "abcd1234wxyz",
+    );
+    let deep = JSON.stringify({ command: QUOTED_SECRET });
+    for (let i = 0; i < 4; i++) deep = JSON.stringify({ wrapped: deep });
+    expect(scrubText(deep).text).toContain("abcd1234wxyz");
   });
 
   it("a crash record built the production way carries no quoted secret, even serialized", () => {

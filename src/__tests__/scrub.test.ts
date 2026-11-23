@@ -13,6 +13,8 @@ import { PATTERN_IDS, scrubText } from "../core/scrub.js";
 import { BACKSTOP_MS, growth, LINEAR_RATIO } from "./linear-time.js";
 import {
   ESCAPE_BOUNDARY_FIXTURES,
+  ESCAPED_JSON_FIXTURES,
+  escapedJson,
   GLUED_TO_A_WORD,
   INTERACTION_FIXTURES,
   NEGATIVE_FIXTURES,
@@ -183,6 +185,114 @@ describe("correctness — a secret after an escape sequence or a control code", 
     ["unfinished unicode escapes", (n: number) => "\\u00".repeat(n)],
   ] as const)("stays linear on %s", (_name, make) => {
     const { ratio, large } = growth(scrubText, make, 50_000);
+    expect(ratio).toBeLessThan(LINEAR_RATIO);
+    expect(large).toBeLessThan(BACKSTOP_MS);
+  });
+});
+
+describe("escaped JSON at any depth, and connection URLs with an empty user", () => {
+  it.each(ESCAPED_JSON_FIXTURES)("$name", ({ input, output, expected }) => {
+    const result = scrubText(input);
+    expect(result.text).toBe(output);
+    expect(result.redactions).toEqual(expected);
+  });
+
+  /** Decode `text` back to the value it holds, `depth` levels down. */
+  const decode = (text: string, depth: number): unknown => {
+    let json = text;
+    for (let i = 0; i < depth; i++) json = JSON.parse(`"${json}"`) as string;
+    return JSON.parse(json);
+  };
+
+  it.each([
+    1, 2, 3,
+  ])("the output still parses, and keeps the other fields, at depth %i", (depth) => {
+    const input = { user: "app", password: "hunter2opaqueXYZ", host: "db", port: "5432" };
+    const out = scrubText(escapedJson(input, depth)).text;
+    expect(decode(out, depth)).toEqual({ ...input, password: "[REDACTED:secret:env]" });
+  });
+
+  it.each([
+    ...[1, 2, 3].map((depth) => escapedJson({ password: "hunter2opaqueXYZ" }, depth)),
+    ...[1, 2, 3].map((depth) =>
+      escapedJson({ Authorization: "Basic dXNlcjpwYXNzd29yZA==" }, depth),
+    ),
+    ...[1, 2, 3].map((depth) => escapedJson({ cmd: "export DB_PASSWORD=hunter2opaqueXYZ" }, depth)),
+    "redis://:hunter2opaqueXYZ@cache:6379",
+    "https://:hunter2opaqueXYZ@example.com/x",
+  ])("a second scrub changes nothing: %s", (input) => {
+    const once = scrubText(input);
+    expect(once.total).toBeGreaterThan(0);
+    expect(scrubText(once.text)).toEqual({ text: once.text, redactions: {}, total: 0 });
+  });
+
+  it("a non-secret number after a secret-named key takes the closing brace with it", () => {
+    // As in plain JSON: an unquoted value stops at `,` `;` and whitespace, not `}`.
+    expect(scrubText('{"tokenCount":1234}').text).toBe('{"tokenCount":[REDACTED:secret:env]');
+    expect(scrubText('{\\"tokenCount\\":1234}').text).toBe(
+      '{\\"tokenCount\\":[REDACTED:secret:env]',
+    );
+  });
+
+  it("depth 4 is beyond the bound", () => {
+    const input = escapedJson({ password: "hunter2opaqueXYZ" }, 4);
+    expect(scrubText(input).text).toBe(input);
+  });
+
+  const open1 = '\\"password\\":\\"';
+  const open3 = '\\\\\\"password\\\\\\":\\\\\\"';
+  const repeat = (unit: string, n: number) => unit.repeat(Math.ceil(n / unit.length));
+  it.each([
+    ["an escaped opener repeated, never closed", (n: number) => repeat(open1, n)],
+    ["an escaped opener, then backslash pairs", (n: number) => open1 + repeat("\\\\", n)],
+    [
+      "password= then a backslash after every character",
+      (n: number) => `password=${repeat("a\\", n)}`,
+    ],
+    ["a three-backslash opener repeated, never closed", (n: number) => repeat(open3, n)],
+    [
+      "a three-backslash opener, then backslash runs of 1 to 16",
+      (n: number) => {
+        let s = open3;
+        for (let i = 0; s.length < n; i++) s += `${"\\".repeat((i % 16) + 1)}a`;
+        return s;
+      },
+    ],
+    ["redis://: repeated", (n: number) => repeat("redis://:", n)],
+    ["redis://u: repeated", (n: number) => repeat("redis://u:", n)],
+    ["http://u: repeated", (n: number) => repeat("http://u:", n)],
+    ["redis://: then no @", (n: number) => `redis://:${"a".repeat(n)}`],
+    [
+      "a URL that just misses the long-password branch, repeated",
+      (n: number) => repeat(`redis://:${"a".repeat(511)}/ `, n),
+    ],
+    ["a long-password URL repeated", (n: number) => repeat(`https://u:${"a".repeat(600)}@h `, n)],
+    [
+      "a long URL path with no @, repeated",
+      (n: number) => repeat(`https://h:8080/${"a/".repeat(300)} `, n),
+    ],
+    ["one long URL token with slashes and no @", (n: number) => `redis://u:${repeat("a/", n)}`],
+    ["one long URL token with quotes and no @", (n: number) => `redis://u:${repeat("a'\\\"", n)}`],
+    [
+      "a long URL token with a quote and no @, repeated",
+      (n: number) => repeat(`https://u:${"a".repeat(600)}'b `, n),
+    ],
+    [
+      "a long password with a quote, repeated",
+      (n: number) => repeat(`postgres://u:${"a".repeat(600)}'b@db `, n),
+    ],
+    ["password= then one long backslash run", (n: number) => `password=a${"\\".repeat(n)}b`],
+    [
+      "password= then one long backslash run before a quote",
+      (n: number) => `password=a${"\\".repeat(n)}"`,
+    ],
+    [
+      "an escaped value of inner backslashes, never closed",
+      (n: number) => open1 + repeat("\\\\", n),
+    ],
+    ['a plain value of \\" pairs, never closed', (n: number) => `"password":"${repeat('\\"', n)}`],
+  ] as const)("stays linear on %s", (_name, make) => {
+    const { ratio, large } = growth(scrubText, make, 200_000);
     expect(ratio).toBeLessThan(LINEAR_RATIO);
     expect(large).toBeLessThan(BACKSTOP_MS);
   });
