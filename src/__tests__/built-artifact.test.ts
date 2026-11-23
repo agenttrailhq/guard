@@ -833,7 +833,7 @@ describe("a guardrail the user wrote actually enforces", () => {
    * The per-rule allowlist, against the shipped bytes — and a consequence of
    * guardrails that overlap.
    *
-   * `rm -rf /var/tmp/scratch` is matched by TWO rules: `dd.rm-rf-absolute`
+   * `rm -rf /var/lib/scratch` is matched by TWO rules: `dd.rm-rf-absolute`
    * denies an absolute-rooted recursive delete, and `require-approval-rm-rf` holds the
    * broader shape for approval. They are not duplicates — the second is a superset that
    * the first ESCALATES from ask to deny — but the allowlist is per-RULE, so silencing
@@ -852,14 +852,14 @@ describe("a guardrail the user wrote actually enforces", () => {
         encoding: "utf8",
       });
 
-    expect(silence("dd.rm-rf-absolute", "rm -rf /var/tmp/scratch").status).toBe(0);
+    expect(silence("dd.rm-rf-absolute", "rm -rf /var/lib/scratch").status).toBe(0);
     // The DENY is gone — but the second rule still holds the same shape for
     // approval, which is exactly what "silences ONE rule" means.
-    expect(hookIn(home, "rm -rf /var/tmp/scratch").decision).toBe("ask");
+    expect(hookIn(home, "rm -rf /var/lib/scratch").decision).toBe("ask");
 
-    expect(silence("require-approval-rm-rf", "rm -rf /var/tmp/scratch").status).toBe(0);
+    expect(silence("require-approval-rm-rf", "rm -rf /var/lib/scratch").status).toBe(0);
     // With both silenced, the shape is genuinely let through.
-    expect(hookIn(home, "rm -rf /var/tmp/scratch").decision).toBe("none");
+    expect(hookIn(home, "rm -rf /var/lib/scratch").decision).toBe("none");
 
     // ...and the same rules still deny a different one. Per-SHAPE, not per-rule.
     expect(hookIn(home, "rm -rf /etc").decision).toBe("deny");
@@ -1329,7 +1329,10 @@ describe("scan, against the built binary", () => {
                 type: "tool_use",
                 id: "t1",
                 name: "Bash",
-                input: { command: `rm -rf ${join(repo, "build")}` },
+                // The repo sits under the system temp folder, where one delete with every
+                // target inside temp is exempt. The flag after the target keeps this call
+                // matched, so the verify path has a call to check.
+                input: { command: `rm -rf ${join(repo, "build")} -v` },
               },
             ],
           },

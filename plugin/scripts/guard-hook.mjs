@@ -1850,7 +1850,7 @@ function detectAgent(payload) {
   return void 0;
 }
 
-// node_modules/@agenttrail/guardrails/dist/chunk-VN3HZNI6.js
+// node_modules/@agenttrail/guardrails/dist/chunk-4B3OWESM.js
 var SHELL_AND_MCP = "{Bash,PowerShell,mcp__*}";
 var OUTSIDE = "[^\"'|;&`$<>()]";
 var OUTSIDE_PIPEABLE = "[^\"';&`$<>()]";
@@ -1889,6 +1889,28 @@ var QUOTED_MENTION = [
   GIT_TEXT_MENTION,
   PRINT_MENTION,
   HTTP_BODY_MENTION
+];
+var SHELL_TEMP_ROOT = "(?:(?:/private)?/(?:var/)?tmp|(?:/private)?/var/folders/[\\w+-]{1,8}/[\\w+-]{1,40}/T|\\$\\{TMPDIR:\\?\\})";
+var SHELL_TEMP_SEG = "[^\\s/\\\\;&|<>`$'\"(){}\\[\\]?*!\\x00]{1,99}";
+var SHELL_TEMP_TARGET = `(?!\\S*\\.\\.)${SHELL_TEMP_ROOT}(?:/${SHELL_TEMP_SEG}){1,24}/?`;
+var PWSH_TEMP_SEG = "[^\\s/\\\\;&|<>`$'\"(){}\\[\\]?*,:@#\\x00-\\x1f\\x7f-\\x9f\\u180e\\u200b-\\u200d\\u2060\\u2018-\\u201F]{1,99}";
+var PWSH_TEMP_ROOT = "[a-z]:[/\\\\](?:users[/\\\\][\\w-][\\w.-]{0,63}[/\\\\]appdata[/\\\\]local|windows)[/\\\\]temp";
+var PWSH_TEMP_TARGET = `(?!\\S*\\.\\.)${PWSH_TEMP_ROOT}(?:[/\\\\]${PWSH_TEMP_SEG}){1,24}[/\\\\]?`;
+var TEMP_DELETE = [
+  {
+    kind: "execute_tool",
+    label: "Bash",
+    detail_matches: [
+      `^\\s*(?:rm|unlink)(?:[ \\t]+-{1,2}[a-z][a-z-]{0,24}){0,8}(?:[ \\t]+--)?(?:[ \\t]+${SHELL_TEMP_TARGET}){1,12}[ \\t]*$`
+    ]
+  },
+  {
+    kind: "execute_tool",
+    label: "PowerShell",
+    detail_matches: [
+      `^\\s*(?:remove-item|rm|ri|del|rd|rmdir)(?:[ \\t]+-[a-z][a-z-]{0,24}){0,8}(?:[ \\t]+${PWSH_TEMP_TARGET}){1,12}[ \\t]*$`
+    ]
+  }
 ];
 var LEADING_FLAGS = "(?:\\s+-{1,2}[A-Za-z][\\w-]{0,24}(?:=\\S{1,40})?(?:\\s+[^-\\s]\\S{0,40})?){0,6}";
 var RM_WORD = "(?:^|[^\\w.-])rm";
@@ -2307,6 +2329,7 @@ var rules = [
   acRecursiveAgentInvoke,
   acAgentAutonomyFlag
 ];
+var RUNS_SQL = "^(?=[\\s\\S]*\\b(?:psql|pgcli|mysql|mysqlsh|mariadb|mycli|sqlite3|litecli|sqlcmd|sqlplus|usql|clickhouse(?:-client|\\s+client)|cockroach\\s+sql|snowsql|bq\\s+query|cqlsh|duckdb|prisma\\s+db\\s+execute|d1\\s+execute)\\b)[\\s\\S]*";
 var blockDestructiveSql = {
   id: "block-destructive-sql",
   category: "destructive-data",
@@ -2314,18 +2337,31 @@ var blockDestructiveSql = {
   defaultAction: "block",
   owasp: ["ASI02", "LLM03", "LLM10"],
   title: "Block destructive SQL",
-  description: 'Blocks shell commands that execute destructive SQL DDL \u2014 DROP TABLE, TRUNCATE or DROP DATABASE. The two-word phrases are matched in any case with any spacing. Bare TRUNCATE is matched only in UPPER case, so that arm is CASE-SENSITIVE by design: lower-case `truncate` is also the coreutils binary and a common identifier, so matching it would block routine work \u2014 the cost is that a lower-case `truncate users;` without the `table` keyword is NOT caught. A command naming a read-only search or history tool (grep, rg, ag, ack, git commit/log/grep/blame/show) is left alone, because searching for the words is not executing them; a compound command that both searches and executes is therefore missed. Shell commands only: SQL issued from inside application code is invisible here. A quoted MENTION is not a use: a search, a `git commit -m` message, an `echo` or a `curl --data` body that only names this command is left alone. That holds only while every shell metacharacter stays inside the quotes, so `git commit -m "x" && \u2026` is still caught; and the carrier must be the first word, so `sudo grep \u2026` is not exempt.',
+  description: 'Blocks commands that execute destructive SQL DDL \u2014 DROP TABLE, TRUNCATE or DROP DATABASE. On a shell command (Bash, PowerShell, and the Cursor and Codex shells mapped to them) it blocks only when a SQL client is on the same command \u2014 `psql`, `pgcli`, `mysql`, `mysqlsh`, `mariadb`, `mycli`, `sqlite3`, `litecli`, `sqlcmd`, `sqlplus`, `usql`, `clickhouse-client`, `cockroach sql`, `snowsql`, `bq query`, `cqlsh`, `duckdb`, `prisma db execute` or `wrangler d1 execute`, including through `docker exec`, `kubectl exec`, `ssh` or an env prefix \u2014 so SQL that is only TEXT is not blocked: a PR or issue body, a heredoc or `printf` that writes a migration file, a note. With a client on the line, `TRUNCATE` is matched in any case with or without `TABLE`. Not caught on a shell: a statement in a file the line does not show (`psql -f drop.sql`, `psql < drop.sql`, a migration tool such as `flyway`, `liquibase`, `dbmate`, `prisma migrate` or `alembic`), a script that runs a client the line does not name, a client this list does not name, and a client word that appears only in text (`gh pr create --body "\u2026 psql \u2026 DROP TABLE \u2026"` is still blocked). On an MCP tool (`mcp__*`), which takes the statement itself as its input, the two-word phrases are matched in any case with any spacing, and bare TRUNCATE only in UPPER case, so that arm is CASE-SENSITIVE by design: lower-case `truncate` is also a common identifier, and the cost is that a lower-case `truncate users;` without the `table` keyword is NOT caught there. A command naming a read-only search or history tool (grep, rg, ag, ack, git commit/log/grep/blame/show) is left alone, because searching for the words is not executing them; a compound command that both searches and executes is therefore missed. SQL issued from inside application code is invisible here. A quoted MENTION is not a use: a search, a `git commit -m` message, an `echo` or a `curl --data` body that only names this command is left alone. That holds only while every shell metacharacter stays inside the quotes, so `git commit -m "x" && \u2026` is still caught; and the carrier must be the first word, so `sudo grep \u2026` is not exempt.',
   match: {
     any_of: [
+      // Shell: only when a SQL client is on the line. `truncate` in any case, because the
+      // client requirement is what keeps coreutils `truncate -s` and identifiers out.
       {
         kind: "execute_tool",
+        label: "{Bash,PowerShell}",
+        detail_matches: [
+          `${RUNS_SQL}\\bdrop\\s+table\\b`,
+          `${RUNS_SQL}\\bdrop\\s+database\\b`,
+          `${RUNS_SQL}\\btruncate\\s+(?!-)\\w`
+        ]
+      },
+      // An MCP database tool takes the statement itself as its input: no client to require.
+      {
+        kind: "execute_tool",
+        label: "mcp__*",
         detail_matches: [
           "\\bdrop\\s+table\\b",
           "\\bdrop\\s+database\\b",
           "\\btruncate\\s+table\\b"
         ]
       },
-      { kind: "execute_tool", detail_contains: ["TRUNCATE"] }
+      { kind: "execute_tool", label: "mcp__*", detail_contains: ["TRUNCATE"] }
     ],
     none_of: [
       ...QUOTED_MENTION,
@@ -2344,6 +2380,17 @@ var blockDestructiveSql = {
       bash("psql -h db.internal -c 'TRUNCATE TABLE sessions;'"),
       bash("mysql -e 'drop database app;'"),
       bash("psql -c 'Drop Table sessions;'"),
+      // A client reached through a wrapper or an env prefix, a heredoc fed to it, and
+      // lower-case TRUNCATE once a client is on the line.
+      bash('docker exec -it db psql -U app -c "DROP TABLE users;"'),
+      bash("kubectl exec deploy/db -- mysql -e 'DROP DATABASE app;'"),
+      bash("PGPASSWORD=x psql -h db -c 'drop table users'"),
+      bash("psql app <<'EOF'\nDROP TABLE legacy_users;\nEOF"),
+      bash("psql -c 'truncate sessions;'"),
+      bash("psql -c 'TRUNCATE sessions;'"),
+      bash("sqlite3 app.db 'DROP TABLE cache;'"),
+      bash("npx wrangler d1 execute app --command 'DROP TABLE users'"),
+      pwsh('sqlcmd -S localhost -Q "DROP DATABASE app"'),
       // A database server's SQL argument: the generic `sql` field on an unmapped tool, then
       // each mapped database tool in `MCP_COMMAND_FIELDS`.
       mcp({ sql: "DROP TABLE users;" }),
@@ -2367,7 +2414,16 @@ var blockDestructiveSql = {
       bash('git commit -m "add TRUNCATE step to the runbook"'),
       bash("psql -c 'SELECT * FROM users;'"),
       bash("truncate -s 0 /var/log/app.log"),
-      bash("pnpm vitest run src/lib/truncate.test.ts")
+      bash("pnpm vitest run src/lib/truncate.test.ts"),
+      // SQL that is only text: no client is on the line.
+      bash(
+        'gh pr create --title "Drop legacy tables" --body "This migration will DROP TABLE legacy_users after the backfill."'
+      ),
+      bash('gh issue comment 42 --body "TRUNCATE TABLE sessions runs nightly"'),
+      bash("cat > migrations/0042_drop_legacy.sql <<'EOF'\nDROP TABLE legacy_users;\nEOF"),
+      bash("printf '%s\\n' 'DROP DATABASE scratch;' > drop.sql"),
+      pwsh("Set-Content -Path drop.sql -Value 'DROP TABLE legacy_users;'"),
+      bash("psql -c 'SELECT count(*) FROM sessions;' && truncate -s 0 /var/log/app.log")
     ]
   }
 };
@@ -2580,7 +2636,7 @@ var ddRmRfAbsolute = {
   defaultAction: "block",
   owasp: ["ASI02", "LLM03"],
   title: "rm -rf against an absolute path",
-  description: 'Recursive delete rooted at `/` rather than at a relative path, with or without the force flag. The recursive flag (`-r`, `-R`, a cluster such as `-rf` or `-Rv`, or `--recursive`) and the absolute target may sit anywhere among the arguments of one `rm`: split across arguments (`rm -r -f /srv`), after `--`, after a relative operand, or after the target, and a quoted target (`rm -rf "/srv"`) counts too. Deliberately does NOT fire on `rm -rf ./node_modules` or `rm -rf build`, which are safe and happen many times a day, or on `rm -f /tmp/app.pid`, which has no recursive flag. Known misses: a variable or `~` target (`rm -rf $DIR`) whose value is only known at run time \u2014 for those, see require-approval-rm-rf, which holds them for approval instead; an `rm` with more than twelve arguments before the flag or the target; a command continued onto the next line with a backslash; and a delete through `find -delete` or a file tool. A quoted MENTION is not a use: a search, a `git commit -m` message, an `echo` or a `curl --data` body that only names this command is left alone. That holds only while every shell metacharacter stays inside the quotes, so `git commit -m "x" && \u2026` is still caught; and the carrier must be the first word, so `sudo grep \u2026` is not exempt.',
+  description: 'Recursive delete rooted at `/` rather than at a relative path, with or without the force flag. The recursive flag (`-r`, `-R`, a cluster such as `-rf` or `-Rv`, or `--recursive`) and the absolute target may sit anywhere among the arguments of one `rm`: split across arguments (`rm -r -f /srv`), after `--`, after a relative operand, or after the target, and a quoted target (`rm -rf "/srv"`) counts too. Deliberately does NOT fire on `rm -rf ./node_modules` or `rm -rf build`, which are safe and happen many times a day, or on `rm -f /tmp/app.pid`, which has no recursive flag. Also not blocked: one `rm` whose every target is strictly inside the system temp folder (`/tmp`, `/private/tmp`, `/var/tmp`, the macOS per-user temp folder), such as `rm -rf /tmp/review-1`. Still blocked: the bare temp folder (`rm -rf /tmp`); `..` anywhere in a target; a glob, brace expansion or backslash in a target (`/tmp/{..,x}/etc`, `/tmp/.[.]/etc`); a variable after the root; a target outside temp in the same `rm`; a chained second command; and the same delete through an MCP tool. The exemption reads the text only, so a symbolic link inside temp that points out of it is not caught. Known misses: a variable or `~` target (`rm -rf $DIR`) whose value is only known at run time \u2014 for those, see require-approval-rm-rf, which holds them for approval instead; an `rm` with more than twelve arguments before the flag or the target; a command continued onto the next line with a backslash; and a delete through `find -delete` or a file tool. A quoted MENTION is not a use: a search, a `git commit -m` message, an `echo` or a `curl --data` body that only names this command is left alone. That holds only while every shell metacharacter stays inside the quotes, so `git commit -m "x" && \u2026` is still caught; and the carrier must be the first word, so `sudo grep \u2026` is not exempt.',
   match: {
     any_of: [
       {
@@ -2594,7 +2650,7 @@ var ddRmRfAbsolute = {
         ]
       }
     ],
-    none_of: [...QUOTED_MENTION]
+    none_of: [...QUOTED_MENTION, ...TEMP_DELETE]
   },
   fixtures: {
     block: [
@@ -2627,7 +2683,34 @@ var ddRmRfAbsolute = {
       mcp(
         { command: "rm -r -f /srv/data", timeout_ms: 5e3 },
         "mcp__desktop-commander__start_process"
-      )
+      ),
+      // The temp exemption is narrow: each of these is still blocked.
+      bash("rm -rf /tmp"),
+      bash("rm -rf /tmp/"),
+      bash("rm -rf /private/tmp"),
+      bash("rm -rf /tmp/x/../../etc"),
+      bash("rm -rf /tmp/./../etc"),
+      bash("rm -rf /tmp/x/.."),
+      bash("rm -rf /tmp/$X"),
+      bash(`rm -rf /tmp/\${X}`),
+      bash("rm -rf /tmp/a /srv/data"),
+      bash("rm -rf /tmp/a && rm -rf /srv/data"),
+      bash("rm -rf /tmp/a; rm -rf /srv/data"),
+      bash("rm -rf /tmp-old/x"),
+      bash("sudo rm -rf /tmp/a"),
+      bash('rm -rf "/tmp/a"'),
+      mcp({ command: "rm -rf /tmp/review" }),
+      // Text the shell expands into a path outside temp.
+      bash("rm -rf /tmp/{..,x}/etc"),
+      bash("rm -rf /tmp/a{,/../../etc}"),
+      bash("rm -rf /tmp/.\\./etc"),
+      bash("rm -rf /tmp/\\../etc"),
+      bash("rm -rf /tmp/.[.]/etc"),
+      bash("rm -rf /tmp/?./etc"),
+      bash("rm -rf /tmp/.*/etc"),
+      bash("rm -rf /tmp/*/../.."),
+      bash("rm -rf /tmp/review/*"),
+      bash("rm -rf /tmp/..cache")
     ],
     allow: [
       ...mentions("rm -rf /"),
@@ -2643,7 +2726,13 @@ var ddRmRfAbsolute = {
       bash("rm -rf build 2>/dev/null"),
       bash("rm -rf build && ls /"),
       bash("docker run --rm -v /srv:/data img cp -r /a /b"),
-      mcp({ command: "rm -rf ./node_modules" })
+      mcp({ command: "rm -rf ./node_modules" }),
+      // One rm whose every target is strictly inside the system temp folder.
+      bash("rm -rf /tmp/review-1"),
+      bash("rm -rf /private/tmp/agent-1/scratchpad/repo"),
+      bash("rm -r -f /var/tmp/run-7"),
+      bash("rm -rf /var/folders/zz/abc123/T/review /tmp/out"),
+      bash("rm -rf -- /tmp/a /tmp/b")
     ]
   }
 };
@@ -2851,6 +2940,8 @@ var exReverseShell = {
     ]
   }
 };
+var RUNS = '(?:^|[\\n;&|(`]|-c\\s+["\']|:\\s*")\\s*(?:(?:sudo|nohup|exec|time|command|env|npx|pnpm\\s+dlx|timeout\\s+\\S{1,20}|\\w{1,40}=\\S{0,200})\\s+){0,4}(?:[^\\s;&|(`"\']{0,200}/)?';
+var SSH = `(?:^|[\\s;&|(/])ssh(?=\\s)[^|;&"'<>]*`;
 var exTunnelExpose = {
   id: "ex.tunnel-expose",
   category: "exfiltration",
@@ -2858,22 +2949,22 @@ var exTunnelExpose = {
   defaultAction: "require_approval",
   owasp: ["ASI02", "ASI03", "LLM02"],
   title: "Exposing a local port through a public tunnel",
-  description: 'Holds a command that puts a local service on a public URL through a tunnel: `ngrok http|tcp|start`, `cloudflared tunnel`, `localtunnel` / `lt --port`, `tailscale funnel`, an `ssh -R` remote forward (including `-NR`, matched only when `ssh` is the command being run), the `serveo.net` and `localhost.run` SSH relays, `bore local`, `frpc` invoked with a flag (`frpc -c \u2026`), and `pinggy.io`. Each reaches past the firewall and gives the outside world a route in, which is a demo convenience and an exfiltration channel both. Deliberately NOT matched: `ssh -L` (a local forward, inbound to you) and `ssh -D` (a SOCKS proxy), `ngrok config check` / `--version`, `cloudflared --version`, `tailscale status` / `serve` (which stays inside the tailnet), `ssh-keygen -R host` (host-key removal, not a tunnel), a `-R` that appears only inside a quoted remote command (`ssh host "grep -R \u2026"`), and a path or filename that merely contains `frpc` (`scripts/frpc-parser.js`). MISSES a tunnel binary run under another name, a raw `ssh -R` to a private relay this list does not name, `frp` driven from its config file rather than the `frpc` command, `sudo frpc`, and an `frpc` subcommand invoked without a leading flag. A quoted MENTION is not a use: a search, a `git commit -m` message, an `echo` or a `curl --data` body that only names this command is left alone. That holds only while every shell metacharacter stays inside the quotes, so `git commit -m "x" && \u2026` is still caught; and the carrier must be the first word, so `sudo grep \u2026` is not exempt.',
+  description: 'Holds a command that puts a local service on a public URL through a tunnel: `ngrok http|tcp|start`, `cloudflared tunnel`, `localtunnel` / `lt --port`, `tailscale funnel`, an `ssh -R` remote forward (including `-NR`, matched only when `ssh` is the command being run), the `serveo.net` and `localhost.run` SSH relays, `bore local`, `frpc` invoked with a flag (`frpc -c \u2026`), and the `pinggy.io` relay. A tunnel tool is matched only where a shell would run it: at the start of the command, after a separator (`;`, `&&`, `|`, `(`), inside a `bash -c` string, after a wrapper such as `sudo`, `nohup`, `env NAME=value`, `timeout 600` or `npx`, or by its full path; the three SSH relays only as the target of an `ssh` command. A tunnel tool NAMED in text that is not run \u2014 a `gh pr create --body`, a heredoc or a note written to a file \u2014 is not held. Each reaches past the firewall and gives the outside world a route in, which is a demo convenience and an exfiltration channel both. Deliberately NOT matched: `ssh -L` (a local forward, inbound to you) and `ssh -D` (a SOCKS proxy), `ngrok config check` / `--version`, `cloudflared --version`, `tailscale status` / `serve` (which stays inside the tailnet), `ssh-keygen -R host` (host-key removal, not a tunnel), a `-R` that appears only inside a quoted remote command (`ssh host "grep -R \u2026"`), and a path or filename that merely contains `frpc` (`scripts/frpc-parser.js`). MISSES a tunnel binary run under another name, or through a wrapper this list does not name (`docker run \u2026 ngrok/ngrok http`, `make tunnel`, a shell function or alias), a raw `ssh -R` to a private relay this list does not name, `frp` driven from its config file rather than the `frpc` command, `sudo frpc`, and an `frpc` subcommand invoked without a leading flag. A quoted MENTION is not a use: a search, a `git commit -m` message, an `echo` or a `curl --data` body that only names this command is left alone. That holds only while every shell metacharacter stays inside the quotes, so `git commit -m "x" && \u2026` is still caught; and the carrier must be the first word, so `sudo grep \u2026` is not exempt.',
   match: {
     any_of: [
       {
         kind: "execute_tool",
         label: SHELL_AND_MCP,
         detail_matches: [
-          "\\bngrok\\s+(?:http|tcp|start)\\b",
-          "\\bcloudflared\\s+tunnel\\b",
-          "\\b(?:localtunnel\\s+--port|lt\\s+--port|npx\\s+(?:--yes\\s+)?localtunnel)\\b",
-          "\\btailscale\\s+funnel\\b",
-          `(?:^|[\\s;&|(/])ssh(?=\\s)[^|;&"'<>]*\\s-[A-Za-z]*R(?![A-Za-z])`,
-          "\\b(?:serveo\\.net|localhost\\.run)\\b",
-          "\\bbore\\s+local\\b",
-          "(?:^|[;&|(]\\s*|/)frpc\\s+-",
-          "\\bpinggy\\.io\\b"
+          `${RUNS}ngrok\\s+(?:http|tcp|start)\\b`,
+          `${RUNS}cloudflared\\s+tunnel\\b`,
+          `${RUNS}(?:localtunnel\\s+--port|lt\\s+--port|npx\\s+(?:--yes\\s+)?localtunnel)\\b`,
+          `${RUNS}tailscale\\s+funnel\\b`,
+          `${SSH}\\s-[A-Za-z]*R(?![A-Za-z])`,
+          // The SSH relays are host names, so they count only as the target of an `ssh`.
+          `${SSH}\\b(?:serveo\\.net|localhost\\.run|pinggy\\.io)\\b`,
+          `${RUNS}bore\\s+local\\b`,
+          "(?:^|[;&|(]\\s*|/)frpc\\s+-"
         ]
       }
     ],
@@ -2892,7 +2983,21 @@ var exTunnelExpose = {
       bash("ssh -R 80:localhost:3000 serveo.net"),
       bash("bore local 8000 --to bore.pub"),
       bash("frpc -c ./frpc.toml"),
-      pwsh("ngrok http 5000")
+      pwsh("ngrok http 5000"),
+      // Run through a wrapper, chained, by path, or inside a `-c` string.
+      bash("sudo ngrok http 80"),
+      bash("nohup ngrok http 3000 > ngrok.log 2>&1 &"),
+      bash("env NGROK_AUTHTOKEN=abc ngrok http 3000"),
+      bash("NGROK_AUTHTOKEN=abc ngrok http 3000"),
+      bash("pnpm build && ngrok http 4173"),
+      bash('bash -c "ngrok http 3000"'),
+      bash("/usr/local/bin/cloudflared tunnel run app"),
+      bash("timeout 600 bore local 8000 --to bore.pub"),
+      bash("npx localtunnel --port 3000"),
+      bash("cd web; tailscale funnel 443"),
+      bash("ssh -p 443 -R0:localhost:3000 a.pinggy.io"),
+      bash("ssh nokey@localhost.run"),
+      mcp({ command: "ngrok http 3000" })
     ],
     allow: [
       ...mentions("ngrok http 3000"),
@@ -2907,7 +3012,16 @@ var exTunnelExpose = {
       bash("ssh-keygen -R old.example.com"),
       bash('ssh deploy@host "grep -R TODO /srv"'),
       bash("node scripts/frpc-parser.js"),
-      bash("cat frpc.toml")
+      bash("cat frpc.toml"),
+      // A tunnel tool named in text that is not run.
+      bash('gh pr create --title "Docs" --body "Run ngrok http 3000 to share the preview."'),
+      bash('gh issue comment 7 --body "tailscale funnel 443 exposes it publicly"'),
+      bash(
+        "cat > docs/tunnels.md <<'EOF'\nUse cloudflared tunnel --url http://localhost:8080 for demos.\nEOF"
+      ),
+      bash("printf 'bore local 8000 --to bore.pub\\n' > notes.txt"),
+      bash("open https://serveo.net"),
+      bash("curl -s https://pinggy.io/docs")
     ]
   }
 };
@@ -4435,7 +4549,7 @@ var requireAuthOnPiiEndpoints = {
   }
 };
 var NOT_VENDORED = "*(@(!(node_modules|dist|vendor)|@(node_modules|dist|vendor)[^/]*)/)";
-var PROD_CONFIG = "@(yml|yaml|json|toml|env|ini|conf|properties|tf|tfvars)";
+var PROD_CONFIG = "@(yml|yaml|json|toml|env|ini|conf|properties|tfvars)";
 var seCredentialFile = {
   id: "se.credential-file",
   category: "secret-exposure",
@@ -4443,7 +4557,7 @@ var seCredentialFile = {
   defaultAction: "require_approval",
   owasp: ["ASI02", "ASI03", "LLM02"],
   title: "Opening a file that holds credentials",
-  description: "Holds a file tool opening a path where credentials live \u2014 an SSH private key, an AWS credentials file, a PEM/P12/PFX/JKS keystore, `.npmrc` or `.pypirc` (which hold registry tokens), a Docker config, or a kubeconfig. Public keys are excluded (`*.pub`). It matches the PATH ONLY: it cannot tell whether the file actually holds a secret, so a `.pem` that is a public certificate is held too, and a credential in a file named something else is missed entirely. `.env` files are covered separately by block-env-file-read. It also holds READING \u2014 the `Read` and `Grep` tools, nothing else \u2014 of files whose edit another guardrail already holds and which commonly carry a secret: `/etc/shadow`, `/etc/gshadow`, their `-` backups, `/etc/sudoers` and `/etc/sudoers.d/`; SSH host private keys (`/etc/ssh/ssh_host_*_key` and the legacy `/etc/ssh/ssh_host_key`); `/etc/ssl/private/` and `/etc/pki/tls/private/`; Kubernetes admin configs (`/etc/kubernetes/*.conf`) and private keys (`/etc/kubernetes/pki/**/*.key`); the k3s kubeconfig (`/etc/rancher/k3s/k3s.yaml`); a repository's `.git/config`, where a remote URL or extra header can carry a token; agent configuration that often holds API keys \u2014 `.mcp.json`, `.claude/settings.local.json`, `.claude.json`, `.cursor/mcp.json` and `.codex/config.toml`; and production configuration: a `.yml`, `.yaml`, `.json`, `.toml`, `.env`, `.ini`, `.conf`, `.properties`, `.tf` or `.tfvars` file named `*.prod.*`, `prod.*`, `*.production.*` or `production.*`, or under a `prod/` or `production/` folder, unless any folder in the path, an absolute path's leading folders included, is named exactly `node_modules`, `dist` or `vendor` (so `/srv/vendor/app/config/database.prod.yml` is not held). A Grep anywhere under `/etc`, including a search of the folder itself or with a wildcard, is held too; a Read of an `/etc` file not named here is not. Editing those files is held by the guardrail that owns the path, not by this one. NOT held on read by this guardrail: a shell command such as `cat`, on any agent (Codex has no read tool, so its reads are always shell commands); a file tool other than Read and Grep, such as Claude Code's Glob or another Cursor tool, which the guardrail that owns the path still holds under its own title, except on `.claude.json`, which no other guardrail names; `.claude/settings.json`, at project or user level; other secrets under `/etc` such as Kerberos keytabs and VPN or Wi-Fi connection files, which are held on Grep only; a Grep of a production folder with no file pattern, or with a pattern whose extension is a wildcard; production files of other types, such as `.key`, `.tfstate`, `.hcl`, `.cfg`, `.xml`, `.config` or Angular's `environment.prod.ts`; and production code or prose, such as `webpack.prod.js` or a runbook in `docs/production/`.",
+  description: "Holds a file tool opening a path where credentials live \u2014 an SSH private key, an AWS credentials file, a PEM/P12/PFX/JKS keystore, `.npmrc` or `.pypirc` (which hold registry tokens), a Docker config, or a kubeconfig. Public keys are excluded (`*.pub`). It matches the PATH ONLY: it cannot tell whether the file actually holds a secret, so a `.pem` that is a public certificate is held too, and a credential in a file named something else is missed entirely. `.env` files are covered separately by block-env-file-read. It also holds READING \u2014 the `Read` and `Grep` tools, nothing else \u2014 of files whose edit another guardrail already holds and which commonly carry a secret: `/etc/shadow`, `/etc/gshadow`, their `-` backups, `/etc/sudoers` and `/etc/sudoers.d/`; SSH host private keys (`/etc/ssh/ssh_host_*_key` and the legacy `/etc/ssh/ssh_host_key`); `/etc/ssl/private/` and `/etc/pki/tls/private/`; Kubernetes admin configs (`/etc/kubernetes/*.conf`) and private keys (`/etc/kubernetes/pki/**/*.key`); the k3s kubeconfig (`/etc/rancher/k3s/k3s.yaml`); a repository's `.git/config`, where a remote URL or extra header can carry a token; agent configuration that often holds API keys \u2014 `.mcp.json`, `.claude/settings.local.json`, `.claude.json`, `.cursor/mcp.json` and `.codex/config.toml`; and production configuration: a `.yml`, `.yaml`, `.json`, `.toml`, `.env`, `.ini`, `.conf`, `.properties` or `.tfvars` file named `*.prod.*`, `prod.*`, `*.production.*` or `production.*`, or under a `prod/` or `production/` folder, unless any folder in the path, an absolute path's leading folders included, is named exactly `node_modules`, `dist` or `vendor` (so `/srv/vendor/app/config/database.prod.yml` is not held). A Grep anywhere under `/etc`, including a search of the folder itself or with a wildcard, is held too; a Read of an `/etc` file not named here is not. Editing those files is held by the guardrail that owns the path, not by this one. NOT held on read by this guardrail: a shell command such as `cat`, on any agent (Codex has no read tool, so its reads are always shell commands); a file tool other than Read and Grep, such as Claude Code's Glob or another Cursor tool, which the guardrail that owns the path still holds under its own title, except on `.claude.json`, which no other guardrail names; `.claude/settings.json`, at project or user level; other secrets under `/etc` such as Kerberos keytabs and VPN or Wi-Fi connection files, which are held on Grep only; a Grep of a production folder with no file pattern, or with a pattern whose extension is a wildcard; Terraform source (`.tf`), which references secrets by variable rather than holding them (the values file, `.tfvars`, is held); a production folder read from a temporary checkout is held like any other; production files of other types, such as `.key`, `.tfstate`, `.hcl`, `.cfg`, `.xml`, `.config` or Angular's `environment.prod.ts`; and production code or prose, such as `webpack.prod.js` or a runbook in `docs/production/`.",
   match: {
     any_of: [
       { kind: "execute_tool", file_glob: "**/.ssh/id_*" },
@@ -4592,8 +4706,16 @@ var seCredentialFile = {
       // Folders that only start with a skipped name are still held.
       file("distribution/prod.json", "Read"),
       file("vendors/config/production.yml", "Grep"),
+      // `.tfvars` holds Terraform's values, so it stays held on every production arm.
+      file("config/app.prod.tfvars", "Read"),
+      file("infra/prod.tfvars", "Grep"),
+      file("infra/network.production.tfvars", "Read"),
+      file("infra/production.tfvars", "Grep"),
+      file("infra/production/terraform.tfvars", "Read"),
+      // A production file read from a temporary review checkout is held like any other.
+      file("/tmp/review/config/prod/app.yml", "Read"),
+      file("/private/tmp/agent-1/scratch/repo/deploy/production/values.yaml", "Grep"),
       // One fixture per file type not used above.
-      file("infra/prod/main.tf", "Read"),
       file("config/nginx.prod.conf", "Read"),
       file("config/app.prod.ini", "Grep")
     ],
@@ -4625,6 +4747,18 @@ var seCredentialFile = {
       file("/repo/.cursor/rules/style.mdc", "Read"),
       file("/repo/codex/config.toml", "Read"),
       file("config/database.staging.yml", "Read"),
+      // Terraform source is infrastructure code, not a secret store, on every production arm.
+      file("infra/prod/main.tf", "Read"),
+      file("infra/prod/main.tf", "Grep"),
+      file("infra/envs/prod/variables.tf", "Read"),
+      file("infra/envs/prod/outputs.tf", "Grep"),
+      file("terraform/production/network.tf", "Read"),
+      file("terraform/production/modules/db/main.tf", "Grep"),
+      file("infra/main.prod.tf", "Read"),
+      file("infra/prod.tf", "Grep"),
+      file("infra/backend.production.tf", "Read"),
+      file("infra/production.tf", "Grep"),
+      file("/tmp/review/infra/prod/main.tf", "Read"),
       // Production code, prose and vendored files are not production configuration.
       file("node_modules/react/cjs/react.production.min.js", "Read"),
       file("node_modules/react-router/dist/production/index.d.ts", "Grep"),
@@ -5249,7 +5383,7 @@ var tiTestFileDelete = {
   defaultAction: "require_approval",
   owasp: ["ASI09", "ASI10"],
   title: "Deleting a test file or test directory",
-  description: "Holds a command that deletes a test: `rm`, `unlink`, `git rm` or PowerShell's `Remove-Item` naming a file that follows a test runner's naming convention \u2014 `*.test.*`, `*.spec.*`, `*_test.go`, `*_test.py`, `test_*.py` \u2014 or a `__tests__/`, `test/`, `tests/` or `spec/` directory, or a file inside one. Deleting the failing test instead of fixing the code leaves a suite that still passes. Deliberately NOT matched: build, report and dependency output \u2014 anything under `dist/`, `build/`, `out/`, `coverage/` or `node_modules/`, and `test-results/`, `playwright-report/` and `.pytest_cache` \u2014 and moving or staging a test (`mv`, `git add`). Misses a test deleted with `find \u2026 -delete`, moved out of the tree, emptied or disabled with a file tool, and a test directory with any other name. A quoted MENTION is not a use: a search, a `git commit -m` message, an `echo` or a `curl --data` body that only names this command is left alone. That holds only while every shell metacharacter stays inside the quotes, so `git commit -m \"x\" && \u2026` is still caught; and the carrier must be the first word, so `sudo grep \u2026` is not exempt.",
+  description: "Holds a command that deletes a test: `rm`, `unlink`, `git rm` or PowerShell's `Remove-Item` naming a file that follows a test runner's naming convention \u2014 `*.test.*`, `*.spec.*`, `*_test.go`, `*_test.py`, `test_*.py` \u2014 or a `__tests__/`, `test/`, `tests/` or `spec/` directory, or a file inside one. Deleting the failing test instead of fixing the code leaves a suite that still passes. Deliberately NOT matched: build, report and dependency output \u2014 anything under `dist/`, `build/`, `out/`, `coverage/` or `node_modules/`, and `test-results/`, `playwright-report/` and `.pytest_cache` \u2014 and moving or staging a test (`mv`, `git add`). Also not held: one `rm`, `unlink` or `Remove-Item` whose every target is strictly inside the system temp folder (`/tmp`, `/private/tmp`, `/var/tmp`, the macOS per-user temp folder, `${TMPDIR:?}` on the shell, and on PowerShell the Windows temp folders `C:\\Users\\<name>\\AppData\\Local\\Temp` and `C:\\Windows\\Temp` on any drive), such as clearing a throwaway checkout. Still held: the bare temp folder; `..` anywhere in a target; a glob, brace expansion or backslash in a shell target; a comma, colon or curly quote in a PowerShell target; a variable after the root; `$TMPDIR`, `$TEMP`, `$TMP`, `$env:TEMP` and `$env:TMP`, which may be unset; any other variable; a second target outside temp; and a chained second command. `git rm` is never exempt. Misses a test deleted with `find \u2026 -delete`, moved out of the tree, emptied or disabled with a file tool, and a test directory with any other name. A quoted MENTION is not a use: a search, a `git commit -m` message, an `echo` or a `curl --data` body that only names this command is left alone. That holds only while every shell metacharacter stays inside the quotes, so `git commit -m \"x\" && \u2026` is still caught; and the carrier must be the first word, so `sudo grep \u2026` is not exempt.",
   match: {
     any_of: [
       {
@@ -5262,7 +5396,7 @@ var tiTestFileDelete = {
         ]
       }
     ],
-    none_of: [...QUOTED_MENTION]
+    none_of: [...QUOTED_MENTION, ...TEMP_DELETE]
   },
   fixtures: {
     block: [
@@ -5276,7 +5410,24 @@ var tiTestFileDelete = {
       bash("unlink e2e/login.spec.ts"),
       bash("rm -f src/a.ts src/a.test.ts"),
       bash("rm src/test/java/com/example/BillingTest.java"),
-      pwsh("Remove-Item -Recurse -Force tests")
+      pwsh("Remove-Item -Recurse -Force tests"),
+      // The temp exemption is narrow: each of these still holds.
+      bash("rm -rf /tmp/review/../../srv/app/__tests__"),
+      bash("rm -rf /tmp/$X/__tests__"),
+      bash("rm -rf $SCRATCH/repo/__tests__"),
+      bash("rm -rf $SCRATCHPAD/repo/tests"),
+      bash("rm -rf /tmp/review/__tests__ src/__tests__"),
+      bash("rm -rf /tmp/review/__tests__ && rm -rf src/__tests__"),
+      bash("git rm -r /tmp/review/tests"),
+      bash("rm -rf $TMPDIR/review/tests"),
+      bash(`rm -rf \${TMPDIR}/review/spec`),
+      bash("rm -rf $TMP/repo/__tests__"),
+      bash("rm -rf /tmp/{..,x}/srv/app/__tests__"),
+      bash("rm -rf /tmp/.\\./srv/app/tests"),
+      bash("rm -rf /tmp/.[.]/srv/app/tests"),
+      pwsh("Remove-Item -Recurse $TEMP/../repo/tests"),
+      pwsh("Remove-Item -Recurse -Force $env:TEMP/review/tests"),
+      pwsh("Remove-Item -Recurse -Force C:/Users/dev/AppData/Local/Temp/x,C:/repo/tests")
     ],
     allow: [
       ...mentions("rm src/parser.test.ts"),
@@ -5290,7 +5441,14 @@ var tiTestFileDelete = {
       bash("mv src/a.test.ts src/b.test.ts"),
       bash("rm src/test-utils.ts"),
       bash("rm -rf testdata/tmp"),
-      bash("rm attest_report.py")
+      bash("rm attest_report.py"),
+      // Clearing a throwaway checkout inside the system temp folder.
+      bash("rm -rf /tmp/review-1/src/__tests__"),
+      bash("rm /private/tmp/agent-1/scratchpad/repo/src/parser.test.ts"),
+      bash(`rm -rf \${TMPDIR:?}/review/tests`),
+      bash("rm -rf /var/folders/zz/abc123/T/review/__tests__ /tmp/other/tests"),
+      bash("unlink /var/tmp/run-7/e2e/login.spec.ts"),
+      pwsh("Remove-Item -Recurse -Force C:/Users/dev/AppData/Local/Temp/review-1/tests")
     ]
   }
 };
@@ -5366,7 +5524,7 @@ var requireApprovalRmRf = {
   defaultAction: "require_approval",
   owasp: ["ASI02", "LLM03"],
   title: "Hold `rm -rf` for approval",
-  description: 'Recursive delete: held for approval rather than blocked, which is the right strength for an operation that is destructive but often legitimate. Catches a recursive flag in any argument of the `rm`, with or without force: `-rf`, `-Rf`, `-fr`, `-r -f`, `-r` alone and `--recursive`, before or after the target, and PowerShell\'s `Remove-Item -Recurse`. Clearing a build directory is EXEMPT (node_modules, dist, build, out, coverage, target, .next, .turbo, .cache, .vite, .parcel-cache, and paths inside them) when every target of that `rm` is one: that shape appears about 220 times in real Claude Code traces against about 3 for a dangerous delete, and a check that asks every time is one people switch off. An absolute path, a $VARIABLE, a ~ path, a source directory, a `..` path out of a build directory, or a build directory followed by another target still asks. `git rm -r --cached` alone, which touches only the index, is exempt. Known misses: a delete via a file tool; a build-directory clean-up chained before a second delete in the same command, because the exemption covers the whole command; and an `rm` with more than twelve arguments before the recursive flag. A quoted MENTION is not a use: a search, a `git commit -m` message, an `echo` or a `curl --data` body that only names this command is left alone. That holds only while every shell metacharacter stays inside the quotes, so `git commit -m "x" && \u2026` is still caught; and the carrier must be the first word, so `sudo grep \u2026` is not exempt.',
+  description: 'Recursive delete: held for approval rather than blocked, which is the right strength for an operation that is destructive but often legitimate. Catches a recursive flag in any argument of the `rm`, with or without force: `-rf`, `-Rf`, `-fr`, `-r -f`, `-r` alone and `--recursive`, before or after the target, and PowerShell\'s `Remove-Item -Recurse`. Clearing a build directory is EXEMPT (node_modules, dist, build, out, coverage, target, .next, .turbo, .cache, .vite, .parcel-cache, and paths inside them) when every target of that `rm` is one: that shape appears about 220 times in real Claude Code traces against about 3 for a dangerous delete, and a check that asks every time is one people switch off. An absolute path, a $VARIABLE, a ~ path, a source directory, a `..` path out of a build directory, or a build directory followed by another target still asks. `git rm -r --cached` alone, which touches only the index, is exempt. One `rm` or `Remove-Item` whose every target is strictly inside the system temp folder (`/tmp`, `/private/tmp`, `/var/tmp`, the macOS per-user temp folder, `${TMPDIR:?}` on the shell, and on PowerShell the Windows temp folders `C:\\Users\\<name>\\AppData\\Local\\Temp` and `C:\\Windows\\Temp` on any drive) is exempt too, so clearing a throwaway checkout does not ask. Still asked: the bare temp folder; `..` anywhere in a target; a glob, brace expansion or backslash in a shell target; a comma, colon or curly quote in a PowerShell target; a variable after the root; `$TMPDIR`, `$TEMP`, `$TMP`, `$env:TEMP` and `$env:TMP`, which may be unset; any other variable such as `$SCRATCH`; a target outside temp; and a chained second command. Known misses: a delete via a file tool; a build-directory clean-up chained before a second delete in the same command, because the exemption covers the whole command; and an `rm` with more than twelve arguments before the recursive flag. A quoted MENTION is not a use: a search, a `git commit -m` message, an `echo` or a `curl --data` body that only names this command is left alone. That holds only while every shell metacharacter stays inside the quotes, so `git commit -m "x" && \u2026` is still caught; and the carrier must be the first word, so `sudo grep \u2026` is not exempt.',
   match: {
     any_of: [
       {
@@ -5380,6 +5538,7 @@ var requireApprovalRmRf = {
     ],
     none_of: [
       ...QUOTED_MENTION,
+      ...TEMP_DELETE,
       {
         kind: "execute_tool",
         label: SHELL_AND_MCP,
@@ -5406,7 +5565,56 @@ var requireApprovalRmRf = {
       bash("rm -rf node_modules/.."),
       mcp({ command: "rm -rf node_modules ~/projects" }),
       bash("git rm -r src/legacy"),
-      bash("git rm -r --cached vendor && rm -r src")
+      bash("git rm -r --cached vendor && rm -r src"),
+      // The temp exemption is narrow: each of these still asks.
+      bash("rm -rf /tmp"),
+      bash("rm -rf $TMPDIR"),
+      bash("rm -rf /tmp/"),
+      bash("rm -rf /tmp/x/../../etc"),
+      bash("rm -rf $TMPDIR/../x"),
+      bash("rm -rf /tmp/./../etc"),
+      bash("rm -rf /tmp/$X"),
+      bash(`rm -rf /tmp/\${X}`),
+      bash("rm -rf $SCRATCH/x"),
+      bash("rm -rf $SCRATCHPAD/x"),
+      bash("rm -rf /tmp/a /srv/data"),
+      bash("rm -rf /tmp/a && rm -rf /srv/data"),
+      bash('rm -rf "$TMPDIR/x"'),
+      bash("rm -rf /tmp-old/x"),
+      mcp({ command: "rm -rf /tmp/review" }),
+      // A temp variable that may be unset, and every way the shell can turn text into `..`.
+      bash("rm -rf $TMPDIR/review"),
+      bash(`rm -rf \${TMPDIR}/review/`),
+      bash("rm -rf $TMP/etc"),
+      bash("rm -rf $TEMP/etc"),
+      bash("rm -rf /tmp/{..,x}/etc"),
+      bash("rm -rf /tmp/a{,/../../etc}"),
+      bash("rm -rf /tmp/.\\./etc"),
+      bash("rm -rf /tmp/.[.]/etc"),
+      bash("rm -rf /tmp/?./etc"),
+      bash("rm -rf /tmp/.*/etc"),
+      bash("rm -rf /tmp/review/*"),
+      bash("rm -r -- /var/tmp/run-7/..cache"),
+      pwsh("Remove-Item -Recurse $TMP/Windows"),
+      pwsh("Remove-Item -Recurse $TEMP\\..\\Windows"),
+      pwsh("Remove-Item -Recurse $env:TEMP\\..\\Windows"),
+      pwsh("Remove-Item -Recurse $env:TEMP"),
+      // `$env:TEMP` and `$env:TMP` may be unset on macOS and Linux, so they are not roots.
+      pwsh("Remove-Item -Recurse -Force $env:TEMP\\review"),
+      pwsh("Remove-Item -Recurse $env:TMP/etc"),
+      // A comma builds an array, curly quotes are quotes, and `::` starts a provider path.
+      pwsh("Remove-Item -Recurse -Force C:\\Users\\dev\\AppData\\Local\\Temp\\x,C:\\Windows"),
+      pwsh("Remove-Item -Recurse C:\\Users\\dev\\AppData\\Local\\Temp\\x,C:\\Users"),
+      pwsh("Remove-Item -Recurse -Force C:\\Users\\dev\\AppData\\Local\\Temp\\x\u201C,C:\\\u201D"),
+      // U+0085 separates arguments in PowerShell, so the second argument here is `\Windows`.
+      pwsh("Remove-Item -Recurse -Force C:\\Users\\dev\\AppData\\Local\\Temp\\x\x85\\Windows"),
+      pwsh("Remove-Item -Recurse -Force C:\\Users\\dev\\AppData\\Local\\Temp\\x\u200B\\Windows"),
+      pwsh("Remove-Item -Recurse -Force C:\\Users\\.\\AppData\\Local\\Temp\\x"),
+      pwsh(
+        "Remove-Item -Recurse -Force C:\\Users\\dev\\AppData\\Local\\Temp\\Microsoft.PowerShell.Core\\FileSystem::C:\\Windows"
+      ),
+      pwsh("Remove-Item -Recurse -Force C:\\Users\\dev\\AppData\\Local\\Temp\\..\\..\\Windows"),
+      pwsh("Remove-Item -Recurse -Force C:\\Users\\dev\\AppData\\Local\\Temp")
     ],
     allow: [
       ...mentions("rm -Rf /home/user/projects"),
@@ -5426,7 +5634,17 @@ var requireApprovalRmRf = {
       bash("rm -v notes.txt"),
       bash("rm -rf node_modules/.vite"),
       bash('bash -c "rm -r -f node_modules"'),
-      mcp({ command: "rm -r -f node_modules" })
+      mcp({ command: "rm -r -f node_modules" }),
+      // Clearing a throwaway checkout inside the system temp folder.
+      bash(`rm -rf \${TMPDIR:?}/review`),
+      bash(`rm -rf \${TMPDIR:?}/a \${TMPDIR:?}/b`),
+      bash("rm -rf /tmp/review-1"),
+      bash("rm -rf /private/tmp/agent-1/scratchpad/repo"),
+      bash("rm -rf /var/folders/zz/abc123/T/review /tmp/out"),
+      bash("rm -r -- /var/tmp/run-7"),
+      pwsh("Remove-Item -Recurse -Force C:\\Users\\dev\\AppData\\Local\\Temp\\review-1"),
+      pwsh("Remove-Item -Recurse -Force C:/Users/dev/AppData/Local/Temp/review-1/tests"),
+      pwsh("ri -Recurse C:\\Windows\\Temp\\build-7")
     ]
   }
 };
