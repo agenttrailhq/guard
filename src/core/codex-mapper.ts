@@ -59,7 +59,7 @@
  * is never resolved against a directory.
  */
 
-import { capEnd, capMiddle, safeStringify } from "./mapper.js";
+import { capEnd, capMiddle, lengthIfCut, safeStringify } from "./mapper.js";
 import type { CodexHookPayload, MappedCall } from "./types.js";
 
 /** The Codex events the guard answers. Every other event is left alone. */
@@ -177,9 +177,11 @@ export function mapCodexCall(payload: CodexHookPayload): CodexCall | undefined {
   const input = toolInput(payload);
 
   if (tool === "Bash") {
+    const command = typeof input.command === "string" ? input.command : undefined;
     const args: { full_command?: string } = {};
-    if (typeof input.command === "string") args.full_command = capEnd(input.command);
-    return { event, candidates: [{ tool: "Bash", args }] };
+    if (command !== undefined) args.full_command = capEnd(command);
+    const cut = command === undefined ? {} : lengthIfCut(command);
+    return { event, candidates: [{ tool: "Bash", args, ...cut }] };
   }
   if (tool === "apply_patch") {
     const patch = typeof input.command === "string" ? input.command : "";
@@ -188,9 +190,10 @@ export function mapCodexCall(payload: CodexHookPayload): CodexCall | undefined {
   }
   if (tool.startsWith("mcp__")) {
     // Middle-truncated, as in `mapper.ts` — a batch call's tail stays visible.
+    const raw = safeStringify(input);
     return {
       event,
-      candidates: [{ tool, args: { full_command: capMiddle(safeStringify(input)) } }],
+      candidates: [{ tool, args: { full_command: capMiddle(raw) }, ...lengthIfCut(raw) }],
     };
   }
 

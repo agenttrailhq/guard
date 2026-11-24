@@ -39,6 +39,7 @@
  */
 
 import { dirname, relative, sep } from "node:path";
+import { withCommandText } from "../mapper.js";
 import { evaluateAction } from "../scan-report.js";
 import type { MappedCall } from "../types.js";
 import {
@@ -828,11 +829,11 @@ function unreadMatches(context: GitCheckContext, read: ReadonlySet<number>): Set
     evaluateAction(subset, rules.allowlist, [mapped]).decision.matches.length > 0;
   const detectors = [rmTargets, databaseDetector(context.scratchRoots)];
   const ids = backstopIds(context.log, READ_PROGRAMS.destructive, detectors, (mapped, text) =>
-    matches({ ...mapped, args: { ...mapped.args, full_command: text } }),
+    matches(withCommandText(mapped, text)),
   );
   for (const call of context.log.shell) {
     if (read.has(call.id)) continue;
-    const ran = { ...call.mapped, args: { ...call.mapped.args, full_command: call.view } };
+    const ran = withCommandText(call.mapped, call.view);
     if (!matches(ran)) continue;
     if (isResultBackedRun(runVerdict(context.log.agent, call.mapped, call.result, matches))) {
       ids.add(call.id);

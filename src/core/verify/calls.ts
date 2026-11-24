@@ -22,6 +22,7 @@
 
 import { readShimCalls } from "../codex-transcript/scan.js";
 import type { CompiledAllowlist } from "../evaluate.js";
+import { withCommandText } from "../mapper.js";
 import type { CompiledRule } from "../rules.js";
 import { evaluateAction, type ScanCorpus, toolUseCalls } from "../scan-report.js";
 import type { ToolResult, ToolUse } from "../transcript/transcript-types.js";
@@ -337,7 +338,7 @@ function decodedMatches(
     return [];
   }
   const runs = decodedCommand(executedText(command));
-  const decoded = { ...mapped, args: { ...mapped.args, full_command: runs } };
+  const decoded = withCommandText(mapped, runs);
   return evaluateAction(catalog, allowlist, [decoded]).decision.matches.map((m) => m.ruleId);
 }
 
@@ -354,9 +355,8 @@ export function rulesMatcher(
 ): (call: SessionCall, command: string) => boolean {
   const subset = catalog.filter(keep);
   const matches = (call: SessionCall, text: string): boolean =>
-    evaluateAction(subset, allowlist, [
-      { ...call.mapped, args: { ...call.mapped.args, full_command: text } },
-    ]).decision.matches.length > 0;
+    evaluateAction(subset, allowlist, [withCommandText(call.mapped, text)]).decision.matches
+      .length > 0;
   return (call, command) =>
     subset.length > 0 &&
     (matches(call, command) ||

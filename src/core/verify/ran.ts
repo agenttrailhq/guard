@@ -68,6 +68,8 @@
 
 import { unhandledAgent } from "../agent.js";
 import type { CompiledAllowlist } from "../evaluate.js";
+import { COMMAND_TOO_LONG_ID } from "../long-command.js";
+import { withCommandText } from "../mapper.js";
 import type { CompiledRule } from "../rules.js";
 import { evaluateAction, type ScanCorpus, toolUseCalls } from "../scan-report.js";
 import type { ToolResult } from "../transcript/transcript-types.js";
@@ -1748,8 +1750,7 @@ export function runVerdict(
   if (mapped.tool === "WebSearch") return verdict("mentioned", "search");
 
   const command = mapped.args.full_command;
-  const matchesIn = (text: string): boolean =>
-    stillMatches({ ...mapped, args: { ...mapped.args, full_command: text } });
+  const matchesIn = (text: string): boolean => stillMatches(withCommandText(mapped, text));
   // Set when the match is kept only because a later command may run a file this call wrote.
   let onlyWrittenFile = (): boolean => false;
   if (SHELL_TOOLS.has(mapped.tool) && command !== undefined) {
@@ -1821,6 +1822,12 @@ export function tallyMatchedCalls(
           if (call.kind !== "action") continue;
           const { mapped, decision } = evaluateAction(catalog, allowlist, call.candidates);
           if (decision.matches.length === 0) continue;
+          // Matched only because it was too long to check: no guardrail matched any text of
+          // it, so there is no match to call ran or mentioned.
+          if (decision.matches.every((m) => m.ruleId === COMMAND_TOO_LONG_ID)) {
+            tally.unknown += 1;
+            continue;
+          }
           const run = runVerdict(agent, mapped, result, stillMatches);
           // Only a result-backed run counts as ran; an unconfirmed one counts as unknown.
           tally[run.state === "ran" && !isResultBackedRun(run) ? "unknown" : run.state] += 1;

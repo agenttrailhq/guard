@@ -51,6 +51,7 @@ import { cursorSessionCalls, mapCursorSessionTool } from "./cursor-transcript/sc
 import type { CompiledAllowlist } from "./evaluate.js";
 import { evaluateCall } from "./evaluate.js";
 import { fileShapeOf } from "./file-shape.js";
+import { COMMAND_TOO_LONG } from "./long-command.js";
 import { mapToolCall, TRUNCATION_MARKER } from "./mapper.js";
 import { buildGuardSpanContext } from "./normalize.js";
 import { type OwaspId, type OwaspTally, owaspTally } from "./owasp.js";
@@ -476,7 +477,14 @@ function decisionKey(mapped: MappedCall): string | undefined {
   const command = mapped.args.full_command;
   const path = mapped.args.file_path;
   if ((command?.length ?? 0) + (path?.length ?? 0) > MAX_CACHED_INPUT) return undefined;
-  return JSON.stringify([mapped.tool, command ?? null, path ?? null]);
+  // The length the cap cut the command from is part of what the call IS: two calls that
+  // share their first `MAX_DETAIL_LEN` characters, one of them longer, get different verdicts.
+  return JSON.stringify([
+    mapped.tool,
+    command ?? null,
+    path ?? null,
+    mapped.uncheckedLength ?? null,
+  ]);
 }
 
 /** One decision the cache holds: what the call is (`decisionKey`), and the verdict on it. */
@@ -676,6 +684,9 @@ export function aggregateScan(
   const byRule = new Map<string, FindingAccumulator>();
   const ruleOf = new Map<string, CompiledRule>();
   for (const entry of catalog) ruleOf.set(entry.rule.id, entry);
+  // The built-in approval for a call too long to check (`core/long-command.ts`). Set LAST, so
+  // a person's own rule that reuses its id cannot put its title on it.
+  ruleOf.set(COMMAND_TOO_LONG.rule.id, COMMAND_TOO_LONG);
 
   let toolCalls = 0;
   let riskyActions = 0;
@@ -790,7 +801,8 @@ export function aggregateScan(
     const owasp = [...(entry?.rule.owasp ?? [])];
 
     const rule = entry?.rule;
-    const fromLibrary = rule !== undefined && shipped.has(rule);
+    // The built-in counts as library text: it is the guard's own, never anything a person wrote.
+    const fromLibrary = rule !== undefined && (shipped.has(rule) || rule === COMMAND_TOO_LONG.rule);
     findings.push(
       fromLibrary
         ? {

@@ -74,7 +74,7 @@
 
 import { join } from "node:path";
 import { patchCandidates } from "../codex-mapper.js";
-import { capEnd } from "../mapper.js";
+import { capEnd, lengthIfCut } from "../mapper.js";
 import type { ReaderSkips, ScanCorpus, SessionToolCall } from "../scan-report.js";
 import type { ParsedSession, ToolUse, Turn, UserPrompt } from "../transcript/transcript-types.js";
 import { addLineCounts, type CodexFileRecords, NO_LINE_COUNTS, readCodexFile } from "./parse.js";
@@ -497,7 +497,9 @@ function mapShimCall(call: ShimCall): SessionToolCall {
         ? unmapped(EXEC_COMMAND)
         : {
             kind: "action",
-            candidates: [{ tool: "Bash", args: { full_command: capEnd(call.cmd) } }],
+            candidates: [
+              { tool: "Bash", args: { full_command: capEnd(call.cmd) }, ...lengthIfCut(call.cmd) },
+            ],
           };
     case APPLY_PATCH: {
       // The same parser the live hook runs, so a guardrail written against a file path

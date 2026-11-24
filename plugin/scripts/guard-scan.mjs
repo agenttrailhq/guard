@@ -935,13 +935,13 @@ var require_parse = __commonJS({
         consume(token.value);
       };
       const negate = () => {
-        let count3 = 1;
+        let count4 = 1;
         while (peek() === "!" && (peek(2) !== "(" || peek(3) === "?")) {
           advance();
           state.start++;
-          count3++;
+          count4++;
         }
-        if (count3 % 2 === 0) {
+        if (count4 % 2 === 0) {
           return false;
         }
         state.negated = true;
@@ -7067,6 +7067,12 @@ function searchPath(tool, input) {
   if (dir === void 0 || isAbsoluteGlob(glob)) return glob;
   return joinSearchPath(dir, glob);
 }
+function lengthIfCut(s) {
+  return s.length > MAX_DETAIL_LEN ? { uncheckedLength: s.length } : {};
+}
+function withCommandText(mapped, text2) {
+  return { tool: mapped.tool, args: { ...mapped.args, full_command: text2 } };
+}
 function capEnd(s) {
   return s.length > MAX_DETAIL_LEN ? s.slice(0, MAX_DETAIL_LEN) : s;
 }
@@ -7088,8 +7094,10 @@ function mapToolCall(payload) {
   const tool = typeof payload.tool_name === "string" ? payload.tool_name : "";
   const input = payload.tool_input !== null && typeof payload.tool_input === "object" ? payload.tool_input : {};
   const args2 = {};
+  let command;
   if (SHELL_TOOLS.has(tool)) {
-    if (typeof input.command === "string") args2.full_command = capEnd(input.command);
+    if (typeof input.command === "string") command = input.command;
+    if (command !== void 0) args2.full_command = capEnd(command);
   } else if (FILE_TOOLS.has(tool)) {
     const fp = input.file_path ?? input.notebook_path;
     if (typeof fp === "string") args2.file_path = fp;
@@ -7097,14 +7105,17 @@ function mapToolCall(payload) {
     const fp = searchPath(tool, input);
     if (fp !== void 0) args2.file_path = fp;
   } else if (tool === "WebSearch") {
-    if (typeof input.query === "string") args2.full_command = capEnd(input.query);
+    if (typeof input.query === "string") command = input.query;
+    if (command !== void 0) args2.full_command = capEnd(command);
   } else if (tool.startsWith("mcp__")) {
-    args2.full_command = capMiddle(safeStringify(input));
+    command = safeStringify(input);
+    args2.full_command = capMiddle(command);
   } else {
-    if (typeof input.command === "string") args2.full_command = capEnd(input.command);
+    if (typeof input.command === "string") command = input.command;
+    if (command !== void 0) args2.full_command = capEnd(command);
     if (typeof input.file_path === "string") args2.file_path = input.file_path;
   }
-  return { tool, args: args2 };
+  return { tool, args: args2, ...command === void 0 ? {} : lengthIfCut(command) };
 }
 
 // src/core/codex-mapper.ts
@@ -7558,7 +7569,9 @@ function mapShimCall(call) {
     case EXEC_COMMAND:
       return call.cmd === void 0 ? unmapped(EXEC_COMMAND) : {
         kind: "action",
-        candidates: [{ tool: "Bash", args: { full_command: capEnd(call.cmd) } }]
+        candidates: [
+          { tool: "Bash", args: { full_command: capEnd(call.cmd) }, ...lengthIfCut(call.cmd) }
+        ]
       };
     case APPLY_PATCH: {
       const candidates = call.text === void 0 ? [] : patchCandidates(call.text);
@@ -7957,13 +7970,14 @@ function stringOr(value) {
   return typeof value === "string" ? value : "";
 }
 function commandCall(tool, value) {
-  return typeof value === "string" ? { tool, args: { full_command: capEnd(value) } } : { tool, args: {} };
+  return typeof value === "string" ? { tool, args: { full_command: capEnd(value) }, ...lengthIfCut(value) } : { tool, args: {} };
 }
 function mcpCall(group, toolName2, args2) {
   const raw = typeof args2 === "string" ? args2 : safeStringify(isRecord3(args2) ? args2 : {});
   return {
     tool: `mcp__${stringOr(group)}__${stringOr(toolName2)}`,
-    args: { full_command: capMiddle(raw) }
+    args: { full_command: capMiddle(raw) },
+    ...lengthIfCut(raw)
   };
 }
 function globCandidates(folder, glob) {
@@ -8364,6 +8378,29 @@ function strongestVerdict(matches) {
   return { verdict: "allow", policyId: null };
 }
 
+// src/core/long-command.ts
+var COMMAND_TOO_LONG_ID = "guard.command-too-long";
+function count2(n2) {
+  return String(n2).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+}
+var COMMAND_TOO_LONG_RULE = {
+  id: COMMAND_TOO_LONG_ID,
+  category: "guard",
+  severity: "high",
+  defaultAction: "require_approval",
+  title: "Too long to check in full",
+  description: `The guardrails read the first ${count2(MAX_DETAIL_LEN)} characters of a command. A longer call needs a person's approval, because nothing checked the rest of it. A block on the part that was read still blocks.`,
+  match: {}
+};
+var COMMAND_TOO_LONG = {
+  rule: COMMAND_TOO_LONG_RULE,
+  action: "require_approval",
+  evaluate: () => ({ matched: false, reasons: [] })
+};
+function commandTooLongText(length) {
+  return `it is too long to check in full (${count2(length)} characters; the limit is ${count2(MAX_DETAIL_LEN)}). Run it as shorter commands. (guardrail ${COMMAND_TOO_LONG_ID})`;
+}
+
 // src/core/evaluate.ts
 var BLOCK_LEAD = "agenttrail-guard blocked this: ";
 var APPROVAL_LEAD = "agenttrail-guard needs a person to approve this: ";
@@ -8442,6 +8479,9 @@ function evaluateRules(rules12, context, mapped, allowlist) {
       titles.set(entry.rule.id, entry.rule.title);
     }
   }
+  if (mapped.uncheckedLength !== void 0) {
+    matches.unshift({ ruleId: COMMAND_TOO_LONG_ID, action: "require_approval" });
+  }
   const { verdict: verdict2, policyId } = strongestVerdict(
     matches.map((m) => ({ policyId: m.ruleId, action: m.action }))
   );
@@ -8449,11 +8489,8 @@ function evaluateRules(rules12, context, mapped, allowlist) {
     return { decision: "deny", reason: `${BLOCK_LEAD}${describeRule(policyId, titles)}`, matches };
   }
   if (verdict2 === "require_approval") {
-    return {
-      decision: "ask",
-      reason: `${APPROVAL_LEAD}${describeRule(policyId, titles)}`,
-      matches
-    };
+    const what = policyId === COMMAND_TOO_LONG_ID && mapped.uncheckedLength !== void 0 ? commandTooLongText(mapped.uncheckedLength) : describeRule(policyId, titles);
+    return { decision: "ask", reason: `${APPROVAL_LEAD}${what}`, matches };
   }
   const warned = matches.length > 0;
   return {
@@ -11644,7 +11681,12 @@ function decisionKey(mapped) {
   const command = mapped.args.full_command;
   const path = mapped.args.file_path;
   if ((command?.length ?? 0) + (path?.length ?? 0) > MAX_CACHED_INPUT) return void 0;
-  return JSON.stringify([mapped.tool, command ?? null, path ?? null]);
+  return JSON.stringify([
+    mapped.tool,
+    command ?? null,
+    path ?? null,
+    mapped.uncheckedLength ?? null
+  ]);
 }
 function exportDecisions(catalog, allowlist, since) {
   const store = decisionCache(catalog, allowlist);
@@ -11733,6 +11775,7 @@ function aggregateScan(corpus, catalog, allowlist, shipped = /* @__PURE__ */ new
   const byRule = /* @__PURE__ */ new Map();
   const ruleOf = /* @__PURE__ */ new Map();
   for (const entry of catalog) ruleOf.set(entry.rule.id, entry);
+  ruleOf.set(COMMAND_TOO_LONG.rule.id, COMMAND_TOO_LONG);
   let toolCalls = 0;
   let riskyActions = 0;
   const riskyByAction = { block: 0, require_approval: 0, warn: 0 };
@@ -11796,10 +11839,10 @@ function aggregateScan(corpus, catalog, allowlist, shipped = /* @__PURE__ */ new
     const title = redactTitle(entry?.rule.title ?? ruleId);
     const severity = entry?.rule.severity ?? "unknown";
     const action = entry?.action ?? "warn";
-    const examples = [...acc.shapes].map(([text2, count3]) => ({ text: text2, count: count3 })).sort(byCountThenText);
+    const examples = [...acc.shapes].map(([text2, count4]) => ({ text: text2, count: count4 })).sort(byCountThenText);
     const owasp = [...entry?.rule.owasp ?? []];
     const rule = entry?.rule;
-    const fromLibrary = rule !== void 0 && shipped.has(rule);
+    const fromLibrary = rule !== void 0 && (shipped.has(rule) || rule === COMMAND_TOO_LONG.rule);
     findings.push(
       fromLibrary ? {
         ruleId,
@@ -11850,7 +11893,7 @@ function aggregateScan(corpus, catalog, allowlist, shipped = /* @__PURE__ */ new
     ...verification === void 0 ? {} : { verification }
   };
   if (!capabilities.skips) return result;
-  const unmappedTools = [...unmapped2].map(([name, count3]) => ({ name, count: count3 })).sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+  const unmappedTools = [...unmapped2].map(([name, count4]) => ({ name, count: count4 })).sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
   return {
     ...result,
     skipped: { ...corpus.skipped ?? NO_READER_SKIPS, notActions, unmappedTools }
@@ -13684,26 +13727,26 @@ function readCommandOnce(command, trustWrites) {
   const parsed = parseShell(command);
   const regions = parsed.comments.map((c) => ({ ...c, kind: "doc" }));
   const segments = parsed.segments;
-  const count3 = segments.length;
+  const count4 = segments.length;
   const hooksPaths = [...new Set(hooksPathsNamed(segments))];
   const commands = segments.map(commandOf);
-  const gitRunnableBefore = new Array(count3).fill(false);
+  const gitRunnableBefore = new Array(count4).fill(false);
   let gitRunnable = false;
-  for (let j = 0; j < count3; j++) {
+  for (let j = 0; j < count4; j++) {
     gitRunnableBefore[j] = gitRunnable;
     if (!gitRunnable) {
       gitRunnable = writtenBy(segments[j]).some((path) => gitMayRun(path, hooksPaths));
     }
   }
-  const mayRunAfter = new Array(count3).fill(false);
+  const mayRunAfter = new Array(count4).fill(false);
   if (!trustWrites) {
-    for (let j = count3 - 2; j >= 0; j--) {
+    for (let j = count4 - 2; j >= 0; j--) {
       mayRunAfter[j] = mayRunAfter[j + 1] || !isInert(segments[j + 1], gitRunnableBefore[j + 1]);
     }
   }
   const laterMayRun = (index) => mayRunAfter[index];
-  const consumersFrom = new Array(count3 + 1).fill(true);
-  for (let j = count3 - 1; j >= 0; j--) {
+  const consumersFrom = new Array(count4 + 1).fill(true);
+  for (let j = count4 - 1; j >= 0; j--) {
     const seg = segments[j];
     const command2 = commands[j];
     const consumer = command2 === void 0 || PURE_CONSUMERS.has(command2.name) && !runsAProgramOption(command2) && !(writesAFile(seg) && laterMayRun(j));
@@ -13959,7 +14002,7 @@ function verdict(state, why) {
 function runVerdict(agent, mapped, result, stillMatches) {
   if (mapped.tool === "WebSearch") return verdict("mentioned", "search");
   const command = mapped.args.full_command;
-  const matchesIn = (text2) => stillMatches({ ...mapped, args: { ...mapped.args, full_command: text2 } });
+  const matchesIn = (text2) => stillMatches(withCommandText(mapped, text2));
   let onlyWrittenFile = () => false;
   if (SHELL_TOOLS2.has(mapped.tool) && command !== void 0) {
     const view = executedView(command);
@@ -13996,6 +14039,10 @@ function tallyMatchedCalls(corpus, catalog, allowlist) {
           if (call.kind !== "action") continue;
           const { mapped, decision } = evaluateAction(catalog, allowlist, call.candidates);
           if (decision.matches.length === 0) continue;
+          if (decision.matches.every((m) => m.ruleId === COMMAND_TOO_LONG_ID)) {
+            tally.unknown += 1;
+            continue;
+          }
           const run = runVerdict(agent, mapped, result, stillMatches);
           tally[run.state === "ran" && !isResultBackedRun(run) ? "unknown" : run.state] += 1;
         }
@@ -14185,14 +14232,12 @@ function decodedMatches(catalog, allowlist, mapped) {
     return [];
   }
   const runs = decodedCommand(executedText(command));
-  const decoded = { ...mapped, args: { ...mapped.args, full_command: runs } };
+  const decoded = withCommandText(mapped, runs);
   return evaluateAction(catalog, allowlist, [decoded]).decision.matches.map((m) => m.ruleId);
 }
 function rulesMatcher(catalog, allowlist, keep2) {
   const subset = catalog.filter(keep2);
-  const matches = (call, text2) => evaluateAction(subset, allowlist, [
-    { ...call.mapped, args: { ...call.mapped.args, full_command: text2 } }
-  ]).decision.matches.length > 0;
+  const matches = (call, text2) => evaluateAction(subset, allowlist, [withCommandText(call.mapped, text2)]).decision.matches.length > 0;
   return (call, command) => subset.length > 0 && (matches(call, command) || spellsWordsWithQuotes(command) && matches(call, decodedCommand(command)));
 }
 function quietStatus(unknown, couldHide = 0) {
@@ -14231,15 +14276,15 @@ var HIDDEN = /* @__PURE__ */ new WeakMap();
 function hidden(corpus) {
   const known = HIDDEN.get(corpus);
   if (known !== void 0) return known;
-  let count3 = 0;
+  let count4 = 0;
   const forms = /* @__PURE__ */ new Set();
   for (const call of corpus.calls) {
     if (call.hidingForms.length === 0) continue;
     if (!ranOrMayHaveRun(corpus.agent, call)) continue;
-    count3 += 1;
+    count4 += 1;
     for (const form of call.hidingForms) forms.add(form);
   }
-  const out = { count: count3, forms: HIDING_FORMS.filter((f) => forms.has(f)) };
+  const out = { count: count4, forms: HIDING_FORMS.filter((f) => forms.has(f)) };
   HIDDEN.set(corpus, out);
   return out;
 }
@@ -14310,14 +14355,14 @@ function primeDecisions(agent, sessions, catalog, allowlist) {
 }
 
 // src/core/verify/card-parts.ts
-function counted(count3, one, many) {
-  return `${count3} ${count3 === 1 ? one : many}`;
+function counted(count4, one, many) {
+  return `${count4} ${count4 === 1 ? one : many}`;
 }
-function moreMatches(count3, others) {
-  return others ? counted(count3, "more match", "more matches") : counted(count3, "match", "matches");
+function moreMatches(count4, others) {
+  return others ? counted(count4, "more match", "more matches") : counted(count4, "match", "matches");
 }
-function noun(count3, one, many) {
-  return count3 === 1 ? one : many;
+function noun(count4, one, many) {
+  return count4 === 1 ? one : many;
 }
 function restsOnCodex(context) {
   return context.ranEvidence === "output-record";
@@ -14346,8 +14391,8 @@ function confirmedByGitState(card) {
 }
 function chipFor(facts, reasons, fallback) {
   const reason = reasons.find((r) => r.count(facts) > 0) ?? fallback;
-  const count3 = reason.count(facts);
-  return { count: count3, label: { template: reason.id, text: count3 === 1 ? reason.one : reason.many } };
+  const count4 = reason.count(facts);
+  return { count: count4, label: { template: reason.id, text: count4 === 1 ? reason.one : reason.many } };
 }
 function summaryOf(templates, facts) {
   return {
@@ -14408,11 +14453,11 @@ function notCheckedCard(category) {
     codexCaveat: false
   };
 }
-function couldNotCheckCard(category, count3) {
+function couldNotCheckCard(category, count4) {
   return {
     category,
     tone: "could-not-check",
-    count: count3,
+    count: count4,
     found: sentences([COULD_NOT_CHECK_SENTENCE], void 0),
     now: [],
     fixes: [],
@@ -14978,8 +15023,8 @@ var SUBJECT_WORDS = {
   credentials: "sign-in credentials",
   other: "other IAM settings"
 };
-function whenAny(id, count3, say) {
-  return { id, render: (f) => count3(f) > 0 ? say(count3(f), f) : void 0 };
+function whenAny(id, count4, say) {
+  return { id, render: (f) => count4(f) > 0 ? say(count4(f), f) : void 0 };
 }
 var CLOUD_FOUND = [
   whenAny(
@@ -16016,11 +16061,11 @@ ${edit.added}`)) {
   return false;
 }
 function excludeEntries(text2) {
-  let count3 = 0;
+  let count4 = 0;
   for (const match of text2.matchAll(EXCLUDE_LIST)) {
-    count3 += [...(match[1] ?? "").matchAll(QUOTED2)].length;
+    count4 += [...(match[1] ?? "").matchAll(QUOTED2)].length;
   }
-  return count3;
+  return count4;
 }
 function addsExclude(edit) {
   return !edit.whole && !edit.deleted && excludeEntries(edit.added) > excludeEntries(edit.removed);
@@ -16332,8 +16377,8 @@ function testsStatus(facts) {
   }
   return quietStatus(facts.unconfirmed + facts.unreadEdits, facts.couldHide);
 }
-function whenAny2(id, count3, say) {
-  return { id, render: (f) => count3(f) > 0 ? say(count3(f), f) : void 0 };
+function whenAny2(id, count4, say) {
+  return { id, render: (f) => count4(f) > 0 ? say(count4(f), f) : void 0 };
 }
 function signals(f) {
   return f.thresholdsLowered + f.autoUpdateReverts + f.configsRewritten + f.excludesAdded + f.passWithNoTests + f.ciStepsForcedTrue + f.testFilesDeleted;
@@ -17063,7 +17108,7 @@ function cardCount(card) {
 }
 var CARD_COUNT = {
   id: "card.count",
-  render: ({ tone, count: count3 }) => tone === "not-checked" || tone === "could-not-check" && count3 === 0 ? void 0 : countOf(count3, "match", "matches")
+  render: ({ tone, count: count4 }) => tone === "not-checked" || tone === "could-not-check" && count4 === 0 ? void 0 : countOf(count4, "match", "matches")
 };
 
 // src/core/verify/git-copy.ts
@@ -18136,11 +18181,11 @@ function unreadMatches(context, read) {
     context.log,
     READ_PROGRAMS.destructive,
     detectors,
-    (mapped, text2) => matches({ ...mapped, args: { ...mapped.args, full_command: text2 } })
+    (mapped, text2) => matches(withCommandText(mapped, text2))
   );
   for (const call of context.log.shell) {
     if (read.has(call.id)) continue;
-    const ran = { ...call.mapped, args: { ...call.mapped.args, full_command: call.view } };
+    const ran = withCommandText(call.mapped, call.view);
     if (!matches(ran)) continue;
     if (isResultBackedRun(runVerdict(context.log.agent, call.mapped, call.result, matches))) {
       ids.add(call.id);
@@ -20548,9 +20593,9 @@ var SHARE_PHRASES = {
     "recursive deletes with nothing guarding them"
   ]
 };
-function sharePhrase(basis, count3) {
+function sharePhrase(basis, count4) {
   const [one, many] = SHARE_PHRASES[basis];
-  return `${formatCount(count3)} ${count3 === 1 ? one : many}`;
+  return `${formatCount(count4)} ${count4 === 1 ? one : many}`;
 }
 function shareCounts(cards, context) {
   return leadingCards(cards, context).flatMap(
@@ -20609,12 +20654,12 @@ function matchTally(result) {
     byAction.set(finding.action, (byAction.get(finding.action) ?? 0) + finding.count);
   }
   return {
-    bySeverity: [...bySeverity].map(([severity, count3]) => ({ severity, count: count3 })).sort(
+    bySeverity: [...bySeverity].map(([severity, count4]) => ({ severity, count: count4 })).sort(
       (a, b) => severityRank(a.severity) - severityRank(b.severity) || b.count - a.count || a.severity.localeCompare(b.severity)
     ),
     byAction: ACTION_ORDER.flatMap((action) => {
-      const count3 = byAction.get(action) ?? 0;
-      return count3 > 0 ? [{ action, count: count3 }] : [];
+      const count4 = byAction.get(action) ?? 0;
+      return count4 > 0 ? [{ action, count: count4 }] : [];
     })
   };
 }
@@ -21098,7 +21143,7 @@ function headlineParts(text2) {
 }
 var HERO_SECRETS_HEADLINE = {
   id: "hero.headline.secrets",
-  render: ({ agent, count: count3 }) => count3 > 0 ? `${agentName(agent)} left ${formatCount(count3)} likely-real ${count3 === 1 ? "credential" : "credentials"} in its transcripts.` : void 0
+  render: ({ agent, count: count4 }) => count4 > 0 ? `${agentName(agent)} left ${formatCount(count4)} likely-real ${count4 === 1 ? "credential" : "credentials"} in its transcripts.` : void 0
 };
 function heroHeadline(claim, agent) {
   if (claim.basis === "likely-real-credentials") {
@@ -21405,7 +21450,7 @@ var MAX_CARD_COMMANDS = 6;
 function verifiedCard(card) {
   const title = CATEGORY_TITLES[card.category];
   const id = cardId(card.category);
-  const count3 = cardCount(card);
+  const count4 = cardCount(card);
   const short = cardSummary(card);
   const rows = [];
   if (short.happened.length > 0)
@@ -21435,7 +21480,7 @@ function verifiedCard(card) {
 ${more.join("\n")}
 </div></details>`;
   return `<article class="card vrow v-${card.tone}" id="${id}" aria-labelledby="${id}-title" aria-describedby="${id}-tone">
-<div class="vtop"><span class="vtone" id="${id}-tone">${escapeHtml(vtoneLabel(card))}</span><h3 id="${id}-title">${escapeHtml(title)}</h3>${count3 === void 0 ? "" : `<span class="vmatched" data-template="${escapeHtml(count3.template)}">${escapeHtml(count3.text)}</span>`}</div>${rows.length === 0 ? "" : `
+<div class="vtop"><span class="vtone" id="${id}-tone">${escapeHtml(vtoneLabel(card))}</span><h3 id="${id}-title">${escapeHtml(title)}</h3>${count4 === void 0 ? "" : `<span class="vmatched" data-template="${escapeHtml(count4.template)}">${escapeHtml(count4.text)}</span>`}</div>${rows.length === 0 ? "" : `
 <dl class="vfacts">${rows.join("")}</dl>`}${commands === "" ? "" : `
 <div class="vcmds">
 ${commands}
@@ -21530,7 +21575,7 @@ function wouldHaveDoneSection(result, payload) {
   if (result.findings.length === 0) return "";
   const guardrails = guardrailsByAction(result);
   const panels = ACTION_ORDER.map((action) => {
-    const count3 = result.riskyByAction[action];
+    const count4 = result.riskyByAction[action];
     const calls = decidedBy(result.decided, action);
     const top = payload.findings.filter((f) => f.action === action && (calls.get(f.ruleId) ?? 0) > 0).map((f) => ({ f, n: calls.get(f.ruleId) ?? 0 })).sort((a, b) => b.n - a.n || a.f.ruleId.localeCompare(b.f.ruleId)).slice(0, TOP_PER_ACTION).map(
       ({ f, n: n2 }) => `<li><span>${inlineTitle(f.title)}</span><b>${escapeHtml(formatCount(n2))}</b></li>`
@@ -21542,7 +21587,7 @@ function wouldHaveDoneSection(result, payload) {
       );
     }
     return `<div class="card outcome o-${actionSlug(action)}">
-<div class="n">${escapeHtml(formatCount(count3))}</div>
+<div class="n">${escapeHtml(formatCount(count4))}</div>
 <div class="t">${OUTCOME_TITLES[action]}</div>
 <p>${escapeHtml(ACTION_MEANING[action])}</p>
 <ul class="otop">${top.length === 0 ? "" : `
@@ -21556,7 +21601,7 @@ ${top.join("\n")}
     const key = knownSeverity(s.severity);
     severityCounts.set(key, (severityCounts.get(key) ?? 0) + s.count);
   }
-  const severities = [...severityCounts].map(([severity, count3]) => ({ severity, count: count3 }));
+  const severities = [...severityCounts].map(([severity, count4]) => ({ severity, count: count4 }));
   const total = severities.reduce((sum, s) => sum + s.count, 0);
   const bar = severities.map((s) => `<span class="s-${escapeHtml(s.severity)}" style="flex: ${s.count} 0 0"></span>`).join("");
   const legend = severities.map(
@@ -22220,8 +22265,8 @@ function verifiedLines(payload) {
   if (forms !== void 0) lines2.push(forms.text);
   for (const card of cards) {
     const title = CATEGORY_TITLES[card.category];
-    const count3 = cardCount(card);
-    if (count3 !== void 0) lines2.push(`${title}  ${count3.text}`);
+    const count4 = cardCount(card);
+    if (count4 !== void 0) lines2.push(`${title}  ${count4.text}`);
     const short = cardSummary(card);
     for (const line2 of [
       ...short.happened,
@@ -23246,10 +23291,10 @@ function kindOf(label) {
   return label.startsWith("secret:") ? "other" : void 0;
 }
 function alignValues(text2, literals) {
-  const count3 = literals.length - 1;
-  if (count3 <= 0) return [];
+  const count4 = literals.length - 1;
+  if (count4 <= 0) return [];
   const head = literals[0];
-  const tail = literals[count3];
+  const tail = literals[count4];
   const tailStart = text2.length - tail.length;
   if (!text2.startsWith(head) || !text2.endsWith(tail) || tailStart <= head.length) return void 0;
   const spans = [];
@@ -23257,7 +23302,7 @@ function alignValues(text2, literals) {
   const place2 = (index, start) => {
     steps += 1;
     if (steps > MAX_ALIGN_STEPS) return false;
-    if (index === count3 - 1) {
+    if (index === count4 - 1) {
       if (tailStart <= start) return false;
       spans[index] = [start, tailStart];
       return true;
@@ -23787,9 +23832,9 @@ function mergeCollected(collector2, part) {
   for (const [path, theirs] of part.paths) index.set(theirs, collector2.file(path));
   const mine = (theirs) => index.get(theirs) ?? -1;
   for (const theirs of part.done) collector2.read(mine(theirs));
-  for (const [theirs, count3] of part.unplaced) {
+  for (const [theirs, count4] of part.unplaced) {
     const at2 = mine(theirs);
-    collected.unplaced.set(at2, (collected.unplaced.get(at2) ?? 0) + count3);
+    collected.unplaced.set(at2, (collected.unplaced.get(at2) ?? 0) + count4);
   }
   for (const dir of part.workingDirs) collected.workingDirs.add(dir);
   for (const [key, c] of part.candidates) {
@@ -23845,7 +23890,7 @@ async function classifySecrets(input, keep2) {
     }
   }
   let unplaced = 0;
-  for (const [index, count3] of collected.unplaced) if (included.has(index)) unplaced += count3;
+  for (const [index, count4] of collected.unplaced) if (included.has(index)) unplaced += count4;
   const candidates = /* @__PURE__ */ new Map();
   for (const [key, candidate] of collected.candidates) {
     for (const index of candidate.files) if (!included.has(index)) candidate.files.delete(index);
@@ -24230,11 +24275,11 @@ var NO_PROGRESS = {
 var REDRAW_MS = 100;
 var PREFIX = "agenttrail-guard: ";
 var CLEAR_LINE = "\r\x1B[K";
-function count2(n2) {
+function count3(n2) {
   return n2.toLocaleString("en-US");
 }
 function progressLine(label, done, total) {
-  const tally = done === void 0 || total === void 0 ? "" : ` \xB7 ${count2(done)} of ${count2(total)}`;
+  const tally = done === void 0 || total === void 0 ? "" : ` \xB7 ${count3(done)} of ${count3(total)}`;
   return `${PREFIX}${label}${tally}`;
 }
 function createProgress(write, terminal, now = () => Date.now()) {
@@ -24659,9 +24704,9 @@ function renderSummary(result, colorsEnabled, reportPath, fixesPath, checksFaile
     for (const finding of shown) {
       const severity = severityTone(finding.severity, finding.severity.padEnd(severityWidth));
       const action = actionTone(finding.action, actionLabel(finding.action).padEnd(11));
-      const count3 = `${formatCount(finding.count)}x`.padStart(countWidth);
+      const count4 = `${formatCount(finding.count)}x`.padStart(countWidth);
       out.push(
-        `  ${severity}  ${action}  ${count3}  ${terminalText(finding.title)}  ${c.dim(finding.ruleId)}`
+        `  ${severity}  ${action}  ${count4}  ${terminalText(finding.title)}  ${c.dim(finding.ruleId)}`
       );
     }
     if (result.findings.length > shown.length) {

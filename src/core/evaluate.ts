@@ -27,6 +27,7 @@ import picomatch from "picomatch";
 import type { SpanContext } from "../engine/evaluator.js";
 import { createCompiledLabelMatcher } from "../engine/matchers.js";
 import { strongestVerdict } from "../engine/verdict.js";
+import { COMMAND_TOO_LONG_ID, commandTooLongText } from "./long-command.js";
 import type { CompiledRule } from "./rules.js";
 import type { AllowlistEntry, GuardDecision, MappedCall, RuleMatch } from "./types.js";
 
@@ -193,6 +194,14 @@ function evaluateRules(
     }
   }
 
+  // A call the cap cut is never let through on the rules alone (`core/long-command.ts`).
+  // FIRST, so that when a rule on the part that was read also asks, the message names what
+  // the person most needs to know: that the rest of the call was not checked. A block on
+  // that part still wins, because the strongest verdict wins.
+  if (mapped.uncheckedLength !== undefined) {
+    matches.unshift({ ruleId: COMMAND_TOO_LONG_ID, action: "require_approval" });
+  }
+
   const { verdict, policyId } = strongestVerdict(
     matches.map((m) => ({ policyId: m.ruleId, action: m.action })),
   );
@@ -201,11 +210,11 @@ function evaluateRules(
     return { decision: "deny", reason: `${BLOCK_LEAD}${describeRule(policyId, titles)}`, matches };
   }
   if (verdict === "require_approval") {
-    return {
-      decision: "ask",
-      reason: `${APPROVAL_LEAD}${describeRule(policyId, titles)}`,
-      matches,
-    };
+    const what =
+      policyId === COMMAND_TOO_LONG_ID && mapped.uncheckedLength !== undefined
+        ? commandTooLongText(mapped.uncheckedLength)
+        : describeRule(policyId, titles);
+    return { decision: "ask", reason: `${APPROVAL_LEAD}${what}`, matches };
   }
   // `allow` — either nothing matched, or only `warn` rules did. The warns are in
   // `matches` even though the verdict discarded them.
