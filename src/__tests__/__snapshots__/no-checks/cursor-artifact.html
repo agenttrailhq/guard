@@ -897,16 +897,17 @@ that <code>rm</code> is one: that shape appears about 220 times in real Claude C
 time is one people switch off. An absolute path, a $VARIABLE, a ~ path, a source directory, a <code>..</code> path out of a build directory, or a build
 directory followed by another target still asks. <code>git rm -r --cached</code> alone, which touches only the index, is exempt. One <code>rm</code> or
 <code>Remove-Item</code> whose every target is strictly inside the system temp folder (<code>/tmp</code>, <code>/private/tmp</code>, <code>/var/tmp</code>, the
-macOS per-user temp folder, <code>${TMPDIR:?}</code> on the shell, and on PowerShell the Windows temp folders
-<code>C:\Users\&lt;name&gt;\AppData\Local\Temp</code> and <code>C:\Windows\Temp</code> on any drive) is exempt too, so clearing a throwaway checkout does not
-ask. Still asked: the bare temp folder; <code>..</code> anywhere in a target; a glob, brace expansion or backslash in a shell target; a comma, colon or curly
-quote in a PowerShell target; a variable after the root; <code>$TMPDIR</code>, <code>$TEMP</code>, <code>$TMP</code>, <code>$env:TEMP</code> and
-<code>$env:TMP</code>, which may be unset; any other variable such as <code>$SCRATCH</code>; a target outside temp; and a chained second command. Known misses:
-a delete via a file tool; a build-directory clean-up chained before a second delete in the same command, because the exemption covers the whole command; and an
-<code>rm</code> with more than twelve arguments before the recursive flag. A quoted MENTION is not a use: a search, a <code>git commit -m</code> message, an
-<code>echo</code> or a <code>curl --data</code> body that only names this command is left alone. That holds only while every shell metacharacter stays inside
-the quotes, so <code>git commit -m &quot;x&quot; &amp;&amp; …</code> is still caught; and the carrier must be the first word, so <code>sudo grep …</code> is not
-exempt.</p>
+macOS per-user temp folder, <code>${TMPDIR:?}</code> on the shell, and the Windows temp folders <code>C:\Users\&lt;name&gt;\AppData\Local\Temp</code> and
+<code>C:\Windows\Temp</code> on any drive, with <code>\</code> between parts, on PowerShell and on Cursor&#39;s Shell, which reaches the engine as Bash) is
+exempt too, so clearing a throwaway checkout does not ask. Still asked: the bare temp folder; <code>..</code> anywhere in a target; a glob, brace expansion or
+backslash in a shell target; in a Windows target, a <code>/</code>, a trailing <code>\</code>, a <code>.</code> segment, or any character other than letters,
+digits, <code>.</code>, <code>_</code> and <code>-</code>; a variable after the root; <code>$TMPDIR</code>, <code>$TEMP</code>, <code>$TMP</code>,
+<code>$env:TEMP</code> and <code>$env:TMP</code>, which may be unset; any other variable such as <code>$SCRATCH</code>; a target outside temp; and a chained
+second command. Known misses: a delete via a file tool; a build-directory clean-up chained before a second delete in the same command, because the exemption
+covers the whole command; and an <code>rm</code> with more than twelve arguments before the recursive flag. A quoted MENTION is not a use: a search, a <code>git
+commit -m</code> message, an <code>echo</code> or a <code>curl --data</code> body that only names this command is left alone. That holds only while every shell
+metacharacter stays inside the quotes, so <code>git commit -m &quot;x&quot; &amp;&amp; …</code> is still caught; and the carrier must be the first word, so
+<code>sudo grep …</code> is not exempt.</p>
 <p><a href="https://www.agenttrail.sh/guardrails/working-tree/require-approval-rm-rf?utm_source=guard&amp;utm_medium=scan-report&amp;utm_campaign=cursor&amp;utm_content=guardrail" target="_blank" rel="noopener noreferrer">Open it in the guardrail library</a></p>
 </details>
 <p class="owasp-line"><span class="lbl">OWASP:</span> <a href="https://www.agenttrail.sh/security/owasp?utm_source=guard&amp;utm_medium=scan-report&amp;utm_campaign=cursor&amp;utm_content=owasp-risk#asi02" target="_blank" rel="noopener noreferrer" aria-describedby="finding-require-approval-rm-rf-title">ASI02 Tool Misuse and Exploitation</a> <span class="sep" aria-hidden="true">&middot;</span> <a href="https://www.agenttrail.sh/security/owasp?utm_source=guard&amp;utm_medium=scan-report&amp;utm_campaign=cursor&amp;utm_content=owasp-risk#llm03" target="_blank" rel="noopener noreferrer" aria-describedby="finding-require-approval-rm-rf-title">LLM03 Excessive Agency</a></p>
