@@ -935,13 +935,13 @@ var require_parse = __commonJS({
         consume(token.value);
       };
       const negate = () => {
-        let count = 1;
+        let count2 = 1;
         while (peek() === "!" && (peek(2) !== "(" || peek(3) === "?")) {
           advance();
           state.start++;
-          count++;
+          count2++;
         }
-        if (count % 2 === 0) {
+        if (count2 % 2 === 0) {
           return false;
         }
         state.negated = true;
@@ -7226,6 +7226,98 @@ function strongestVerdict(matches) {
   return { verdict: "allow", policyId: null };
 }
 
+// src/core/mapper.ts
+var MAX_DETAIL_LEN = 8192;
+var TRUNCATION_MARKER = "\u2026[truncated]\u2026";
+var SHELL_TOOLS = /* @__PURE__ */ new Set(["Bash", "PowerShell"]);
+var FILE_TOOLS = /* @__PURE__ */ new Set(["Edit", "Write", "Read", "MultiEdit", "NotebookEdit"]);
+var SEARCH_GLOB_FIELD = /* @__PURE__ */ new Map([
+  ["Grep", "glob"],
+  ["Glob", "pattern"]
+]);
+function nonEmpty(value) {
+  return typeof value === "string" && value !== "" ? value : void 0;
+}
+function isAbsoluteGlob(glob) {
+  return /^(?:[\\/]|[A-Za-z]:[\\/])/.test(glob);
+}
+function joinSearchPath(dir, glob) {
+  return `${dir.replace(/[\\/]+$/, "")}/${glob}`;
+}
+function searchPath(tool, input) {
+  const field = SEARCH_GLOB_FIELD.get(tool);
+  const dir = nonEmpty(input.path);
+  const glob = field === void 0 ? void 0 : nonEmpty(input[field]);
+  if (glob === void 0) return dir;
+  if (dir === void 0 || isAbsoluteGlob(glob)) return glob;
+  return joinSearchPath(dir, glob);
+}
+function lengthIfCut(s) {
+  return s.length > MAX_DETAIL_LEN ? { uncheckedLength: s.length } : {};
+}
+function capEnd(s) {
+  return s.length > MAX_DETAIL_LEN ? s.slice(0, MAX_DETAIL_LEN) : s;
+}
+function capMiddle(s) {
+  if (s.length <= MAX_DETAIL_LEN) return s;
+  const budget = MAX_DETAIL_LEN - TRUNCATION_MARKER.length;
+  const head = Math.ceil(budget / 2);
+  const tail = budget - head;
+  return `${s.slice(0, head)}${TRUNCATION_MARKER}${s.slice(s.length - tail)}`;
+}
+function safeStringify(v) {
+  try {
+    return JSON.stringify(v) ?? "";
+  } catch {
+    return "";
+  }
+}
+function mapToolCall(payload) {
+  const tool = typeof payload.tool_name === "string" ? payload.tool_name : "";
+  const input = payload.tool_input !== null && typeof payload.tool_input === "object" ? payload.tool_input : {};
+  const args2 = {};
+  let command;
+  if (SHELL_TOOLS.has(tool)) {
+    if (typeof input.command === "string") command = input.command;
+    if (command !== void 0) args2.full_command = capEnd(command);
+  } else if (FILE_TOOLS.has(tool)) {
+    const fp = input.file_path ?? input.notebook_path;
+    if (typeof fp === "string") args2.file_path = fp;
+  } else if (SEARCH_GLOB_FIELD.has(tool)) {
+    const fp = searchPath(tool, input);
+    if (fp !== void 0) args2.file_path = fp;
+  } else if (tool === "WebSearch") {
+    if (typeof input.query === "string") command = input.query;
+    if (command !== void 0) args2.full_command = capEnd(command);
+  } else if (tool.startsWith("mcp__")) {
+    command = safeStringify(input);
+    args2.full_command = capMiddle(command);
+  } else {
+    if (typeof input.command === "string") command = input.command;
+    if (command !== void 0) args2.full_command = capEnd(command);
+    if (typeof input.file_path === "string") args2.file_path = input.file_path;
+  }
+  return { tool, args: args2, ...command === void 0 ? {} : lengthIfCut(command) };
+}
+
+// src/core/long-command.ts
+var COMMAND_TOO_LONG_ID = "guard.command-too-long";
+function count(n) {
+  return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+}
+var COMMAND_TOO_LONG_RULE = {
+  id: COMMAND_TOO_LONG_ID,
+  category: "guard",
+  severity: "high",
+  defaultAction: "require_approval",
+  title: "Too long to check in full",
+  description: `The guardrails read the first ${count(MAX_DETAIL_LEN)} characters of a command. A longer call needs a person's approval, because nothing checked the rest of it. A block on the part that was read still blocks.`,
+  match: {}
+};
+function commandTooLongText(length) {
+  return `it is too long to check in full (${count(length)} characters; the limit is ${count(MAX_DETAIL_LEN)}). Run it as shorter commands. (guardrail ${COMMAND_TOO_LONG_ID})`;
+}
+
 // src/core/evaluate.ts
 var BLOCK_LEAD = "agenttrail-guard blocked this: ";
 var APPROVAL_LEAD = "agenttrail-guard needs a person to approve this: ";
@@ -7304,6 +7396,9 @@ function evaluateRules(rules12, context, mapped, allowlist) {
       titles.set(entry.rule.id, entry.rule.title);
     }
   }
+  if (mapped.uncheckedLength !== void 0) {
+    matches.unshift({ ruleId: COMMAND_TOO_LONG_ID, action: "require_approval" });
+  }
   const { verdict, policyId } = strongestVerdict(
     matches.map((m) => ({ policyId: m.ruleId, action: m.action }))
   );
@@ -7311,11 +7406,8 @@ function evaluateRules(rules12, context, mapped, allowlist) {
     return { decision: "deny", reason: `${BLOCK_LEAD}${describeRule(policyId, titles)}`, matches };
   }
   if (verdict === "require_approval") {
-    return {
-      decision: "ask",
-      reason: `${APPROVAL_LEAD}${describeRule(policyId, titles)}`,
-      matches
-    };
+    const what = policyId === COMMAND_TOO_LONG_ID && mapped.uncheckedLength !== void 0 ? commandTooLongText(mapped.uncheckedLength) : describeRule(policyId, titles);
+    return { decision: "ask", reason: `${APPROVAL_LEAD}${what}`, matches };
   }
   const warned = matches.length > 0;
   return {
@@ -7378,72 +7470,6 @@ function createCodexEmitter(stdout) {
   };
 }
 
-// src/core/mapper.ts
-var MAX_DETAIL_LEN = 8192;
-var TRUNCATION_MARKER = "\u2026[truncated]\u2026";
-var SHELL_TOOLS = /* @__PURE__ */ new Set(["Bash", "PowerShell"]);
-var FILE_TOOLS = /* @__PURE__ */ new Set(["Edit", "Write", "Read", "MultiEdit", "NotebookEdit"]);
-var SEARCH_GLOB_FIELD = /* @__PURE__ */ new Map([
-  ["Grep", "glob"],
-  ["Glob", "pattern"]
-]);
-function nonEmpty(value) {
-  return typeof value === "string" && value !== "" ? value : void 0;
-}
-function isAbsoluteGlob(glob) {
-  return /^(?:[\\/]|[A-Za-z]:[\\/])/.test(glob);
-}
-function joinSearchPath(dir, glob) {
-  return `${dir.replace(/[\\/]+$/, "")}/${glob}`;
-}
-function searchPath(tool, input) {
-  const field = SEARCH_GLOB_FIELD.get(tool);
-  const dir = nonEmpty(input.path);
-  const glob = field === void 0 ? void 0 : nonEmpty(input[field]);
-  if (glob === void 0) return dir;
-  if (dir === void 0 || isAbsoluteGlob(glob)) return glob;
-  return joinSearchPath(dir, glob);
-}
-function capEnd(s) {
-  return s.length > MAX_DETAIL_LEN ? s.slice(0, MAX_DETAIL_LEN) : s;
-}
-function capMiddle(s) {
-  if (s.length <= MAX_DETAIL_LEN) return s;
-  const budget = MAX_DETAIL_LEN - TRUNCATION_MARKER.length;
-  const head = Math.ceil(budget / 2);
-  const tail = budget - head;
-  return `${s.slice(0, head)}${TRUNCATION_MARKER}${s.slice(s.length - tail)}`;
-}
-function safeStringify(v) {
-  try {
-    return JSON.stringify(v) ?? "";
-  } catch {
-    return "";
-  }
-}
-function mapToolCall(payload) {
-  const tool = typeof payload.tool_name === "string" ? payload.tool_name : "";
-  const input = payload.tool_input !== null && typeof payload.tool_input === "object" ? payload.tool_input : {};
-  const args2 = {};
-  if (SHELL_TOOLS.has(tool)) {
-    if (typeof input.command === "string") args2.full_command = capEnd(input.command);
-  } else if (FILE_TOOLS.has(tool)) {
-    const fp = input.file_path ?? input.notebook_path;
-    if (typeof fp === "string") args2.file_path = fp;
-  } else if (SEARCH_GLOB_FIELD.has(tool)) {
-    const fp = searchPath(tool, input);
-    if (fp !== void 0) args2.file_path = fp;
-  } else if (tool === "WebSearch") {
-    if (typeof input.query === "string") args2.full_command = capEnd(input.query);
-  } else if (tool.startsWith("mcp__")) {
-    args2.full_command = capMiddle(safeStringify(input));
-  } else {
-    if (typeof input.command === "string") args2.full_command = capEnd(input.command);
-    if (typeof input.file_path === "string") args2.file_path = input.file_path;
-  }
-  return { tool, args: args2 };
-}
-
 // src/core/codex-mapper.ts
 var PATCH_MARKERS = [
   { marker: "*** Add File:", tool: "Write" },
@@ -7486,9 +7512,11 @@ function mapCodexCall(payload) {
   const tool = typeof payload.tool_name === "string" ? payload.tool_name : "";
   const input = toolInput(payload);
   if (tool === "Bash") {
+    const command = typeof input.command === "string" ? input.command : void 0;
     const args2 = {};
-    if (typeof input.command === "string") args2.full_command = capEnd(input.command);
-    return { event, candidates: [{ tool: "Bash", args: args2 }] };
+    if (command !== void 0) args2.full_command = capEnd(command);
+    const cut = command === void 0 ? {} : lengthIfCut(command);
+    return { event, candidates: [{ tool: "Bash", args: args2, ...cut }] };
   }
   if (tool === "apply_patch") {
     const patch = typeof input.command === "string" ? input.command : "";
@@ -7496,9 +7524,10 @@ function mapCodexCall(payload) {
     return first === void 0 ? void 0 : { event, candidates: [first, ...rest] };
   }
   if (tool.startsWith("mcp__")) {
+    const raw = safeStringify(input);
     return {
       event,
-      candidates: [{ tool, args: { full_command: capMiddle(safeStringify(input)) } }]
+      candidates: [{ tool, args: { full_command: capMiddle(raw) }, ...lengthIfCut(raw) }]
     };
   }
   return void 0;
@@ -7698,18 +7727,21 @@ function grepCandidates(folder, glob) {
 function mapCursorCall(payload) {
   const event = payload.hook_event_name;
   if (event === "beforeShellExecution") {
+    const command2 = typeof payload.command === "string" ? payload.command : void 0;
     const args3 = {};
-    if (typeof payload.command === "string") args3.full_command = capEnd(payload.command);
-    return { event, cursorTool: "", candidates: [{ tool: "Bash", args: args3 }] };
+    if (command2 !== void 0) args3.full_command = capEnd(command2);
+    const cut = command2 === void 0 ? {} : lengthIfCut(command2);
+    return { event, cursorTool: "", candidates: [{ tool: "Bash", args: args3, ...cut }] };
   }
   if (event !== "preToolUse") return void 0;
   const cursorTool = typeof payload.tool_name === "string" ? payload.tool_name : "";
   const input = payload.tool_input !== null && typeof payload.tool_input === "object" ? payload.tool_input : {};
   const call = (candidates) => ({ event, cursorTool, candidates });
   if (cursorTool === "Shell") {
+    const command2 = typeof input.command === "string" ? input.command : void 0;
     const args3 = {};
-    if (typeof input.command === "string") args3.full_command = capEnd(input.command);
-    return call([{ tool: "Bash", args: args3 }]);
+    if (command2 !== void 0) args3.full_command = capEnd(command2);
+    return call([{ tool: "Bash", args: args3, ...command2 === void 0 ? {} : lengthIfCut(command2) }]);
   }
   if (CURSOR_FILE_TOOLS.has(cursorTool)) {
     const args3 = {};
@@ -7724,14 +7756,16 @@ function mapCursorCall(payload) {
     return call([
       {
         tool: `mcp__cursor__${cursorTool.slice(MCP_PREFIX.length)}`,
-        args: { full_command: capMiddle(raw) }
+        args: { full_command: capMiddle(raw) },
+        ...lengthIfCut(raw)
       }
     ]);
   }
+  const command = typeof input.command === "string" ? input.command : void 0;
   const args2 = {};
-  if (typeof input.command === "string") args2.full_command = capEnd(input.command);
+  if (command !== void 0) args2.full_command = capEnd(command);
   if (typeof input.file_path === "string") args2.file_path = input.file_path;
-  return call([{ tool: cursorTool, args: args2 }]);
+  return call([{ tool: cursorTool, args: args2, ...command === void 0 ? {} : lengthIfCut(command) }]);
 }
 
 // src/core/emit.ts

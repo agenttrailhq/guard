@@ -46,7 +46,14 @@
  * path stays relative: it is never resolved against a directory.
  */
 
-import { capEnd, capMiddle, isAbsoluteGlob, joinSearchPath, safeStringify } from "./mapper.js";
+import {
+  capEnd,
+  capMiddle,
+  isAbsoluteGlob,
+  joinSearchPath,
+  lengthIfCut,
+  safeStringify,
+} from "./mapper.js";
 import type { CursorHookPayload, MappedCall } from "./types.js";
 
 /** The Cursor events the guard evaluates. Every other event gets no opinion. */
@@ -111,9 +118,11 @@ export function mapCursorCall(payload: CursorHookPayload): CursorCall | undefine
   const event = payload.hook_event_name;
 
   if (event === "beforeShellExecution") {
+    const command = typeof payload.command === "string" ? payload.command : undefined;
     const args: { full_command?: string } = {};
-    if (typeof payload.command === "string") args.full_command = capEnd(payload.command);
-    return { event, cursorTool: "", candidates: [{ tool: "Bash", args }] };
+    if (command !== undefined) args.full_command = capEnd(command);
+    const cut = command === undefined ? {} : lengthIfCut(command);
+    return { event, cursorTool: "", candidates: [{ tool: "Bash", args, ...cut }] };
   }
   if (event !== "preToolUse") return undefined;
 
@@ -125,9 +134,10 @@ export function mapCursorCall(payload: CursorHookPayload): CursorCall | undefine
   const call = (candidates: CursorCandidates): CursorCall => ({ event, cursorTool, candidates });
 
   if (cursorTool === "Shell") {
+    const command = typeof input.command === "string" ? input.command : undefined;
     const args: { full_command?: string } = {};
-    if (typeof input.command === "string") args.full_command = capEnd(input.command);
-    return call([{ tool: "Bash", args }]);
+    if (command !== undefined) args.full_command = capEnd(command);
+    return call([{ tool: "Bash", args, ...(command === undefined ? {} : lengthIfCut(command)) }]);
   }
   if (CURSOR_FILE_TOOLS.has(cursorTool)) {
     const args: { file_path?: string } = {};
@@ -144,13 +154,15 @@ export function mapCursorCall(payload: CursorHookPayload): CursorCall | undefine
       {
         tool: `mcp__cursor__${cursorTool.slice(MCP_PREFIX.length)}`,
         args: { full_command: capMiddle(raw) },
+        ...lengthIfCut(raw),
       },
     ]);
   }
 
   // Any other tool: carry a command and a file path if the payload happens to have them.
+  const command = typeof input.command === "string" ? input.command : undefined;
   const args: { full_command?: string; file_path?: string } = {};
-  if (typeof input.command === "string") args.full_command = capEnd(input.command);
+  if (command !== undefined) args.full_command = capEnd(command);
   if (typeof input.file_path === "string") args.file_path = input.file_path;
-  return call([{ tool: cursorTool, args }]);
+  return call([{ tool: cursorTool, args, ...(command === undefined ? {} : lengthIfCut(command)) }]);
 }

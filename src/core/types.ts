@@ -85,6 +85,12 @@ export interface MappedCall {
     readonly full_command?: string;
     readonly file_path?: string;
   };
+  /**
+   * Set only when the cap cut the command channel: the length, in UTF-16 code units, of the
+   * value before the cut. The rules saw only part of it, so `evaluate.ts` never lets the call
+   * through on the rules alone (`core/long-command.ts`).
+   */
+  readonly uncheckedLength?: number;
 }
 
 /** The raw Claude Code `PreToolUse` payload, as far as the guard trusts it. */

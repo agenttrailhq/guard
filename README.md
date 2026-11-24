@@ -576,6 +576,8 @@ that bypass those hooks or detect dangerous content inside a written file. In sh
   and Cursor and Codex have more of these gaps than Claude Code.
 - It matches commands and file **paths**, never file contents. An agent can write a script
   and run it as a separate command; only the command is checked.
+- It reads the first 8,192 characters of a command (the start and end of an MCP input). A
+  longer call always needs your approval, because the rest of it was not checked.
 - It does not see what the agent fetches from the web.
 - It **fails open**. A crash, a timeout, or bad output lets the call through to your
   agent's normal permission flow.
@@ -610,6 +612,15 @@ worse than one that names the hole.
   (`./setup.sh`, say), the dangerous content that went into the file was never inspected.
   Guard what a file's contents would DO by guarding the commands that act on it; a file-path
   guardrail is a scope rule, not a content scanner.
+- **A call longer than the guard reads always needs approval.** The guardrails read the first
+  8,192 characters of a command, and the first and last 4,000 or so of an MCP input. Anything
+  after that point is checked by no guardrail, so a longer call is never let through on the
+  guardrails alone: it gets the built-in `guard.command-too-long` approval, in addition to
+  whatever the guardrails decided on the part they read. A block on that part still blocks.
+  The approval cannot be allowlisted or turned off. On Codex, and on Cursor outside the
+  terminal hook, an approval is a block. `scan` reports past calls of this length under the
+  same id. Long commands that are normal, such as a long commit message in a heredoc, are
+  asked too; run the work as shorter commands to avoid the prompt.
 - **A hold does not prompt when your settings already allow the tool.** A guardrail set
   to `require_approval` (shown as `ask`) returns Claude Code's `ask` decision, but Claude
   Code's own `permissions.allow` rules win over a hook: if your `settings.json` allows a

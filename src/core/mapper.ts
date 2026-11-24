@@ -45,6 +45,11 @@
  * `mcp__*` keeps the head AND the tail (`capMiddle`), so a batch call's tail stays
  * visible.
  *
+ * A cut value is never decided on the rules alone: the part the rules did not see could
+ * hold anything. So a cut call carries `uncheckedLength` (`lengthIfCut`), and
+ * `evaluate.ts` adds the built-in `guard.command-too-long` approval to whatever the rules
+ * decided on the part they saw (`core/long-command.ts`).
+ *
  * ── The MCP serialization traps, documented beside the mapper ─────────
  * 1. Key names match as TEXT — a rule containing `token` fires on any input with a
  *    field merely NAMED token.
@@ -126,6 +131,23 @@ function searchPath(tool: string, input: Record<string, unknown>): string | unde
   return joinSearchPath(dir, glob);
 }
 
+/**
+ * `{ uncheckedLength }` when the cap will cut `s`, `{}` when it fits. Spread into a
+ * `MappedCall` beside the capped value, so the call says that the rules saw only part of it.
+ */
+export function lengthIfCut(s: string): { uncheckedLength?: number } {
+  return s.length > MAX_DETAIL_LEN ? { uncheckedLength: s.length } : {};
+}
+
+/**
+ * `mapped` with `text` as its command, for testing a piece of a call's text against some
+ * guardrails (the `scan` verify checks). The piece is not the call, so it carries no
+ * `uncheckedLength`: whether the CALL was too long to check is decided once, on the call.
+ */
+export function withCommandText(mapped: MappedCall, text: string): MappedCall {
+  return { tool: mapped.tool, args: { ...mapped.args, full_command: text } };
+}
+
 /** Keep the FIRST `MAX_DETAIL_LEN` chars. */
 export function capEnd(s: string): string {
   return s.length > MAX_DETAIL_LEN ? s.slice(0, MAX_DETAIL_LEN) : s;
@@ -168,9 +190,12 @@ export function mapToolCall(payload: PreToolUsePayload): MappedCall {
       ? (payload.tool_input as Record<string, unknown>)
       : {};
   const args: { full_command?: string; file_path?: string } = {};
+  // The whole value the command channel was cut from, when there is one.
+  let command: string | undefined;
 
   if (SHELL_TOOLS.has(tool)) {
-    if (typeof input.command === "string") args.full_command = capEnd(input.command);
+    if (typeof input.command === "string") command = input.command;
+    if (command !== undefined) args.full_command = capEnd(command);
   } else if (FILE_TOOLS.has(tool)) {
     const fp = input.file_path ?? input.notebook_path;
     if (typeof fp === "string") args.file_path = fp;
@@ -178,16 +203,19 @@ export function mapToolCall(payload: PreToolUsePayload): MappedCall {
     const fp = searchPath(tool, input);
     if (fp !== undefined) args.file_path = fp;
   } else if (tool === "WebSearch") {
-    if (typeof input.query === "string") args.full_command = capEnd(input.query);
+    if (typeof input.query === "string") command = input.query;
+    if (command !== undefined) args.full_command = capEnd(command);
   } else if (tool.startsWith("mcp__")) {
     // Middle-truncated, unlike every other channel — see the header.
-    args.full_command = capMiddle(safeStringify(input));
+    command = safeStringify(input);
+    args.full_command = capMiddle(command);
   } else {
     // Unknown/other built-in — including `WebFetch`, deliberately. Best-effort:
     // carry a command and/or a file path if the payload happens to have one.
-    if (typeof input.command === "string") args.full_command = capEnd(input.command);
+    if (typeof input.command === "string") command = input.command;
+    if (command !== undefined) args.full_command = capEnd(command);
     if (typeof input.file_path === "string") args.file_path = input.file_path;
   }
 
-  return { tool, args };
+  return { tool, args, ...(command === undefined ? {} : lengthIfCut(command)) };
 }

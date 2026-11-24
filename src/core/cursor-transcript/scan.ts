@@ -48,7 +48,7 @@
 
 import { join } from "node:path";
 import { type CursorCandidates, grepCandidates } from "../cursor-mapper.js";
-import { capEnd, capMiddle, safeStringify } from "../mapper.js";
+import { capEnd, capMiddle, lengthIfCut, safeStringify } from "../mapper.js";
 import type { ReaderSkips, ScanCorpus, SessionToolCall } from "../scan-report.js";
 import type { ParsedSession, ToolUse, Turn, UserPrompt } from "../transcript/transcript-types.js";
 import type { MappedCall } from "../types.js";
@@ -111,7 +111,7 @@ function stringOr(value: unknown): string {
 /** A call whose command channel is `value`, end-capped. No channel when it is not a string. */
 function commandCall(tool: string, value: unknown): MappedCall {
   return typeof value === "string"
-    ? { tool, args: { full_command: capEnd(value) } }
+    ? { tool, args: { full_command: capEnd(value) }, ...lengthIfCut(value) }
     : { tool, args: {} };
 }
 
@@ -123,6 +123,7 @@ function mcpCall(group: unknown, toolName: unknown, args: unknown): MappedCall {
   return {
     tool: `mcp__${stringOr(group)}__${stringOr(toolName)}`,
     args: { full_command: capMiddle(raw) },
+    ...lengthIfCut(raw),
   };
 }
 
