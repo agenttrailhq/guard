@@ -191,7 +191,7 @@ describe("SCRUB THE FIELD, THEN SERIALIZE — order, against the real scrubber",
    *
    * `JSON.stringify` escapes a quote to `\"`. The scrubber reads an escaped quote
    * too, but only up to three levels of escaping (seven backslashes); a field
-   * serialized deeper than that reaches it with its secret unrecognised:
+   * serialized deeper than that reaches it with its secret unrecognized:
    *
    *   field-first     → {"command":"export API_KEY=[REDACTED:secret:env]"}
    *   serialize-first → redacted for one to three levels, leaks beyond that
