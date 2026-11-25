@@ -897,12 +897,17 @@ strictly inside the system temp folder (<code>/tmp</code>, <code>/private/tmp</c
 -rf /tmp/review-1</code>. Still blocked: the bare temp folder (<code>rm -rf /tmp</code>); <code>..</code> anywhere in a target; a glob, brace expansion or
 backslash in a target (<code>/tmp/{..,x}/etc</code>, <code>/tmp/.[.]/etc</code>); a variable after the root; a target outside temp in the same <code>rm</code>;
 a chained second command; and the same delete through an MCP tool. The exemption reads the text only, so a symbolic link inside temp that points out of it is
-not caught. Known misses: a variable or <code>~</code> target (<code>rm -rf $DIR</code>) whose value is only known at run time — for those, see
-require-approval-rm-rf, which holds them for approval instead; an <code>rm</code> with more than twelve arguments before the flag or the target; a command
-continued onto the next line with a backslash; and a delete through <code>find -delete</code> or a file tool. A quoted MENTION is not a use: a search, a
-<code>git commit -m</code> message, an <code>echo</code> or a <code>curl --data</code> body that only names this command is left alone. That holds only while
-every shell metacharacter stays inside the quotes, so <code>git commit -m &quot;x&quot; &amp;&amp; …</code> is still caught; and the carrier must be the first
-word, so <code>sudo grep …</code> is not exempt.</p>
+not caught. The flag may also be written so the shell still reads it as one: quoted or escaped (<code>rm &#39;-rf&#39; /</code>, <code>rm -r&quot;f&quot;
+/</code>, <code>rm \-rf /</code>), brace-expanded (<code>-{r,f}</code>), a <code>--r…</code> prefix of <code>--recursive</code>, or with the words joined by
+<code>$IFS</code>; the command word may be quoted (<code>&quot;rm&quot;</code>), and the whole command may be a brace expansion (<code>{rm,-rf,/srv}</code>,
+also <code>{/bin/rm,…}</code> and <code>{sudo,rm,…}</code>). An ANSI-C quoted flag (<code>$&#39;-rf&#39;</code>) counts too. Known misses: a quoted or escaped
+command word (<code>r&#39;m&#39;</code>); more than 16 quote characters before the flag or 32 inside it; an escape that spells the dash
+(<code>$&#39;\x2drf&#39;</code>, held by require-approval-rm-rf); a variable or <code>~</code> target (<code>rm -rf $DIR</code>) whose value is only known at
+run time — for those, see require-approval-rm-rf, which holds them for approval instead; an <code>rm</code> with more than twelve arguments before the flag or
+the target; a command continued onto the next line with a backslash; and a delete through <code>find -delete</code> or a file tool. A quoted MENTION is not a
+use: a search, a <code>git commit -m</code> message, an <code>echo</code> or a <code>curl --data</code> body that only names this command is left alone. That
+holds only while every shell metacharacter stays inside the quotes, so <code>git commit -m &quot;x&quot; &amp;&amp; …</code> is still caught; and the carrier
+must be the first word, so <code>sudo grep …</code> is not exempt.</p>
 <p><a href="https://www.agenttrail.sh/guardrails/destructive-data/dd-rm-rf-absolute?utm_source=guard&amp;utm_medium=scan-report&amp;utm_campaign=claude&amp;utm_content=guardrail" target="_blank" rel="noopener noreferrer">Open it in the guardrail library</a></p>
 </details>
 <p class="owasp-line"><span class="lbl">OWASP:</span> <a href="https://www.agenttrail.sh/security/owasp?utm_source=guard&amp;utm_medium=scan-report&amp;utm_campaign=claude&amp;utm_content=owasp-risk#asi02" target="_blank" rel="noopener noreferrer" aria-describedby="finding-dd-rm-rf-absolute-title">ASI02 Tool Misuse and Exploitation</a> <span class="sep" aria-hidden="true">&middot;</span> <a href="https://www.agenttrail.sh/security/owasp?utm_source=guard&amp;utm_medium=scan-report&amp;utm_campaign=claude&amp;utm_content=owasp-risk#llm03" target="_blank" rel="noopener noreferrer" aria-describedby="finding-dd-rm-rf-absolute-title">LLM03 Excessive Agency</a></p>
@@ -956,11 +961,19 @@ exempt too, so clearing a throwaway checkout does not ask. Still asked: the bare
 backslash in a shell target; in a Windows target, a <code>/</code>, a trailing <code>\</code>, a <code>.</code> segment, or any character other than letters,
 digits, <code>.</code>, <code>_</code> and <code>-</code>; a variable after the root; <code>$TMPDIR</code>, <code>$TEMP</code>, <code>$TMP</code>,
 <code>$env:TEMP</code> and <code>$env:TMP</code>, which may be unset; any other variable such as <code>$SCRATCH</code>; a target outside temp; and a chained
-second command. Known misses: a delete via a file tool; a build-directory clean-up chained before a second delete in the same command, because the exemption
-covers the whole command; and an <code>rm</code> with more than twelve arguments before the recursive flag. A quoted MENTION is not a use: a search, a <code>git
-commit -m</code> message, an <code>echo</code> or a <code>curl --data</code> body that only names this command is left alone. That holds only while every shell
-metacharacter stays inside the quotes, so <code>git commit -m &quot;x&quot; &amp;&amp; …</code> is still caught; and the carrier must be the first word, so
-<code>sudo grep …</code> is not exempt.</p>
+second command. Also held: the flag quoted, escaped, brace-expanded or a <code>--r…</code> prefix; a flag held in a variable or substitution next to an absolute
+or <code>~</code> target (<code>rm $F /srv</code>, which also holds <code>rm -f &quot;$PIDFILE&quot; /var/run/app.pid</code>); words joined by
+<code>$IFS</code>; a command built by brace expansion in command position, also with a path on <code>rm</code> or up to three words before it
+(<code>{/bin/rm,…}</code>, <code>{sudo,rm,…}</code>; a brace list that only names <code>rm</code>, as in <code>mkdir -p {src,rm,test}</code>, is not held, nor
+is a brace after a wrapper, <code>sudo {rm,…}</code>); PowerShell <code>-r</code> through <code>-Recurse</code>, <code>-Recurse:$true</code>, an en or em dash,
+U+0085 between words, and the <code>ri</code> and <code>del</code> aliases; and cmd&#39;s <code>rd /s</code>, <code>rmdir /s</code> and <code>del /s</code>,
+also with switches joined (<code>rd/s/q</code>, <code>del /f/s/q</code>), but not a path that ends in <code>/s</code> (<code>rmdir build/s</code>). cmd and
+PowerShell deletes of a drive path are held, not blocked. Known misses: a delete via a file tool; a quoted or escaped command word (<code>r&#39;m&#39;</code>);
+a build-directory clean-up chained before a second delete in the same command, because the exemption covers the whole command; an <code>rm</code> with more than
+twelve arguments before the recursive flag; more than 32 removable characters inside the flag; and PowerShell splatting (<code>@{Recurse=$true}</code>) or
+<code>[IO.Directory]::Delete(path, $true)</code>. A quoted MENTION is not a use: a search, a <code>git commit -m</code> message, an <code>echo</code> or a
+<code>curl --data</code> body that only names this command is left alone. That holds only while every shell metacharacter stays inside the quotes, so <code>git
+commit -m &quot;x&quot; &amp;&amp; …</code> is still caught; and the carrier must be the first word, so <code>sudo grep …</code> is not exempt.</p>
 <p><a href="https://www.agenttrail.sh/guardrails/working-tree/require-approval-rm-rf?utm_source=guard&amp;utm_medium=scan-report&amp;utm_campaign=claude&amp;utm_content=guardrail" target="_blank" rel="noopener noreferrer">Open it in the guardrail library</a></p>
 </details>
 <p class="owasp-line"><span class="lbl">OWASP:</span> <a href="https://www.agenttrail.sh/security/owasp?utm_source=guard&amp;utm_medium=scan-report&amp;utm_campaign=claude&amp;utm_content=owasp-risk#asi02" target="_blank" rel="noopener noreferrer" aria-describedby="finding-require-approval-rm-rf-title">ASI02 Tool Misuse and Exploitation</a> <span class="sep" aria-hidden="true">&middot;</span> <a href="https://www.agenttrail.sh/security/owasp?utm_source=guard&amp;utm_medium=scan-report&amp;utm_campaign=claude&amp;utm_content=owasp-risk#llm03" target="_blank" rel="noopener noreferrer" aria-describedby="finding-require-approval-rm-rf-title">LLM03 Excessive Agency</a></p>
@@ -1045,13 +1058,20 @@ check, the secret scanner.</p>
 <details class="libdesc"><summary>How this guardrail decides, and what it misses<span class="sr-only">: git --no-verify skips the hooks the team installed</span></summary>
 <p class="library-text">Commits, pushes or merges with <code>--no-verify</code>, which skips the pre-commit and pre-push hooks a team installed on purpose — the formatter, the type
 check, the secret scanner. It is the most common way a check everyone believes is running turns out not to be. Deliberately does NOT widen to skipping tests in
-general: <code>mvn -DskipTests package</code> is ordinary work and is asserted as a negative. Known over-match: a <code>-n</code> anywhere in a <code>git
-commit</code> line, including inside a message. Global flags between <code>git</code> and its subcommand are tolerated (<code>git -C &lt;dir&gt; commit
---no-verify</code>, <code>--no-pager</code>, <code>-c k=v</code>), and an absolute tool path such as <code>/usr/bin/git</code> still matches; a flag that itself
-runs a program is not read. A quoted MENTION is not a use: a search, a <code>git commit -m</code> message, an <code>echo</code> or a <code>curl --data</code>
-body that only names this command is left alone. That holds only while every shell metacharacter stays inside the quotes, so <code>git commit -m &quot;x&quot;
-&amp;&amp; …</code> is still caught; and the carrier must be the first word, so <code>sudo grep …</code> is not exempt. <code>git commit</code> is NOT one of
-those carriers here, because the trigger here is a flag of <code>git commit</code>: a commit message that quotes <code>--no-verify</code> still asks.</p>
+general: <code>mvn -DskipTests package</code> is ordinary work and is asserted as a negative. Also held: the prefixes git accepts (<code>--no-veri</code>,
+<code>--no-verif</code>), quotes or escapes the shell removes from the flag (<code>--no-&quot;verify&quot;</code>, <code>$&#39;\x2d\x2dno-verify&#39;</code>),
+<code>n</code> inside a short cluster (<code>-nm</code>, <code>-anm</code>, <code>-sn</code>), and a hooks folder chosen for one command: <code>git -c
+core.hooksPath=…</code>, <code>--config-env</code>, <code>GIT_CONFIG_KEY_n</code> or <code>GIT_CONFIG_PARAMETERS</code>, including up to eight quotes or
+backslashes inside the key (<code>core.hooks&#39;&#39;Path</code>). Known misses: a key with a variable inside it (<code>core.hooks$X…</code>), and config read
+from another file (<code>GIT_CONFIG_GLOBAL=…</code>, <code>GIT_CONFIG=…</code>, <code>-c include.path=…</code>). Known over-match: a <code>-n</code> anywhere in
+a <code>git commit</code> line, including inside a message; <code>-Sn</code>, which signs with key <code>n</code>; any <code>-c core.hooksPath</code> value,
+including a real folder; and a blank inside the key (<code>core.hooks Path</code>). More than eight removable characters before or between the key&#39;s letters
+are not read. Global flags between <code>git</code> and its subcommand are tolerated (<code>git -C &lt;dir&gt; commit --no-verify</code>,
+<code>--no-pager</code>, <code>-c k=v</code>), and an absolute tool path such as <code>/usr/bin/git</code> still matches; a flag that itself runs a program is
+not read. A quoted MENTION is not a use: a search, a <code>git commit -m</code> message, an <code>echo</code> or a <code>curl --data</code> body that only names
+this command is left alone. That holds only while every shell metacharacter stays inside the quotes, so <code>git commit -m &quot;x&quot; &amp;&amp; …</code> is
+still caught; and the carrier must be the first word, so <code>sudo grep …</code> is not exempt. <code>git commit</code> is NOT one of those carriers here,
+because the trigger here is a flag of <code>git commit</code>: a commit message that quotes <code>--no-verify</code> still asks.</p>
 <p><a href="https://www.agenttrail.sh/guardrails/safety-bypass/gb-git-no-verify?utm_source=guard&amp;utm_medium=scan-report&amp;utm_campaign=claude&amp;utm_content=guardrail" target="_blank" rel="noopener noreferrer">Open it in the guardrail library</a></p>
 </details>
 <p class="owasp-line"><span class="lbl">OWASP:</span> <a href="https://www.agenttrail.sh/security/owasp?utm_source=guard&amp;utm_medium=scan-report&amp;utm_campaign=claude&amp;utm_content=owasp-risk#asi09" target="_blank" rel="noopener noreferrer" aria-describedby="finding-gb-git-no-verify-title">ASI09 Human-Agent Trust Exploitation</a></p>
@@ -1300,11 +1320,15 @@ M99.68 0L97.26 0L97.26-16.80L99.68-17.26L99.68 0Z"/>
     "strictly inside the system temp folder (`/tmp`, `/private/tmp`, `/var/tmp`, the macOS per-user temp folder), such as `rm -rf /tmp/review-1`. Still blocked: the",
     "bare temp folder (`rm -rf /tmp`); `..` anywhere in a target; a glob, brace expansion or backslash in a target (`/tmp/{..,x}/etc`, `/tmp/.[.]/etc`); a variable",
     "after the root; a target outside temp in the same `rm`; a chained second command; and the same delete through an MCP tool. The exemption reads the text only, so",
-    "a symbolic link inside temp that points out of it is not caught. Known misses: a variable or `~` target (`rm -rf $DIR`) whose value is only known at run time —",
-    "for those, see require-approval-rm-rf, which holds them for approval instead; an `rm` with more than twelve arguments before the flag or the target; a command",
-    "continued onto the next line with a backslash; and a delete through `find -delete` or a file tool. A quoted MENTION is not a use: a search, a `git commit -m`",
-    "message, an `echo` or a `curl --data` body that only names this command is left alone. That holds only while every shell metacharacter stays inside the quotes,",
-    "so `git commit -m \"x\" && …` is still caught; and the carrier must be the first word, so `sudo grep …` is not exempt."
+    "a symbolic link inside temp that points out of it is not caught. The flag may also be written so the shell still reads it as one: quoted or escaped (`rm '-rf'",
+    "/`, `rm -r\"f\" /`, `rm \\-rf /`), brace-expanded (`-{r,f}`), a `--r…` prefix of `--recursive`, or with the words joined by `$IFS`; the command word may be quoted",
+    "(`\"rm\"`), and the whole command may be a brace expansion (`{rm,-rf,/srv}`, also `{/bin/rm,…}` and `{sudo,rm,…}`). An ANSI-C quoted flag (`$'-rf'`) counts too.",
+    "Known misses: a quoted or escaped command word (`r'm'`); more than 16 quote characters before the flag or 32 inside it; an escape that spells the dash",
+    "(`$'\\x2drf'`, held by require-approval-rm-rf); a variable or `~` target (`rm -rf $DIR`) whose value is only known at run time — for those, see",
+    "require-approval-rm-rf, which holds them for approval instead; an `rm` with more than twelve arguments before the flag or the target; a command continued onto",
+    "the next line with a backslash; and a delete through `find -delete` or a file tool. A quoted MENTION is not a use: a search, a `git commit -m` message, an",
+    "`echo` or a `curl --data` body that only names this command is left alone. That holds only while every shell metacharacter stays inside the quotes, so `git",
+    "commit -m \"x\" && …` is still caught; and the carrier must be the first word, so `sudo grep …` is not exempt."
    ]
   },
   {
@@ -1373,11 +1397,17 @@ M99.68 0L97.26 0L97.26-16.80L99.68-17.26L99.68 0Z"/>
     "Cursor's Shell, which reaches the engine as Bash) is exempt too, so clearing a throwaway checkout does not ask. Still asked: the bare temp folder; `..` anywhere",
     "in a target; a glob, brace expansion or backslash in a shell target; in a Windows target, a `/`, a trailing `\\`, a `.` segment, or any character other than",
     "letters, digits, `.`, `_` and `-`; a variable after the root; `$TMPDIR`, `$TEMP`, `$TMP`, `$env:TEMP` and `$env:TMP`, which may be unset; any other variable",
-    "such as `$SCRATCH`; a target outside temp; and a chained second command. Known misses: a delete via a file tool; a build-directory clean-up chained before a",
-    "second delete in the same command, because the exemption covers the whole command; and an `rm` with more than twelve arguments before the recursive flag. A",
-    "quoted MENTION is not a use: a search, a `git commit -m` message, an `echo` or a `curl --data` body that only names this command is left alone. That holds only",
-    "while every shell metacharacter stays inside the quotes, so `git commit -m \"x\" && …` is still caught; and the carrier must be the first word, so `sudo grep …`",
-    "is not exempt."
+    "such as `$SCRATCH`; a target outside temp; and a chained second command. Also held: the flag quoted, escaped, brace-expanded or a `--r…` prefix; a flag held in",
+    "a variable or substitution next to an absolute or `~` target (`rm $F /srv`, which also holds `rm -f \"$PIDFILE\" /var/run/app.pid`); words joined by `$IFS`; a",
+    "command built by brace expansion in command position, also with a path on `rm` or up to three words before it (`{/bin/rm,…}`, `{sudo,rm,…}`; a brace list that",
+    "only names `rm`, as in `mkdir -p {src,rm,test}`, is not held, nor is a brace after a wrapper, `sudo {rm,…}`); PowerShell `-r` through `-Recurse`,",
+    "`-Recurse:$true`, an en or em dash, U+0085 between words, and the `ri` and `del` aliases; and cmd's `rd /s`, `rmdir /s` and `del /s`, also with switches joined",
+    "(`rd/s/q`, `del /f/s/q`), but not a path that ends in `/s` (`rmdir build/s`). cmd and PowerShell deletes of a drive path are held, not blocked. Known misses: a",
+    "delete via a file tool; a quoted or escaped command word (`r'm'`); a build-directory clean-up chained before a second delete in the same command, because the",
+    "exemption covers the whole command; an `rm` with more than twelve arguments before the recursive flag; more than 32 removable characters inside the flag; and",
+    "PowerShell splatting (`@{Recurse=$true}`) or `[IO.Directory]::Delete(path, $true)`. A quoted MENTION is not a use: a search, a `git commit -m` message, an",
+    "`echo` or a `curl --data` body that only names this command is left alone. That holds only while every shell metacharacter stays inside the quotes, so `git",
+    "commit -m \"x\" && …` is still caught; and the carrier must be the first word, so `sudo grep …` is not exempt."
    ]
   },
   {
@@ -1491,12 +1521,17 @@ M99.68 0L97.26 0L97.26-16.80L99.68-17.26L99.68 0Z"/>
    "descriptionLines": [
     "Commits, pushes or merges with `--no-verify`, which skips the pre-commit and pre-push hooks a team installed on purpose — the formatter, the type check, the",
     "secret scanner. It is the most common way a check everyone believes is running turns out not to be. Deliberately does NOT widen to skipping tests in general:",
-    "`mvn -DskipTests package` is ordinary work and is asserted as a negative. Known over-match: a `-n` anywhere in a `git commit` line, including inside a message.",
-    "Global flags between `git` and its subcommand are tolerated (`git -C \u003cdir> commit --no-verify`, `--no-pager`, `-c k=v`), and an absolute tool path such as",
-    "`/usr/bin/git` still matches; a flag that itself runs a program is not read. A quoted MENTION is not a use: a search, a `git commit -m` message, an `echo` or a",
-    "`curl --data` body that only names this command is left alone. That holds only while every shell metacharacter stays inside the quotes, so `git commit -m \"x\" &&",
-    "…` is still caught; and the carrier must be the first word, so `sudo grep …` is not exempt. `git commit` is NOT one of those carriers here, because the trigger",
-    "here is a flag of `git commit`: a commit message that quotes `--no-verify` still asks."
+    "`mvn -DskipTests package` is ordinary work and is asserted as a negative. Also held: the prefixes git accepts (`--no-veri`, `--no-verif`), quotes or escapes the",
+    "shell removes from the flag (`--no-\"verify\"`, `$'\\x2d\\x2dno-verify'`), `n` inside a short cluster (`-nm`, `-anm`, `-sn`), and a hooks folder chosen for one",
+    "command: `git -c core.hooksPath=…`, `--config-env`, `GIT_CONFIG_KEY_n` or `GIT_CONFIG_PARAMETERS`, including up to eight quotes or backslashes inside the key",
+    "(`core.hooks''Path`). Known misses: a key with a variable inside it (`core.hooks$X…`), and config read from another file (`GIT_CONFIG_GLOBAL=…`, `GIT_CONFIG=…`,",
+    "`-c include.path=…`). Known over-match: a `-n` anywhere in a `git commit` line, including inside a message; `-Sn`, which signs with key `n`; any `-c",
+    "core.hooksPath` value, including a real folder; and a blank inside the key (`core.hooks Path`). More than eight removable characters before or between the key's",
+    "letters are not read. Global flags between `git` and its subcommand are tolerated (`git -C \u003cdir> commit --no-verify`, `--no-pager`, `-c k=v`), and an absolute",
+    "tool path such as `/usr/bin/git` still matches; a flag that itself runs a program is not read. A quoted MENTION is not a use: a search, a `git commit -m`",
+    "message, an `echo` or a `curl --data` body that only names this command is left alone. That holds only while every shell metacharacter stays inside the quotes,",
+    "so `git commit -m \"x\" && …` is still caught; and the carrier must be the first word, so `sudo grep …` is not exempt. `git commit` is NOT one of those carriers",
+    "here, because the trigger here is a flag of `git commit`: a commit message that quotes `--no-verify` still asks."
    ]
   },
   {

@@ -46,7 +46,7 @@ var require_constants = __commonJS({
     var NO_DOTS_SLASH = `(?!${DOTS_SLASH})`;
     var QMARK_NO_DOT = `[^.${SLASH_LITERAL}]`;
     var STAR = `${QMARK}*?`;
-    var SEP = "/";
+    var SEP2 = "/";
     var POSIX_CHARS = {
       DOT_LITERAL,
       PLUS_LITERAL,
@@ -63,7 +63,7 @@ var require_constants = __commonJS({
       QMARK_NO_DOT,
       STAR,
       START_ANCHOR,
-      SEP
+      SEP: SEP2
     };
     var WINDOWS_CHARS = {
       ...POSIX_CHARS,
@@ -1799,7 +1799,7 @@ function agentDisplayName(agent) {
   }
 }
 
-// node_modules/@agenttrail/guardrails/dist/chunk-EZBRZKEN.js
+// node_modules/@agenttrail/guardrails/dist/chunk-KLMIUWB6.js
 var SHELL_AND_MCP = "{Bash,PowerShell,mcp__*}";
 var CURLY = "\u2018-\u201F";
 var OUTSIDE = `[^"'|;&\`$<>()\\n\\r\\\\${CURLY}]`;
@@ -1833,9 +1833,18 @@ var PRINT_MENTION = {
   kind: "execute_tool",
   detail_matches: carrier("(?:echo|printf|write-host|write-output)", "(?:echo|printf)", args)
 };
+var noWrite = (short, long) => `(?!(?:[^|;&"']*(?:"[^"]*"|'[^']*')){0,4}[^|;&"']*\\s["']?-(?:[\\w#:]*["']*${short}(?! ?/dev/null)|-["']*(?:o["']*u|${long})))`;
+var http = (tool, short, long) => {
+  const head = `${tool}${noWrite(short, long)}[ \\t]`;
+  return [
+    `^\\s*${LEAD}${head}${quotedArgs("")}`,
+    `^\\s*${head}${quotedArgs()}`,
+    `^\\s*sudo +${head}${quotedArgs("")}`
+  ];
+};
 var HTTP_BODY_MENTION = {
   kind: "execute_tool",
-  detail_matches: carrier("(?:curl|wget)", "(?:curl|wget)", quotedArgs)
+  detail_matches: [...http("curl", "o", "rem"), ...http("wget", "[op]", "dir")]
 };
 var QUOTED_MENTION = [
   SEARCH_MENTION,
@@ -1876,6 +1885,15 @@ var RM_ARGS = `(?:[ \\t]+${RM_ARG}){0,12}`;
 var RM_ARG_REST = "[^\\s;&|<>]{0,200}";
 var RM_RECURSIVE = "(?:-[a-z]{0,8}r[a-z]{0,8}|--recursive)";
 var ARG_END = "(?:[ \\t;&|)]|$)";
+var SEP = "(?:[\\s\\x85]|\\$\\{?ifs\\}?)";
+var IFS = "\\$\\{?ifs\\}?";
+var RM_RECURSIVE_QUOTED = `(?:["'\\\\$${CURLY}]{0,16}-[a-z"'\\\\{},${CURLY}]{0,32}r[a-z"'\\\\{},${CURLY}]{0,32}|["'\\\\${CURLY}]{0,16}--r[a-z]{0,8}["'${CURLY}]?)`;
+var RM_VARIABLE = "[\"']?(?:\\$|`)[^\\s;&|<>]{0,200}";
+var PWSH_DASH = "[-\\u2013\\u2014\\u2015]";
+var IN_WORD = "[^\\w\\s-]{0,8}";
+var GIT_PRE = "\\bgit\\b(?:[^|;&\\n\\\\]|\\\\[\\s\\S]){0,200}";
+var KEY_GAP = "\\W{0,8}";
+var HOOKSPATH = KEY_GAP + [..."core.hookspath"].map((c) => c === "." ? "\\." : c).join(KEY_GAP);
 function bash(command) {
   return { tool: "Bash", command };
 }
@@ -2590,6 +2608,7 @@ var ddMigrationReset = {
     ]
   }
 };
+var RMW = `${RM_WORD}["']?`;
 var ddRmRfAbsolute = {
   id: "dd.rm-rf-absolute",
   category: "destructive-data",
@@ -2597,7 +2616,7 @@ var ddRmRfAbsolute = {
   defaultAction: "block",
   owasp: ["ASI02", "LLM03"],
   title: "rm -rf against an absolute path",
-  description: 'Recursive delete rooted at `/` rather than at a relative path, with or without the force flag. The recursive flag (`-r`, `-R`, a cluster such as `-rf` or `-Rv`, or `--recursive`) and the absolute target may sit anywhere among the arguments of one `rm`: split across arguments (`rm -r -f /srv`), after `--`, after a relative operand, or after the target, and a quoted target (`rm -rf "/srv"`) counts too. Deliberately does NOT fire on `rm -rf ./node_modules` or `rm -rf build`, which are safe and happen many times a day, or on `rm -f /tmp/app.pid`, which has no recursive flag. Also not blocked: one `rm` whose every target is strictly inside the system temp folder (`/tmp`, `/private/tmp`, `/var/tmp`, the macOS per-user temp folder), such as `rm -rf /tmp/review-1`. Still blocked: the bare temp folder (`rm -rf /tmp`); `..` anywhere in a target; a glob, brace expansion or backslash in a target (`/tmp/{..,x}/etc`, `/tmp/.[.]/etc`); a variable after the root; a target outside temp in the same `rm`; a chained second command; and the same delete through an MCP tool. The exemption reads the text only, so a symbolic link inside temp that points out of it is not caught. Known misses: a variable or `~` target (`rm -rf $DIR`) whose value is only known at run time \u2014 for those, see require-approval-rm-rf, which holds them for approval instead; an `rm` with more than twelve arguments before the flag or the target; a command continued onto the next line with a backslash; and a delete through `find -delete` or a file tool. A quoted MENTION is not a use: a search, a `git commit -m` message, an `echo` or a `curl --data` body that only names this command is left alone. That holds only while every shell metacharacter stays inside the quotes, so `git commit -m "x" && \u2026` is still caught; and the carrier must be the first word, so `sudo grep \u2026` is not exempt.',
+  description: "Recursive delete rooted at `/` rather than at a relative path, with or without the force flag. The recursive flag (`-r`, `-R`, a cluster such as `-rf` or `-Rv`, or `--recursive`) and the absolute target may sit anywhere among the arguments of one `rm`: split across arguments (`rm -r -f /srv`), after `--`, after a relative operand, or after the target, and a quoted target (`rm -rf \"/srv\"`) counts too. Deliberately does NOT fire on `rm -rf ./node_modules` or `rm -rf build`, which are safe and happen many times a day, or on `rm -f /tmp/app.pid`, which has no recursive flag. Also not blocked: one `rm` whose every target is strictly inside the system temp folder (`/tmp`, `/private/tmp`, `/var/tmp`, the macOS per-user temp folder), such as `rm -rf /tmp/review-1`. Still blocked: the bare temp folder (`rm -rf /tmp`); `..` anywhere in a target; a glob, brace expansion or backslash in a target (`/tmp/{..,x}/etc`, `/tmp/.[.]/etc`); a variable after the root; a target outside temp in the same `rm`; a chained second command; and the same delete through an MCP tool. The exemption reads the text only, so a symbolic link inside temp that points out of it is not caught. The flag may also be written so the shell still reads it as one: quoted or escaped (`rm '-rf' /`, `rm -r\"f\" /`, `rm \\-rf /`), brace-expanded (`-{r,f}`), a `--r\u2026` prefix of `--recursive`, or with the words joined by `$IFS`; the command word may be quoted (`\"rm\"`), and the whole command may be a brace expansion (`{rm,-rf,/srv}`, also `{/bin/rm,\u2026}` and `{sudo,rm,\u2026}`). An ANSI-C quoted flag (`$'-rf'`) counts too. Known misses: a quoted or escaped command word (`r'm'`); more than 16 quote characters before the flag or 32 inside it; an escape that spells the dash (`$'\\x2drf'`, held by require-approval-rm-rf); a variable or `~` target (`rm -rf $DIR`) whose value is only known at run time \u2014 for those, see require-approval-rm-rf, which holds them for approval instead; an `rm` with more than twelve arguments before the flag or the target; a command continued onto the next line with a backslash; and a delete through `find -delete` or a file tool. A quoted MENTION is not a use: a search, a `git commit -m` message, an `echo` or a `curl --data` body that only names this command is left alone. That holds only while every shell metacharacter stays inside the quotes, so `git commit -m \"x\" && \u2026` is still caught; and the carrier must be the first word, so `sudo grep \u2026` is not exempt.",
   match: {
     any_of: [
       {
@@ -2607,7 +2626,17 @@ var ddRmRfAbsolute = {
           // A recursive flag, then an absolute target later in the same rm.
           `${RM_WORD}${RM_ARGS}[ \\t]+${RM_RECURSIVE}${RM_ARGS}[ \\t]+["']?/`,
           // An absolute target, then a recursive flag after it.
-          `${RM_WORD}${RM_ARGS}[ \\t]+["']?/${RM_ARG_REST}${RM_ARGS}[ \\t]+${RM_RECURSIVE}${ARG_END}`
+          `${RM_WORD}${RM_ARGS}[ \\t]+["']?/${RM_ARG_REST}${RM_ARGS}[ \\t]+${RM_RECURSIVE}${ARG_END}`,
+          // The same pair with the flag quoted, escaped, brace-expanded or a --r… prefix.
+          `${RMW}${RM_ARGS}[ \\t]+${RM_RECURSIVE_QUOTED}${RM_ARGS}[ \\t]+["']?/`,
+          `${RMW}${RM_ARGS}[ \\t]+["']?/${RM_ARG_REST}${RM_ARGS}[ \\t]+${RM_RECURSIVE_QUOTED}`,
+          // Words separated by $IFS instead of blanks, flag first or target first.
+          `${RM_WORD}["']?${IFS}[^;&|<>\\s]{0,300}-[a-z"'\\\\]{0,16}r[^;&|<>\\s]{0,300}${IFS}["']?/`,
+          `${RM_WORD}["']?${IFS}[^;&|<>\\s]{0,300}${IFS}["']?/[^;&|<>\\s]{0,300}${IFS}["']?-[a-z]{0,8}r`,
+          // The whole command built by brace expansion: {rm,-rf,/target} or {rm,/target,-rf}, with up
+          // to three words before rm ({sudo,rm,…}) and a path on it ({/bin/rm,…}).
+          `\\{(?:[^,}\\s]{1,40},){0,3}["']?(?:[^,}\\s]{0,40}/)?rm["']?,[^}\\s]{0,300}-[a-z"']{0,8}r[^}\\s]{0,300},["']?/`,
+          `\\{(?:[^,}\\s]{1,40},){0,3}["']?(?:[^,}\\s]{0,40}/)?rm["']?,(?:[^}\\s]{0,300},)?["']?/[^}\\s]{0,300},["']?-[a-z]{0,8}r`
         ]
       }
     ],
@@ -2634,6 +2663,32 @@ var ddRmRfAbsolute = {
       bash('rm -r "/srv/data"'),
       bash("sudo rm -r -f /srv/data"),
       bash("/bin/rm -r /srv/data"),
+      // The recursive flag written so the shell still reads it as one.
+      bash("rm '-rf' /"),
+      bash('rm "-rf" /'),
+      bash('rm -r"f" /'),
+      bash('rm -"r"f /srv/data'),
+      bash("rm '-r' '-f' /srv/data"),
+      bash("rm ''''-rf /srv/data"),
+      bash("rm \\-rf /srv/data"),
+      bash("rm -\\r /srv/data"),
+      bash("rm -{r,f} /srv/data"),
+      bash("rm -r{,} /srv/data"),
+      bash("rm --rec /srv/data"),
+      bash("rm --recur /srv/data"),
+      bash('"rm" -rf /srv/data'),
+      bash("rm /srv/data '-rf'"),
+      bash('sudo rm -r"f" /srv/data'),
+      bash("command rm '-rf' /srv/data"),
+      bash("rm \u2018-rf\u2019 /srv/data"),
+      // Words separated by $IFS, and the command built by brace expansion.
+      bash(`rm\${IFS}-rf\${IFS}/srv/data`),
+      bash("rm$IFS-rf$IFS/srv/data"),
+      bash("{rm,-rf,/srv/data}"),
+      bash("{rm,/srv/data,-rf}"),
+      bash("{/bin/rm,-rf,/srv/data}"),
+      bash("{sudo,rm,-rf,/srv/data}"),
+      bash("rm $'-rf' /srv/data"),
       // A search or history command piped into a delete, a shell, a write or an executing reader.
       bash("grep -rl x /srv | xargs rm -rf /srv/cache"),
       bash("rg -l x | xargs rm -r /var/lib/app"),
@@ -2944,7 +2999,7 @@ var exReverseShell = {
     ]
   }
 };
-var RUNS = '(?:^|[\\n;&|(`]|-c\\s+["\']|:\\s*")\\s*(?:(?:sudo|nohup|exec|time|command|env|npx|pnpm\\s+dlx|timeout\\s+\\S{1,20}|\\w{1,40}=\\S{0,200})\\s+){0,4}(?:[^\\s;&|(`"\']{0,200}/)?';
+var RUNS = '(?:^|[\\n;&|(`]|-c\\s+["\']|:\\s*")[^\\S\\n]*(?:(?:sudo|nohup|exec|time|command|env|npx|pnpm\\s+dlx|timeout\\s+\\S{1,20}|\\w{1,40}=\\S{0,200})\\s+){0,4}(?:[^\\s;&|(`"\']{0,200}/)?';
 var SSH = `(?:^|[\\s;&|(/])ssh(?=\\s)[^|;&"'<>]*`;
 var exTunnelExpose = {
   id: "ex.tunnel-expose",
@@ -2977,6 +3032,10 @@ var exTunnelExpose = {
   fixtures: {
     block: [
       bash("ngrok http 3000"),
+      // A start, then a newline and blanks before the tool: the newline starts the command.
+      bash("cd app &&\n  ngrok http 3000"),
+      bash("echo ready;\n\n	ngrok http 3000"),
+      bash("npm run dev &\r\nngrok http 3000"),
       bash("ngrok tcp 22"),
       bash("cloudflared tunnel --url http://localhost:8080"),
       bash("lt --port 8000"),
@@ -3035,6 +3094,16 @@ var rules3 = [
   exFileUpload,
   exPasteService
 ];
+var DIRS = "\\.(?:claude|cursor|codex|agenttrail)";
+var PROT = `(?:\\.(?:claude|cursor|codex)[/\\\\](?:[^\\s;&|<>]{0,200}?[/\\\\])?(?:settings(?:\\.local)?\\.json|hooks(?:\\.json|[/\\\\]|["']?(?:\\s|$|[;&|)]))|plugins[/\\\\]|config\\.toml)|\\.agenttrail[/\\\\]|managed-settings\\.json)`;
+var X = `(?:[*?\\[{\`]|["'${CURLY}](?=[^\\s;&|<>)"'${CURLY}]))`;
+var NOT_MD = `(?![^\\s;&|<>{},/\\\\]{0,200}\\.md(?=["'\\s;&|<>)]|$))`;
+var NOT_PROMPT = `(?![^\\s'"\`{},()+\\[\\]]{0,200}\\.md(?=["'\\s\`)]|$))`;
+var OBF = [
+  `(?:~|\\$\\{?home\\}?|\\$env:userprofile|%userprofile%)[/\\\\]["'\\\\]{0,4}\\.[^\\s/\\\\;&|<>]{0,40}?${X}${NOT_MD}`,
+  `${DIRS}(?:[/\\\\][^\\s;&|<>]{0,200}?)?${X}${NOT_MD}`,
+  `[^\\w.]\\.[ac][a-z]{0,10}["']{1,4}[a-z]${NOT_MD}`
+];
 var fsAgentSelfConfig = {
   id: "fs.agent-self-config",
   category: "file-scope",
@@ -3042,22 +3111,86 @@ var fsAgentSelfConfig = {
   defaultAction: "require_approval",
   owasp: ["ASI02", "LLM03"],
   title: "The agent editing its own configuration",
-  description: "Holds a file tool opening the files that define what the agent itself is allowed to do \u2014 Claude Code settings and hooks, an MCP server list, a plugin manifest, Cursor rules, a Codex config, and the guard's own config.json and guardrails.json. An agent that can edit these can widen its own reach with nobody reviewing the change. Reading is excluded \u2014 the `Read` and `Grep` tools never match \u2014 so opening one of these files to read it is not held; every other file tool is, including one this corpus does not know. Does NOT match ordinary project files, or `.claude/commands/*.md`, which are prompts rather than permissions. Bounded to WELL-KNOWN paths: no working directory or project root reaches the guard, so it can only match names it already knows.",
+  description: 'Holds a file tool opening the files that define what the agent itself is allowed to do \u2014 Claude Code settings, hooks and plugins, an MCP server list, a plugin manifest, Cursor rules and hooks, a Codex config and hooks, managed settings, and anything under `.agenttrail/`, which holds the guard\'s own config and guardrails and the platform CLI\'s settings. An agent that can edit these can widen its own reach with nobody reviewing the change. Reading is excluded \u2014 the `Read` and `Grep` tools never match \u2014 so opening one of these files to read it is not held; every other file tool is, including one this corpus does not know. A shell command that writes, moves or deletes the same files is held too: a redirect (`>`, `>>`, `>|`, `&>`), `tee`, `sponge`, `dd of=`, `sed -i`, `perl -i`, `mv`, `rm`, `ln`, `truncate`, `chmod`, a `cp` or `install` onto the file or into the bare folder (also `-t`), `find \u2026 -exec` a write tool or `-delete`, `xargs` into a write tool, a write after `cd` into the folder, a git `checkout` or `restore` of the file, an interpreter one-liner that names the folder and writes, PowerShell `Set-Content`, `Out-File`, `Remove-Item` and their aliases, .NET `[IO.File]::WriteAllText`, and cmd `copy`, `move`, `del`. A path the shell expands (a glob, a brace, or a quote inside the folder or file name, such as `~/.cl*`, `".claude"/settings.json` or `.cl""aude/`) into one of these folders is held when it is written; a quote that only wraps an argument (`cp ".claude/commands/review.md" /tmp/x`, `--exclude=\'.claude/worktrees\'`) is not, and no arm matches a `.md` file under these folders. Reads stay allowed: `cat`, `jq`, `grep`, `git diff`, a `cp` from the file, and a one-liner that only loads it. Does NOT match ordinary project files, or `.claude/commands/*.md`, which are prompts rather than permissions. Bounded to WELL-KNOWN paths: no working directory or project root reaches the guard, so it can only match names it already knows. Also held: `sed --in-place`, a `curl -o`, `wget -O` or PowerShell `Invoke-WebRequest -OutFile` (`iwr`, `irm`) download onto a protected file (which also holds an upload of one, unless the request carries a quoted argument; `ex.file-upload` still holds that), and moving, linking, deleting or `chmod`ing a whole protected folder (`mv ~/.claude ~/.claude.off`), which removes every hook in it. Known over-matches: a quoted protected path as a copy\'s source (`cp "$HOME/.claude/settings.json" /tmp/b.json`), and a name that only starts like a protected file (`rm -f ~/.claude/settings.json.bak`). Known misses: a folder held in a variable (`D=~/.claude; \u2026 $D/settings.json`), a write through a link made earlier, a write by a script file, an encoded command, unpacking, syncing or copying a folder into the folder (`tar -C`, `unzip -d`, `rsync dir/ ~/.claude/`, `cp -r dir/ ~/.claude`, `cp -rT`, `Copy-Item -Recurse`, `scp`), a download into the folder by name (`curl --output-dir`, `wget -P`), `rmdir` of an empty folder, the PowerShell alias `mi`, a PowerShell download through splatting (`iwr @p`), `Start-BitsTransfer` or `WebClient.DownloadFile`, `awk -i inplace`, a backslash inside a folder or file name (`.cl\\aude`, `sett\\ings.json`), a quote right after the dot of a relative folder (`."claude"/`), a glob in a relative folder name (`.clau[d]e/`), extended globs (`@(\u2026)`, `+(\u2026)`, `?(\u2026)`, which need the bash option `extglob`), and `~/.claude.json`. A `curl -o` or `wget -O` download is held with or without quoted arguments (`-H "A: b"`, `-d "x"`), also when the shell removes quotes from the flag (`"-o"`, `--"output"`): a write flag on the request ends the mention exemption below. `-o /dev/null` is not a write, so a status check with a quoted body stays a mention. The strong protection is deploying the hooks through managed settings. A quoted MENTION is not a use: a search, a `git commit -m` message, an `echo` or a `curl --data` body that only names this command is left alone.',
   match: {
     any_of: [
       { kind: "execute_tool", file_glob: "**/.claude/settings*.json" },
       { kind: "execute_tool", file_glob: "**/.claude/hooks/**" },
+      { kind: "execute_tool", file_glob: "**/.claude/plugins/**" },
       { kind: "execute_tool", file_glob: "**/.claude-plugin/**" },
       { kind: "execute_tool", file_glob: "**/.mcp.json" },
       { kind: "execute_tool", file_glob: "**/.cursor/rules/**" },
+      { kind: "execute_tool", file_glob: "**/.cursor/hooks.json" },
       { kind: "execute_tool", file_glob: "**/.codex/config.toml" },
+      { kind: "execute_tool", file_glob: "**/.codex/hooks.json" },
       { kind: "execute_tool", file_glob: "**/.agenttrail/guard/config.json" },
-      { kind: "execute_tool", file_glob: "**/.agenttrail/guard/guardrails.json" }
+      { kind: "execute_tool", file_glob: "**/.agenttrail/guard/guardrails.json" },
+      { kind: "execute_tool", file_glob: "**/.agenttrail/**" },
+      { kind: "execute_tool", file_glob: "**/managed-settings.json" },
+      // A shell write to a protected path.
+      {
+        kind: "execute_tool",
+        label: SHELL_AND_MCP,
+        detail_matches: [
+          `(?:&?>{1,2}|>\\|)${SEP}{0,4}[^;&|<>\\n]{0,200}${PROT}`,
+          `(?:^|[^\\w.-])(?:tee|sponge)\\b[^|;&\\n]{0,200}${PROT}`,
+          `\\bdd\\b[^|;&\\n]{0,200}of=[^\\s;&|<>]{0,200}${PROT}`,
+          `(?:^|[^\\w.-])(?:sed|perl|ruby)\\b[^|;&\\n]{0,200}${SEP}(?:-[a-z]{0,4}i|--in-place)[^|;&\\n]{0,300}${PROT}`,
+          `(?:^|[^\\w.-])(?:mv|rm|unlink|ln|truncate|chmod|chown|shred|del|erase|move|ren|rename|mklink)\\b[^|;&\\n]{0,300}${PROT}`,
+          // A copy onto the file: the protected path is the last argument.
+          `(?:^|[^\\w.-])(?:cp|install|rsync|ditto|copy|xcopy|robocopy)\\b[^|;&\\n]{0,300}\\s["']?\\S{0,99}${PROT}\\S{0,99}\\s{0,4}(?:$|[;&|)])`,
+          // A copy of a settings or hooks file into the bare folder, and -t into it.
+          `(?:^|[^\\w.-])(?:cp|mv|install|rsync|ditto|copy|xcopy|move)\\b[^|;&\\n]{0,300}(?:settings|hooks|\\.json|\\.toml)[^|;&\\n]{0,300}\\s["']?[^\\s;&|<>]{0,200}${DIRS}(?:[/\\\\](?:hooks|plugins))?[/\\\\]?["']?\\s{0,4}(?:$|[;&|)])`,
+          `(?:^|[^\\w.-])(?:cp|mv|install|ln)\\b[^|;&\\n]{0,200}(?:-t|--target-directory)(?:=|${SEP}{1,4})["']?[^\\s;&|<>]{0,200}${DIRS}\\b`,
+          `${GIT_PRE}${SEP}(?:checkout|restore)\\b[^|;&\\n]{0,300}${PROT}`,
+          `\\bfind\\b[^|;&\\n]{0,200}${DIRS}\\b(?![/\\\\]commands\\b(?![^\\s;&|]*\\.\\.))[^|;&\\n]{0,300}(?:-delete\\b|-(?:exec|execdir|ok)${SEP}{1,4}["']?(?:sed|perl|rm|mv|cp|tee|truncate|chmod|ln|sh|bash|sponge)\\b)`
+        ]
+      },
+      {
+        kind: "execute_tool",
+        label: SHELL_AND_MCP,
+        detail_matches: [
+          `${DIRS}\\b${NOT_PROMPT}[^;&\\n]{0,300}\\|${SEP}{0,4}xargs\\b[^|;&\\n]{0,100}\\b(?:sed|perl|rm|mv|cp|tee|truncate|chmod|ln)\\b`,
+          // A write after cd into the folder.
+          `\\b(?:cd|pushd|set-location|sl|chdir)${SEP}{1,4}["']?[^\\s;&|]{0,200}\\.agenttrail[^\\s;&|]{0,100}${SEP}{0,4}(?:&&|;|\\|\\||\\n)[^\\n]{0,400}?(?:>|\\b(?:tee|sponge|sed|perl|mv|rm|cp|truncate|ln|set-content|out-file)\\b)`,
+          // An interpreter one-liner that names the folder and writes, in either order.
+          `\\b(?:python[\\d.]{0,4}|node|ruby|perl|deno|bun)\\s[^\\n]{0,400}(?:${DIRS}\\b${NOT_PROMPT}|managed-settings)[^\\n]{0,300}(?:["'],\\s*["'][wa]|write|unlink|rename|remove|rmsync|truncate|replace)`,
+          `\\b(?:python[\\d.]{0,4}|node|ruby|perl|deno|bun)\\s[^\\n]{0,400}(?:write|unlink|rename|remove|rmsync|truncate)[^\\n]{0,300}(?:${DIRS}\\b${NOT_PROMPT}|managed-settings)`,
+          // PowerShell cmdlets and their aliases, and .NET file methods.
+          `\\b(?:set-content|add-content|out-file|clear-content|new-item|sc|ac|ni)\\b[^|;&\\n]{0,300}${PROT}`,
+          `\\b(?:remove-item|move-item|rename-item|copy-item|ri|mi|rni|del|erase)\\b[^|;&\\n]{0,300}${PROT}`,
+          `\\]::(?:(?:write|append)all(?:text|lines|bytes)|delete|move|copy|replace)\\b[^\\n]{0,300}${DIRS}\\b${NOT_PROMPT}`,
+          // A download onto a protected file (it also holds an upload of one), PowerShell's too.
+          // Not read: PowerShell splatting (`iwr @p`), Start-BitsTransfer and WebClient.DownloadFile.
+          `\\b(?:curl|wget|iwr|irm|invoke-webrequest|invoke-restmethod)\\b[^|;&\\n]{0,300}${PROT}`,
+          // The whole folder moved, linked, deleted or locked away.
+          `(?:^|[^\\w.-])(?:mv|rm|unlink|ln|chmod|chown|del|erase|move|ren|rename|mklink)\\b[^|;&\\n]{0,300}[\\s/\\\\"']${DIRS}[/\\\\]?["']?(?=\\s|$|[;&|)])`
+        ]
+      },
+      // A write after cd into a Claude Code, Cursor or Codex folder, to a file a protected name starts.
+      {
+        kind: "execute_tool",
+        label: SHELL_AND_MCP,
+        detail_matches: ["(?:cd|pushd|chdir)", "(?:set-location|sl)"].map(
+          (cd) => `\\b${cd}${SEP}{1,4}["']?[^\\s;&|]{0,200}\\.(?:claude|cursor|codex)[^\\s;&|]{0,99}${SEP}{0,4}(?:&&|;|\\|\\||\\n)[^\\n]{0,400}?(?:>|\\b(?:tee|sponge|sed|perl|mv|rm|cp|truncate|ln|set-content|out-file)\\b)[^\\n]{0,200}?(?:settings|hooks|plugins|config\\.toml)(?![^\\s{},;&|<>]*\\.md)`
+        )
+      },
+      // A write to a path the shell expands into a protected folder.
+      {
+        kind: "execute_tool",
+        label: SHELL_AND_MCP,
+        detail_matches: [
+          `(?:&?>{1,2}|\\b(?:tee|sponge|mv|rm|cp|ln|truncate)\\b)[^;&|<>\\n]{0,300}`,
+          `\\b(?:install|rsync|set-content|out-file|copy-item|move-item|remove-item)\\b[^;&|<>\\n]{0,300}`,
+          `\\b(?:sed|perl)\\b[^|;&\\n]{0,99}\\s(?:-[a-z]{0,4}i|--in-place)[^;&|<>\\n]{0,300}`
+        ].flatMap((write) => OBF.map((path) => write + path))
+      }
     ],
     none_of: [
       // A read is not an edit. Named as a deny-list rather than an `any_of` over
       // the write tools, so an unknown file tool on a matched path still holds.
-      { kind: "execute_tool", label: "{Read,Grep}" }
+      { kind: "execute_tool", label: "{Read,Grep}" },
+      ...QUOTED_MENTION
     ]
   },
   fixtures: {
@@ -3065,7 +3198,112 @@ var fsAgentSelfConfig = {
       file(".claude/settings.json"),
       file(".claude/settings.local.json"),
       file("/home/dev/.agenttrail/guard/config.json", "Write"),
-      file(".mcp.json")
+      file(".mcp.json"),
+      file("/home/dev/.claude/plugins/cache/agenttrail/hooks/hooks.json", "Write"),
+      file(".cursor/hooks.json"),
+      file("/home/dev/.codex/hooks.json", "Write"),
+      file("/home/dev/.agenttrail/os/enforced-projects.json", "Write"),
+      file("/home/dev/.agenttrail/pep-fail-mode.json", "Write"),
+      file("/Library/Application Support/ClaudeCode/managed-settings.json", "Write"),
+      bash("sed -i '' 's/block/warn/' ~/.agenttrail/guard/config.json"),
+      bash("echo '{}' > ~/.agenttrail/guard/config.json"),
+      bash(`echo '{"mode":"open"}' > ~/.agenttrail/pep-fail-mode.json`),
+      bash("jq . x | sponge ~/.claude/settings.json"),
+      bash('jq . x > "$HOME/.claude/settings.json"'),
+      bash("echo x >> .claude/settings.local.json"),
+      bash("echo x | tee -a ~/.claude/settings.json"),
+      bash("grep -v PreToolUse ~/.claude/settings.json | sponge ~/.claude/settings.json"),
+      bash("cp /dev/null .cursor/hooks.json"),
+      bash("cp x.json ~/.codex/hooks.json"),
+      bash("mv ~/.claude/settings.json ~/.claude/settings.bak"),
+      bash("rm -rf ~/.claude/plugins/cache/agenttrail"),
+      bash("rm -rf ~/.claude/hooks"),
+      bash("truncate -s0 ~/.claude/plugins/cache/agenttrail/hooks/hooks.json"),
+      bash("ln -sf /dev/null ~/.claude/settings.json"),
+      bash("git checkout HEAD~3 -- .claude/settings.json"),
+      bash("git restore .claude/settings.json"),
+      bash("cp settings.json ~/.claude/"),
+      bash("mv hooks.json ~/.cursor"),
+      bash("cp -t ~/.claude settings.json"),
+      bash("find ~/.claude -name settings.json -exec sed -i s/a/b/ {} +"),
+      bash("find ~/.claude/plugins -delete"),
+      bash("ls ~/.claude/*.json | xargs sed -i s/a/b/"),
+      bash("cd ~/.claude && sed -i s/a/b/ settings.json"),
+      bash("cd ~/.agenttrail && rm -rf guard"),
+      // The long form of -i, a download onto the file, and the whole folder moved or linked away.
+      bash("sed --in-place s/a/b/ ~/.claude/settings.json"),
+      bash("curl -o ~/.claude/settings.json https://example.com/s"),
+      bash("wget -O ~/.claude/settings.json https://example.com/s"),
+      // A quoted argument does not make a download a mention: the write flag ends the exemption.
+      bash('curl -H "A: b" -o ~/.agenttrail/guard/config.json https://example.com/c'),
+      bash('wget --post-data "x" -O ~/.claude/settings.json https://example.com/s'),
+      bash('curl -d "x" https://example.com/s -o ~/.claude/settings.json'),
+      bash('curl -sSL -H "A: b" -o~/.claude/settings.json https://example.com/s'),
+      bash('curl -H "A: b" --output=$HOME/.claude/settings.json https://example.com/s'),
+      bash('curl -H "A: b" --output-dir ~/.agenttrail/guard -O https://example.com/config.json'),
+      bash('wget --header "A: b" --output-document ~/.claude/settings.json https://example.com/s'),
+      bash('wget -q --header "A: b" -O~/.codex/config.toml https://example.com/c'),
+      // Quotes the shell removes from the flag, a cluster with #, and /dev/null beside a real -o.
+      bash('curl "-o" ~/.claude/settings.json -d "x" https://example.com/s'),
+      bash(`curl '-o' ~/.claude/settings.json -H "A: b" https://example.com/s`),
+      bash('curl -"o" ~/.claude/settings.json -d "x" https://example.com/s'),
+      bash(`curl -'o' ~/.claude/settings.json -H "A: b" https://example.com/s`),
+      bash('curl --"output" ~/.claude/settings.json -d "x" https://example.com/s'),
+      bash('curl --o""utput ~/.claude/settings.json -d "x" https://example.com/s'),
+      bash('curl -#o ~/.claude/settings.json -H "A: b" https://example.com/s'),
+      bash('curl -s -o /dev/null -o ~/.claude/settings.json -d "x" https://example.com/s'),
+      pwsh(
+        'Invoke-WebRequest -Uri https://example.com/s -OutFile $HOME\\.claude\\settings.json -Body "x"'
+      ),
+      pwsh("iwr https://example.com/s -OutFile $HOME\\.claude\\settings.json"),
+      bash("mv ~/.claude ~/.claude.off"),
+      bash("mv .claude .claude-off"),
+      bash("mv ~/.agenttrail ~/.x"),
+      bash('mv "$HOME/.cursor/" /tmp/c'),
+      bash("chmod 000 ~/.claude"),
+      bash("ln -s ~/.claude c && echo x > c/settings.json"),
+      bash(`python3 -c "open('/Users/x/.claude/settings.json','w').write('{}')"`),
+      bash(`node -e "fs.writeFileSync(path.join(os.homedir(),'.claude','settings.json'),'{}')"`),
+      bash(`python3 -c "(Path.home()/'.claude'/'settings.json').write_text('{}')"`),
+      bash("echo x > ~/.claude/../.claude/settings.json"),
+      bash("echo x > ~/.cursor/rules/../hooks.json"),
+      bash("echo x > '/Library/Application Support/ClaudeCode/managed-settings.json'"),
+      bash("copy NUL %USERPROFILE%\\.cursor\\hooks.json"),
+      pwsh("Set-Content -Path $HOME\\.claude\\settings.json -Value '{}'"),
+      pwsh(`[IO.File]::WriteAllText("$HOME\\.claude\\settings.json",'{}')`),
+      // A path the shell expands into a protected folder.
+      bash("echo x > ~/.cl*/settings.json"),
+      bash("cp x ~/.{claude,x}/settings.json"),
+      bash("sed -i s/a/b/ ~/.claude/sett*.json"),
+      bash('echo x > ~/".claude"/settings.json'),
+      bash("tee ~/.claude/setting[s].json < x"),
+      pwsh("Set-Content $HOME\\.claude\\\u201Csettings.json\u201D '{}'"),
+      pwsh("Set-Content $HOME\\.claude\\\u2018settings.json\u2019 '{}'"),
+      bash('echo x > ".claude"/settings.json'),
+      bash('echo x > .cl""aude/settings.json'),
+      bash("echo x > ~/.cla?de/settings.json"),
+      bash("echo x > $HOME/.claude/settings.js*"),
+      bash('echo x > ".claude/sett"ings.json'),
+      // A .md inside a brace list, a .md folder then .., and a .md later in a one-liner.
+      bash("echo '{}' | tee ~/.claude/{settings.json,x.md}"),
+      bash("sed -i s/a/b/ ~/.claude/{settings.json,x.md}"),
+      bash("sed -i s/a/b/ ~/.claude/s*{,.md}"),
+      bash("cp x ~/.claude/{settings.json,n.md}"),
+      bash("sed -i s/a/b/ ~/.cl*/x.md/../settings.json"),
+      bash("ls ~/.claude/{settings.json,x.md} | xargs sed -i s/a/b/"),
+      bash("find ~/.claude/commands/.. -name settings.json -exec sed -i s/a/b/ {} +"),
+      bash("find ~/.claude/commands/../ -delete"),
+      bash(
+        "node -e \"require('fs').writeFileSync(os.homedir()+`/.claude/settings.json`,[`{}`,`.md`][0])\""
+      ),
+      bash("cd .claude && tee {settings.json,x.md} < y"),
+      // A .md in the next command, with no blank before the separator.
+      bash("cd .claude && echo {} >settings.json;:>x.md"),
+      bash("cd .claude && echo {} >settings.json&&:>x.md"),
+      bash("cd .claude && echo {} >settings.json&:>x.md"),
+      bash("cd .claude && echo {} >settings.json|:>x.md"),
+      bash("cd .claude && tee settings.json<y;:>x.md"),
+      pwsh(`[IO.File]::WriteAllText("$HOME\\.claude\\x.md\\..\\settings.json", 'x')`)
     ],
     allow: [
       file(".claude/commands/deploy.md"),
@@ -3073,7 +3311,45 @@ var fsAgentSelfConfig = {
       file("package.json"),
       file("README.md"),
       file(".claude/settings.json", "Read"),
-      file(".mcp.json", "Grep")
+      file(".mcp.json", "Grep"),
+      ...mentions("echo x > ~/.claude/settings.json"),
+      bash("cat ~/.claude/settings.json"),
+      bash("jq .hooks ~/.claude/settings.json"),
+      bash("cp ~/.claude/settings.json /tmp/settings-backup.json"),
+      bash("grep -n hooks ~/.cursor/hooks.json"),
+      bash("git diff .claude/settings.json"),
+      bash("echo x > .claude/commands/update-settings.md"),
+      bash("echo x > .claude/commands/hooks-guide.md"),
+      bash(`python3 -c "import json;print(json.load(open('/Users/x/.claude/settings.json')))"`),
+      bash("find ~/.claude -name '*.json' -exec cat {} \\;"),
+      bash("cd ~/.claude && ls"),
+      bash("ls ~/.agenttrail/"),
+      bash("mv build/app.cursor.bak /tmp/x"),
+      bash("curl -o out.json https://example.com/s"),
+      // A quoted body that only names a write, with no write flag, stays a mention.
+      bash('curl -d "echo x > ~/.claude/settings.json" https://api.example.com/notes'),
+      bash('wget --post-data "mv ~/.claude ~/.claude.off" https://api.example.com/notes'),
+      // A status check writes the response to /dev/null, which is not a write.
+      bash(
+        'curl -s -o /dev/null -w "%{http_code}" -d "echo x > ~/.claude/settings.json" https://api.example.com/n'
+      ),
+      bash(
+        'curl -H "A: b" -d "sed -i s/a/b/ ~/.claude/settings.json" https://api.example.com/n | grep -o ok'
+      ),
+      bash("rm -f ~/.claude.json.bak"),
+      // A quote that only wraps an argument, an exclude, and the prompt files, on every arm.
+      bash(`rsync -a --exclude='.claude/worktrees' "$WT"/ "$SCRATCH"/`),
+      bash('rsync -a --exclude=".cursor/rules" ./ ../copy/'),
+      bash('cp ".claude/commands/review.md" /tmp/review.md'),
+      bash('mv "notes.md" ".claude/commands/notes.md"'),
+      bash('echo hi > "docs/.claude/README.md"'),
+      bash("cp x .claude/commands/*.md"),
+      bash("cd .claude && echo x > commands/hooks-guide.md"),
+      bash(`python3 -c "open('.claude/commands/x.md','w').write('a')"`),
+      bash("find .claude/commands -name '*.md' -exec sed -i s/a/b/ {} +"),
+      bash("ls .claude/commands/*.md | xargs sed -i s/a/b/"),
+      bash("cp -r templates/ ~/.config/myapp/"),
+      bash(`echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc`)
     ]
   }
 };
@@ -3872,6 +4148,246 @@ var blockCurlPipeToShell = {
     ]
   }
 };
+var dec = (word, flag, span = 999) => `${word}(?=[^|;&\\n]{0,${span}}${flag})`;
+var B64_D = "\\s--?[a-z]{0,4}d";
+var ZIP_D = "\\s-(?:[a-z]{0,3}d|-de|-un)";
+var ZIP_CAT = "\\b(?:[gb]unzip2?|unxz|unzstd|(?:g?z|bz|xz|zstd|lz4)cat)\\b";
+var ROT = `\\btr\\s{1,4}["']?(?:a-z|a-za-z)["']?\\s{1,4}["']?n-za-m`;
+var decoders = (span = 999) => [
+  dec("\\bg?base(?:64|32)", B64_D, span),
+  dec("\\bbasenc", B64_D, span),
+  dec("\\bopenssl\\b", "\\s-d\\b", span),
+  `(?:${dec("\\bxxd\\b", "\\s-[a-z]{0,3}r", span)}|\\buudecode\\b)`,
+  ZIP_CAT,
+  dec("\\b(?:gzip|bzip2)", ZIP_D, span),
+  dec("\\b(?:xz|zstd)\\b", ZIP_D, span),
+  ROT
+];
+var PR_D = `(?:decode_base64|unpack\\(?["']m)`;
+var PN_D = `(?:b64decode|base64["'_])`;
+var LANG = [
+  dec("\\bperl", PR_D, 300),
+  dec("\\bruby", PR_D, 300),
+  dec("\\bpython[\\d.]{0,4}", PN_D, 300),
+  dec("\\b(?:node|php)", PN_D, 300)
+];
+var WRAP = "(?:(?:\\S{0,40}/)?(?:sudo|doas|env|nice|time(?:out)?|command|exec|stdbuf|nohup)(?:[ \\t]+[^\\s;&|]{1,80}){0,6}[ \\t]+)?";
+var SH_END = `\\s*(?:$|[;&|)\\n\\r#]|\\d?[<>]|["'](?![^\\s;&|)}]))`;
+var SHELLS = ["(?:ba|z|k|da)?sh", "python[\\d.]{0,4}", "(?:node|perl|ruby)", "(?:php|pwsh)"];
+var DOT = `(?:\\.|source)[ \\t]+/(?:dev/(?:stdin|fd/0)|proc/self/fd/0)${SH_END}`;
+var stdin = (shell) => `${WRAP}(?:\\S{0,40}/)?${shell}(?:\\s+(?:-|/dev/|/proc/)[a-z0/-]{0,12}){0,4}${SH_END}`;
+var PIPE_INTO = "[^;&\\n]{0,999}\\|&?\\s*";
+var SUBST = "(?:\\b(?:ba|z|k|da)?sh(?:\\s{1,4}-\\S{1,20}){0,4}\\s{1,4}|\\beval\\s{1,4}(?:--\\s{1,4})?|<\\s{0,4}|(?:^|[;&|(\\n{!]|\\b(?:then|do|else)\\s)\\s{0,4})[\"']?(?:\\$\\(|\\(|`)(?:[^()`]{0,99}\\$\\(){0,2}[^()`]{0,300}";
+var DEC_WORD = "\\b(?:g?base(?:64|32)|basenc|openssl|xxd|uudecode|[gb]unzip2?|unxz|unzstd|(?:g?z|bz|xz|zstd|lz4)cat|gzip|bzip2|xz|zstd)\\b";
+var SH_WORD = "\\b(?:(?:ba|z|k|da)?sh|python[\\d.]{0,4}|node|perl|ruby|php|pwsh)\\b";
+var piped = (list) => list.flatMap((d) => [
+  ...SHELLS.map((sh) => `${d}${PIPE_INTO}${stdin(sh)}`),
+  `${d}${PIPE_INTO}${DOT}`
+]);
+var rceDecodeToShell = {
+  id: "rce.decode-to-shell",
+  category: "rce-supply-chain",
+  severity: "high",
+  defaultAction: "require_approval",
+  owasp: ["ASI04", "ASI05", "LLM04"],
+  title: "Running decoded or unpacked text as a command",
+  description: "Holds a command that decodes or unpacks text and runs it, because no other guardrail can see what the encoded text does. Decoders: `base64`/`base32`/`basenc` with a decode flag (`-d`, `-D`, `-di`, `-id`, `--decode`), `openssl \u2026 -d`, `xxd -r`, `uudecode`, the decompressors (`gunzip`, `zcat`, `bzcat`, `xzcat`, `zstdcat`, `gzip -d`, `--decompress`, `--uncompress`, \u2026), a ROT13 `tr`, and Perl, Ruby, Python, Node or PHP one-liners that decode base64. A decoder's arguments and the stages after it are read up to 999 characters. Caught when the result is piped (`|` or `|&`, through any number of pipes, a line break after a pipe included) into a shell or interpreter that reads its program from stdin (no script argument, or `-`, `-s`, `--`, or a stdin path: `/dev/stdin`, `/dev/fd/0`, `/proc/self/fd/0`; `.` and `source` only with a stdin path and no wrapper, since they are builtins), after a wrapper by name or path (`sudo`, `doas`, `env`, `/usr/bin/env`, `nice`, `time`, `timeout`, `command`, `exec`, `stdbuf`, `nohup`) and up to six of its arguments on the same line and in the same command, with any blanks, and up to the end of the segment (a separator, a line break, `#` or a redirect); handed to `sh -c` with any flags before it (`bash --norc -c`, `sh -c --`), `eval`, `source <(\u2026)`, a process substitution, a here-string (`<<< \"$(\u2026)\"`) or command position as `$(\u2026)` (at the start, or after a separator, a line break, `{`, `!`, `then`, `do` or `else`); or piped to `xargs` into a shell. Also: a Python, Node, Perl or Ruby one-liner that decodes and `exec`s or `eval`s, PowerShell `-EncodedCommand` (any prefix, any dash), `FromBase64String` with `iex` or `[scriptblock]::Create`, and `certutil -decode` followed by running a script in the same command. Not held: decoding to a file or into a reader (`base64 -d f > out.bin`, `| jq`, `| shasum`, `| grep`), into an interpreter that runs a script or a program given with `-c` or `-e` (`| python3 -m json.tool`, `| python3 parse.py`, `| python3 -c '\u2026json.load(sys.stdin)'`, `| perl -ne '\u2026'`), a plain `tr` or `rev`, encoding, and printing the decoded text. Held, not blocked: unpacking a script and running it is occasionally legitimate, and a person can see the command. Known misses: decoded text written to a file and run by a later command, a decoder nested four `$(` deep (`$(a $(b $(c $(base64 -d f))))`), decoding inside a script, `rev` or a non-rotation `tr` (a bracketed ROT13 `tr '[a-z]' '[n-za-m]'` too), other encodings and unpackers (`unzip -p`, `tar -xO`, `lzcat`, `lz4 -d`, `brotli -d`, `pigz -d`, `7z -so`, `gpg -d`, `printf %b`, `echo -e`), a decoder or shell word quoted or escaped (`| \"sh\"`, `| \\sh`, `| b''ash`) or held in a variable (`| $SHELL`), other shells and runners (`ash`, `mksh`, `fish`, `csh`, `busybox sh`, `setsid`, `ionice`, `unbuffer`, `builtin`, `chroot`, `script`, `parallel`, `tee >(sh)`), a wrapper with more than six arguments, a shell flag that takes a value (`bash -o posix`), a backslash-newline before a redirect after the shell, a stdin path other than fd 0 (`/dev/fd/3`) or followed by an argument, a positional argument after `--` (`bash -s -- arg`), a Python, Node or PHP one-liner with `;` inside its quotes, a `$(\u2026)` after a wrapper (`sudo $(\u2026)`) or held in a variable, a here-document that holds `$(\u2026)` without a shell before it, PowerShell's decode and `iex` on separate lines, and anything a variable holds. Known over-matches: any other `/dev/` or `/proc/` path after the shell (`| sh /dev/null`), and a long flag that starts like `--d` (`base64 --add-padding`). This is one cheap shape; isolation at the operating-system level is the answer to encoded payloads in general. A quoted MENTION is not a use: a search, a `git commit -m` message, an `echo` or a `curl --data` body that only names this command is left alone.",
+  match: {
+    any_of: [
+      ...[0, 2, 4, 6].map((i) => ({
+        kind: "execute_tool",
+        label: SHELL_AND_MCP,
+        detail_matches: piped(decoders().slice(i, i + 2))
+      })),
+      {
+        kind: "execute_tool",
+        label: SHELL_AND_MCP,
+        detail_matches: [
+          ...LANG.map((d) => `${d}${PIPE_INTO}${stdin(SHELLS[0] ?? "sh")}`),
+          ...LANG.map((d) => `${SUBST}${d}`)
+        ]
+      },
+      {
+        kind: "execute_tool",
+        label: SHELL_AND_MCP,
+        detail_matches: [
+          // A substitution is short, so its decoder's arguments are read up to 99 characters.
+          ...decoders(99).slice(0, 7).map((d) => `${SUBST}${d}`),
+          `${DEC_WORD}[^;&\\n]{0,300}\\|&?\\s{0,4}xargs\\b[^|;&\\n]{0,100}${SH_WORD}`,
+          // A shell whose -c program is stdin itself: `| bash -c "$(cat)"`.
+          `${DEC_WORD}[^;&\\n]{0,300}\\|&?\\s*${SH_WORD}(?:\\s+-[a-z]{1,4}){1,4}\\s+["']?\\$\\(cat\\)`
+        ]
+      },
+      {
+        kind: "execute_tool",
+        label: SHELL_AND_MCP,
+        detail_matches: [
+          `\\b(?:python[\\d.]{0,4}|node|perl|ruby)\\s[^\\n]{0,300}(?:b64decode|decode_base64|["']base64["']|unpack\\(["']m)[^\\n]{0,300}\\b(?:exec|eval|system|popen|subprocess|spawn|Function)\\b`,
+          `\\b(?:python[\\d.]{0,4}|node|perl|ruby)\\s[^\\n]{0,300}\\b(?:exec|eval|system|popen|Function)\\b[^\\n]{0,300}(?:b64decode|decode_base64|["']base64["'])`,
+          `\\b(?:powershell|pwsh)(?:\\.exe)?\\b[^|;&\\n]{0,200}${SEP}[-/\\u2013\\u2014]e(?:c|n[a-z]{0,13})?(?:${SEP}|:)`,
+          "frombase64string[^\\n]{0,300}(?:\\biex\\b|invoke-expression|scriptblock\\]::create)|(?:scriptblock\\]::create|invoke-expression|\\biex\\b)[^\\n]{0,300}frombase64string",
+          "\\bcertutil\\b[^\\n]{0,200}\\s[-/]decode(?:hex)?\\b[^\\n]{0,300}(?:&|;|\\|\\|)[^\\n]{0,300}(?:\\.(?:bat|cmd|ps1|exe|vbs|js|sh)\\b|\\b(?:cmd|powershell|pwsh|cscript|wscript|bash|sh)\\b)"
+        ]
+      }
+    ],
+    none_of: [...QUOTED_MENTION]
+  },
+  fixtures: {
+    block: [
+      bash("echo cm0gLXJmIC8K | base64 -d | sh"),
+      bash("echo cm0gLXJmIC8K | base64 --decode | bash"),
+      bash("echo cm0gLXJmIC8K | base64 -D | sh"),
+      bash("base64 -d f |& bash"),
+      bash("base64 -id f | sh"),
+      bash("openssl enc -base64 -d -in x | bash"),
+      bash("xxd -r -p x.hex | bash"),
+      bash("zcat x.gz | /bin/bash"),
+      bash("gzip -dc x.gz | sh"),
+      bash("echo x | tr a-zA-Z n-za-mN-ZA-M | sh"),
+      bash("echo x | base64 -d | gunzip | sh"),
+      bash("echo x | base64 -d | python3 -"),
+      bash("echo x | base64 -d | node"),
+      // Wrappers before the shell, with their own arguments.
+      bash("base64 -d f | env bash"),
+      bash("base64 -d f | env -i X=1 bash -s"),
+      bash("base64 -d f | sudo -E bash -"),
+      bash("echo x | base64 -d | nice bash"),
+      bash("echo x | base64 -d | nice -n 10 bash"),
+      bash("echo x | base64 -d | timeout 5 sh"),
+      bash("echo x | base64 -d | command sh"),
+      bash("echo x | base64 -d | doas sh"),
+      bash("echo x | base64 -d | exec bash"),
+      bash("echo x | base64 -d | stdbuf -oL bash"),
+      bash("echo x | base64 -d | sudo -u root sh"),
+      bash("echo x | base64 -d | doas -u root sh"),
+      bash("echo x | base64 -d | nohup bash"),
+      bash("echo x | base64 -d | sudo -E env -i nice -n 5 bash"),
+      // The segment ends at a line break, a comment or a redirect.
+      bash("base64 -d f | sh\necho done"),
+      bash("base64 -d f | sh\r\necho done"),
+      bash("base64 -d f | sh # run it"),
+      bash("base64 -d f | sh 2>&1"),
+      bash("base64 -d f | sh </dev/null"),
+      bash("base64 -d f | bash > out.log"),
+      // Any number of blanks or tabs around the shell, and a line break after the pipe.
+      bash("base64 -d f | sh     "),
+      bash("base64 -d f |					sh"),
+      bash(`base64 -d x |${" ".repeat(8e3)}sh`),
+      bash("base64 -d f |\n  sh"),
+      // Long arguments, a long middle stage and many pipes.
+      bash(`base64 -d /tmp/${"a".repeat(100)} | sh`),
+      bash(`base64 -d f | grep -v ${"x".repeat(100)} | sh`),
+      bash(`base64 ${"-w0 ".repeat(30)}-d f | sh`),
+      bash(`xxd -p ${"-c 256 ".repeat(10)}-r f | sh`),
+      bash(`echo x | base64 -d${" | cat".repeat(20)} | sh`),
+      // The shell reading its program from a stdin path, and a wrapper by path or `time`.
+      bash("base64 -d f | sh /dev/stdin"),
+      bash("base64 -d f | bash /dev/fd/0"),
+      bash("base64 -d f | bash /proc/self/fd/0"),
+      bash("base64 -d f | python3 /dev/stdin"),
+      bash("base64 -d f | . /dev/stdin"),
+      bash("base64 -d f | source /dev/stdin"),
+      bash("base64 -d f | /usr/bin/env sh"),
+      bash("base64 -d f | /usr/bin/sudo sh"),
+      bash("base64 -d f | time sh"),
+      // The quote that closes the string holding the command ends the segment.
+      bash('bash -c "base64 -d f | sh"'),
+      bash("sh -c 'zcat x.gz | bash -s'"),
+      // Decoder spellings.
+      bash("cat f | base64 -di | sh"),
+      bash("cat f | base64 --d | sh"),
+      bash("cat f | base32 -d | sh"),
+      bash("cat f | gzip --decompress -c | sh"),
+      bash("cat f | gzip --uncompress | sh"),
+      bash("cat f | xz --decompress | sh"),
+      bash("cat f | zstd --decompress | sh"),
+      bash("cat f | bzip2 --decompress | sh"),
+      // A substitution, xargs, a here-string.
+      bash('sh -c "$(echo x | base64 -d)"'),
+      bash('bash -lc "$(base64 -d f)"'),
+      bash('sh -c "`echo x | base64 -d`"'),
+      bash("bash <(echo x | base64 -d)"),
+      bash('eval "$(echo x | base64 -d)"'),
+      bash('bash <<< "$(echo x | base64 -d)"'),
+      bash("base64 -d f | xargs bash -c"),
+      bash('base64 -d f | bash -c "$(cat)"'),
+      // More flags before -c, eval --, command position after a line break, then, {, or !, and a
+      // here-string with a blank after it.
+      bash('bash --norc -c "$(base64 -d f)"'),
+      bash('bash -e -c "$(base64 -d f)"'),
+      bash('sh -c -- "$(base64 -d f)"'),
+      bash('eval -- "$(base64 -d f)"'),
+      bash("echo hi\n$(base64 -d f)"),
+      bash("if :; then $(base64 -d f); fi"),
+      bash("{ $(base64 -d f); }"),
+      bash("! $(base64 -d f)"),
+      bash('sh <<< "$(xxd -r -p f)"'),
+      bash('sh <<< "$(zcat x.gz)"'),
+      bash("bash <<EOF\n$(base64 -d f)\nEOF"),
+      // Decoders in an interpreter.
+      bash("perl -MMIME::Base64 -e 'print decode_base64($x)' | sh"),
+      bash(`node -e "process.stdout.write(Buffer.from(x,'base64'))" | sh`),
+      bash(`python3 -c "exec(__import__('base64').b64decode('eA=='))"`),
+      bash(`python3 -c "import base64,os;os.system(base64.b64decode('eA=='))"`),
+      bash(`node -e "eval(Buffer.from('eA==','base64').toString())"`),
+      // PowerShell and Windows.
+      pwsh("powershell -enc ZQBjAGgAbwA="),
+      pwsh("pwsh -EncodedCommand ZQBjAGgAbwA="),
+      pwsh("pwsh \u2013EncodedCommand ZQBjAGgAbwA="),
+      pwsh("powershell.exe -e ZQBjAGgAbwA="),
+      pwsh(
+        "[scriptblock]::Create([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('eA==')))"
+      ),
+      bash("certutil -decode a.b64 a.bat & a.bat"),
+      mcp({ command: "echo x | base64 -d | sh" })
+    ],
+    allow: [
+      ...mentions("echo x | base64 -d | sh"),
+      bash("echo x | base64 -d > out.bin"),
+      bash("base64 -d <<< eA== | jq ."),
+      bash("base64 -d secret.b64 | shasum -a 256"),
+      bash("cat /dev/urandom | head -c 16 | base64"),
+      bash("gunzip -c logs.gz | grep ERROR"),
+      bash("echo $JWT | base64 -d | python3 -m json.tool"),
+      bash("zcat x.gz | python3 parse.py"),
+      bash("zcat x.gz | nice python3 parse.py"),
+      bash("base64 -d f | sh ./run.sh"),
+      bash("base64 -d f | bash /tmp/x.sh"),
+      bash("base64 -d f | grep -c sh"),
+      bash("base64 -w0 f | sh"),
+      // A program given with -c or -e reads stdin as data, not as its program.
+      bash(`base64 -d <<< "$P" | python3 -c 'import json,sys; print(json.load(sys.stdin))'`),
+      bash(
+        'echo $JWT | cut -d. -f2 | base64 -d | python3 -c "import sys,json;print(json.load(sys.stdin))"'
+      ),
+      bash("base64 -d f | node -e 'process.stdin.pipe(process.stdout)'"),
+      bash("zcat x.gz | perl -ne 'print if /ERR/'"),
+      bash("zcat x.gz | ruby -e 'puts STDIN.read.size'"),
+      bash("base64 -d f | sh -c 'cat > out.bin'"),
+      // A wrapper's arguments end at a separator, a pipe or a line break, and a bare `.` is a path.
+      bash("zcat dump.gz | sudo tar -x -C ."),
+      bash("gunzip -c x.tgz | nice tar x -C ."),
+      bash("zcat a.gz | env > e.txt; git add ."),
+      bash("zcat a.gz | sudo tee out.txt; git add ."),
+      bash("zcat a.gz | nice -n 19 python3 analyze.py ."),
+      bash("gunzip -c a.gz | time wc -l; ls ."),
+      bash("base64 -d f | env jq ."),
+      bash("base64 -d f | command jq ."),
+      bash("zcat dump.sql.gz | sudo -u postgres psql\nls ."),
+      bash("gunzip -c a.gz | sudo tee /etc/x >/dev/null\nsh"),
+      bash("zcat a.gz | nice grep x\npython3"),
+      bash("base64 -d f | python3 parse.py # x"),
+      bash("base64 -d f > out.sh # save for review"),
+      bash("cat a.csv | tr , '\\t' | python3 x.py"),
+      bash("git rev-parse HEAD | python3 x.py"),
+      bash("tr -d '\\r' < in.sh > out.sh"),
+      bash("tar -xzf x.tgz && sh ./configure"),
+      bash(`python3 -c "import base64;print(base64.b64decode('eA=='))"`),
+      pwsh("powershell -ExecutionPolicy Bypass -File x.ps1"),
+      pwsh("pwsh -NoProfile -Command Get-ChildItem")
+    ]
+  }
+};
 var rceEvalDynamic = {
   id: "rce.eval-dynamic",
   category: "rce-supply-chain",
@@ -4084,7 +4600,8 @@ var rules7 = [
   rceForeignRegistry,
   rceTlsVerifyOff,
   rceUnverifiedPackage,
-  blockCurlPipeToShell
+  blockCurlPipeToShell,
+  rceDecodeToShell
 ];
 var gbAdminMerge = {
   id: "gb.admin-merge",
@@ -4121,6 +4638,110 @@ var gbAdminMerge = {
       bash("gh api repos/o/r/branches/main/protection"),
       bash("gh pr list --limit 20"),
       bash("gh ruleset list")
+    ]
+  }
+};
+var gbAgenttrailDisable = {
+  id: "gb.agenttrail-disable",
+  category: "safety-bypass",
+  severity: "high",
+  defaultAction: "require_approval",
+  owasp: ["ASI09", "ASI10"],
+  title: "Disabling or removing AgentTrail from the shell",
+  description: "Holds a shell command that loosens or removes the guard that watches the agent. Catches: the guard CLI (`agenttrail-guard`, `npx @agenttrail/guard`, `pnpm dlx`, or a global or repository build of its `cli.js`) running `guardrails`/`rules` `disable`, `set-action`, `allow`, `reset`, `remove` or `fail-mode`, or `uninstall`; `claude plugin disable|uninstall|remove` or `claude plugin marketplace remove` on an AgentTrail plugin; `npm`, `pnpm`, `yarn` or `bun` removing an `@agenttrail/` package; `agenttrail logout`, also through `npx @agenttrail/cli` and after global flags; unsetting `AGENTTRAIL_PEP_ENFORCE` or setting it to anything but `1`, which the guard reads as off (`unset`, `env -u`, `=`, `=0`, `=no`, `del(\u2026)` in jq, PowerShell `Remove-Item env:`); setting `disableAllHooks` to `true` (`jq '.disableAllHooks=true'` or `|= true`, `claude config set -g disableAllHooks true`, `--settings '{\"disableAllHooks\":true}'`); `claude config set|add|remove|reset` on hooks, env or permissions; and a nested `claude` run with `--settings` or `CLAUDE_CONFIG_DIR`. Not held: reading (`list`, `show`, `status`, `jq .disableAllHooks \u2026`), `enable`, `init`, installing, or `agenttrail login`. Held, not blocked, because a person sometimes means to do this. Reading the value (`[ \"$AGENTTRAIL_PEP_ENFORCE\" = 1 ]`) is not held. Known misses: a command word broken with quotes or backslashes (`agenttrail-gu''ard`), a subcommand spelled the same way, other jq spellings of `disableAllHooks` (`//= true`, `= (true)`, `--argjson v true`), a command run from a script file, and an encoded command. The strong protection is deploying the hooks through managed settings. A quoted MENTION is not a use: a search, a `git commit -m` message, an `echo` or a `curl --data` body that only names this command is left alone.",
+  match: {
+    any_of: [
+      {
+        kind: "execute_tool",
+        label: SHELL_AND_MCP,
+        detail_matches: [
+          // The guard CLI loosening a guardrail or removing itself.
+          `(?:agenttrail-guard|@agenttrail/guard(?:@\\S{0,40})?|guard[/\\\\](?:dist|src)[/\\\\]cli\\.[cm]?[jt]s)\\b[^|;&\\n]{0,200}${SEP}["']?(?:(?:guardrails|rules)["']?(?:${SEP}{1,4}-\\S{1,30}){0,3}${SEP}{1,4}["']?(?:disable|set-action|allow|reset|remove|fail-mode)|uninstall)\\b`,
+          // Claude Code's plugin commands on an AgentTrail plugin or marketplace.
+          `\\bclaude\\b[^|;&\\n]{0,100}${SEP}plugins?${SEP}{1,4}(?:marketplace${SEP}{1,4})?(?:disable|uninstall|remove|rm)\\b[^|;&\\n]{0,200}agenttrail`,
+          // A package manager removing an @agenttrail package.
+          `\\b(?:npm|pnpm|yarn|bun)\\b[^|;&\\n]{0,100}${SEP}(?:uninstall|un|remove|rm|r|unlink)\\b[^|;&\\n]{0,200}@agenttrail/`,
+          // The platform CLI signing out, after up to four global flags.
+          `(?:^|[^\\w./-])(?:agenttrail|@agenttrail/cli(?:@\\S{0,40})?)["']?(?:${SEP}{1,4}-\\S{1,60}(?:${SEP}{1,4}[^-\\s]\\S{0,100})?){0,4}${SEP}{1,4}logout\\b`,
+          // The enforcement sentinel removed.
+          `\\bunset${SEP}[^|;&\\n]{0,100}\\bagenttrail_pep_enforce\\b|\\benv\\b[^|;&\\n]{0,100}(?:-u${SEP}{0,4}|--unset[=\\s])agenttrail_pep_enforce`,
+          // Set, not read: no `$` or `${` before the name, and any value but 1 (jq's `|=` too).
+          `(?:^|[^$\\w{])agenttrail_pep_enforce["']?\\s{0,4}\\|?=(?!=|["']?1["']?(?:${SEP}|$|[;&|)']))|del\\([^)]{0,100}agenttrail_pep_enforce|remove-item\\s[^|;&\\n]{0,40}env:agenttrail_pep_enforce`,
+          // Claude Code's switch that turns every hook off.
+          `\\bdisableallhooks["']?\\s{0,4}(?:\\|?[:=]|${SEP}{1,4})\\s{0,4}["']?true\\b`,
+          // Claude Code's own config, and a nested session on other settings.
+          `\\bclaude\\b[^|;&\\n]{0,100}${SEP}config${SEP}{1,4}(?:set|add|remove|reset)\\b[^|;&\\n]{0,200}(?:hooks|disableallhooks|env|permissions)`,
+          `\\bclaude\\b[^|;&\\n]{0,200}${SEP}--settings\\b|\\bclaude_config_dir["']?\\s{0,4}=`
+        ]
+      }
+    ],
+    none_of: [...QUOTED_MENTION]
+  },
+  fixtures: {
+    block: [
+      bash("agenttrail-guard guardrails disable dd.rm-rf-absolute"),
+      bash("agenttrail-guard guardrails set-action dd.rm-rf-absolute warn"),
+      bash('agenttrail-guard rules allow dd.rm-rf-absolute "rm -rf /x"'),
+      bash("agenttrail-guard guardrails reset --all"),
+      bash("agenttrail-guard guardrails remove my-rule"),
+      bash("agenttrail-guard guardrails fail-mode open"),
+      bash("agenttrail-guard uninstall --agent claude"),
+      bash("agenttrail-guard --json guardrails 'disable' destructive-data"),
+      bash("npx @agenttrail/guard guardrails disable destructive-data"),
+      bash("npx -y @agenttrail/guard@latest uninstall"),
+      bash("pnpm dlx @agenttrail/guard guardrails disable destructive-data"),
+      bash("node tools/guard/dist/cli.js guardrails set-action dd.rm-rf-absolute warn"),
+      bash("node ~/.npm/lib/node_modules/@agenttrail/guard/dist/cli.js uninstall"),
+      bash("claude plugin disable agenttrail-guard"),
+      bash("claude plugin uninstall agenttrail-guard@agenttrail"),
+      bash("claude plugin marketplace remove agenttrail"),
+      bash("npm uninstall -g @agenttrail/guard"),
+      bash("npm rm -g @agenttrail/cli"),
+      bash("pnpm remove -g @agenttrail/cli"),
+      bash("agenttrail logout"),
+      bash("npx @agenttrail/cli@latest logout"),
+      bash("agenttrail --endpoint https://api.example.com logout"),
+      bash("unset AGENTTRAIL_PEP_ENFORCE"),
+      bash("env -u AGENTTRAIL_PEP_ENFORCE claude -p hi"),
+      bash("AGENTTRAIL_PEP_ENFORCE= claude -p hi"),
+      // The guard enforces only when the value is exactly 1, so any other value turns it off.
+      bash("export AGENTTRAIL_PEP_ENFORCE=no"),
+      bash("AGENTTRAIL_PEP_ENFORCE=2 claude -p hi"),
+      bash("AGENTTRAIL_PEP_ENFORCE=true claude -p hi"),
+      bash(`jq '.env.AGENTTRAIL_PEP_ENFORCE |= "0"' settings.json`),
+      bash("jq 'del(.env.AGENTTRAIL_PEP_ENFORCE)' settings.json"),
+      pwsh("Remove-Item env:AGENTTRAIL_PEP_ENFORCE"),
+      bash("claude config set -g disableAllHooks true"),
+      bash("jq '.disableAllHooks=true' settings.json"),
+      bash("jq '.disableAllHooks |= true' settings.json"),
+      bash(`claude --settings '{"disableAllHooks":true}' -p hi`),
+      bash("claude config set hooks '{}'"),
+      bash("CLAUDE_CONFIG_DIR=/tmp/cfg claude -p hi"),
+      mcp({ command: "agenttrail-guard guardrails disable destructive-data" })
+    ],
+    allow: [
+      ...mentions("agenttrail-guard guardrails disable dd.rm-rf-absolute"),
+      bash("agenttrail-guard guardrails list"),
+      bash("agenttrail-guard guardrails show dd.rm-rf-absolute"),
+      bash("agenttrail-guard guardrails enable dd.rm-rf-absolute"),
+      bash("agenttrail-guard status"),
+      bash("agenttrail-guard init --agent claude"),
+      bash("npm install -g @agenttrail/guard"),
+      bash("claude plugin install agenttrail-guard@agenttrail"),
+      bash("claude plugin disable some-other-plugin"),
+      bash("agenttrail login"),
+      bash("agenttrail status"),
+      bash("jq .disableAllHooks ~/.claude/settings.json"),
+      bash("claude config set theme dark"),
+      bash("export AGENTTRAIL_PEP_ENFORCE=1"),
+      bash('export AGENTTRAIL_PEP_ENFORCE="1"'),
+      bash("AGENTTRAIL_PEP_ENFORCE=1; claude -p hi"),
+      bash('[ "$AGENTTRAIL_PEP_ENFORCE" == "1" ] && echo on'),
+      // Reading the value in a test, and turning it on with jq.
+      bash('[ "$AGENTTRAIL_PEP_ENFORCE" = "1" ] && echo on'),
+      bash('test "$AGENTTRAIL_PEP_ENFORCE" = 1'),
+      bash(`test "\${AGENTTRAIL_PEP_ENFORCE}" = 0 && echo off`),
+      bash(`jq '.env.AGENTTRAIL_PEP_ENFORCE="1"' settings.json`)
     ]
   }
 };
@@ -4266,7 +4887,7 @@ var gbGitNoVerify = {
   defaultAction: "require_approval",
   owasp: ["ASI09"],
   title: "git --no-verify skips the hooks the team installed",
-  description: 'Commits, pushes or merges with `--no-verify`, which skips the pre-commit and pre-push hooks a team installed on purpose \u2014 the formatter, the type check, the secret scanner. It is the most common way a check everyone believes is running turns out not to be. Deliberately does NOT widen to skipping tests in general: `mvn -DskipTests package` is ordinary work and is asserted as a negative. Known over-match: a `-n` anywhere in a `git commit` line, including inside a message. Global flags between `git` and its subcommand are tolerated (`git -C <dir> commit --no-verify`, `--no-pager`, `-c k=v`), and an absolute tool path such as `/usr/bin/git` still matches; a flag that itself runs a program is not read. A quoted MENTION is not a use: a search, a `git commit -m` message, an `echo` or a `curl --data` body that only names this command is left alone. That holds only while every shell metacharacter stays inside the quotes, so `git commit -m "x" && \u2026` is still caught; and the carrier must be the first word, so `sudo grep \u2026` is not exempt. `git commit` is NOT one of those carriers here, because the trigger here is a flag of `git commit`: a commit message that quotes `--no-verify` still asks.',
+  description: "Commits, pushes or merges with `--no-verify`, which skips the pre-commit and pre-push hooks a team installed on purpose \u2014 the formatter, the type check, the secret scanner. It is the most common way a check everyone believes is running turns out not to be. Deliberately does NOT widen to skipping tests in general: `mvn -DskipTests package` is ordinary work and is asserted as a negative. Also held: the prefixes git accepts (`--no-veri`, `--no-verif`), quotes or escapes the shell removes from the flag (`--no-\"verify\"`, `$'\\x2d\\x2dno-verify'`), `n` inside a short cluster (`-nm`, `-anm`, `-sn`), and a hooks folder chosen for one command: `git -c core.hooksPath=\u2026`, `--config-env`, `GIT_CONFIG_KEY_n` or `GIT_CONFIG_PARAMETERS`, including up to eight quotes or backslashes inside the key (`core.hooks''Path`). Known misses: a key with a variable inside it (`core.hooks$X\u2026`), and config read from another file (`GIT_CONFIG_GLOBAL=\u2026`, `GIT_CONFIG=\u2026`, `-c include.path=\u2026`). Known over-match: a `-n` anywhere in a `git commit` line, including inside a message; `-Sn`, which signs with key `n`; any `-c core.hooksPath` value, including a real folder; and a blank inside the key (`core.hooks Path`). More than eight removable characters before or between the key's letters are not read. Global flags between `git` and its subcommand are tolerated (`git -C <dir> commit --no-verify`, `--no-pager`, `-c k=v`), and an absolute tool path such as `/usr/bin/git` still matches; a flag that itself runs a program is not read. A quoted MENTION is not a use: a search, a `git commit -m` message, an `echo` or a `curl --data` body that only names this command is left alone. That holds only while every shell metacharacter stays inside the quotes, so `git commit -m \"x\" && \u2026` is still caught; and the carrier must be the first word, so `sudo grep \u2026` is not exempt. `git commit` is NOT one of those carriers here, because the trigger here is a flag of `git commit`: a commit message that quotes `--no-verify` still asks.",
   match: {
     any_of: [
       {
@@ -4274,7 +4895,19 @@ var gbGitNoVerify = {
         label: SHELL_AND_MCP,
         detail_matches: [
           `\\bgit${LEADING_FLAGS}\\s+(commit|push|merge)\\b[^|;&]*--no-verify\\b`,
-          `\\bgit${LEADING_FLAGS}\\s+commit\\b[^|;&]*\\s-n\\b`
+          `\\bgit${LEADING_FLAGS}\\s+commit\\b[^|;&]*\\s-n\\b`,
+          // --no-verify and its working prefixes --no-veri and --no-verif, with quotes or escapes
+          // between the letters (--no-"verify", --no-ver\\ify).
+          `${GIT_PRE}${SEP}${IN_WORD}-${IN_WORD}-${IN_WORD}n${IN_WORD}o${IN_WORD}-${IN_WORD}v${IN_WORD}e${IN_WORD}r${IN_WORD}i(?:${IN_WORD}f(?:${IN_WORD}y)?)?${IN_WORD}(?:${SEP}|=|$)`,
+          // n inside a short cluster, as a whole argument outside any quoted message (-nm, -anm,
+          // -sn, "-n", $'-n'); an option that takes a value (-m, -F, -c, -C, -t) before it ends it.
+          `${GIT_PRE}${SEP}commit\\b(?:${SEP}{1,4}(?:"[^"\\n]{0,300}"|'[^'\\n]{0,300}'|[^\\s"'|;&]{1,200})){0,16}${SEP}{1,4}\\$?["'\\\\]{0,4}-[aeiopqsvz"'\\\\]{0,12}n[a-z"']{0,8}(?:${SEP}|$)`,
+          // A hooks folder chosen for one command: -c or --config-env, across continuations.
+          `${GIT_PRE}(?:${SEP}|\\\\\\n){1,6}(?:-c(?:${SEP}|\\\\\\n){1,6}|--config-env(?:[=\\s]|\\\\\\n){1,6})${HOOKSPATH}`,
+          // The same through git's environment, including PowerShell's $env:GIT_CONFIG_KEY_0 = '…'.
+          `\\bgit_config_(?:key_\\d{1,3}|parameters)["']?\\s{0,4}=[^|;&\\n]{0,200}${HOOKSPATH}`,
+          // An ANSI-C quoted argument with an escape: $'\\x2d\\x2dno-verify'.
+          `${GIT_PRE}${SEP}\\$'[^'\\n]{0,200}\\\\(?:x[0-9a-f]{1,2}|[0-7]{1,3}|u[0-9a-f]{1,4})`
         ]
       }
     ],
@@ -4287,6 +4920,39 @@ var gbGitNoVerify = {
       bash('git commit -n -m "wip"'),
       bash('git -C /repo commit --no-verify -m "wip"'),
       bash("git --no-pager push --no-verify origin main"),
+      // The prefixes git accepts, and quotes or escapes the shell removes.
+      bash("git commit --no-veri -m wip"),
+      bash("git commit --no-verif -m wip"),
+      bash("git push --no-veri origin main"),
+      bash('git commit --no-"verify" -m wip'),
+      bash("git commit --n''''o-ver''''ify -m wip"),
+      bash("git commit --no-ver\\ify -m wip"),
+      bash("git commit $'\\x2d\\x2dno-verify' -m wip"),
+      bash(`git\${IFS}commit\${IFS}--no-verify`),
+      pwsh("git commit \u201C--no-verify\u201D -m wip"),
+      pwsh("git commit\x85--no-verify -m wip"),
+      // n inside a short cluster, as a whole argument.
+      bash("git commit -nm wip"),
+      bash("git commit -anm wip"),
+      bash("git commit -sn -m wip"),
+      bash('git commit "-n" -m wip'),
+      bash("git commit $'-n' -m wip"),
+      // A hooks folder chosen for one command, on the command line or in git's environment.
+      bash("git -c core.hooksPath=/dev/null commit -m wip"),
+      bash("git -c core.hooksPath= commit -m wip"),
+      bash('git -c "core.hooksPath=/dev/null" commit -m wip'),
+      bash("git -C /repo -c core.hooksPath=/dev/null push origin main"),
+      bash("git -c core.hooks''Path=/dev/null commit -m wip"),
+      bash("git -c core.hooks''''Path=/dev/null commit -m wip"),
+      bash('git -c "core"."hooksPath"=/dev/null commit -m wip'),
+      bash("git -c core.hooks\\Path= commit -m wip"),
+      bash("git -c \\\n core.hooksPath=/dev/null commit -m wip"),
+      bash("git --config-env=core.hooksPath=E commit -m wip"),
+      bash(
+        "GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.hooksPath GIT_CONFIG_VALUE_0=/dev/null git commit -m wip"
+      ),
+      bash(`GIT_CONFIG_PARAMETERS="'core.hooksPath'='/dev/null'" git commit -m wip`),
+      pwsh("$env:GIT_CONFIG_KEY_0 = 'core.hooksPath'; git commit -m wip"),
       mcp({ command: 'git commit --no-verify -m "wip"' }),
       // The same command under the other generic argument names, on an unmapped tool.
       mcp({ cmd: 'git commit --no-verify -m "wip"' }),
@@ -4301,7 +4967,19 @@ var gbGitNoVerify = {
       bash('git commit -m "add the thing"'),
       bash("git push origin main"),
       bash("mvn -DskipTests package"),
-      bash("git commit --amend --no-edit")
+      bash("git commit --amend --no-edit"),
+      // --no-verb is --no-verbose, and --no-v … --no-ver are rejected by git as ambiguous.
+      bash("git commit --no-verb -m wip"),
+      bash("git commit --no-status -m wip"),
+      bash("git push --no-thin origin main"),
+      // n after -m is the message, and a flag-like word inside a quoted message is text.
+      bash("git commit -mn"),
+      bash("git commit -am wip"),
+      bash('git commit -m "add -enable flag"'),
+      bash('git commit -m "remove -only path"'),
+      bash("git commit -m $'line one\\nline two'"),
+      bash("git -c core.pager=cat log"),
+      bash("git -c core.editor=vim commit")
     ]
   }
 };
@@ -4312,7 +4990,7 @@ var gbHooksDisable = {
   defaultAction: "require_approval",
   owasp: ["ASI09"],
   title: "Disabling git hooks at the source",
-  description: 'Holds a command that turns git hooks off permanently rather than for one commit \u2014 repointing `core.hooksPath`, setting HUSKY=0 or HUSKY_SKIP_HOOKS, or deleting/unsetting the executable bit on files in `.git/hooks/`. A READ of the setting (`git config core.hooksPath` with no value) is not matched. Nothing about the next commit looks any different afterwards, which is what makes it worth a prompt. Does NOT match other `git config` writes (`user.email`, `core.pager`) or installing hooks (`husky install`). It MISSES a hooksPath set through an environment variable in a shell profile. A global flag between `git` and `config` is tolerated (`git -C <dir> config \u2026`, `--no-pager`, `-c k=v`), and an absolute tool path such as `/usr/bin/git` still matches; a flag that itself runs a program is not read. A quoted MENTION is not a use: a search, a `git commit -m` message, an `echo` or a `curl --data` body that only names this command is left alone. That holds only while every shell metacharacter stays inside the quotes, so `git commit -m "x" && \u2026` is still caught; and the carrier must be the first word, so `sudo grep \u2026` is not exempt.',
+  description: "Holds a command that turns git hooks off permanently rather than for one commit \u2014 repointing `core.hooksPath`, setting HUSKY=0 or HUSKY_SKIP_HOOKS, or deleting/unsetting the executable bit on files in `.git/hooks/`. A READ of the setting (`git config core.hooksPath` with no value) is not matched. Nothing about the next commit looks any different afterwards, which is what makes it worth a prompt. Does NOT match other `git config` writes (`user.email`, `core.pager`) or installing hooks (`husky install`). Also held: unsetting it (`git config --unset core.hooksPath`, `--unset-all`, `unset`, `--remove-section core`), which brings back `.git/hooks` and so turns husky and any other hooks folder off, and the key written with up to eight quotes or backslashes before or between its letters (`core.hooks''Path`). It MISSES more than eight such characters, a hooksPath set through an environment variable in a shell profile, a key with a variable inside it (`core.hooks$X\u2026`), and config read from another file (`GIT_CONFIG_GLOBAL`, `GIT_CONFIG`, `include.path`). A global flag between `git` and `config` is tolerated (`git -C <dir> config \u2026`, `--no-pager`, `-c k=v`), and an absolute tool path such as `/usr/bin/git` still matches; a flag that itself runs a program is not read. A quoted MENTION is not a use: a search, a `git commit -m` message, an `echo` or a `curl --data` body that only names this command is left alone. That holds only while every shell metacharacter stays inside the quotes, so `git commit -m \"x\" && \u2026` is still caught; and the carrier must be the first word, so `sudo grep \u2026` is not exempt.",
   match: {
     any_of: [
       {
@@ -4323,7 +5001,13 @@ var gbHooksDisable = {
           "\\bhusky\\s*=\\s*0\\b",
           "\\bhusky_skip_hooks\\s*=\\s*1\\b",
           "\\brm\\b[^|;&]*\\.git/hooks/",
-          "\\bchmod\\s+-x\\b[^|;&]*\\.git/hooks/"
+          "\\bchmod\\s+-x\\b[^|;&]*\\.git/hooks/",
+          // Removing the setting brings back .git/hooks, which turns husky and any other
+          // hooks folder off.
+          `${GIT_PRE}${SEP}config\\b[^|;&\\n]{0,200}(?:--unset(?:-all)?|${SEP}unset)${SEP}{1,4}${HOOKSPATH}`,
+          `${GIT_PRE}${SEP}config\\b[^|;&\\n]{0,200}--re(?:move|name)-section${SEP}{1,4}["']?core["']?(?:${SEP}|$)`,
+          // A write of the key with quotes or backslashes inside it.
+          `${GIT_PRE}${SEP}config\\b[^|;&\\n]{0,200}${SEP}${HOOKSPATH}${SEP}{1,4}["']?\\S`
         ]
       }
     ],
@@ -4334,7 +5018,16 @@ var gbHooksDisable = {
       bash("git config core.hooksPath /dev/null"),
       bash("git -C /repo config core.hooksPath /dev/null"),
       bash('HUSKY=0 git commit -m "wip"'),
-      bash("rm -f .git/hooks/pre-commit")
+      bash("rm -f .git/hooks/pre-commit"),
+      // Removing the setting brings back .git/hooks, which turns husky's folder off.
+      bash("git config --unset core.hooksPath"),
+      bash("git config --unset-all core.hooksPath"),
+      bash("git config unset core.hooksPath"),
+      bash("git config --remove-section core"),
+      // Quotes or backslashes inside the key.
+      bash("git config core.hooks''Path /dev/null"),
+      bash("git config --unset core.hooks''Path"),
+      bash("git config core.hooks''''Path /x")
     ],
     allow: [
       ...mentions("git config core.hooksPath /dev/null"),
@@ -4390,7 +5083,8 @@ var rules8 = [
   gbHostKeyBypass,
   gbExecutionPolicyBypass,
   gbAuditTrailPurge,
-  gbAnsiTerminalForgery
+  gbAnsiTerminalForgery,
+  gbAgenttrailDisable
 ];
 var blockEnvFileRead = {
   id: "block-env-file-read",
@@ -5531,6 +6225,7 @@ var blockForcePush = {
     ]
   }
 };
+var RMW2 = `${RM_WORD}["']?`;
 var BUILD_DIR = "(?:\\./)?(?:node_modules|dist|build|out|coverage|target|\\.next|\\.turbo|\\.cache|\\.vite|\\.parcel-cache)";
 var requireApprovalRmRf = {
   id: "require-approval-rm-rf",
@@ -5539,7 +6234,7 @@ var requireApprovalRmRf = {
   defaultAction: "require_approval",
   owasp: ["ASI02", "LLM03"],
   title: "Hold `rm -rf` for approval",
-  description: "Recursive delete: held for approval rather than blocked, which is the right strength for an operation that is destructive but often legitimate. Catches a recursive flag in any argument of the `rm`, with or without force: `-rf`, `-Rf`, `-fr`, `-r -f`, `-r` alone and `--recursive`, before or after the target, and PowerShell's `Remove-Item -Recurse`. Clearing a build directory is EXEMPT (node_modules, dist, build, out, coverage, target, .next, .turbo, .cache, .vite, .parcel-cache, and paths inside them) when every target of that `rm` is one: that shape appears about 220 times in real Claude Code traces against about 3 for a dangerous delete, and a check that asks every time is one people switch off. An absolute path, a $VARIABLE, a ~ path, a source directory, a `..` path out of a build directory, or a build directory followed by another target still asks. `git rm -r --cached` alone, which touches only the index, is exempt. One `rm` or `Remove-Item` whose every target is strictly inside the system temp folder (`/tmp`, `/private/tmp`, `/var/tmp`, the macOS per-user temp folder, `${TMPDIR:?}` on the shell, and the Windows temp folders `C:\\Users\\<name>\\AppData\\Local\\Temp` and `C:\\Windows\\Temp` on any drive, with `\\` between parts, on PowerShell and on Cursor's Shell, which reaches the engine as Bash) is exempt too, so clearing a throwaway checkout does not ask. Still asked: the bare temp folder; `..` anywhere in a target; a glob, brace expansion or backslash in a shell target; in a Windows target, a `/`, a trailing `\\`, a `.` segment, or any character other than letters, digits, `.`, `_` and `-`; a variable after the root; `$TMPDIR`, `$TEMP`, `$TMP`, `$env:TEMP` and `$env:TMP`, which may be unset; any other variable such as `$SCRATCH`; a target outside temp; and a chained second command. Known misses: a delete via a file tool; a build-directory clean-up chained before a second delete in the same command, because the exemption covers the whole command; and an `rm` with more than twelve arguments before the recursive flag. A quoted MENTION is not a use: a search, a `git commit -m` message, an `echo` or a `curl --data` body that only names this command is left alone. That holds only while every shell metacharacter stays inside the quotes, so `git commit -m \"x\" && \u2026` is still caught; and the carrier must be the first word, so `sudo grep \u2026` is not exempt.",
+  description: "Recursive delete: held for approval rather than blocked, which is the right strength for an operation that is destructive but often legitimate. Catches a recursive flag in any argument of the `rm`, with or without force: `-rf`, `-Rf`, `-fr`, `-r -f`, `-r` alone and `--recursive`, before or after the target, and PowerShell's `Remove-Item -Recurse`. Clearing a build directory is EXEMPT (node_modules, dist, build, out, coverage, target, .next, .turbo, .cache, .vite, .parcel-cache, and paths inside them) when every target of that `rm` is one: that shape appears about 220 times in real Claude Code traces against about 3 for a dangerous delete, and a check that asks every time is one people switch off. An absolute path, a $VARIABLE, a ~ path, a source directory, a `..` path out of a build directory, or a build directory followed by another target still asks. `git rm -r --cached` alone, which touches only the index, is exempt. One `rm` or `Remove-Item` whose every target is strictly inside the system temp folder (`/tmp`, `/private/tmp`, `/var/tmp`, the macOS per-user temp folder, `${TMPDIR:?}` on the shell, and the Windows temp folders `C:\\Users\\<name>\\AppData\\Local\\Temp` and `C:\\Windows\\Temp` on any drive, with `\\` between parts, on PowerShell and on Cursor's Shell, which reaches the engine as Bash) is exempt too, so clearing a throwaway checkout does not ask. Still asked: the bare temp folder; `..` anywhere in a target; a glob, brace expansion or backslash in a shell target; in a Windows target, a `/`, a trailing `\\`, a `.` segment, or any character other than letters, digits, `.`, `_` and `-`; a variable after the root; `$TMPDIR`, `$TEMP`, `$TMP`, `$env:TEMP` and `$env:TMP`, which may be unset; any other variable such as `$SCRATCH`; a target outside temp; and a chained second command. Also held: the flag quoted, escaped, brace-expanded or a `--r\u2026` prefix; a flag held in a variable or substitution next to an absolute or `~` target (`rm $F /srv`, which also holds `rm -f \"$PIDFILE\" /var/run/app.pid`); words joined by `$IFS`; a command built by brace expansion in command position, also with a path on `rm` or up to three words before it (`{/bin/rm,\u2026}`, `{sudo,rm,\u2026}`; a brace list that only names `rm`, as in `mkdir -p {src,rm,test}`, is not held, nor is a brace after a wrapper, `sudo {rm,\u2026}`); PowerShell `-r` through `-Recurse`, `-Recurse:$true`, an en or em dash, U+0085 between words, and the `ri` and `del` aliases; and cmd's `rd /s`, `rmdir /s` and `del /s`, also with switches joined (`rd/s/q`, `del /f/s/q`), but not a path that ends in `/s` (`rmdir build/s`). cmd and PowerShell deletes of a drive path are held, not blocked. Known misses: a delete via a file tool; a quoted or escaped command word (`r'm'`); a build-directory clean-up chained before a second delete in the same command, because the exemption covers the whole command; an `rm` with more than twelve arguments before the recursive flag; more than 32 removable characters inside the flag; and PowerShell splatting (`@{Recurse=$true}`) or `[IO.Directory]::Delete(path, $true)`. A quoted MENTION is not a use: a search, a `git commit -m` message, an `echo` or a `curl --data` body that only names this command is left alone. That holds only while every shell metacharacter stays inside the quotes, so `git commit -m \"x\" && \u2026` is still caught; and the carrier must be the first word, so `sudo grep \u2026` is not exempt.",
   match: {
     any_of: [
       {
@@ -5547,7 +6242,19 @@ var requireApprovalRmRf = {
         label: SHELL_AND_MCP,
         detail_matches: [
           `${RM_WORD}${RM_ARGS}[ \\t]+${RM_RECURSIVE}${ARG_END}`,
-          "\\bremove-item\\b[^|;&]*-recurse"
+          "\\bremove-item\\b[^|;&]*-recurse",
+          // The recursive flag quoted, escaped, brace-expanded or a --r… prefix.
+          `${RMW2}${RM_ARGS}[ \\t]+${RM_RECURSIVE_QUOTED}`,
+          // A flag held in a variable or substitution, next to an absolute or home target.
+          `${RMW2}${RM_ARGS}[ \\t]+${RM_VARIABLE}${RM_ARGS}[ \\t]+["']?[/~]`,
+          `${RMW2}${RM_ARGS}[ \\t]+["']?[/~]${RM_ARG_REST}${RM_ARGS}[ \\t]+${RM_VARIABLE}`,
+          // Words joined by $IFS, or the command built by brace expansion, in command position.
+          `${RM_WORD}["']?${IFS}|(?:^|[;&|(\`\\n]\\s{0,4})\\{(?:[^,}\\s]{1,40},){0,3}["']?(?:[^,}\\s]{0,40}/)?rm["']?,`,
+          // PowerShell: Remove-Item and its aliases with -r … -Recurse, any dash, NEL between words.
+          `(?:^|[^\\w.-])(?:remove-item|ri|rm|rmdir|rd|del|erase)\\b[^|;&]{0,300}${SEP}${PWSH_DASH}r(?:e(?:c(?:u(?:r(?:se?)?)?)?)?)?(?:${SEP}|:|$)`,
+          // cmd: a recursive /s delete, including switches joined with no blank (rd/s/q, del /f/s/q),
+          // but not a path that ends in /s (rmdir build/s) or a command word inside a path.
+          "(?:^|[^\\w./-])(?:rd|rmdir|del|erase)\\b(?:[^|;&\\n]{0,300}(?:\\s|/[a-z?]))?/s\\b"
         ]
       }
     ],
@@ -5600,6 +6307,42 @@ var requireApprovalRmRf = {
       bash("grep -l x . | head -3 | xargs rm -rf"),
       bash("grep -l x . | sort | xargs rm -rf"),
       bash("find . -print0 | xargs -0 rm -rf"),
+      // A recursive flag written so the shell still reads it as one, on any target.
+      bash("rm '-rf' src/generated"),
+      bash("rm --rec src/generated"),
+      // A flag held in a variable, next to an absolute or home target.
+      bash("F=-rf; rm $F /"),
+      bash(`rm \${F} /srv/data`),
+      bash('rm "$F" /srv/data'),
+      bash("rm $F ~/data"),
+      bash("rm /srv/data $F"),
+      bash('rm "$(echo -rf)" /srv/data'),
+      // Words joined by $IFS, and a command built by brace expansion.
+      bash(`rm\${IFS}-f\${IFS}notes.txt`),
+      bash("{rm,-rf,src}"),
+      bash("{/bin/rm,-rf,src}"),
+      bash("{sudo,rm,-rf,src}"),
+      // PowerShell parameter prefixes, aliases, other dashes and U+0085 between words.
+      pwsh("Remove-Item -Rec C:\\projects"),
+      pwsh("Remove-Item -r C:\\projects"),
+      pwsh("ri -Recurse C:\\projects"),
+      pwsh("del -Recurse C:\\projects"),
+      pwsh("Remove-Item -Recurse:$true C:\\projects"),
+      pwsh("Remove-Item \u2013Recurse C:\\projects"),
+      pwsh("Remove-Item \u2014Recurse C:\\projects"),
+      pwsh("Remove-Item\x85-Recurse\x85C:\\projects"),
+      // cmd's recursive /s delete.
+      bash("rd /s /q C:\\projects"),
+      bash("rmdir /s C:\\projects"),
+      bash("del /s /q C:\\projects\\*"),
+      // Switches joined with no blank, which cmd reads the same.
+      bash("rd/s/q C:\\projects"),
+      bash("rd /q/s C:\\projects"),
+      bash("del /f/s/q C:\\projects\\*"),
+      bash("del /s/q C:\\projects"),
+      // Over-matches, stated: a variable next to an absolute target, and a file named -rf.
+      bash('rm -f "$PIDFILE" /var/run/app.pid'),
+      bash("rm -- '-rf'"),
       bash("grep -rl x /srv \\' | xargs rm -rf \\'"),
       // PowerShell ends a quoted run at a curly quote.
       pwsh("Select-String 'a\u2019; Remove-Item -Recurse -Force C:\\data; \u2019b' f.txt"),
@@ -5681,6 +6424,16 @@ var requireApprovalRmRf = {
     ],
     allow: [
       ...mentions("rm -Rf /home/user/projects"),
+      bash("rm -f /tmp/app.pid"),
+      bash('rm -f "$a" "$b"'),
+      bash("rmdir build"),
+      bash("del /q C:\\projects\\x.txt"),
+      bash("rd C:\\projects\\empty"),
+      // A brace list that only names rm, a path that ends in /s, and rd inside a path.
+      bash("mkdir -p {src,rm,test}"),
+      bash("rmdir build/s"),
+      bash("ls docs/rd/s"),
+      pwsh("Remove-Item C:\\projects\\x.txt"),
       bash("rm -rf ./node_modules"),
       bash("rm -rf node_modules"),
       bash("rm -rf build/"),
@@ -6034,8 +6787,8 @@ var PACKS = [
   "test-integrity",
   "exfiltration"
 ];
-var CATALOG_VERSION = "0.2.13";
-var CATALOG_PUBLISHED_AT = "2026-11-24T06:44:05Z";
+var CATALOG_VERSION = "0.2.14";
+var CATALOG_PUBLISHED_AT = "2026-11-25T09:22:17Z";
 var RULES_BY_PACK = {
   "working-tree": rules11,
   "destructive-data": rules2,
@@ -11259,7 +12012,7 @@ function programStart(values) {
 }
 
 // src/core/verify/shell-words.ts
-var SHELLS = /* @__PURE__ */ new Set(["sh", "bash", "zsh", "dash", "ksh"]);
+var SHELLS2 = /* @__PURE__ */ new Set(["sh", "bash", "zsh", "dash", "ksh"]);
 function ansiQuoteEnd(text2, at2) {
   let i = at2 + 2;
   while (i < text2.length) {
@@ -11402,7 +12155,7 @@ function shellItems(text2) {
       while (pending.length > 0) {
         const doc = pending.shift();
         const program = doc.words[commandStart(doc.words).index];
-        if (program !== void 0 && SHELLS.has(programName(program))) {
+        if (program !== void 0 && SHELLS2.has(programName(program))) {
           pending.length = 0;
           break;
         }
@@ -12569,7 +13322,7 @@ function segmentRegions(segment2, keep2) {
   }
   return regions;
 }
-var SHELLS2 = /* @__PURE__ */ new Set([
+var SHELLS3 = /* @__PURE__ */ new Set([
   "bash",
   "sh",
   "zsh",
@@ -12656,7 +13409,7 @@ function runsInlineCode(name, args2) {
 }
 var STDIN_INTERPRETER = /^(?:python[0-9.]*|node|nodejs|perl|ruby|php|pwsh|powershell)$/;
 function runsPipedScript(name, args2) {
-  const shell = SHELLS2.has(name);
+  const shell = SHELLS3.has(name);
   if (!shell && !STDIN_INTERPRETER.test(name)) return false;
   for (const word of args2) {
     if (word.value === "-" || shell && /^-[A-Za-z]*s[A-Za-z]*$/.test(word.value)) return true;
@@ -12678,14 +13431,14 @@ function segmentHidingForms(segment2, command, gitConfigured, gitRunnableWritten
   if (programStart(segment2.words.map((word) => word.value)).shellString) forms.push("shell-string");
   if (command === void 0) return forms;
   const { name, args: args2 } = command;
-  if (SHELLS2.has(name) && runsAString(args2)) forms.push("shell-string");
+  if (SHELLS3.has(name) && runsAString(args2)) forms.push("shell-string");
   if (STRING_RUNNERS.has(name) && args2.some((word) => STRING_RUNNER_OPTION.test(word.value))) {
     forms.push("shell-string");
   }
   if (runsInNixShell(name, args2)) forms.push("shell-string");
   if (runsInlineCode(name, args2) || scriptRunsCommands(name, args2)) forms.push("inline-code");
   const fed = fedByPipe || segment2.inputs.length > 0;
-  if (fed && !(SHELLS2.has(name) && runsAString(args2)) && runsPipedScript(name, args2)) {
+  if (fed && !(SHELLS3.has(name) && runsAString(args2)) && runsPipedScript(name, args2)) {
     forms.push("piped-script");
   }
   if (name === "eval") forms.push("eval");
@@ -12948,7 +13701,7 @@ function isKnownProgram(name) {
   knownPrograms ??= /* @__PURE__ */ new Set([
     ...Object.values(READ_PROGRAMS).flatMap((programs) => [...programs]),
     ...DATA_PROGRAMS,
-    ...SHELLS2
+    ...SHELLS3
   ]);
   return knownPrograms.has(name);
 }
