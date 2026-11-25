@@ -65,15 +65,15 @@ describe("the shipped catalog is the real one", () => {
     expect(SHIPPED_CATALOG).toBe(RULES);
   });
 
-  it("holds 76 guardrails", () => {
-    expect(SHIPPED_CATALOG.length).toBe(76);
+  it("holds 78 guardrails", () => {
+    expect(SHIPPED_CATALOG.length).toBe(78);
   });
 
-  it("compiles all 76 — a guardrail that will not compile is SKIPPED, so a drop is silent", () => {
+  it("compiles all 78 — a guardrail that will not compile is SKIPPED, so a drop is silent", () => {
     // `compileCatalog` swallows a bad predicate per-rule by design ("one bad guardrail
     // must not disable the rest"), which means a corpus-wide breakage shows up
     // as a smaller catalog rather than as an error. This is where that is noticed.
-    expect(compileCatalog(SHIPPED_CATALOG)).toHaveLength(76);
+    expect(compileCatalog(SHIPPED_CATALOG)).toHaveLength(78);
   });
 
   it("resolves the pack's lead guardrail by id", () => {

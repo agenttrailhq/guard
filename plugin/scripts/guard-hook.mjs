@@ -1850,7 +1850,7 @@ function detectAgent(payload) {
   return void 0;
 }
 
-// node_modules/@agenttrail/guardrails/dist/chunk-KLMIUWB6.js
+// node_modules/@agenttrail/guardrails/dist/chunk-EUHX4WNP.js
 var SHELL_AND_MCP = "{Bash,PowerShell,mcp__*}";
 var CURLY = "\u2018-\u201F";
 var OUTSIDE = `[^"'|;&\`$<>()\\n\\r\\\\${CURLY}]`;
@@ -1945,6 +1945,8 @@ var IN_WORD = "[^\\w\\s-]{0,8}";
 var GIT_PRE = "\\bgit\\b(?:[^|;&\\n\\\\]|\\\\[\\s\\S]){0,200}";
 var KEY_GAP = "\\W{0,8}";
 var HOOKSPATH = KEY_GAP + [..."core.hookspath"].map((c) => c === "." ? "\\." : c).join(KEY_GAP);
+var RUNS_SQL = "^(?=[\\s\\S]*\\b(?:psql|pgcli|mysql|mysqlsh|mariadb|mycli|sqlite3|litecli|sqlcmd|sqlplus|usql|clickhouse(?:-client|\\s+client)|cockroach\\s+sql|snowsql|bq\\s+query|cqlsh|duckdb|prisma\\s+db\\s+execute|d1\\s+execute)\\b)[\\s\\S]*";
+var MCP_SQL_TOOLS = "mcp__*__{query,read_query,write_query,create_table,execute_sql,apply_migration,run_sql}";
 function bash(command) {
   return { tool: "Bash", command };
 }
@@ -2355,7 +2357,6 @@ var rules = [
   acRecursiveAgentInvoke,
   acAgentAutonomyFlag
 ];
-var RUNS_SQL = "^(?=[\\s\\S]*\\b(?:psql|pgcli|mysql|mysqlsh|mariadb|mycli|sqlite3|litecli|sqlcmd|sqlplus|usql|clickhouse(?:-client|\\s+client)|cockroach\\s+sql|snowsql|bq\\s+query|cqlsh|duckdb|prisma\\s+db\\s+execute|d1\\s+execute)\\b)[\\s\\S]*";
 var blockDestructiveSql = {
   id: "block-destructive-sql",
   category: "destructive-data",
@@ -2885,6 +2886,172 @@ var ddShadowCopyDelete = {
     ]
   }
 };
+var SCHEMA_DROP = "\\bdrop\\s+(?:schema|column)\\b";
+var ddSqlSchemaDrop = {
+  id: "dd.sql-schema-drop",
+  category: "destructive-data",
+  severity: "high",
+  defaultAction: "require_approval",
+  owasp: ["ASI02", "LLM03", "LLM10"],
+  title: "SQL that drops a schema or a table column",
+  description: 'Holds SQL that drops a schema (`DROP SCHEMA`, with or without `IF EXISTS` and `CASCADE`; in MySQL the same statement as `DROP DATABASE`) or drops a column (`ALTER TABLE \u2026 DROP COLUMN`), matched in any case with any whitespace between the words. Held for approval rather than blocked, because the guard cannot see which database the client is connected to, and a scratch schema reset is routine. On a shell command (Bash, PowerShell, and the Cursor and Codex shells mapped to them) it holds only when a SQL client is on the same command, the same list block-destructive-sql reads (`psql`, `mysql`, `sqlite3`, `sqlcmd` and others, including through `docker exec`, `kubectl exec`, `ssh` or an env prefix), so SQL that is only text is not held: a PR body, a heredoc that writes a migration file, a note. On MCP it holds only for the database tools `MCP_COMMAND_FIELDS` names (the PostgreSQL reference server\'s `query`, the SQLite reference server\'s `read_query`, `write_query` and `create_table`, Supabase\'s `execute_sql` and `apply_migration`, Neon\'s `run_sql`), under any server name, so a ticket or a message sent through another MCP tool is not held. For those tools it currently matches the tool\'s whole input, serialized as JSON, not only its SQL argument; it will read only the SQL argument once tool inputs are split by field. Until then a statement in another field of the tool is held too, and a line break inside the SQL arrives as the two characters `\\n`, which count as neither a space nor a word boundary, so a `DROP` that starts a line with no indent (`ALTER TABLE users`, then `DROP COLUMN email` on the next line) or keywords split across lines (`DROP` then `SCHEMA`) are not caught. Not caught: a statement in a file the line does not show (`psql -f drop.sql`, a migration tool), a database MCP tool with another name, MySQL\'s `ALTER TABLE \u2026 DROP name` without the `COLUMN` keyword, a comment between the keywords (`DROP/**/COLUMN`), and SQL issued from inside application code. Over-matches, held anyway: a client word that appears only in text (`gh pr create --body "\u2026 psql \u2026 DROP SCHEMA \u2026"`), and a read-only query whose output is searched for the words (`psql -c "SELECT \u2026" | grep -i "drop column"`), because the client and the words share the line. A quoted MENTION is not a use: a search, a `git commit -m` message, an `echo` or a `curl --data` body that only names this command is left alone. That holds only while every shell metacharacter stays inside the quotes, so `git commit -m "x" && \u2026` is still caught; and the carrier must be the first word, so `sudo grep \u2026` is not exempt.',
+  match: {
+    any_of: [
+      {
+        kind: "execute_tool",
+        label: "{Bash,PowerShell}",
+        detail_matches: [`${RUNS_SQL}${SCHEMA_DROP}`]
+      },
+      // A database tool takes the statement itself: no client to require. `command` reads only
+      // its SQL argument once tool inputs are split by field; until then, the whole input.
+      {
+        kind: "execute_tool",
+        label: MCP_SQL_TOOLS,
+        channel: "command",
+        detail_matches: [SCHEMA_DROP]
+      }
+    ],
+    none_of: [...QUOTED_MENTION]
+  },
+  fixtures: {
+    block: [
+      bash('psql -c "DROP SCHEMA public CASCADE;"'),
+      bash("psql -c 'drop schema if exists scratch cascade'"),
+      bash("mysql -e 'DROP SCHEMA app;'"),
+      bash('psql -c "ALTER TABLE users DROP COLUMN email;"'),
+      bash("psql -c 'alter table users drop column if exists email'"),
+      bash('docker exec -it db psql -U app -c "Drop  Schema reporting CASCADE;"'),
+      bash("psql app <<'EOF'\nALTER TABLE users DROP COLUMN legacy_id;\nEOF"),
+      pwsh('sqlcmd -S localhost -Q "ALTER TABLE dbo.Users DROP COLUMN Email"'),
+      // Accepted over-match: a read-only query whose output is searched for the words.
+      bash('psql -c "SELECT * FROM users" | grep -i "drop column"'),
+      mcp({ sql: "DROP SCHEMA public CASCADE;" }, "mcp__postgres__query"),
+      mcp({ query: "ALTER TABLE cache DROP COLUMN payload;" }, "mcp__sqlite__write_query"),
+      mcp(
+        { project_id: "proj", query: "ALTER TABLE users DROP COLUMN email;" },
+        "mcp__supabase__execute_sql"
+      ),
+      mcp({ project_id: "proj", sql: "drop schema staging cascade" }, "mcp__neon__run_sql")
+    ],
+    allow: [
+      ...mentions("psql -c DROP SCHEMA public CASCADE;"),
+      bash('psql -c "CREATE SCHEMA reporting;"'),
+      bash('psql -c "ALTER TABLE users ADD COLUMN email text;"'),
+      bash('psql -c "ALTER TABLE users ALTER COLUMN email DROP DEFAULT;"'),
+      bash('psql -c "ALTER TABLE users DROP CONSTRAINT users_email_key;"'),
+      bash('psql -c "SELECT schema_name FROM information_schema.schemata;"'),
+      // SQL that is only text: no client is on the line.
+      bash(
+        "cat > migrations/0042_drop_email.sql <<'EOF'\nALTER TABLE users DROP COLUMN email;\nEOF"
+      ),
+      bash(
+        'gh pr create --title "Retire the legacy schema" --body "This migration runs DROP SCHEMA legacy CASCADE after the backfill."'
+      ),
+      // An MCP tool that is not a database tool: its text is not SQL.
+      mcp(
+        { title: "Retire legacy", body: "Run DROP SCHEMA legacy CASCADE." },
+        "mcp__issues__create_issue"
+      ),
+      mcp({ sql: "SELECT * FROM users;" }, "mcp__postgres__query")
+    ]
+  }
+};
+var NO_WHERE = "(?![^;]{0,1000}\\bwhere\\b)";
+var DELETE_ALL = `\\bdelete\\s+from\\b${NO_WHERE}`;
+var UPDATE_ALL = `\\bupdate\\s+[^\\s;&|<>]+(?:\\s+(?:as\\s+)?\\w+)?\\s+set\\b${NO_WHERE}`;
+var ddSqlUnscopedWrite = {
+  id: "dd.sql-unscoped-write",
+  category: "destructive-data",
+  severity: "high",
+  defaultAction: "require_approval",
+  owasp: ["ASI02", "LLM03", "LLM10"],
+  title: "SQL DELETE or UPDATE with no WHERE clause",
+  description: "Holds a SQL `DELETE FROM <table>` or `UPDATE <table> \u2026 SET` that has no `WHERE` later in the same statement, so it changes every row, matched in any case with any whitespace between the words. Each statement is judged on its own: a `;` ends it, so a scoped statement before or after does not lend it a `WHERE`. `DELETE \u2026 USING` and `UPDATE \u2026 FROM` without a `WHERE` are held, and so is `EXPLAIN ANALYZE`, which runs the statement. Held for approval rather than blocked, because clearing a table in a local test database is routine and the guard cannot see which database the client is connected to. On a shell command (Bash, PowerShell, and the Cursor and Codex shells mapped to them) it holds only when a SQL client is on the same command, the same list block-destructive-sql reads (`psql`, `mysql`, `sqlite3`, `sqlcmd` and others, including through `docker exec`, `kubectl exec`, `ssh` or an env prefix), so SQL that is only text is not held: a PR body, a heredoc that writes a seed file, a note. On MCP it holds only for the database tools `MCP_COMMAND_FIELDS` names (the PostgreSQL reference server's `query`, the SQLite reference server's `read_query`, `write_query` and `create_table`, Supabase's `execute_sql` and `apply_migration`, Neon's `run_sql`), under any server name, so a ticket or a message sent through another MCP tool is not held. For those tools it currently matches the tool's whole input, serialized as JSON, not only its SQL argument; it will read only the SQL argument once tool inputs are split by field. Until then a `WHERE` anywhere in the input, including in another argument, counts as scoping the statement, which is a miss; a statement in another field of the tool is held too; and a line break inside the SQL arrives as the two characters `\\n`, which count as neither a space nor a word boundary, so `DELETE` and `FROM` on separate lines, or an `UPDATE` whose `SET` starts a line with no indent, are not caught, while a scoped statement whose `WHERE` starts a line with no indent is held. Not caught: any `WHERE` in the statement counts, including one inside a comment, a string or a subquery, and a tautology such as `WHERE 1=1`; a second `psql -c` whose statement has a `WHERE`; MySQL's `UPDATE a JOIN b \u2026 SET`; T-SQL's `DELETE TOP (n)` and `DELETE <table>` without `FROM`; a comment between the keywords (`DELETE/**/FROM`); a statement in a file the line does not show (`psql -f reset.sql`); a database MCP tool with another name; and SQL issued from inside application code. Over-matches, held anyway: a plain `EXPLAIN` of such a statement, which does not run it; a `WHERE` more than 1000 characters into the statement; a client word that appears only in text; a read-only query whose output is searched for the words (`psql -c \"SELECT \u2026\" | grep -i \"delete from\"`), because the client and the words share the line. A quoted MENTION is not a use: a search, a `git commit -m` message, an `echo` or a `curl --data` body that only names this command is left alone. That holds only while every shell metacharacter stays inside the quotes, so `git commit -m \"x\" && \u2026` is still caught; and the carrier must be the first word, so `sudo grep \u2026` is not exempt.",
+  match: {
+    any_of: [
+      {
+        kind: "execute_tool",
+        label: "{Bash,PowerShell}",
+        detail_matches: [`${RUNS_SQL}${DELETE_ALL}`, `${RUNS_SQL}${UPDATE_ALL}`]
+      },
+      // A database tool takes the statement itself: no client to require. `command` reads only
+      // its SQL argument once tool inputs are split by field; until then, the whole input.
+      {
+        kind: "execute_tool",
+        label: MCP_SQL_TOOLS,
+        channel: "command",
+        detail_matches: [DELETE_ALL, UPDATE_ALL]
+      }
+    ],
+    none_of: [...QUOTED_MENTION]
+  },
+  fixtures: {
+    block: [
+      bash('psql -c "DELETE FROM sessions;"'),
+      bash("psql -c 'delete  from sessions'"),
+      bash("sqlite3 app.db 'DELETE FROM cache;'"),
+      bash("mysql -e 'DELETE FROM audit_log'"),
+      // A second statement with no WHERE after a scoped one.
+      bash('psql -c "DELETE FROM sessions WHERE id = 1; DELETE FROM tokens;"'),
+      bash('psql -c "DELETE FROM orders USING customers;"'),
+      // A WHERE before the DELETE, in a CTE, does not scope it.
+      bash('psql -c "WITH stale AS (SELECT id FROM jobs WHERE done) DELETE FROM jobs;"'),
+      bash(`psql -c "UPDATE users SET plan = 'free';"`),
+      bash("mysql -e 'update users u set u.active = 0'"),
+      bash('psql -c "UPDATE ONLY users SET active = false;"'),
+      bash('psql -c "UPDATE users AS u SET active = false;"'),
+      bash('psql -c "UPDATE orders SET total = t.total FROM totals t;"'),
+      bash(`psql -c 'UPDATE "Users" SET active = false;'`),
+      bash("psql app <<'EOF'\nUPDATE users SET plan = 'free';\nEOF"),
+      bash('psql -c "EXPLAIN ANALYZE DELETE FROM sessions;"'),
+      bash('docker exec -it db psql -U app -c "DELETE FROM users;"'),
+      pwsh('sqlcmd -S localhost -Q "DELETE FROM dbo.Sessions"'),
+      // Accepted over-match: a plain EXPLAIN does not run the statement.
+      bash('psql -c "EXPLAIN DELETE FROM sessions;"'),
+      // Accepted over-match: a read-only query whose output is searched for the words.
+      bash('psql -c "SELECT * FROM users" | grep -i "delete from"'),
+      mcp({ sql: "DELETE FROM users;" }, "mcp__postgres__query"),
+      mcp({ query: "update users set plan = 'free'" }, "mcp__sqlite__write_query"),
+      mcp({ project_id: "proj", query: "DELETE FROM sessions;" }, "mcp__supabase__execute_sql"),
+      mcp({ project_id: "proj", sql: "UPDATE accounts SET balance = 0;" }, "mcp__neon__run_sql")
+    ],
+    allow: [
+      ...mentions("psql -c DELETE FROM sessions;"),
+      bash('psql -c "DELETE FROM sessions WHERE expires_at < now();"'),
+      bash("psql -c 'delete from sessions where id = 1'"),
+      bash('psql -c "UPDATE users SET active = false WHERE id = 7;"'),
+      bash("psql app <<'EOF'\nDELETE FROM sessions\nWHERE expires_at < now();\nEOF"),
+      bash('psql -c "UPDATE orders SET total = t.total FROM totals t WHERE orders.id = t.id;"'),
+      bash('psql -c "DELETE FROM orders USING customers c WHERE orders.customer_id = c.id;"'),
+      bash(`psql -c 'UPDATE "Users" SET active = false WHERE "id" = 1;'`),
+      bash('psql -c "SELECT * FROM users;"'),
+      bash('psql -c "EXPLAIN SELECT * FROM users;"'),
+      bash(
+        'psql -c "INSERT INTO counts (id, n) VALUES (1, 1) ON CONFLICT (id) DO UPDATE SET n = counts.n + 1;"'
+      ),
+      bash("mysql -e 'INSERT INTO counts VALUES (1, 1) ON DUPLICATE KEY UPDATE n = n + 1'"),
+      bash('psql -c "SELECT * FROM jobs FOR UPDATE SKIP LOCKED;"'),
+      bash(
+        'psql -c "CREATE TRIGGER touch BEFORE UPDATE ON users FOR EACH ROW EXECUTE FUNCTION touch();"'
+      ),
+      bash("psql -c 'GRANT UPDATE ON users TO app;'"),
+      bash("apt-get update && set -e && psql -c 'SELECT 1;'"),
+      // SQL that is only text: no client is on the line.
+      bash("cat > seed.sql <<'EOF'\nDELETE FROM sessions;\nEOF"),
+      bash('gh issue comment 42 --body "Ran UPDATE users SET plan = free to fix the import."'),
+      // An MCP tool that is not a database tool: its text is not SQL.
+      mcp(
+        {
+          title: "Reset plans",
+          body: "Run UPDATE users SET plan = 'free', then DELETE FROM sessions."
+        },
+        "mcp__issues__create_issue"
+      ),
+      mcp({ sql: "DELETE FROM users WHERE id = 1;" }, "mcp__postgres__query"),
+      mcp({ query: "SELECT * FROM users;" }, "mcp__sqlite__read_query")
+    ]
+  }
+};
 var rules2 = [
   ddRmRfAbsolute,
   ddDockerVolumeDestroy,
@@ -2893,7 +3060,9 @@ var rules2 = [
   ddMigrationReset,
   ddAcceptDataLoss,
   ddShadowCopyDelete,
-  blockDestructiveSql
+  blockDestructiveSql,
+  ddSqlSchemaDrop,
+  ddSqlUnscopedWrite
 ];
 var exFileUpload = {
   id: "ex.file-upload",
