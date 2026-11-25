@@ -4,6 +4,6 @@ allowBuilds:
 
 # Exact versions newer than pnpm's 24-hour minimum release age. pnpm applies only the first
 # entry for a package, so list all of a package's versions in one entry, joined with `||`.
-# Remove the guardrails entry after 2026-11-25 06:49 UTC.
+# Remove the guardrails entry after 2026-11-26 09:27 UTC.
 minimumReleaseAgeExclude:
-  - "@agenttrail/guardrails@0.2.13"
+  - "@agenttrail/guardrails@0.2.14"

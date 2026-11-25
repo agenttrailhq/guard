@@ -1499,11 +1499,11 @@ describe("guardrails list --owasp", () => {
     const inPack = SHIPPED_CATALOG.filter(
       (r) => r.category === "test-integrity" && asi10.includes(r.id),
     ).length;
-    expect([asi10.length, inPack]).toEqual([6, 2]);
+    expect([asi10.length, inPack]).toEqual([7, 2]);
     const packed = harness();
     await runRules(["list", "--owasp", "ASI10", "--pack", "test-integrity"], packed.io);
     expect(packed.out()).toContain(
-      "6 guardrails tagged ASI10 Rogue Agents; 2 of them shown with the other filters.",
+      "7 guardrails tagged ASI10 Rogue Agents; 2 of them shown with the other filters.",
     );
   });
 
