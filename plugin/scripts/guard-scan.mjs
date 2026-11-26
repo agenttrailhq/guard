@@ -24242,7 +24242,7 @@ async function verifyScan(input) {
 }
 
 // src/core/version.ts
-var VERSION = "0.4.27";
+var VERSION = "0.4.28";
 
 // src/commands/agent-choice.ts
 function chosenAgent(value) {
