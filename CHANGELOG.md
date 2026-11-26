@@ -11,6 +11,12 @@ For this package, breaking means a change to the installed hook entry (which sil
 the guard checking an existing install until it is re-approved) or a removed command or flag;
 adding a command, a flag, or support for a new agent is a feature.
 
+## [0.4.29](https://github.com/agenttrailhq/guard/compare/v0.4.28...v0.4.29) (2026-11-26)
+
+### Bug Fixes
+
+* match file rules on the path after '.' and '..' are resolved ([a0d4ed8](https://github.com/agenttrailhq/guard/commit/a0d4ed8e2449eb45375f2ae5d37e9fad42748c73))
+
 ## [0.4.28](https://github.com/agenttrailhq/guard/compare/v0.4.27...v0.4.28) (2026-11-26)
 
 ### Bug Fixes
