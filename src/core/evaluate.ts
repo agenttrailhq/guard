@@ -26,6 +26,7 @@
 import picomatch from "picomatch";
 import type { SpanContext } from "../engine/evaluator.js";
 import { createCompiledLabelMatcher } from "../engine/matchers.js";
+import { exemptionForms, pathForms } from "../engine/path-forms.js";
 import { strongestVerdict } from "../engine/verdict.js";
 import { COMMAND_TOO_LONG_ID, commandTooLongText } from "./long-command.js";
 import type { CompiledRule } from "./rules.js";
@@ -33,7 +34,11 @@ import type { AllowlistEntry, GuardDecision, MappedCall, RuleMatch } from "./typ
 
 /** Compiled allowlist matchers, built once alongside the catalog. */
 export interface CompiledAllowlist {
-  readonly entries: readonly { rule: string; isMatch: (s: string) => boolean }[];
+  readonly entries: readonly {
+    rule: string;
+    pattern: string;
+    isMatch: (s: string) => boolean;
+  }[];
 }
 
 /** How a block says what it is. The lead is the whole sentence up to the guardrail. */
@@ -66,10 +71,14 @@ function describeRule(ruleId: string | null | undefined, titles: ReadonlyMap<str
  * accidentally suppress anything. Dropping it fails toward enforcement.
  */
 export function compileAllowlist(entries: readonly AllowlistEntry[]): CompiledAllowlist {
-  const compiled: { rule: string; isMatch: (s: string) => boolean }[] = [];
+  const compiled: { rule: string; pattern: string; isMatch: (s: string) => boolean }[] = [];
   for (const entry of entries) {
     try {
-      compiled.push({ rule: entry.guardrail, isMatch: picomatch(entry.pattern, { dot: true }) });
+      compiled.push({
+        rule: entry.guardrail,
+        pattern: entry.pattern,
+        isMatch: picomatch(entry.pattern, { dot: true }),
+      });
     } catch {}
   }
   return { entries: compiled };
@@ -80,14 +89,32 @@ export function compileAllowlist(entries: readonly AllowlistEntry[]): CompiledAl
  *
  * The pattern is tested against each populated channel. Only an entry naming THIS
  * rule id can suppress it.
+ *
+ * An allowlist entry is an exemption, so on the file channel it must match EVERY form of
+ * the path: the path exactly as mapped (what it was tested against before path forms
+ * existed) and each form the rules test (`engine/path-forms.ts`). Matching any one form
+ * would let `/proj/allowed/../../etc/hosts` borrow the exemption of `/proj/allowed/**`. A
+ * relative pattern (`src/**`) skips the absolute forms, which it could never match, so it
+ * still covers a relative path once that path is also resolved (`exemptionForms`).
  */
-function isAllowlisted(ruleId: string, mapped: MappedCall, allowlist: CompiledAllowlist): boolean {
+function isAllowlisted(
+  ruleId: string,
+  mapped: MappedCall,
+  context: SpanContext,
+  allowlist: CompiledAllowlist,
+): boolean {
   for (const entry of allowlist.entries) {
     if (entry.rule !== ruleId) continue;
     const command = mapped.args.full_command;
     const filePath = mapped.args.file_path;
     if (command !== undefined && entry.isMatch(command)) return true;
-    if (filePath !== undefined && entry.isMatch(filePath)) return true;
+    if (filePath !== undefined) {
+      const forms = [
+        filePath,
+        ...exemptionForms(pathForms(context.span.attributes), entry.pattern),
+      ];
+      if (forms.every((form) => entry.isMatch(form) === true)) return true;
+    }
   }
   return false;
 }
@@ -180,7 +207,7 @@ function evaluateRules(
   const titles = new Map<string, string>();
 
   for (const entry of rules) {
-    if (isAllowlisted(entry.rule.id, mapped, allowlist)) continue;
+    if (isAllowlisted(entry.rule.id, mapped, context, allowlist)) continue;
     let matched = false;
     try {
       matched = entry.evaluate(context).matched;

@@ -98,6 +98,7 @@ import type {
   PreToolUsePayload,
 } from "../core/types.js";
 import { parseUserRulesData } from "../core/user-rules-data.js";
+import type { PathContext } from "../engine/path-forms.js";
 import type { GuardIO } from "../io.js";
 
 /** Shown to the user when the guard could not evaluate a call. Names no content. */
@@ -318,6 +319,22 @@ export async function runHook(io: GuardIO, deps: HookDeps = {}): Promise<void> {
 }
 
 /**
+ * What a relative or `~` file path is resolved against: the working folder the agent's own
+ * payload gives (a non-empty string; Cursor sends `""` where it has none), and the home folder.
+ * Never the hook process's own working folder, which is not necessarily the agent's.
+ */
+function pathContextOf(io: GuardIO, payload: unknown): PathContext {
+  const cwd =
+    payload !== null && typeof payload === "object"
+      ? (payload as { cwd?: unknown }).cwd
+      : undefined;
+  return {
+    ...(typeof cwd === "string" && cwd !== "" ? { cwd } : {}),
+    home: io.homedir(),
+  };
+}
+
+/**
  * The Claude Code path: Claude Code's payload, answered with Claude Code's output.
  *
  * A throw from here reaches `runHook`, which answers that the call was not checked.
@@ -359,7 +376,12 @@ function answerClaudeCodeCall(
 
   const { catalog, allowlist } = loadRules(io, deps);
 
-  const decision = evaluateCall(catalog, buildGuardSpanContext(mapped), mapped, allowlist);
+  const decision = evaluateCall(
+    catalog,
+    buildGuardSpanContext(mapped, pathContextOf(io, payload)),
+    mapped,
+    allowlist,
+  );
 
   emitter.emit(decision.decision, decision.reason);
 
@@ -410,9 +432,10 @@ function answerCursorCall(
   }
 
   const { catalog, allowlist } = loadRules(io, deps);
+  const where = pathContextOf(io, payload);
   const evaluate = (mapped: MappedCall): EvaluatedCandidate => ({
     mapped,
-    decision: evaluateCall(catalog, buildGuardSpanContext(mapped), mapped, allowlist),
+    decision: evaluateCall(catalog, buildGuardSpanContext(mapped, where), mapped, allowlist),
   });
 
   // A `Grep` can have two candidates. The stricter verdict is answered, and logged once.
@@ -480,9 +503,11 @@ function answerCodexCall(
   }
 
   const { catalog, allowlist } = loadRules(io, deps);
+  // A patch's paths are relative to the session's working folder.
+  const where = pathContextOf(io, payload);
   const evaluate = (mapped: MappedCall): EvaluatedCandidate => ({
     mapped,
-    decision: evaluateCall(catalog, buildGuardSpanContext(mapped), mapped, allowlist),
+    decision: evaluateCall(catalog, buildGuardSpanContext(mapped, where), mapped, allowlist),
   });
 
   // A patch naming several files has one candidate each. The strictest verdict is

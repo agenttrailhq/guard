@@ -7030,6 +7030,181 @@ var import_picomatch2 = __toESM(require_picomatch2(), 1);
 
 // src/engine/matchers.ts
 var import_picomatch = __toESM(require_picomatch2(), 1);
+
+// src/engine/path-forms.ts
+var FILE_PATH_RESOLVED_ATTR = "file_path_resolved";
+var FILE_PATH = "file_path";
+function isDriveLetter(code) {
+  return code >= 65 && code <= 90 || code >= 97 && code <= 122;
+}
+function hasDriveRoot(s) {
+  return s.length >= 3 && isDriveLetter(s.charCodeAt(0)) && s[1] === ":" && s[2] === "/";
+}
+function hasDriveRelative(s) {
+  return s.length >= 2 && isDriveLetter(s.charCodeAt(0)) && s[1] === ":" && s[2] !== "/";
+}
+function separators(input) {
+  const s = input.replace(/\\/g, "/");
+  if (s.startsWith("//?/") || s.startsWith("//./") || s.startsWith("/??/")) {
+    const rest = s.slice(4);
+    if (rest.slice(0, 4).toLowerCase() === "unc/") return `//${rest.slice(4)}`;
+    return rest;
+  }
+  return s;
+}
+function rootOf(s, uncReading) {
+  if (hasDriveRoot(s)) return { kind: "absolute", prefix: s.slice(0, 3), rest: s.slice(3) };
+  if (hasDriveRelative(s)) return { kind: "open", prefix: s.slice(0, 2), rest: s.slice(2) };
+  if (uncReading && s.startsWith("//") && s[2] !== "/") {
+    const body = s.slice(2);
+    const first = body.indexOf("/");
+    const server = first === -1 ? body : body.slice(0, first);
+    if (server !== "") {
+      const afterServer = first === -1 ? "" : body.slice(first + 1);
+      const second = afterServer.indexOf("/");
+      const share = second === -1 ? afterServer : afterServer.slice(0, second);
+      const rest = second === -1 ? "" : afterServer.slice(second + 1);
+      if (share === "" || share === "." || share === "..") {
+        return { kind: "absolute", prefix: `//${server}`, rest: afterServer };
+      }
+      return { kind: "absolute", prefix: `//${server}/${share}`, rest };
+    }
+  }
+  if (s.startsWith("/")) return { kind: "absolute", prefix: "/", rest: s.slice(1) };
+  if (s === "~" || s.startsWith("~/")) return { kind: "open", prefix: "~", rest: s.slice(2) };
+  return { kind: "open", prefix: "", rest: s };
+}
+function windowsSegment(segment, manyDots) {
+  const colon = segment.indexOf(":");
+  const name = colon === -1 ? segment : segment.slice(0, colon);
+  let end = name.length;
+  while (end > 0 && (name[end - 1] === "." || name[end - 1] === " ")) end -= 1;
+  if (end > 0) return name.slice(0, end);
+  let dots = 0;
+  while (dots < name.length && name[dots] === ".") dots += 1;
+  if (dots === 2) return "..";
+  return dots > 2 ? manyDots : ".";
+}
+function resolveSegments(root, windows) {
+  const stack = [];
+  let start = 0;
+  const rest = root.rest;
+  for (let i = 0; i <= rest.length; i += 1) {
+    if (i !== rest.length && rest[i] !== "/") continue;
+    const raw = rest.slice(start, i);
+    start = i + 1;
+    const segment = windows !== false && raw !== "" ? windowsSegment(raw, windows) : raw;
+    if (segment === "" || segment === ".") continue;
+    if (segment === "..") {
+      const top = stack[stack.length - 1];
+      if (top !== void 0 && top !== "..") stack.pop();
+      else if (root.kind === "open") stack.push("..");
+      continue;
+    }
+    stack.push(segment);
+  }
+  const joined = stack.join("/");
+  const { prefix } = root;
+  if (prefix === "") return joined === "" ? "." : joined;
+  if (prefix.endsWith("/")) return prefix + joined;
+  if (prefix === "~" || prefix.startsWith("//"))
+    return joined === "" ? prefix : `${prefix}/${joined}`;
+  return prefix + joined;
+}
+function lexicalPath(input) {
+  if (input === "") return input;
+  return resolveSegments(rootOf(separators(input), true), false);
+}
+function lexicalForms(input) {
+  if (input === "") return [];
+  const s = separators(input);
+  const roots = [rootOf(s, true)];
+  if (s.startsWith("//") && s[2] !== "/") roots.push(rootOf(s, false));
+  if (hasDriveRelative(s)) {
+    roots.push({ kind: "absolute", prefix: `${s.slice(0, 2)}/`, rest: s.slice(2) });
+  }
+  if (s[0] === "/" && hasDriveRoot(s.slice(1))) {
+    roots.push({ kind: "absolute", prefix: s.slice(1, 4), rest: s.slice(4) });
+  }
+  const admin = adminShare(s);
+  if (admin !== void 0) roots.push(admin);
+  const out = [];
+  for (const root of roots) out.push(resolveSegments(root, false));
+  for (const root of roots) out.push(resolveSegments(root, ".."));
+  for (const root of roots) out.push(resolveSegments(root, "."));
+  return [...new Set(out)];
+}
+function adminShare(s) {
+  if (!s.startsWith("//") || s[2] === "/") return void 0;
+  const slash = s.indexOf("/", 2);
+  if (slash === -1) return void 0;
+  const share = s.slice(slash + 1, slash + 3);
+  const after = s[slash + 3];
+  if (share.length !== 2 || !isDriveLetter(share.charCodeAt(0)) || share[1] !== "$")
+    return void 0;
+  if (after !== void 0 && after !== "/") return void 0;
+  return { kind: "absolute", prefix: `${share[0]}:/`, rest: s.slice(slash + 4) };
+}
+function isAbsolute(p) {
+  return p.startsWith("/") || hasDriveRoot(p);
+}
+var HOME_PREFIXES = [["$", "{HOME}"].join(""), "$HOME", "~"];
+function resolvePath(raw, context) {
+  if (raw === "") return void 0;
+  const s = separators(raw);
+  const home = context.home !== void 0 ? separators(context.home) : "";
+  for (const prefix of HOME_PREFIXES) {
+    if (s === prefix || s.startsWith(`${prefix}/`)) {
+      if (!isAbsolute(home)) return void 0;
+      return lexicalPath(`${home}/${s.slice(prefix.length)}`);
+    }
+  }
+  if (isAbsolute(s) || s.startsWith("//") || hasDriveRelative(s)) return void 0;
+  const cwd = context.cwd !== void 0 ? separators(context.cwd) : "";
+  if (!isAbsolute(cwd)) return void 0;
+  return lexicalPath(`${cwd}/${s}`);
+}
+function resolvedPathAttribute(raw, context, cap) {
+  const resolved = resolvePath(raw, context);
+  if (resolved === void 0 || resolved.length > cap) return void 0;
+  return resolved === lexicalPath(raw) ? void 0 : resolved;
+}
+function isRelativeGlob(pattern) {
+  if (pattern.includes("\\")) return false;
+  const segments = pattern.split("/");
+  const first = segments[0] ?? "";
+  if (first === "" || first === "." || first === "..") return false;
+  for (let i = 0; i < first.length; i += 1) {
+    const c = first.charCodeAt(i);
+    const plain = c >= 48 && c <= 57 || isDriveLetter(c) || c === 95 || c === 45 || c === 46;
+    if (!plain) return false;
+  }
+  return !segments.some((segment) => segment === "." || segment === "..");
+}
+function isAbsoluteForm(form) {
+  return form.startsWith("/") || hasDriveRoot(form);
+}
+function exemptionForms(forms, pattern) {
+  if (!isRelativeGlob(pattern)) return forms;
+  return forms.filter((form, index) => index === 0 || !isAbsoluteForm(form));
+}
+var FORMS_CACHE = /* @__PURE__ */ new WeakMap();
+function pathForms(attributes) {
+  const cached = FORMS_CACHE.get(attributes);
+  if (cached !== void 0) return cached;
+  const filePath = attributes[FILE_PATH];
+  let forms = [];
+  if (filePath !== void 0) {
+    const all = [filePath, ...lexicalForms(filePath)];
+    const resolved = attributes[FILE_PATH_RESOLVED_ATTR];
+    if (resolved !== void 0 && resolved !== "") all.push(resolved, ...lexicalForms(resolved));
+    forms = [...new Set(all)];
+  }
+  FORMS_CACHE.set(attributes, forms);
+  return forms;
+}
+
+// src/engine/matchers.ts
 var DETAIL_ATTR = "detail";
 var MCP_INPUT_ATTR = "mcp_input";
 var FILE_PATH_ATTR = "file_path";
@@ -7094,18 +7269,30 @@ function matchDetailMatches(patterns, span, channel = "command") {
     reason: `detail_matches: no pattern of ${patterns.length} matched`
   };
 }
-function matchFileGlob(pattern, span) {
+function matchForms(isMatch, pattern, span, mode) {
+  const all = pathForms(span.attributes);
+  if (all.length === 0) return void 0;
+  const forms = mode === "any" ? all : exemptionForms(all, pattern);
+  const test = (path) => isMatch(path) === true;
+  return mode === "any" ? forms.some(test) : forms.every(test);
+}
+function fileGlobResult(pattern, span, matched) {
+  if (matched === void 0) {
+    return { matched: false, reason: "file_glob: file_path attribute missing" };
+  }
   const filePath = span.attributes[FILE_PATH_ATTR];
-  if (filePath === void 0) {
+  return {
+    matched,
+    reason: matched ? `file_glob: "${pattern}" matched "${filePath}"` : `file_glob: "${pattern}" did not match "${filePath}"`
+  };
+}
+function matchFileGlob(pattern, span, mode = "any") {
+  if (span.attributes[FILE_PATH_ATTR] === void 0) {
     return { matched: false, reason: "file_glob: file_path attribute missing" };
   }
   try {
     const isMatch = (0, import_picomatch.default)(pattern, FILE_GLOB_OPTIONS);
-    const matched = isMatch(filePath);
-    return {
-      matched,
-      reason: matched ? `file_glob: "${pattern}" matched "${filePath}"` : `file_glob: "${pattern}" did not match "${filePath}"`
-    };
+    return fileGlobResult(pattern, span, matchForms(isMatch, pattern, span, mode));
   } catch {
     return {
       matched: false,
@@ -7183,7 +7370,7 @@ function createCompiledDetailMatcher(pattern) {
   const cached = compiled;
   return cached === null ? () => false : (detail) => cached.test(detail);
 }
-function createCompiledFileGlobMatcher(pattern) {
+function createCompiledFileGlobMatcher(pattern, mode = "any") {
   let matcher = compiledGlobCache.get(pattern);
   if (!matcher) {
     try {
@@ -7197,17 +7384,7 @@ function createCompiledFileGlobMatcher(pattern) {
     }
   }
   const cachedMatcher = matcher;
-  return (span) => {
-    const filePath = span.attributes[FILE_PATH_ATTR];
-    if (filePath === void 0) {
-      return { matched: false, reason: "file_glob: file_path attribute missing" };
-    }
-    const matched = cachedMatcher(filePath);
-    return {
-      matched,
-      reason: matched ? `file_glob: "${pattern}" matched "${filePath}"` : `file_glob: "${pattern}" did not match "${filePath}"`
-    };
-  };
+  return (span) => fileGlobResult(pattern, span, matchForms(cachedMatcher, pattern, span, mode));
 }
 
 // src/engine/verdict.ts
@@ -7331,19 +7508,29 @@ function compileAllowlist(entries) {
   const compiled = [];
   for (const entry of entries) {
     try {
-      compiled.push({ rule: entry.guardrail, isMatch: (0, import_picomatch2.default)(entry.pattern, { dot: true }) });
+      compiled.push({
+        rule: entry.guardrail,
+        pattern: entry.pattern,
+        isMatch: (0, import_picomatch2.default)(entry.pattern, { dot: true })
+      });
     } catch {
     }
   }
   return { entries: compiled };
 }
-function isAllowlisted(ruleId, mapped, allowlist) {
+function isAllowlisted(ruleId, mapped, context, allowlist) {
   for (const entry of allowlist.entries) {
     if (entry.rule !== ruleId) continue;
     const command = mapped.args.full_command;
     const filePath = mapped.args.file_path;
     if (command !== void 0 && entry.isMatch(command)) return true;
-    if (filePath !== void 0 && entry.isMatch(filePath)) return true;
+    if (filePath !== void 0) {
+      const forms = [
+        filePath,
+        ...exemptionForms(pathForms(context.span.attributes), entry.pattern)
+      ];
+      if (forms.every((form) => entry.isMatch(form) === true)) return true;
+    }
   }
   return false;
 }
@@ -7384,7 +7571,7 @@ function evaluateRules(rules12, context, mapped, allowlist) {
   const matches = [];
   const titles = /* @__PURE__ */ new Map();
   for (const entry of rules12) {
-    if (isAllowlisted(entry.rule.id, mapped, allowlist)) continue;
+    if (isAllowlisted(entry.rule.id, mapped, context, allowlist)) continue;
     let matched = false;
     try {
       matched = entry.evaluate(context).matched;
@@ -8969,13 +9156,15 @@ function normalizeSpanAttributes(attributes) {
   }
   return attributes;
 }
-function buildGuardSpanContext(mapped) {
+function buildGuardSpanContext(mapped, where) {
   const attributes = {};
   if (mapped.args.full_command !== void 0) {
     attributes.full_command = mapped.args.full_command;
   }
   if (mapped.args.file_path !== void 0) {
     attributes.file_path = normalizePathSeparators(mapped.args.file_path);
+    const resolved = where === void 0 ? void 0 : resolvedPathAttribute(mapped.args.file_path, where, MAX_DETAIL_LEN);
+    if (resolved !== void 0) attributes[FILE_PATH_RESOLVED_ATTR] = resolved;
   }
   const span = {
     id: NIL_UUID,
@@ -8996,7 +9185,7 @@ function buildGuardSpanContext(mapped) {
 
 // src/core/os-step-aside.ts
 import { createHash } from "crypto";
-import { dirname, isAbsolute, join as join2, sep } from "path";
+import { dirname, isAbsolute as isAbsolute2, join as join2, sep } from "path";
 var OS_PLUGIN_ID = "agenttrail@agenttrail";
 var OS_MARKETPLACE_NAME = "agenttrail";
 var RECORD_VERSION = 1;
@@ -9010,7 +9199,7 @@ function enforcedProjectsPath(home) {
 }
 function claudeDir(home, env) {
   const configured = env[ENV_CONFIG_DIR]?.trim();
-  return configured !== void 0 && configured.length > 0 && isAbsolute(configured) ? configured : join2(home, ".claude");
+  return configured !== void 0 && configured.length > 0 && isAbsolute2(configured) ? configured : join2(home, ".claude");
 }
 function managedSettingsFiles(platform, listDir) {
   const dir = platform === "darwin" ? "/Library/Application Support/ClaudeCode" : platform === "win32" ? "C:\\Program Files\\ClaudeCode" : "/etc/claude-code";
@@ -9047,7 +9236,7 @@ function parseEnforcedProjects(text) {
     if (!isRecord3(marketplaceSource)) continue;
     if (scope === "global") {
       out.push({ scope, apiOrigin, marketplaceSource, tokenFingerprint: tokenFingerprint2 });
-    } else if (scope === "project" && typeof projectRoot === "string" && isAbsolute(projectRoot)) {
+    } else if (scope === "project" && typeof projectRoot === "string" && isAbsolute2(projectRoot)) {
       out.push({ scope, projectRoot, apiOrigin, marketplaceSource, tokenFingerprint: tokenFingerprint2 });
     }
   }
@@ -9147,8 +9336,8 @@ function evaluate(input) {
   const { env } = input;
   if (env[ENV_ENFORCE]?.trim() !== "1") return { standDown: false, failed: "sentinel" };
   const projectDirRaw = env[ENV_PROJECT_DIR]?.trim();
-  const projectDir = projectDirRaw !== void 0 && projectDirRaw.length > 0 && isAbsolute(projectDirRaw) ? safeRealpath(projectDirRaw, input.realpath) : void 0;
-  const cwd = input.cwd !== void 0 && input.cwd.length > 0 && isAbsolute(input.cwd) ? safeRealpath(input.cwd, input.realpath) : void 0;
+  const projectDir = projectDirRaw !== void 0 && projectDirRaw.length > 0 && isAbsolute2(projectDirRaw) ? safeRealpath(projectDirRaw, input.realpath) : void 0;
+  const cwd = input.cwd !== void 0 && input.cwd.length > 0 && isAbsolute2(input.cwd) ? safeRealpath(input.cwd, input.realpath) : void 0;
   const here = projectDir !== void 0 && (cwd === void 0 || within(cwd, projectDir)) ? projectDir : cwd;
   if (here === void 0) return { standDown: false, failed: "record" };
   const entries = parseEnforcedProjects(input.readFile(enforcedProjectsPath(input.home)));
@@ -9159,7 +9348,7 @@ function evaluate(input) {
   if (candidates.length === 0) return { standDown: false, failed: "record" };
   const homeReal = safeRealpath(input.home, input.realpath) ?? input.home;
   const base = input.processCwd;
-  const resolveFrom = (path) => isAbsolute(path) ? path : base !== void 0 ? join2(base, path) : void 0;
+  const resolveFrom = (path) => isAbsolute2(path) ? path : base !== void 0 ? join2(base, path) : void 0;
   const scanStarts = [projectDirRaw, input.cwd, base].filter((p) => p !== void 0 && p.length > 0).map(resolveFrom).filter((p) => p !== void 0).map((p) => safeRealpath(p, input.realpath) ?? p);
   const scanned = projectSettingsFolders(scanStarts, homeReal).map(
     (folder) => input.readFile(join2(folder, ".claude", "settings.json"))
@@ -9249,7 +9438,7 @@ function matchScope(scope, context) {
 }
 
 // src/engine/evaluator.ts
-function evaluateConditionCompiled(condition, span, compiledGlobMatcher) {
+function evaluateConditionCompiled(condition, span, compiledGlobMatcher, fileMode = "any") {
   const kindResult = matchKind(condition.kind, span);
   if (!kindResult.matched) {
     return kindResult;
@@ -9292,7 +9481,7 @@ function evaluateConditionCompiled(condition, span, compiledGlobMatcher) {
       }
       reasons.push(globResult.reason);
     } else {
-      const globResult = matchFileGlob(condition.file_glob, span);
+      const globResult = matchFileGlob(condition.file_glob, span, fileMode);
       if (!globResult.matched) {
         return globResult;
       }
@@ -9314,16 +9503,16 @@ function evaluateConditionCompiled(condition, span, compiledGlobMatcher) {
   };
 }
 function compilePolicy(predicate) {
-  function compileConditions(conditions) {
+  function compileConditions(conditions, fileMode) {
     if (conditions === void 0) return void 0;
     return conditions.map((condition) => {
-      const globMatcher = condition.file_glob ? createCompiledFileGlobMatcher(condition.file_glob) : void 0;
+      const globMatcher = condition.file_glob ? createCompiledFileGlobMatcher(condition.file_glob, fileMode) : void 0;
       return globMatcher ? { condition, globMatcher } : { condition };
     });
   }
-  const compiledAnyOf = compileConditions(predicate.match.any_of);
-  const compiledAllOf = compileConditions(predicate.match.all_of);
-  const compiledNoneOf = compileConditions(predicate.match.none_of);
+  const compiledAnyOf = compileConditions(predicate.match.any_of, "any");
+  const compiledAllOf = compileConditions(predicate.match.all_of, "any");
+  const compiledNoneOf = compileConditions(predicate.match.none_of, "all");
   const scope = predicate.scope;
   return (context) => {
     const scopeResult = matchScope(scope, context);
@@ -9361,7 +9550,7 @@ function compilePolicy(predicate) {
     }
     if (compiledNoneOf !== void 0) {
       for (const { condition, globMatcher } of compiledNoneOf) {
-        const result = evaluateConditionCompiled(condition, span, globMatcher);
+        const result = evaluateConditionCompiled(condition, span, globMatcher, "all");
         if (result.matched) {
           return {
             matched: false,
@@ -9513,6 +9702,13 @@ async function runHook(io2, deps = {}) {
     }
   }
 }
+function pathContextOf(io2, payload) {
+  const cwd = payload !== null && typeof payload === "object" ? payload.cwd : void 0;
+  return {
+    ...typeof cwd === "string" && cwd !== "" ? { cwd } : {},
+    home: io2.homedir()
+  };
+}
 function answerClaudeCodeCall(io2, deps, payload, sentBy, emitter) {
   if (deps.env !== void 0 && deps.realpath !== void 0) {
     const cwd = payload.cwd;
@@ -9534,7 +9730,12 @@ function answerClaudeCodeCall(io2, deps, payload, sentBy, emitter) {
   }
   const mapped = mapToolCall(payload);
   const { catalog, allowlist } = loadRules(io2, deps);
-  const decision = evaluateCall(catalog, buildGuardSpanContext(mapped), mapped, allowlist);
+  const decision = evaluateCall(
+    catalog,
+    buildGuardSpanContext(mapped, pathContextOf(io2, payload)),
+    mapped,
+    allowlist
+  );
   emitter.emit(decision.decision, decision.reason);
   try {
     (deps.recorder ?? createEventRecorder(io2)).record({
@@ -9553,9 +9754,10 @@ function answerCursorCall(io2, deps, payload, launchedAs, emitter) {
     return;
   }
   const { catalog, allowlist } = loadRules(io2, deps);
+  const where = pathContextOf(io2, payload);
   const evaluate2 = (mapped) => ({
     mapped,
-    decision: evaluateCall(catalog, buildGuardSpanContext(mapped), mapped, allowlist)
+    decision: evaluateCall(catalog, buildGuardSpanContext(mapped, where), mapped, allowlist)
   });
   const [first, ...rest] = call.candidates;
   const kept = strictestCandidate([evaluate2(first), ...rest.map(evaluate2)]);
@@ -9587,9 +9789,10 @@ function answerCodexCall(io2, deps, payload, emitter) {
     return;
   }
   const { catalog, allowlist } = loadRules(io2, deps);
+  const where = pathContextOf(io2, payload);
   const evaluate2 = (mapped) => ({
     mapped,
-    decision: evaluateCall(catalog, buildGuardSpanContext(mapped), mapped, allowlist)
+    decision: evaluateCall(catalog, buildGuardSpanContext(mapped, where), mapped, allowlist)
   });
   const [first, ...rest] = call.candidates;
   const kept = strictestCandidate([evaluate2(first), ...rest.map(evaluate2)]);

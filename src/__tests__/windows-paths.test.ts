@@ -1,24 +1,18 @@
+// cspell:words nocase
 /**
  * Windows coverage, proven on the shipped path instead of simulated.
  *
- * A backslash fixture cannot live in `@agenttrail/guardrails`: fixtures there are
- * matched without separator normalization, which happens here, in
- * `core/normalize.ts`. With the engine's picomatch@4.0.4 and its `FILE_GLOB_OPTIONS`:
+ * With the engine's picomatch@4.0.4 and its `FILE_GLOB_OPTIONS`, a glob alone does not
+ * match a backslash path:
  *
  *     `**​/.env*`  vs  C:\\Users\\dev\\proj\\.env   -> false
  *     `**​/.env*`  vs  C:/Users/dev/proj/.env       -> true
  *
- * A backslash BLOCK fixture there would simply be red. Worse, a backslash ALLOW
- * fixture would pass VACUOUSLY — it would appear to prove quietness while
- * proving only that the path never reached a matcher. That is the exact shape of
- * a test that reads as coverage and is not.
- *
- * So the Windows proof lives here, where the genuine normalizer is reachable
- * with the genuine rules: `buildGuardSpanContext` (which calls
- * `normalizePathSeparators`) into the real `evaluate()`. This is literally the
- * shipped path — the guard's mapper, the guard's normalizer, the real evaluator,
- * the real corpus. The guardrails harness stays a clean statement about rule vs
- * evaluator and keeps no Windows claim it cannot back.
+ * The engine matches both, because it tests every form of the path
+ * (`engine/path-forms.ts`), separators unified, and the guard's span already carries the
+ * forward-slash form (`core/normalize.ts`). This file proves that on the genuine path:
+ * `buildGuardSpanContext` into the real `evaluate()`, over the real corpus, with every
+ * file guardrail's fixtures rewritten with backslashes.
  *
  * The fixtures are DERIVED from the forward-slash ones rather than written out
  * again, so the two cannot drift: a file rule that gains a fixture gains its
@@ -27,6 +21,7 @@
  */
 
 import { RULES, type Rule } from "@agenttrail/guardrails/guardrails";
+import picomatch from "picomatch";
 import { describe, expect, it } from "vitest";
 import { buildGuardSpanContext } from "../core/normalize.js";
 import type { MappedCall } from "../core/types.js";
@@ -65,7 +60,9 @@ describe("the normalizer is doing something", () => {
   it("the separator really does matter before normalization", () => {
     // Without this the whole file could be passing because backslash paths happen
     // to match anyway, and the normalizer could be deleted with nobody noticing.
-    // Asserted on the RAW attribute, bypassing `buildGuardSpanContext`.
+    // The glob alone misses the backslash path; the engine matches it because it tests
+    // the path's forms (`engine/path-forms.ts`), separators unified, as well as the raw
+    // attribute. Asserted on the RAW attribute, bypassing `buildGuardSpanContext`.
     // `se.credential-file`, not a dotenv rule: `**/*.env` matches a backslash
     // path even unnormalized, because picomatch sees no separators at all and
     // lets `*` swallow the whole string. `**/.ssh/id_*` needs real structure, so
@@ -94,8 +91,11 @@ describe("the normalizer is doing something", () => {
         developerId: null,
       },
     );
-    expect(raw.matched).toBe(false);
-    // ...and the same path through the guard's normalizer DOES match.
+    expect(
+      picomatch("**/.ssh/id_*", { dot: true, nocase: true })("C:\\Users\\dev\\.ssh\\id_rsa"),
+    ).toBe(false);
+    expect(raw.matched).toBe(true);
+    // ...and the same path through the guard's normalizer matches too.
     expect(matches(rule, "C:\\Users\\dev\\.ssh\\id_rsa", "Read")).toBe(true);
   });
 });

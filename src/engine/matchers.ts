@@ -1,6 +1,7 @@
 // cspell:words nocase picomatch
 
 import picomatch from "picomatch";
+import { exemptionForms, pathForms } from "./path-forms.js";
 import type { Channel, NumericComparison } from "./policy-predicate.js";
 import type { Span } from "./trace.js";
 
@@ -104,22 +105,51 @@ export function matchDetailMatches(
   };
 }
 
-export function matchFileGlob(pattern: string, span: Span): { matched: boolean; reason: string } {
-  const filePath = span.attributes[FILE_PATH_ATTR];
+export type FileGlobMode = "any" | "all";
 
-  if (filePath === undefined) {
+function matchForms(
+  isMatch: (path: string) => boolean,
+  pattern: string,
+  span: Span,
+  mode: FileGlobMode,
+): boolean | undefined {
+  const all = pathForms(span.attributes);
+  if (all.length === 0) return undefined;
+  const forms = mode === "any" ? all : exemptionForms(all, pattern);
+
+  const test = (path: string): boolean => isMatch(path) === true;
+  return mode === "any" ? forms.some(test) : forms.every(test);
+}
+
+function fileGlobResult(
+  pattern: string,
+  span: Span,
+  matched: boolean | undefined,
+): { matched: boolean; reason: string } {
+  if (matched === undefined) {
+    return { matched: false, reason: "file_glob: file_path attribute missing" };
+  }
+  const filePath = span.attributes[FILE_PATH_ATTR];
+  return {
+    matched,
+    reason: matched
+      ? `file_glob: "${pattern}" matched "${filePath}"`
+      : `file_glob: "${pattern}" did not match "${filePath}"`,
+  };
+}
+
+export function matchFileGlob(
+  pattern: string,
+  span: Span,
+  mode: FileGlobMode = "any",
+): { matched: boolean; reason: string } {
+  if (span.attributes[FILE_PATH_ATTR] === undefined) {
     return { matched: false, reason: "file_glob: file_path attribute missing" };
   }
 
   try {
     const isMatch = picomatch(pattern, FILE_GLOB_OPTIONS);
-    const matched = isMatch(filePath);
-    return {
-      matched,
-      reason: matched
-        ? `file_glob: "${pattern}" matched "${filePath}"`
-        : `file_glob: "${pattern}" did not match "${filePath}"`,
-    };
+    return fileGlobResult(pattern, span, matchForms(isMatch, pattern, span, mode));
   } catch {
     return {
       matched: false,
@@ -214,6 +244,7 @@ export function createCompiledDetailMatcher(pattern: string): (detail: string) =
 
 export function createCompiledFileGlobMatcher(
   pattern: string,
+  mode: FileGlobMode = "any",
 ): (span: Span) => { matched: boolean; reason: string } {
   let matcher = compiledGlobCache.get(pattern);
   if (!matcher) {
@@ -229,17 +260,6 @@ export function createCompiledFileGlobMatcher(
   }
 
   const cachedMatcher = matcher;
-  return (span: Span) => {
-    const filePath = span.attributes[FILE_PATH_ATTR];
-    if (filePath === undefined) {
-      return { matched: false, reason: "file_glob: file_path attribute missing" };
-    }
-    const matched = cachedMatcher(filePath);
-    return {
-      matched,
-      reason: matched
-        ? `file_glob: "${pattern}" matched "${filePath}"`
-        : `file_glob: "${pattern}" did not match "${filePath}"`,
-    };
-  };
+  return (span: Span) =>
+    fileGlobResult(pattern, span, matchForms(cachedMatcher, pattern, span, mode));
 }

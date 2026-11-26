@@ -18,7 +18,13 @@
 
 import type { Timestamp, UUID } from "../engine/common.js";
 import type { SpanContext } from "../engine/evaluator.js";
+import {
+  FILE_PATH_RESOLVED_ATTR,
+  type PathContext,
+  resolvedPathAttribute,
+} from "../engine/path-forms.js";
 import type { Span } from "../engine/trace.js";
+import { MAX_DETAIL_LEN } from "./mapper.js";
 import type { MappedCall } from "./types.js";
 
 /** The evaluator ignores the uuid id fields; NIL satisfies the branded `Span` type. */
@@ -34,7 +40,10 @@ const EPOCH = "1970-01-01T00:00:00.000Z" as Timestamp;
  * without this every file rule is dead on an entire platform.
  *
  * Applied HERE, at span synthesis, so `mapper.ts` keeps the path exactly as Claude
- * Code sent it while matching still sees the normalized form.
+ * Code sent it while matching still sees the normalized form. The matcher also tests
+ * the path's other forms (`engine/path-forms.ts`: `.` and `..` resolved, Windows roots),
+ * but the span keeps this form as its `file_path`, so every path that matched before
+ * still matches.
  */
 export function normalizePathSeparators(path: string): string {
   return path.replace(/\\/g, "/");
@@ -71,14 +80,24 @@ export function normalizeSpanAttributes(
  *
  * `file_path` is separator-normalized here; `full_command` is not (a command's
  * backslashes are content, not a path).
+ *
+ * With `where` (the agent's working folder from its own payload, and the home folder), a
+ * relative or `~` path is also resolved, as `file_path_resolved`, which the matcher tests as
+ * one more form. It is set only when it adds something and fits in `MAX_DETAIL_LEN`, so a
+ * long working folder never makes the span longer than a value the engine reads.
  */
-export function buildGuardSpanContext(mapped: MappedCall): SpanContext {
+export function buildGuardSpanContext(mapped: MappedCall, where?: PathContext): SpanContext {
   const attributes: Record<string, string> = {};
   if (mapped.args.full_command !== undefined) {
     attributes.full_command = mapped.args.full_command;
   }
   if (mapped.args.file_path !== undefined) {
     attributes.file_path = normalizePathSeparators(mapped.args.file_path);
+    const resolved =
+      where === undefined
+        ? undefined
+        : resolvedPathAttribute(mapped.args.file_path, where, MAX_DETAIL_LEN);
+    if (resolved !== undefined) attributes[FILE_PATH_RESOLVED_ATTR] = resolved;
   }
 
   const span: Span = {

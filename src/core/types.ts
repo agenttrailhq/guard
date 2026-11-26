@@ -104,8 +104,8 @@ export interface PreToolUsePayload {
  *
  * Cursor sends more keys than these (`conversation_id`, `generation_id`, `model`,
  * `tool_use_id`, `cwd`, `sandbox`, `workspace_roots`, `user_email`, `transcript_path`).
- * The guard reads none of them: no id, no working directory and no account detail
- * reaches a rule or the decision log.
+ * The guard reads only `cwd`, to resolve a relative file path for matching; no id, no
+ * working directory and no account detail reaches the decision log.
  */
 export interface CursorHookPayload {
   /** `preToolUse`, `beforeShellExecution`, … — Cursor names its events in camelCase. */
@@ -128,8 +128,8 @@ export interface CursorHookPayload {
  * fields below. Measured on codex-cli 0.154.0, against a real session.
  *
  * Codex sends more keys than these (`permission_mode`, `tool_use_id`, `session_id`,
- * `cwd`, `transcript_path`). The guard reads none of them. In particular
- * `permission_mode` is `bypassPermissions` under `codex exec` whether or not a person is
+ * `cwd`, `transcript_path`). The guard reads only `cwd`, to resolve a relative file path
+ * for matching. In particular `permission_mode` is `bypassPermissions` under `codex exec` whether or not a person is
  * watching, so nothing may be read into it.
  */
 export interface CodexHookPayload extends PreToolUsePayload {
