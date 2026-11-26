@@ -89,6 +89,17 @@ export interface GuardIO {
   fileSize(path: string): number;
 }
 
+/**
+ * Write `text` to stdout and resolve once it is flushed. The hook's main thread writes its one
+ * answer through this (`hook-deadline.ts`), and must know the write is out before it may end
+ * the process itself.
+ */
+export function writeStdoutFlushed(text: string): Promise<void> {
+  return new Promise<void>((resolve) => {
+    process.stdout.write(text, () => resolve());
+  });
+}
+
 /** The real process IO. Imported only by entry points, never from `core/`. */
 export function createRealIO(): GuardIO {
   return {

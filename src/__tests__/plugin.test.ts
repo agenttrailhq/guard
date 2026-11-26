@@ -20,7 +20,12 @@ function readJson(...parts: string[]): Record<string, never> {
 }
 
 const hooks = readJson("plugin", "hooks", "hooks.json") as unknown as {
-  hooks: { PreToolUse: { matcher: string; hooks: { command: string; timeout: number }[] }[] };
+  hooks: {
+    PreToolUse: {
+      matcher: string;
+      hooks: { command: string; timeout: number; onFailure?: string }[];
+    }[];
+  };
 };
 const entry = hooks.hooks.PreToolUse[0] as NonNullable<(typeof hooks.hooks.PreToolUse)[0]>;
 
@@ -73,6 +78,14 @@ describe("the hook command entry", () => {
     // on PreToolUse lets the tool call continue (`hooks.md:3186`) — which IS the
     // fail-open posture, so no internal watchdog is needed.
     expect(entry.hooks[0]?.timeout).toBe(10);
+  });
+
+  it("blocks when the hook cannot answer (onFailure), so a hook that cannot run is not an allow", () => {
+    // Claude Code 2.1.295+ blocks the call when this hook cannot start, exits with a code other
+    // than 0 or 2, is killed, prints invalid JSON or reaches its timeout. Measured on 2.1.332:
+    // a hook that hung or killed itself blocked with the key and let the call through without
+    // it. Measured on 2.1.287, which predates the key: the plugin's hooks still load and run.
+    expect(entry.hooks[0]?.onFailure).toBe("block");
   });
 
   it("invokes the built bundle from CLAUDE_PLUGIN_ROOT, naming the app with --agent claude", () => {

@@ -111,9 +111,26 @@ export function isAbsoluteGlob(glob: string): boolean {
   return /^(?:[\\/]|[A-Za-z]:[\\/])/.test(glob);
 }
 
+/**
+ * `value` without its trailing `/` and `\` characters.
+ *
+ * A loop, not `/[\\/]+$/`: the regex retries the run of separators from every position, so
+ * a folder of many separators followed by anything else takes quadratic time (262,144
+ * separators then a letter: about 23 s). The folder is the agent's input and is not cut.
+ */
+export function trimTrailingSeparators(value: string): string {
+  let end = value.length;
+  while (end > 0) {
+    const c = value.charCodeAt(end - 1);
+    if (c !== 0x2f && c !== 0x5c) break;
+    end -= 1;
+  }
+  return end === value.length ? value : value.slice(0, end);
+}
+
 /** A folder and a relative glob, with exactly one `/` between them. Shared, as above. */
 export function joinSearchPath(dir: string, glob: string): string {
-  return `${dir.replace(/[\\/]+$/, "")}/${glob}`;
+  return `${trimTrailingSeparators(dir)}/${glob}`;
 }
 
 /**

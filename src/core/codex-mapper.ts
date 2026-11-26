@@ -164,6 +164,24 @@ export function codexCallKey(payload: CodexHookPayload): string | undefined {
 }
 
 /**
+ * The event a Codex payload would be checked under, or `undefined` when guard has nothing to
+ * evaluate for it: an event it does not answer, or a tool it has no channel for.
+ *
+ * Reads the event and tool names and nothing else, so it costs nothing whatever the payload
+ * holds. The hook's main thread uses it to answer at the deadline without mapping the call.
+ * It is `undefined` only where `mapCodexCall` is. The one case where `mapCodexCall` is
+ * `undefined` and this is not is a patch naming no path: telling that apart means reading the
+ * patch, so it counts as checked, which is the stricter side.
+ */
+export function codexCheckedEvent(payload: CodexHookPayload): CodexCheckedEvent | undefined {
+  const event = codexEvent(payload);
+  if (event === undefined) return undefined;
+  const tool = typeof payload.tool_name === "string" ? payload.tool_name : "";
+  if (tool === "Bash" || tool === "apply_patch" || tool.startsWith("mcp__")) return event;
+  return undefined;
+}
+
+/**
  * Map a Codex payload to the calls to evaluate, or `undefined` when there is nothing to
  * evaluate — an event the guard does not answer, a tool it has no channel for, or a patch
  * naming no path.

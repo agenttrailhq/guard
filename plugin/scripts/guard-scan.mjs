@@ -7115,8 +7115,17 @@ function nonEmpty(value) {
 function isAbsoluteGlob(glob) {
   return /^(?:[\\/]|[A-Za-z]:[\\/])/.test(glob);
 }
+function trimTrailingSeparators(value) {
+  let end = value.length;
+  while (end > 0) {
+    const c = value.charCodeAt(end - 1);
+    if (c !== 47 && c !== 92) break;
+    end -= 1;
+  }
+  return end === value.length ? value : value.slice(0, end);
+}
 function joinSearchPath(dir, glob) {
-  return `${dir.replace(/[\\/]+$/, "")}/${glob}`;
+  return `${trimTrailingSeparators(dir)}/${glob}`;
 }
 function searchPath(tool, input) {
   const field = SEARCH_GLOB_FIELD.get(tool);
