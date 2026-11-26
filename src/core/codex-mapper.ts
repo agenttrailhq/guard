@@ -52,11 +52,13 @@
  * no MCP server was configured on the machine the rest of this was measured on; the name
  * shape is read off Codex's source.
  *
- * ── Nothing else in the payload is read ──────────────────────────────────────
+ * ── Nothing else in the payload is read here ─────────────────────────────────
  * Not `cwd`, `session_id`, `transcript_path`, `model` or `tool_use_id`. In particular not
  * `permission_mode`, which is `bypassPermissions` under `codex exec` whether or not a
- * person is watching, so it says nothing about safety. A relative path stays relative: it
- * is never resolved against a directory.
+ * person is watching, so it says nothing about safety. A relative path (a patch's paths,
+ * `*** Move to:` included, are relative to the session's folder) stays relative in the
+ * mapped call. The hook reads `cwd` only to add a resolved form of the path to the span
+ * (`normalize.ts`), never into the decision log.
  */
 
 import { capEnd, capMiddle, lengthIfCut, safeStringify } from "./mapper.js";

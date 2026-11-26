@@ -1,6 +1,7 @@
 import {
   createCompiledFileGlobMatcher,
   effectiveChannel,
+  type FileGlobMode,
   matchDetailContains,
   matchDetailMatches,
   matchFileGlob,
@@ -18,6 +19,7 @@ export type { EvaluationResult, SpanContext } from "./types.js";
 function evaluateCondition(
   condition: MatchCondition,
   span: Span,
+  fileMode: FileGlobMode = "any",
 ): { matched: boolean; reason: string } {
   const kindResult = matchKind(condition.kind, span);
   if (!kindResult.matched) {
@@ -59,7 +61,7 @@ function evaluateCondition(
   }
 
   if (condition.file_glob !== undefined) {
-    const globResult = matchFileGlob(condition.file_glob, span);
+    const globResult = matchFileGlob(condition.file_glob, span, fileMode);
     if (!globResult.matched) {
       return globResult;
     }
@@ -86,6 +88,7 @@ function evaluateConditionCompiled(
   condition: MatchCondition,
   span: Span,
   compiledGlobMatcher?: (span: Span) => { matched: boolean; reason: string },
+  fileMode: FileGlobMode = "any",
 ): { matched: boolean; reason: string } {
   const kindResult = matchKind(condition.kind, span);
   if (!kindResult.matched) {
@@ -134,7 +137,7 @@ function evaluateConditionCompiled(
       }
       reasons.push(globResult.reason);
     } else {
-      const globResult = matchFileGlob(condition.file_glob, span);
+      const globResult = matchFileGlob(condition.file_glob, span, fileMode);
       if (!globResult.matched) {
         return globResult;
       }
@@ -201,7 +204,7 @@ function evaluateMatch(
 
   if (match.none_of !== undefined) {
     for (const condition of match.none_of) {
-      const result = evaluateCondition(condition, span);
+      const result = evaluateCondition(condition, span, "all");
       if (result.matched) {
         return {
           matched: false,
@@ -242,19 +245,21 @@ export function compilePolicy(predicate: PolicyPredicate): CompiledEvaluator {
 
   function compileConditions(
     conditions: readonly MatchCondition[] | undefined,
+    fileMode: FileGlobMode,
   ): CompiledCondition[] | undefined {
     if (conditions === undefined) return undefined;
     return conditions.map((condition) => {
       const globMatcher = condition.file_glob
-        ? createCompiledFileGlobMatcher(condition.file_glob)
+        ? createCompiledFileGlobMatcher(condition.file_glob, fileMode)
         : undefined;
       return globMatcher ? { condition, globMatcher } : { condition };
     });
   }
 
-  const compiledAnyOf = compileConditions(predicate.match.any_of);
-  const compiledAllOf = compileConditions(predicate.match.all_of);
-  const compiledNoneOf = compileConditions(predicate.match.none_of);
+  const compiledAnyOf = compileConditions(predicate.match.any_of, "any");
+  const compiledAllOf = compileConditions(predicate.match.all_of, "any");
+
+  const compiledNoneOf = compileConditions(predicate.match.none_of, "all");
   const scope = predicate.scope;
 
   return (context: SpanContext): EvaluationResult => {
@@ -300,7 +305,7 @@ export function compilePolicy(predicate: PolicyPredicate): CompiledEvaluator {
 
     if (compiledNoneOf !== undefined) {
       for (const { condition, globMatcher } of compiledNoneOf) {
-        const result = evaluateConditionCompiled(condition, span, globMatcher);
+        const result = evaluateConditionCompiled(condition, span, globMatcher, "all");
         if (result.matched) {
           return {
             matched: false,

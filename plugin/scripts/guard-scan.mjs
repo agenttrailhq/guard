@@ -8182,6 +8182,181 @@ var import_picomatch2 = __toESM(require_picomatch2(), 1);
 
 // src/engine/matchers.ts
 var import_picomatch = __toESM(require_picomatch2(), 1);
+
+// src/engine/path-forms.ts
+var FILE_PATH_RESOLVED_ATTR = "file_path_resolved";
+var FILE_PATH = "file_path";
+function isDriveLetter(code) {
+  return code >= 65 && code <= 90 || code >= 97 && code <= 122;
+}
+function hasDriveRoot(s) {
+  return s.length >= 3 && isDriveLetter(s.charCodeAt(0)) && s[1] === ":" && s[2] === "/";
+}
+function hasDriveRelative(s) {
+  return s.length >= 2 && isDriveLetter(s.charCodeAt(0)) && s[1] === ":" && s[2] !== "/";
+}
+function separators(input) {
+  const s = input.replace(/\\/g, "/");
+  if (s.startsWith("//?/") || s.startsWith("//./") || s.startsWith("/??/")) {
+    const rest = s.slice(4);
+    if (rest.slice(0, 4).toLowerCase() === "unc/") return `//${rest.slice(4)}`;
+    return rest;
+  }
+  return s;
+}
+function rootOf(s, uncReading) {
+  if (hasDriveRoot(s)) return { kind: "absolute", prefix: s.slice(0, 3), rest: s.slice(3) };
+  if (hasDriveRelative(s)) return { kind: "open", prefix: s.slice(0, 2), rest: s.slice(2) };
+  if (uncReading && s.startsWith("//") && s[2] !== "/") {
+    const body = s.slice(2);
+    const first = body.indexOf("/");
+    const server = first === -1 ? body : body.slice(0, first);
+    if (server !== "") {
+      const afterServer = first === -1 ? "" : body.slice(first + 1);
+      const second = afterServer.indexOf("/");
+      const share = second === -1 ? afterServer : afterServer.slice(0, second);
+      const rest = second === -1 ? "" : afterServer.slice(second + 1);
+      if (share === "" || share === "." || share === "..") {
+        return { kind: "absolute", prefix: `//${server}`, rest: afterServer };
+      }
+      return { kind: "absolute", prefix: `//${server}/${share}`, rest };
+    }
+  }
+  if (s.startsWith("/")) return { kind: "absolute", prefix: "/", rest: s.slice(1) };
+  if (s === "~" || s.startsWith("~/")) return { kind: "open", prefix: "~", rest: s.slice(2) };
+  return { kind: "open", prefix: "", rest: s };
+}
+function windowsSegment(segment2, manyDots) {
+  const colon = segment2.indexOf(":");
+  const name = colon === -1 ? segment2 : segment2.slice(0, colon);
+  let end = name.length;
+  while (end > 0 && (name[end - 1] === "." || name[end - 1] === " ")) end -= 1;
+  if (end > 0) return name.slice(0, end);
+  let dots = 0;
+  while (dots < name.length && name[dots] === ".") dots += 1;
+  if (dots === 2) return "..";
+  return dots > 2 ? manyDots : ".";
+}
+function resolveSegments(root, windows) {
+  const stack = [];
+  let start = 0;
+  const rest = root.rest;
+  for (let i = 0; i <= rest.length; i += 1) {
+    if (i !== rest.length && rest[i] !== "/") continue;
+    const raw = rest.slice(start, i);
+    start = i + 1;
+    const segment2 = windows !== false && raw !== "" ? windowsSegment(raw, windows) : raw;
+    if (segment2 === "" || segment2 === ".") continue;
+    if (segment2 === "..") {
+      const top = stack[stack.length - 1];
+      if (top !== void 0 && top !== "..") stack.pop();
+      else if (root.kind === "open") stack.push("..");
+      continue;
+    }
+    stack.push(segment2);
+  }
+  const joined = stack.join("/");
+  const { prefix } = root;
+  if (prefix === "") return joined === "" ? "." : joined;
+  if (prefix.endsWith("/")) return prefix + joined;
+  if (prefix === "~" || prefix.startsWith("//"))
+    return joined === "" ? prefix : `${prefix}/${joined}`;
+  return prefix + joined;
+}
+function lexicalPath(input) {
+  if (input === "") return input;
+  return resolveSegments(rootOf(separators(input), true), false);
+}
+function lexicalForms(input) {
+  if (input === "") return [];
+  const s = separators(input);
+  const roots = [rootOf(s, true)];
+  if (s.startsWith("//") && s[2] !== "/") roots.push(rootOf(s, false));
+  if (hasDriveRelative(s)) {
+    roots.push({ kind: "absolute", prefix: `${s.slice(0, 2)}/`, rest: s.slice(2) });
+  }
+  if (s[0] === "/" && hasDriveRoot(s.slice(1))) {
+    roots.push({ kind: "absolute", prefix: s.slice(1, 4), rest: s.slice(4) });
+  }
+  const admin = adminShare(s);
+  if (admin !== void 0) roots.push(admin);
+  const out = [];
+  for (const root of roots) out.push(resolveSegments(root, false));
+  for (const root of roots) out.push(resolveSegments(root, ".."));
+  for (const root of roots) out.push(resolveSegments(root, "."));
+  return [...new Set(out)];
+}
+function adminShare(s) {
+  if (!s.startsWith("//") || s[2] === "/") return void 0;
+  const slash = s.indexOf("/", 2);
+  if (slash === -1) return void 0;
+  const share = s.slice(slash + 1, slash + 3);
+  const after = s[slash + 3];
+  if (share.length !== 2 || !isDriveLetter(share.charCodeAt(0)) || share[1] !== "$")
+    return void 0;
+  if (after !== void 0 && after !== "/") return void 0;
+  return { kind: "absolute", prefix: `${share[0]}:/`, rest: s.slice(slash + 4) };
+}
+function isAbsolute(p) {
+  return p.startsWith("/") || hasDriveRoot(p);
+}
+var HOME_PREFIXES = [["$", "{HOME}"].join(""), "$HOME", "~"];
+function resolvePath(raw, context) {
+  if (raw === "") return void 0;
+  const s = separators(raw);
+  const home = context.home !== void 0 ? separators(context.home) : "";
+  for (const prefix of HOME_PREFIXES) {
+    if (s === prefix || s.startsWith(`${prefix}/`)) {
+      if (!isAbsolute(home)) return void 0;
+      return lexicalPath(`${home}/${s.slice(prefix.length)}`);
+    }
+  }
+  if (isAbsolute(s) || s.startsWith("//") || hasDriveRelative(s)) return void 0;
+  const cwd = context.cwd !== void 0 ? separators(context.cwd) : "";
+  if (!isAbsolute(cwd)) return void 0;
+  return lexicalPath(`${cwd}/${s}`);
+}
+function resolvedPathAttribute(raw, context, cap) {
+  const resolved = resolvePath(raw, context);
+  if (resolved === void 0 || resolved.length > cap) return void 0;
+  return resolved === lexicalPath(raw) ? void 0 : resolved;
+}
+function isRelativeGlob(pattern) {
+  if (pattern.includes("\\")) return false;
+  const segments = pattern.split("/");
+  const first = segments[0] ?? "";
+  if (first === "" || first === "." || first === "..") return false;
+  for (let i = 0; i < first.length; i += 1) {
+    const c = first.charCodeAt(i);
+    const plain = c >= 48 && c <= 57 || isDriveLetter(c) || c === 95 || c === 45 || c === 46;
+    if (!plain) return false;
+  }
+  return !segments.some((segment2) => segment2 === "." || segment2 === "..");
+}
+function isAbsoluteForm(form) {
+  return form.startsWith("/") || hasDriveRoot(form);
+}
+function exemptionForms(forms, pattern) {
+  if (!isRelativeGlob(pattern)) return forms;
+  return forms.filter((form, index) => index === 0 || !isAbsoluteForm(form));
+}
+var FORMS_CACHE = /* @__PURE__ */ new WeakMap();
+function pathForms(attributes) {
+  const cached = FORMS_CACHE.get(attributes);
+  if (cached !== void 0) return cached;
+  const filePath = attributes[FILE_PATH];
+  let forms = [];
+  if (filePath !== void 0) {
+    const all = [filePath, ...lexicalForms(filePath)];
+    const resolved = attributes[FILE_PATH_RESOLVED_ATTR];
+    if (resolved !== void 0 && resolved !== "") all.push(resolved, ...lexicalForms(resolved));
+    forms = [...new Set(all)];
+  }
+  FORMS_CACHE.set(attributes, forms);
+  return forms;
+}
+
+// src/engine/matchers.ts
 var DETAIL_ATTR = "detail";
 var MCP_INPUT_ATTR = "mcp_input";
 var FILE_PATH_ATTR = "file_path";
@@ -8246,18 +8421,30 @@ function matchDetailMatches(patterns, span, channel = "command") {
     reason: `detail_matches: no pattern of ${patterns.length} matched`
   };
 }
-function matchFileGlob(pattern, span) {
+function matchForms(isMatch, pattern, span, mode) {
+  const all = pathForms(span.attributes);
+  if (all.length === 0) return void 0;
+  const forms = mode === "any" ? all : exemptionForms(all, pattern);
+  const test = (path) => isMatch(path) === true;
+  return mode === "any" ? forms.some(test) : forms.every(test);
+}
+function fileGlobResult(pattern, span, matched) {
+  if (matched === void 0) {
+    return { matched: false, reason: "file_glob: file_path attribute missing" };
+  }
   const filePath = span.attributes[FILE_PATH_ATTR];
-  if (filePath === void 0) {
+  return {
+    matched,
+    reason: matched ? `file_glob: "${pattern}" matched "${filePath}"` : `file_glob: "${pattern}" did not match "${filePath}"`
+  };
+}
+function matchFileGlob(pattern, span, mode = "any") {
+  if (span.attributes[FILE_PATH_ATTR] === void 0) {
     return { matched: false, reason: "file_glob: file_path attribute missing" };
   }
   try {
     const isMatch = (0, import_picomatch.default)(pattern, FILE_GLOB_OPTIONS);
-    const matched = isMatch(filePath);
-    return {
-      matched,
-      reason: matched ? `file_glob: "${pattern}" matched "${filePath}"` : `file_glob: "${pattern}" did not match "${filePath}"`
-    };
+    return fileGlobResult(pattern, span, matchForms(isMatch, pattern, span, mode));
   } catch {
     return {
       matched: false,
@@ -8335,7 +8522,7 @@ function createCompiledDetailMatcher(pattern) {
   const cached = compiled;
   return cached === null ? () => false : (detail) => cached.test(detail);
 }
-function createCompiledFileGlobMatcher(pattern) {
+function createCompiledFileGlobMatcher(pattern, mode = "any") {
   let matcher = compiledGlobCache.get(pattern);
   if (!matcher) {
     try {
@@ -8349,17 +8536,7 @@ function createCompiledFileGlobMatcher(pattern) {
     }
   }
   const cachedMatcher = matcher;
-  return (span) => {
-    const filePath = span.attributes[FILE_PATH_ATTR];
-    if (filePath === void 0) {
-      return { matched: false, reason: "file_glob: file_path attribute missing" };
-    }
-    const matched = cachedMatcher(filePath);
-    return {
-      matched,
-      reason: matched ? `file_glob: "${pattern}" matched "${filePath}"` : `file_glob: "${pattern}" did not match "${filePath}"`
-    };
-  };
+  return (span) => fileGlobResult(pattern, span, matchForms(cachedMatcher, pattern, span, mode));
 }
 
 // src/engine/verdict.ts
@@ -8414,19 +8591,29 @@ function compileAllowlist(entries2) {
   const compiled = [];
   for (const entry of entries2) {
     try {
-      compiled.push({ rule: entry.guardrail, isMatch: (0, import_picomatch2.default)(entry.pattern, { dot: true }) });
+      compiled.push({
+        rule: entry.guardrail,
+        pattern: entry.pattern,
+        isMatch: (0, import_picomatch2.default)(entry.pattern, { dot: true })
+      });
     } catch {
     }
   }
   return { entries: compiled };
 }
-function isAllowlisted(ruleId, mapped, allowlist) {
+function isAllowlisted(ruleId, mapped, context, allowlist) {
   for (const entry of allowlist.entries) {
     if (entry.rule !== ruleId) continue;
     const command = mapped.args.full_command;
     const filePath = mapped.args.file_path;
     if (command !== void 0 && entry.isMatch(command)) return true;
-    if (filePath !== void 0 && entry.isMatch(filePath)) return true;
+    if (filePath !== void 0) {
+      const forms = [
+        filePath,
+        ...exemptionForms(pathForms(context.span.attributes), entry.pattern)
+      ];
+      if (forms.every((form) => entry.isMatch(form) === true)) return true;
+    }
   }
   return false;
 }
@@ -8467,7 +8654,7 @@ function evaluateRules(rules12, context, mapped, allowlist) {
   const matches = [];
   const titles = /* @__PURE__ */ new Map();
   for (const entry of rules12) {
-    if (isAllowlisted(entry.rule.id, mapped, allowlist)) continue;
+    if (isAllowlisted(entry.rule.id, mapped, context, allowlist)) continue;
     let matched = false;
     try {
       matched = entry.evaluate(context).matched;
@@ -9762,13 +9949,15 @@ function normalizeSpanAttributes(attributes) {
   }
   return attributes;
 }
-function buildGuardSpanContext(mapped) {
+function buildGuardSpanContext(mapped, where) {
   const attributes = {};
   if (mapped.args.full_command !== void 0) {
     attributes.full_command = mapped.args.full_command;
   }
   if (mapped.args.file_path !== void 0) {
     attributes.file_path = normalizePathSeparators(mapped.args.file_path);
+    const resolved = where === void 0 ? void 0 : resolvedPathAttribute(mapped.args.file_path, where, MAX_DETAIL_LEN);
+    if (resolved !== void 0) attributes[FILE_PATH_RESOLVED_ATTR] = resolved;
   }
   const span = {
     id: NIL_UUID,
@@ -14704,7 +14893,7 @@ function endpointsLocal(args2) {
 }
 
 // src/core/verify/repos.ts
-import { dirname, isAbsolute, join as join3 } from "path";
+import { dirname, isAbsolute as isAbsolute2, join as join3 } from "path";
 function rootCache() {
   return /* @__PURE__ */ new Map();
 }
@@ -14722,7 +14911,7 @@ async function repoRoot(io, dir, cache) {
   return outcome;
 }
 function placed(path, cwd) {
-  if (isAbsolute(path)) return path;
+  if (isAbsolute2(path)) return path;
   return cwd === null || cwd === "" ? void 0 : join3(cwd, path);
 }
 async function readRepoFile(io, path, cache) {
@@ -17190,7 +17379,7 @@ function isUnder(path, roots) {
 }
 
 // src/core/verify/repo-probe.ts
-import { isAbsolute as isAbsolute2, join as join4, relative, resolve, sep } from "path";
+import { isAbsolute as isAbsolute3, join as join4, relative, resolve, sep } from "path";
 function isFailure(value) {
   return typeof value === "object" && value !== null && "failed" in value;
 }
@@ -17199,7 +17388,7 @@ function isCommitId(value) {
 }
 function literalPathspec(folder, path) {
   const rel = relative(folder, path);
-  if (rel.startsWith("..") || isAbsolute2(rel)) return void 0;
+  if (rel.startsWith("..") || isAbsolute3(rel)) return void 0;
   const posix2 = rel === "" ? "." : rel.split(sep).join("/");
   if (posix2.startsWith("-") || /[\0\r\n\\]/.test(posix2)) return void 0;
   return `:(literal)${posix2}`;
@@ -17264,7 +17453,7 @@ var RepoProbe = class {
         if (!out.ok) return { failed: out.reason };
         const path = out.stdout.trim();
         if (path === "") return { failed: "failed" };
-        return isAbsolute2(path) ? path : resolve(root, path);
+        return isAbsolute3(path) ? path : resolve(root, path);
       })();
       this.#hooks.set(root, answer);
     }
@@ -17307,7 +17496,7 @@ var RepoProbe = class {
     if (!common.ok) return { failed: common.reason };
     const dir = common.stdout.trim();
     if (dir === "") return { failed: "failed" };
-    const standard = resolve(isAbsolute2(dir) ? dir : resolve(root, dir), "hooks");
+    const standard = resolve(isAbsolute3(dir) ? dir : resolve(root, dir), "hooks");
     return resolve(folder) === standard ? "none" : "off";
   }
   /** The full id of a commit that is still in the object store, or `null` when it is not. */
@@ -17409,7 +17598,7 @@ function entries(text2) {
 }
 
 // src/core/verify/shell-calls.ts
-import { isAbsolute as isAbsolute3, join as join5, resolve as resolve2 } from "path";
+import { isAbsolute as isAbsolute4, join as join5, resolve as resolve2 } from "path";
 var EDIT_TOOLS = /* @__PURE__ */ new Set(["Edit", "Write", "MultiEdit", "NotebookEdit"]);
 var NOT_WRITTEN_KEYS = /* @__PURE__ */ new Set([
   "file_path",
@@ -17433,12 +17622,12 @@ function writtenTexts(value, out = [], depth = 0) {
   }
   return out;
 }
-function resolvePath(folder, path, home) {
+function resolvePath2(folder, path, home) {
   if (path === "") return void 0;
   if (path === "~") return home;
   if (path.startsWith("~/")) return join5(home, path.slice(2));
   if (path.startsWith("~")) return void 0;
-  if (isAbsolute3(path)) return resolve2(path);
+  if (isAbsolute4(path)) return resolve2(path);
   if (folder === void 0) return void 0;
   return resolve2(folder, path);
 }
@@ -17461,7 +17650,7 @@ function walkCommands(text2, cwd, home, visit, depth = 0) {
       }
     }
     const change = directoryChange(item.words);
-    if (change.kind === "to") folder = resolvePath(folder, change.path, home);
+    if (change.kind === "to") folder = resolvePath2(folder, change.path, home);
     else if (change.kind === "home") folder = home;
     else if (change.kind === "unknown") folder = void 0;
   }
@@ -17525,12 +17714,12 @@ function gitFolder(folder, options, home) {
   let at2 = folder;
   for (const option of options) {
     if (option.expands) return void 0;
-    at2 = resolvePath(at2, option.value, home);
+    at2 = resolvePath2(at2, option.value, home);
   }
   return at2;
 }
 function sessionFolder(cwd) {
-  return cwd !== null && cwd !== "" && isAbsolute3(cwd) ? resolve2(cwd) : void 0;
+  return cwd !== null && cwd !== "" && isAbsolute4(cwd) ? resolve2(cwd) : void 0;
 }
 function folderAfter(text2, from, home) {
   let folder = from;
@@ -17543,7 +17732,7 @@ function folderAfter(text2, from, home) {
       const change = directoryChange(item.words);
       if (change.kind === "none") continue;
       changed = true;
-      if (change.kind === "to") folder = resolvePath(folder, change.path, home);
+      if (change.kind === "to") folder = resolvePath2(folder, change.path, home);
       else if (change.kind === "home") folder = home;
       else folder = void 0;
     }
@@ -17553,7 +17742,7 @@ function folderAfter(text2, from, home) {
 var CWD_RESET = /Shell cwd was reset to (\S[^\n]*?)\s*$/m;
 function claudeFolderAfter(agent, mapped, command, result, from, home) {
   const reset = result === void 0 ? void 0 : CWD_RESET.exec(result.content)?.[1];
-  if (reset !== void 0) return isAbsolute3(reset) ? resolve2(reset) : void 0;
+  if (reset !== void 0) return isAbsolute4(reset) ? resolve2(reset) : void 0;
   const after = folderAfter(command, from, home);
   if (after.kind === "same") return from;
   const verdict2 = runVerdict(agent, mapped, result, () => true);
@@ -17588,7 +17777,7 @@ function readCalls2(corpus, home) {
         toolUseCalls(agent, use).forEach((call, callIndex) => {
           if (call.kind !== "action") return;
           const workdir = workdirs[callIndex];
-          const cwd = agent === "codex" ? workdir === void 0 ? start : resolvePath(start, workdir, home) : current;
+          const cwd = agent === "codex" ? workdir === void 0 ? start : resolvePath2(start, workdir, home) : current;
           for (const mapped of call.candidates) {
             id += 1;
             const forms = hidingFormsOf(mapped);
@@ -17619,7 +17808,7 @@ function readCalls2(corpus, home) {
             }
             const file2 = mapped.args.file_path;
             if (!EDIT_TOOLS.has(mapped.tool) || file2 === void 0) continue;
-            const path = resolvePath(cwd, file2, home);
+            const path = resolvePath2(cwd, file2, home);
             if (path === void 0) continue;
             if (!isResultBackedRun(runVerdict(agent, mapped, result, () => true))) continue;
             const texts = agent === "codex" ? [] : writtenTexts(use.input);
@@ -17646,7 +17835,7 @@ function redirectWrites(agent, call, home) {
     walkCommands(text2, call.cwd, home, (command, folder) => {
       for (const target of command.writes) {
         if (target.expands) continue;
-        const path = resolvePath(folder, target.value, home);
+        const path = resolvePath2(folder, target.value, home);
         if (path !== void 0 && !path.startsWith("/dev/")) out.push(path);
       }
     });
@@ -17858,7 +18047,7 @@ async function classify2(context, target) {
   if (word.globAt >= 0 && /(^|\/)\.\.(\/|$)/.test(word.value.slice(word.globAt))) {
     return { kind: "could-not-check" };
   }
-  const path = resolvePath(target.folder, literalPart(word.value, word.globAt), home);
+  const path = resolvePath2(target.folder, literalPart(word.value, word.globAt), home);
   if (path === void 0) return { kind: "could-not-check" };
   if (path === home || path === sep2 || isUnder(home, [path])) return { kind: "home-or-above" };
   const byName = isUnder(path, context.scratchRoots) || namesScratch(path, target.folder);
@@ -18592,7 +18781,7 @@ var copies = (text2, cwd, home) => {
   const out = [];
   const add = (folder, word) => {
     if (word === void 0 || word.expands) return;
-    const path = resolvePath(folder, word.value, home);
+    const path = resolvePath2(folder, word.value, home);
     if (path !== void 0) out.push(path);
   };
   walkCommands(text2, cwd, home, (command, folder) => {
@@ -18798,7 +18987,7 @@ async function checkDiscards(context, judged, own) {
         continue;
       }
       const targets = found.paths.map(
-        (p) => p.expands ? void 0 : resolvePath(found.folder, p.value, log.home)
+        (p) => p.expands ? void 0 : resolvePath2(found.folder, p.value, log.home)
       );
       for (const target of targets) {
         paths += 1;
@@ -22512,7 +22701,7 @@ function matchScope(scope, context) {
 }
 
 // src/engine/evaluator.ts
-function evaluateConditionCompiled(condition, span, compiledGlobMatcher) {
+function evaluateConditionCompiled(condition, span, compiledGlobMatcher, fileMode = "any") {
   const kindResult = matchKind(condition.kind, span);
   if (!kindResult.matched) {
     return kindResult;
@@ -22555,7 +22744,7 @@ function evaluateConditionCompiled(condition, span, compiledGlobMatcher) {
       }
       reasons.push(globResult.reason);
     } else {
-      const globResult = matchFileGlob(condition.file_glob, span);
+      const globResult = matchFileGlob(condition.file_glob, span, fileMode);
       if (!globResult.matched) {
         return globResult;
       }
@@ -22577,16 +22766,16 @@ function evaluateConditionCompiled(condition, span, compiledGlobMatcher) {
   };
 }
 function compilePolicy(predicate) {
-  function compileConditions(conditions) {
+  function compileConditions(conditions, fileMode) {
     if (conditions === void 0) return void 0;
     return conditions.map((condition) => {
-      const globMatcher = condition.file_glob ? createCompiledFileGlobMatcher(condition.file_glob) : void 0;
+      const globMatcher = condition.file_glob ? createCompiledFileGlobMatcher(condition.file_glob, fileMode) : void 0;
       return globMatcher ? { condition, globMatcher } : { condition };
     });
   }
-  const compiledAnyOf = compileConditions(predicate.match.any_of);
-  const compiledAllOf = compileConditions(predicate.match.all_of);
-  const compiledNoneOf = compileConditions(predicate.match.none_of);
+  const compiledAnyOf = compileConditions(predicate.match.any_of, "any");
+  const compiledAllOf = compileConditions(predicate.match.all_of, "any");
+  const compiledNoneOf = compileConditions(predicate.match.none_of, "all");
   const scope = predicate.scope;
   return (context) => {
     const scopeResult = matchScope(scope, context);
@@ -22624,7 +22813,7 @@ function compilePolicy(predicate) {
     }
     if (compiledNoneOf !== void 0) {
       for (const { condition, globMatcher } of compiledNoneOf) {
-        const result = evaluateConditionCompiled(condition, span, globMatcher);
+        const result = evaluateConditionCompiled(condition, span, globMatcher, "all");
         if (result.matched) {
           return {
             matched: false,
@@ -22913,7 +23102,7 @@ function sessionBytes(io, file2) {
 // src/core/transcript/scan.ts
 import { readdirSync, statSync } from "fs";
 import { homedir } from "os";
-import { basename as basename3, isAbsolute as isAbsolute4, join as join9, relative as relative3 } from "path";
+import { basename as basename3, isAbsolute as isAbsolute5, join as join9, relative as relative3 } from "path";
 function defaultProjectsRoot(home = homedir()) {
   return join9(home, ".claude", "projects");
 }
@@ -22944,7 +23133,7 @@ async function sniff(path, source) {
 function isSessionInProject(cwd, projectRoot) {
   if (cwd === null) return false;
   const rel = relative3(projectRoot, cwd);
-  return rel === "" || !rel.startsWith("..") && !isAbsolute4(rel);
+  return rel === "" || !rel.startsWith("..") && !isAbsolute5(rel);
 }
 async function scanTranscripts(projectsRoot = defaultProjectsRoot(), projectRoot, io = {}) {
   const readdir = io.readdir ?? ((p) => readdirSync(p));
@@ -25540,7 +25729,7 @@ import {
   realpathSync,
   statSync as statSync3
 } from "fs";
-import { isAbsolute as isAbsolute5, join as join12, posix, relative as relative4, win32 } from "path";
+import { isAbsolute as isAbsolute6, join as join12, posix, relative as relative4, win32 } from "path";
 var SHA2 = { slot: "sha" };
 var LITERAL_PATH = { slot: "literal-path" };
 var GIT_ALLOW_LIST = [
@@ -25685,7 +25874,7 @@ function watchedInPs(stdout) {
 function watchedInTasklist(stdout) {
   return watchedIn(stdout.split(/\r?\n/), (line2) => /^"([^"]*)"/.exec(line2.trim())?.[1] ?? "");
 }
-function isInside(root, path, paths = { relative: relative4, isAbsolute: isAbsolute5 }) {
+function isInside(root, path, paths = { relative: relative4, isAbsolute: isAbsolute6 }) {
   const rel = paths.relative(root, path);
   return rel !== "" && !rel.startsWith("..") && !paths.isAbsolute(rel);
 }

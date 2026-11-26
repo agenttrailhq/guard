@@ -41,9 +41,11 @@
  * labelled `mcp__cursor__<tool>`. The input is serialized and middle-capped, as `mapper.ts`
  * treats `mcp__*`, with the same serialization traps.
  *
- * ── Nothing else in the payload is read ──────────────────────────────────────
+ * ── Nothing else in the payload is read here ─────────────────────────────────
  * Not `cwd`, `tool_use_id`, `sandbox`, the workspace folders or the account. A relative
- * path stays relative: it is never resolved against a directory.
+ * path stays relative in the mapped call. The hook reads `cwd` (when it is not `""`) only
+ * to add a resolved form of the path to the span (`normalize.ts`), never into a rule's
+ * input otherwise or into the decision log.
  */
 
 import {
