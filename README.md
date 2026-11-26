@@ -141,7 +141,8 @@ carries on as normal.
 Guard uses rule matching, not an LLM reviewing your code. It can stop a matching call only
 when your agent sends it through the installed hooks, it does not inspect file contents, and
 it does not guarantee that every dangerous action will be caught. On an internal error it
-**fails open**: your agent's normal permission flow continues. Read the
+**fails open**: your agent's normal permission flow continues. A check that does not finish
+within 6 seconds is not let through: Guard asks for your approval instead. Read the
 [coverage and runtime limits](#what-the-guard-does-not-do) before relying on it.
 
 ## See AgentTrail Guard in action
@@ -579,8 +580,19 @@ that bypass those hooks or detect dangerous content inside a written file. In sh
 - It reads the first 8,192 characters of a command (the start and end of an MCP input). A
   longer call always needs your approval, because the rest of it was not checked.
 - It does not see what the agent fetches from the web.
-- It **fails open**. A crash, a timeout, or bad output lets the call through to your
-  agent's normal permission flow.
+- It **fails open** on its own errors. A crash inside the check or bad output lets the call
+  through to your agent's normal permission flow.
+- It **does not fail open on time**. A check that has not finished after 6 seconds, for
+  example a guardrail whose pattern is slow on the input, asks for your approval (on Codex,
+  it is blocked). The check runs on its own thread, so a slow pattern cannot stop the answer.
+- When the hook cannot run at all, or is stuck in a file read the system never completes,
+  your agent's own failure handling decides. Claude Code 2.1.295 or later blocks the call,
+  because Guard's plugin sets `onFailure: "block"` (older Claude Code ignores the setting
+  and lets the call through). Cursor and Codex let it through. When a read is stuck, Guard
+  first answers, then ends itself, so the agent hears from it in about 6 seconds rather
+  than at its own timeout.
+- On Codex, when Guard could not read the call at all and the event was
+  `PermissionRequest`, the action is not run unless Codex's automatic reviewer approves it.
 - An `ask` can be skipped by your agent's own allow settings, and becomes a block on Codex.
 - Redaction in the log and report is good, not complete.
 
@@ -800,9 +812,10 @@ it can ask for, and what happens before you approve it. Everything below is meas
 - **Every failure lets the action through, and there is no switch for that.** A crash,
   a non-zero exit other than 2, output that is not JSON, one field Codex does not
   recognise, or a hook that runs past its timeout: each is recorded as a failed hook
-  run and the tool call proceeds. Codex offers no fail-closed setting, so a guard that
-  cannot answer is a guard that is not there. It is also why the hook answers with
-  exactly three fields and waits on nothing.
+  run and the tool call proceeds. Codex's released builds offer no fail-closed setting, so
+  a guard that cannot answer is a guard that is not there. It is also why the hook answers
+  with exactly three fields, and why a check that runs long is answered with a block at 6
+  seconds, well inside the entry's 10-second timeout.
 - **A warning is invisible in `codex exec`.** In Codex's terminal UI a warning shows as
   a hook line above the command. In a scripted `codex exec` run the text appears
   nowhere at all: only that the hook completed. The match is still written to
@@ -1349,6 +1362,8 @@ build if it stops holding:
    signal and overrides the JSON decision, including `allow`. In Cursor and in Codex,
    exit 2 blocks the call as a deny would. The hook bundle contains no `process.exit`
    at all, so this is structural rather than a pattern someone remembered to grep for.
+   The one other way it ends is by killing itself, after it has answered, and only when a
+   file read it started never returns, which would otherwise keep the process alive.
 2. **It writes at most one JSON object to stdout and nothing else.**
    - For Claude Code: exactly one JSON object when it blocks, asks or warns, and no
      output when nothing matches. Output that does not start `{` and end `}` is
@@ -1378,6 +1393,12 @@ build if it stops holding:
      output and a timeout, and has no setting that changes that.
 
    If our code has a bug, your command goes through the app's normal permission flow.
+
+   Running out of time is the exception. The check runs on a worker thread, and the
+   hook's main thread answers at 6 seconds if the check has not: an `ask` in Claude Code,
+   the same refusal or `ask` Guard gives an approval guardrail in Cursor, and a block in
+   Codex. A call Guard does not check at all keeps its usual no-opinion answer. Where
+   AgentTrail OS enforces the project, Guard stays silent only once it has confirmed that.
 
 </details>
 

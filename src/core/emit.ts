@@ -64,6 +64,11 @@ export function buildHookOutput(decision: PermissionDecision, reason: string): s
 /** Somewhere to put one line of text. Injectable so tests never touch real stdio. */
 export interface StdoutSink {
   write(text: string): void;
+  /**
+   * Told the answer once it is decided, including an answer that writes nothing. The hook's
+   * worker thread uses it to hand its one answer to the main thread, which writes it.
+   */
+  answered?(text: string): void;
 }
 
 /**
@@ -81,6 +86,7 @@ export function createEmitter(stdout: StdoutSink): {
       if (done) return;
       done = true;
       const text = buildHookOutput(decision, reason);
+      stdout.answered?.(text);
       if (text !== "") stdout.write(text);
     },
     hasEmitted() {

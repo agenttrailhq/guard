@@ -168,6 +168,7 @@ export function createCodexEmitter(stdout: StdoutSink): {
     emit(output) {
       if (done) return;
       done = true;
+      stdout.answered?.(output);
       if (output !== NO_ANSWER) stdout.write(output);
     },
     hasEmitted() {

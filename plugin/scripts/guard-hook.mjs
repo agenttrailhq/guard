@@ -1774,9 +1774,6 @@ var require_picomatch2 = __commonJS({
   }
 });
 
-// src/hook-entry.ts
-import { realpathSync } from "fs";
-
 // src/core/types.ts
 var AGENTS = ["claude", "cursor", "codex"];
 
@@ -1849,6 +1846,10 @@ function detectAgent(payload) {
   if (isClaudeCodePayload(payload)) return "claude";
   return void 0;
 }
+
+// src/hook-run.ts
+import { homedir as homedir2 } from "os";
+import { Worker } from "worker_threads";
 
 // node_modules/@agenttrail/guardrails/dist/chunk-52QK2KVY.js
 var SHELL_AND_MCP = "{Bash,PowerShell,mcp__*}";
@@ -7477,8 +7478,17 @@ function nonEmpty(value) {
 function isAbsoluteGlob(glob) {
   return /^(?:[\\/]|[A-Za-z]:[\\/])/.test(glob);
 }
+function trimTrailingSeparators(value) {
+  let end = value.length;
+  while (end > 0) {
+    const c = value.charCodeAt(end - 1);
+    if (c !== 47 && c !== 92) break;
+    end -= 1;
+  }
+  return end === value.length ? value : value.slice(0, end);
+}
 function joinSearchPath(dir, glob) {
-  return `${dir.replace(/[\\/]+$/, "")}/${glob}`;
+  return `${trimTrailingSeparators(dir)}/${glob}`;
 }
 function searchPath(tool, input) {
   const field = SEARCH_GLOB_FIELD.get(tool);
@@ -7708,6 +7718,7 @@ function createCodexEmitter(stdout) {
     emit(output) {
       if (done) return;
       done = true;
+      stdout.answered?.(output);
       if (output !== NO_ANSWER) stdout.write(output);
     },
     hasEmitted() {
@@ -7751,6 +7762,13 @@ function codexCallKey(payload) {
   const input = toolInput(payload);
   const action = typeof input.command === "string" ? input.command : safeStringify(input);
   return `codex ${turnId} ${tool} ${capEnd(action)}`;
+}
+function codexCheckedEvent(payload) {
+  const event = codexEvent(payload);
+  if (event === void 0) return void 0;
+  const tool = typeof payload.tool_name === "string" ? payload.tool_name : "";
+  if (tool === "Bash" || tool === "apply_patch" || tool.startsWith("mcp__")) return event;
+  return void 0;
 }
 function mapCodexCall(payload) {
   const event = codexEvent(payload);
@@ -7915,6 +7933,7 @@ function createCursorEmitter(stdout) {
     emit(output) {
       if (done) return;
       done = true;
+      stdout.answered?.(output);
       stdout.write(output);
     },
     hasEmitted() {
@@ -7969,6 +7988,12 @@ function grepCandidates(folder, glob) {
     { tool: "Grep", args: { file_path: joined } },
     { tool: "Grep", args: { file_path: dir } }
   ];
+}
+function cursorCheckedCall(payload) {
+  const event = payload.hook_event_name;
+  if (event === "beforeShellExecution") return { event, tool: "" };
+  if (event !== "preToolUse") return void 0;
+  return { event, tool: typeof payload.tool_name === "string" ? payload.tool_name : "" };
 }
 function mapCursorCall(payload) {
   const event = payload.hook_event_name;
@@ -8034,6 +8059,7 @@ function createEmitter(stdout) {
       if (done) return;
       done = true;
       const text = buildHookOutput(decision, reason);
+      stdout.answered?.(text);
       if (text !== "") stdout.write(text);
     },
     hasEmitted() {
@@ -8044,29 +8070,29 @@ function createEmitter(stdout) {
 
 // src/core/paths.ts
 import { join } from "path";
-function guardDir(homedir2) {
-  return join(homedir2, ".agenttrail", "guard");
+function guardDir(homedir3) {
+  return join(homedir3, ".agenttrail", "guard");
 }
-function configPath(homedir2) {
-  return join(guardDir(homedir2), "config.json");
+function configPath(homedir3) {
+  return join(guardDir(homedir3), "config.json");
 }
-function userRulesPath(homedir2) {
-  return join(guardDir(homedir2), "guardrails.json");
+function userRulesPath(homedir3) {
+  return join(guardDir(homedir3), "guardrails.json");
 }
-function eventsPath(homedir2) {
-  return join(guardDir(homedir2), "events.jsonl");
+function eventsPath(homedir3) {
+  return join(guardDir(homedir3), "events.jsonl");
 }
-function dedupMarkerPath(homedir2) {
-  return join(guardDir(homedir2), ".last-decision");
+function dedupMarkerPath(homedir3) {
+  return join(guardDir(homedir3), ".last-decision");
 }
-function steppedAsideMarkerPath(homedir2) {
-  return join(guardDir(homedir2), ".stepped-aside");
+function steppedAsideMarkerPath(homedir3) {
+  return join(guardDir(homedir3), ".stepped-aside");
 }
-function crashesDir(homedir2) {
-  return join(guardDir(homedir2), "crashes");
+function crashesDir(homedir3) {
+  return join(guardDir(homedir3), "crashes");
 }
-function cursorHooksPath(homedir2) {
-  return join(homedir2, ".cursor", "hooks.json");
+function cursorHooksPath(homedir3) {
+  return join(homedir3, ".cursor", "hooks.json");
 }
 
 // src/core/redact-secrets.ts
@@ -9105,8 +9131,8 @@ function stampOf(record) {
   const ms = Date.parse(ts);
   return Number.isFinite(ms) ? ms : void 0;
 }
-function compact(io2, path, nowMs) {
-  const text = io2.readFile(path);
+function compact(io, path, nowMs) {
+  const text = io.readFile(path);
   if (text === void 0) return;
   const lines = text.split("\n");
   const kept = [];
@@ -9128,10 +9154,10 @@ function compact(io2, path, nowMs) {
     kept.push(line);
   }
   kept.reverse();
-  io2.writeFileAtomic(path, kept.length > 0 ? `${kept.join("\n")}
+  io.writeFileAtomic(path, kept.length > 0 ? `${kept.join("\n")}
 ` : "");
 }
-function createEventRecorder(io2, now = Date.now) {
+function createEventRecorder(io, now = Date.now) {
   return {
     record({ mapped, decision, agent, callId }) {
       try {
@@ -9150,32 +9176,32 @@ function createEventRecorder(io2, now = Date.now) {
           command: scrubText(raw).text,
           agent
         };
-        const home = io2.homedir();
+        const home = io.homedir();
         const byId = callId !== void 0 && callId.length > 0;
         const dedupKey = byId ? `id:${callId}` : `ev:${agent}\0${record.tool}\0${record.decision}\0${ruleId}\0${record.command}`;
         const keyHash = fnv1a(dedupKey);
         const nowMs = now();
-        const marker = readMarker(io2.readFile(dedupMarkerPath(home)));
+        const marker = readMarker(io.readFile(dedupMarkerPath(home)));
         if (marker?.h === keyHash && (byId || nowMs - marker.t <= DEDUP_WINDOW_MS)) return;
-        if (!io2.mkdirp(guardDir(home))) return;
+        if (!io.mkdirp(guardDir(home))) return;
         const path = eventsPath(home);
-        if (!io2.appendFile(path, `${JSON.stringify(record)}
+        if (!io.appendFile(path, `${JSON.stringify(record)}
 `)) return;
-        io2.writeFileAtomic(dedupMarkerPath(home), JSON.stringify({ h: keyHash, t: nowMs }));
-        if (io2.fileSize(path) > MAX_BYTES) compact(io2, path, now());
+        io.writeFileAtomic(dedupMarkerPath(home), JSON.stringify({ h: keyHash, t: nowMs }));
+        if (io.fileSize(path) > MAX_BYTES) compact(io, path, now());
       } catch {
       }
     }
   };
 }
 var STEPPED_ASIDE_INTERVAL_MS = 60 * 60 * 1e3;
-function recordSteppedAside(io2, projectKey, agent, now = Date.now) {
+function recordSteppedAside(io, projectKey, agent, now = Date.now) {
   try {
-    const home = io2.homedir();
+    const home = io.homedir();
     const nowMs = now();
     let marks = {};
     try {
-      const parsed = JSON.parse(io2.readFile(steppedAsideMarkerPath(home)) ?? "{}");
+      const parsed = JSON.parse(io.readFile(steppedAsideMarkerPath(home)) ?? "{}");
       if (parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)) {
         for (const [key, value] of Object.entries(parsed)) {
           if (typeof value === "number" && nowMs - value < MAX_AGE_MS) marks[key] = value;
@@ -9186,7 +9212,7 @@ function recordSteppedAside(io2, projectKey, agent, now = Date.now) {
     }
     const last = marks[projectKey];
     if (last !== void 0 && nowMs - last < STEPPED_ASIDE_INTERVAL_MS) return;
-    if (!io2.mkdirp(guardDir(home))) return;
+    if (!io.mkdirp(guardDir(home))) return;
     const line = JSON.stringify({
       ts: new Date(nowMs).toISOString(),
       event: "stepped-aside",
@@ -9194,11 +9220,11 @@ function recordSteppedAside(io2, projectKey, agent, now = Date.now) {
       agent
     });
     const path = eventsPath(home);
-    if (!io2.appendFile(path, `${line}
+    if (!io.appendFile(path, `${line}
 `)) return;
     marks[projectKey] = nowMs;
-    io2.writeFileAtomic(steppedAsideMarkerPath(home), JSON.stringify(marks));
-    if (io2.fileSize(path) > MAX_BYTES) compact(io2, path, nowMs);
+    io.writeFileAtomic(steppedAsideMarkerPath(home), JSON.stringify(marks));
+    if (io.fileSize(path) > MAX_BYTES) compact(io, path, nowMs);
   } catch {
   }
 }
@@ -9704,23 +9730,26 @@ function parsePayload(input) {
   }
   return parsed;
 }
-function loadRules(io2, deps) {
-  const config = parseConfig(io2.readFile(configPath(io2.homedir())));
-  const userRules = parseUserRulesData(io2.readFile(userRulesPath(io2.homedir())));
+function loadRules(io, deps) {
+  const config = parseConfig(io.readFile(configPath(io.homedir())));
+  const userRules = parseUserRulesData(io.readFile(userRulesPath(io.homedir())));
   const catalog = compileCatalog([...deps.catalog ?? SHIPPED_CATALOG, ...userRules], config);
   const allowlist = compileAllowlist(config.allowlist);
   return { catalog, allowlist };
 }
-async function runHook(io2, deps = {}) {
+async function runHook(io, deps = {}) {
   const launchedAs = deps.agent;
-  const stdout = { write: (text) => io2.writeStdout(text) };
+  const stdout = {
+    write: (text) => io.writeStdout(text),
+    ...deps.onAnswered !== void 0 ? { answered: deps.onAnswered } : {}
+  };
   const claudeEmitter = createEmitter(stdout);
   const cursorEmitter = createCursorEmitter(stdout);
   const codexEmitter = createCodexEmitter(stdout);
   let sentBy = launchedAs ?? "claude";
   let protocol = hookProtocolOf(sentBy);
   try {
-    const payload = parsePayload(await io2.readStdin());
+    const payload = parsePayload(await io.readStdin());
     const detected = detectAgent(payload);
     if (detected !== void 0 && (launchedAs === void 0 || detected !== "claude")) {
       sentBy = detected;
@@ -9736,13 +9765,13 @@ async function runHook(io2, deps = {}) {
     }
     switch (protocol) {
       case "cursor":
-        answerCursorCall(io2, deps, payload, launchedAs, cursorEmitter);
+        answerCursorCall(io, deps, payload, launchedAs, cursorEmitter);
         break;
       case "codex":
-        answerCodexCall(io2, deps, payload, codexEmitter);
+        answerCodexCall(io, deps, payload, codexEmitter);
         break;
       case "claude":
-        answerClaudeCodeCall(io2, deps, payload, sentBy, claudeEmitter);
+        answerClaudeCodeCall(io, deps, payload, sentBy, claudeEmitter);
         break;
       default:
         unhandledAgent(protocol);
@@ -9761,43 +9790,47 @@ async function runHook(io2, deps = {}) {
     }
   }
 }
-function pathContextOf(io2, payload) {
+function pathContextOf(io, payload) {
   const cwd = payload !== null && typeof payload === "object" ? payload.cwd : void 0;
   return {
     ...typeof cwd === "string" && cwd !== "" ? { cwd } : {},
-    home: io2.homedir()
+    home: io.homedir()
   };
 }
-function answerClaudeCodeCall(io2, deps, payload, sentBy, emitter) {
+function answerClaudeCodeCall(io, deps, payload, sentBy, emitter) {
   if (deps.env !== void 0 && deps.realpath !== void 0) {
     const cwd = payload.cwd;
     const aside = evaluateStepAside({
       env: deps.env,
-      home: io2.homedir(),
+      home: io.homedir(),
       ...typeof cwd === "string" ? { cwd } : {},
-      readFile: (path) => io2.readFile(path),
-      listDir: (path) => io2.listDir(path),
+      readFile: (path) => io.readFile(path),
+      listDir: (path) => io.listDir(path),
       realpath: deps.realpath,
       ...deps.platform !== void 0 ? { platform: deps.platform } : {},
       ...deps.processCwd !== void 0 ? { processCwd: deps.processCwd } : {}
     });
+    try {
+      deps.onStepAside?.(aside.standDown);
+    } catch {
+    }
     if (aside.standDown) {
       emitter.emit("allow", "");
-      recordSteppedAside(io2, aside.projectKey, sentBy);
+      recordSteppedAside(io, aside.projectKey, sentBy);
       return;
     }
   }
   const mapped = mapToolCall(payload);
-  const { catalog, allowlist } = loadRules(io2, deps);
+  const { catalog, allowlist } = loadRules(io, deps);
   const decision = evaluateCall(
     catalog,
-    buildGuardSpanContext(mapped, pathContextOf(io2, payload)),
+    buildGuardSpanContext(mapped, pathContextOf(io, payload)),
     mapped,
     allowlist
   );
   emitter.emit(decision.decision, decision.reason);
   try {
-    (deps.recorder ?? createEventRecorder(io2)).record({
+    (deps.recorder ?? createEventRecorder(io)).record({
       mapped,
       decision,
       agent: sentBy,
@@ -9806,21 +9839,21 @@ function answerClaudeCodeCall(io2, deps, payload, sentBy, emitter) {
   } catch {
   }
 }
-function answerCursorCall(io2, deps, payload, launchedAs, emitter) {
+function answerCursorCall(io, deps, payload, launchedAs, emitter) {
   const call = mapCursorCall(payload);
   if (call === void 0) {
     emitter.emit(NO_OPINION);
     return;
   }
-  const { catalog, allowlist } = loadRules(io2, deps);
-  const where = pathContextOf(io2, payload);
+  const { catalog, allowlist } = loadRules(io, deps);
+  const where = pathContextOf(io, payload);
   const evaluate2 = (mapped) => ({
     mapped,
     decision: evaluateCall(catalog, buildGuardSpanContext(mapped, where), mapped, allowlist)
   });
   const [first, ...rest] = call.candidates;
   const kept = strictestCandidate([evaluate2(first), ...rest.map(evaluate2)]);
-  const cursorEntryPresent = !isGuardsCursorEntry(launchedAs) && hasGuardCursorEntry(io2.readFile(cursorHooksPath(io2.homedir())));
+  const cursorEntryPresent = !isGuardsCursorEntry(launchedAs) && hasGuardCursorEntry(io.readFile(cursorHooksPath(io.homedir())));
   const answer = buildCursorAnswer({
     launchedAs,
     event: call.event,
@@ -9831,7 +9864,7 @@ function answerCursorCall(io2, deps, payload, launchedAs, emitter) {
   emitter.emit(answer.output);
   if (answer.record) {
     try {
-      (deps.recorder ?? createEventRecorder(io2)).record({
+      (deps.recorder ?? createEventRecorder(io)).record({
         mapped: kept.mapped,
         decision: kept.decision,
         agent: "cursor",
@@ -9841,14 +9874,14 @@ function answerCursorCall(io2, deps, payload, launchedAs, emitter) {
     }
   }
 }
-function answerCodexCall(io2, deps, payload, emitter) {
+function answerCodexCall(io, deps, payload, emitter) {
   const call = mapCodexCall(payload);
   if (call === void 0) {
     emitter.emit(NO_ANSWER);
     return;
   }
-  const { catalog, allowlist } = loadRules(io2, deps);
-  const where = pathContextOf(io2, payload);
+  const { catalog, allowlist } = loadRules(io, deps);
+  const where = pathContextOf(io, payload);
   const evaluate2 = (mapped) => ({
     mapped,
     decision: evaluateCall(catalog, buildGuardSpanContext(mapped, where), mapped, allowlist)
@@ -9859,7 +9892,7 @@ function answerCodexCall(io2, deps, payload, emitter) {
   emitter.emit(answer.output);
   if (answer.record) {
     try {
-      (deps.recorder ?? createEventRecorder(io2)).record({
+      (deps.recorder ?? createEventRecorder(io)).record({
         mapped: kept.mapped,
         decision: kept.decision,
         agent: "codex",
@@ -9869,6 +9902,293 @@ function answerCodexCall(io2, deps, payload, emitter) {
     }
   }
 }
+
+// src/hook-deadline.ts
+var HOOK_DEADLINE_MS = 6e3;
+var TERMINATE_GRACE_MS = 250;
+var HOOK_WORKER_MAX_HEAP_MB = 256;
+var HOOK_WORKER_ROLE = "agenttrail-guard-hook";
+var DEADLINE_REASON = "agenttrail-guard could not finish checking this action in time";
+var ASK = { decision: "ask", reason: DEADLINE_REASON, matches: [] };
+function deadlineAnswer({ agent, payload, standDown }) {
+  if (payload === void 0) {
+    switch (hookProtocolOf(agent ?? "claude")) {
+      case "cursor":
+        return buildCursorAnswer({
+          launchedAs: agent,
+          event: "preToolUse",
+          tool: "",
+          decision: ASK,
+          cursorEntryPresent: false
+        }).output;
+      case "codex":
+        return buildCodexAnswer({ event: "PreToolUse", decision: ASK }).output;
+      default:
+        return buildHookOutput("ask", DEADLINE_REASON);
+    }
+  }
+  const detected = detectAgent(payload);
+  if (detected === void 0 && agent === void 0) {
+    return buildHookOutput("allow", NOT_CHECKED_MESSAGE);
+  }
+  let sentBy = agent ?? "claude";
+  if (detected !== void 0 && (agent === void 0 || detected !== "claude")) sentBy = detected;
+  switch (hookProtocolOf(sentBy)) {
+    case "cursor": {
+      const call = cursorCheckedCall(payload);
+      if (call === void 0) return NO_OPINION;
+      return buildCursorAnswer({
+        launchedAs: agent,
+        event: call.event,
+        tool: call.tool,
+        decision: ASK,
+        cursorEntryPresent: false
+      }).output;
+    }
+    case "codex": {
+      const event = codexCheckedEvent(payload);
+      if (event === void 0) return NO_ANSWER;
+      return buildCodexAnswer({ event, decision: ASK }).output;
+    }
+    default:
+      return standDown ? "" : buildHookOutput("ask", DEADLINE_REASON);
+  }
+}
+function isWorkerMessage(value) {
+  if (value === null || typeof value !== "object") return false;
+  const kind = value.kind;
+  if (kind === "answer") return typeof value.text === "string";
+  if (kind === "stepAside")
+    return typeof value.standDown === "boolean";
+  return false;
+}
+async function superviseHook(deps) {
+  const deadlineMs = deps.deadlineMs ?? HOOK_DEADLINE_MS;
+  const graceMs = deps.graceMs ?? TERMINATE_GRACE_MS;
+  let answered = false;
+  let failing = false;
+  let finished = false;
+  let payload;
+  let standDown = false;
+  let worker;
+  let resolveDone = () => {
+  };
+  const done = new Promise((resolve) => {
+    resolveDone = resolve;
+  });
+  const answer = async (text) => {
+    if (answered) return;
+    answered = true;
+    if (text === "") return;
+    try {
+      await deps.write(text);
+    } catch {
+    }
+  };
+  let cancelDeadline = () => {
+  };
+  const finish = () => {
+    if (finished) return;
+    finished = true;
+    cancelDeadline();
+    resolveDone();
+  };
+  const failSafe = async () => {
+    if (failing) return;
+    failing = true;
+    await answer(deadlineAnswer({ agent: deps.agent, payload, standDown }));
+    try {
+      deps.releaseStdin();
+    } catch {
+    }
+    const running = worker;
+    if (running === void 0) {
+      finish();
+      return;
+    }
+    let stopped = false;
+    const cancelKill = deps.schedule(() => {
+      if (!stopped) deps.killSelf();
+    }, graceMs);
+    const stop = () => {
+      stopped = true;
+      cancelKill();
+      finish();
+    };
+    running.terminate().then(stop, stop);
+  };
+  cancelDeadline = deps.schedule(() => {
+    void failSafe();
+  }, deadlineMs);
+  void start();
+  return done;
+  async function start() {
+    let input = "";
+    try {
+      input = await deps.readStdin();
+    } catch {
+    }
+    if (failing) return;
+    try {
+      const parsed = JSON.parse(input);
+      if (parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)) payload = parsed;
+    } catch {
+    }
+    try {
+      worker = deps.startWorker({
+        role: HOOK_WORKER_ROLE,
+        input,
+        ...deps.agent !== void 0 ? { agent: deps.agent } : {},
+        cwd: deps.cwd,
+        home: deps.home
+      });
+    } catch {
+      void failSafe();
+      return;
+    }
+    const running = worker;
+    running.on("message", (message) => {
+      if (!isWorkerMessage(message)) return;
+      if (message.kind === "stepAside") standDown = message.standDown;
+      else void answer(message.text);
+    });
+    running.on("error", () => {
+      void failSafe();
+    });
+    running.on("exit", () => {
+      if (answered) finish();
+      else void failSafe();
+    });
+  }
+}
+
+// src/io.ts
+import {
+  appendFileSync,
+  chmodSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  renameSync,
+  statSync,
+  unlinkSync,
+  writeFileSync
+} from "fs";
+import { homedir } from "os";
+import { join as join3 } from "path";
+function writeStdoutFlushed(text) {
+  return new Promise((resolve) => {
+    process.stdout.write(text, () => resolve());
+  });
+}
+function createRealIO() {
+  return {
+    async readStdin() {
+      const chunks = [];
+      for await (const chunk of process.stdin) {
+        chunks.push(Buffer.from(chunk));
+      }
+      return Buffer.concat(chunks).toString("utf8");
+    },
+    writeStdout(text) {
+      process.stdout.write(text);
+    },
+    readFile(path) {
+      try {
+        return readFileSync(path, "utf8");
+      } catch {
+        return void 0;
+      }
+    },
+    homedir() {
+      return homedir();
+    },
+    mkdirp(path) {
+      try {
+        mkdirSync(path, { recursive: true, mode: 448 });
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    writeFileAtomic(path, text) {
+      const tmp = join3(
+        path.slice(0, Math.max(0, path.lastIndexOf("/"))) || ".",
+        `.${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}.tmp`
+      );
+      try {
+        writeFileSync(tmp, text, { encoding: "utf8", mode: 384 });
+        chmodSync(tmp, 384);
+        renameSync(tmp, path);
+        return true;
+      } catch {
+        try {
+          unlinkSync(tmp);
+        } catch {
+        }
+        return false;
+      }
+    },
+    listDir(path) {
+      try {
+        return readdirSync(path);
+      } catch {
+        return [];
+      }
+    },
+    deleteFile(path) {
+      try {
+        unlinkSync(path);
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    appendFile(path, text) {
+      try {
+        appendFileSync(path, text, { encoding: "utf8", mode: 384 });
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    fileSize(path) {
+      try {
+        return statSync(path).size;
+      } catch {
+        return 0;
+      }
+    }
+  };
+}
+
+// src/hook-run.ts
+function runHookWithDeadline(agent, workerUrl) {
+  return superviseHook({
+    ...agent !== void 0 ? { agent } : {},
+    cwd: process.cwd(),
+    home: homedir2(),
+    readStdin: () => createRealIO().readStdin(),
+    write: writeStdoutFlushed,
+    startWorker: (workerInput) => new Worker(workerUrl, {
+      workerData: workerInput,
+      resourceLimits: { maxOldGenerationSizeMb: HOOK_WORKER_MAX_HEAP_MB },
+      // The worker's own stdio stays its own: nothing it prints can reach the answer.
+      stdout: true,
+      stderr: true
+    }),
+    schedule: (fn, ms) => {
+      const timer = setTimeout(fn, ms);
+      return () => clearTimeout(timer);
+    },
+    releaseStdin: () => process.stdin.destroy(),
+    killSelf: () => process.kill(process.pid, "SIGKILL")
+  });
+}
+
+// src/hook-worker.ts
+import { realpathSync } from "fs";
+import { isMainThread, parentPort, workerData } from "worker_threads";
 
 // src/core/redact-stack.ts
 var EXTERNAL = "<external>";
@@ -9952,36 +10272,36 @@ function stampOf2(name) {
   const n = Number.parseInt(m[1], 10);
   return Number.isFinite(n) ? n : void 0;
 }
-function ourFiles(io2, dir) {
+function ourFiles(io, dir) {
   const out = [];
-  for (const name of io2.listDir(dir)) {
+  for (const name of io.listDir(dir)) {
     const stamp = stampOf2(name);
     if (stamp !== void 0) out.push({ name, stamp });
   }
   out.sort((a, b) => a.stamp - b.stamp || a.name.localeCompare(b.name));
   return out;
 }
-function spoolCrash(io2, record, now) {
-  const dir = crashesDir(io2.homedir());
-  if (!io2.mkdirp(dir)) return false;
+function spoolCrash(io, record, now) {
+  const dir = crashesDir(io.homedir());
+  if (!io.mkdirp(dir)) return false;
   const name = `crash-${now}-${Math.random().toString(36).slice(2, 10)}.json`;
-  const ok = io2.writeFileAtomic(`${dir}/${name}`, `${JSON.stringify(record)}
+  const ok = io.writeFileAtomic(`${dir}/${name}`, `${JSON.stringify(record)}
 `);
   if (!ok) return false;
-  pruneSpool(io2, now);
+  pruneSpool(io, now);
   return true;
 }
-function pruneSpool(io2, now) {
-  const dir = crashesDir(io2.homedir());
-  const files = ourFiles(io2, dir);
+function pruneSpool(io, now) {
+  const dir = crashesDir(io.homedir());
+  const files = ourFiles(io, dir);
   for (const f of files) {
-    if (now - f.stamp > MAX_AGE_MS2) io2.deleteFile(`${dir}/${f.name}`);
+    if (now - f.stamp > MAX_AGE_MS2) io.deleteFile(`${dir}/${f.name}`);
   }
   const fresh = files.filter((f) => now - f.stamp <= MAX_AGE_MS2);
   const excess = fresh.length - MAX_SPOOLED;
   for (let i = 0; i < excess; i += 1) {
     const f = fresh[i];
-    if (f !== void 0) io2.deleteFile(`${dir}/${f.name}`);
+    if (f !== void 0) io.deleteFile(`${dir}/${f.name}`);
   }
 }
 
@@ -10017,117 +10337,49 @@ var scrubSecrets = scrubText;
 // src/core/version.ts
 var VERSION = "0.4.30";
 
-// src/io.ts
-import {
-  appendFileSync,
-  chmodSync,
-  mkdirSync,
-  readdirSync,
-  readFileSync,
-  renameSync,
-  statSync,
-  unlinkSync,
-  writeFileSync
-} from "fs";
-import { homedir } from "os";
-import { join as join3 } from "path";
-function createRealIO() {
-  return {
-    async readStdin() {
-      const chunks = [];
-      for await (const chunk of process.stdin) {
-        chunks.push(Buffer.from(chunk));
-      }
-      return Buffer.concat(chunks).toString("utf8");
-    },
-    writeStdout(text) {
-      process.stdout.write(text);
-    },
-    readFile(path) {
-      try {
-        return readFileSync(path, "utf8");
-      } catch {
-        return void 0;
-      }
-    },
-    homedir() {
-      return homedir();
-    },
-    mkdirp(path) {
-      try {
-        mkdirSync(path, { recursive: true, mode: 448 });
-        return true;
-      } catch {
-        return false;
-      }
-    },
-    writeFileAtomic(path, text) {
-      const tmp = join3(
-        path.slice(0, Math.max(0, path.lastIndexOf("/"))) || ".",
-        `.${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}.tmp`
-      );
-      try {
-        writeFileSync(tmp, text, { encoding: "utf8", mode: 384 });
-        chmodSync(tmp, 384);
-        renameSync(tmp, path);
-        return true;
-      } catch {
-        try {
-          unlinkSync(tmp);
-        } catch {
-        }
-        return false;
-      }
-    },
-    listDir(path) {
-      try {
-        return readdirSync(path);
-      } catch {
-        return [];
-      }
-    },
-    deleteFile(path) {
-      try {
-        unlinkSync(path);
-        return true;
-      } catch {
-        return false;
-      }
-    },
-    appendFile(path, text) {
-      try {
-        appendFileSync(path, text, { encoding: "utf8", mode: 384 });
-        return true;
-      } catch {
-        return false;
-      }
-    },
-    fileSize(path) {
-      try {
-        return statSync(path).size;
-      } catch {
-        return 0;
-      }
+// src/hook-worker.ts
+function isHookWorker() {
+  return !isMainThread && workerData?.role === HOOK_WORKER_ROLE;
+}
+async function runHookWorker() {
+  const data = workerData;
+  const post = (message) => {
+    try {
+      parentPort?.postMessage(message);
+    } catch {
     }
   };
+  const real = createRealIO();
+  const io = {
+    ...real,
+    readStdin: async () => data.input,
+    // The main thread writes the answer. Nothing from here reaches stdout.
+    writeStdout: () => {
+    },
+    homedir: () => data.home
+  };
+  await runHook(io, {
+    ...data.agent !== void 0 ? { agent: data.agent } : {},
+    env: process.env,
+    realpath: (path) => realpathSync.native(path),
+    processCwd: data.cwd,
+    onAnswered: (text) => post({ kind: "answer", text }),
+    onStepAside: (standDown) => post({ kind: "stepAside", standDown }),
+    captureCrash: (err) => {
+      captureCrash(err, {
+        io,
+        scrubSecrets,
+        command: "hook",
+        guardVersion: VERSION,
+        now: () => Date.now()
+      });
+    }
+  });
 }
 
 // src/hook-entry.ts
-var io = createRealIO();
-await runHook(io, {
-  // The app named on the hook's command line: `--agent claude` in the Claude Code
-  // plugin's `hooks/hooks.json`.
-  agent: agentFromArgv(process.argv.slice(2)),
-  env: process.env,
-  realpath: (path) => realpathSync.native(path),
-  processCwd: process.cwd(),
-  captureCrash: (err) => {
-    captureCrash(err, {
-      io,
-      scrubSecrets,
-      command: "hook",
-      guardVersion: VERSION,
-      now: () => Date.now()
-    });
-  }
-});
+if (isHookWorker()) {
+  await runHookWorker();
+} else {
+  await runHookWithDeadline(agentFromArgv(process.argv.slice(2)), new URL(import.meta.url));
+}

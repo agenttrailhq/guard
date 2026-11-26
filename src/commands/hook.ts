@@ -49,16 +49,16 @@
  * UI and decides nothing by. Input that is not a JSON object cannot be told apart, so the
  * flag picks: `{}` under `--agent cursor`, the message otherwise.
  *
- * ── No internal watchdog, on purpose ─────────────────────────────────
- * Claude Code's default `timeout` for a command hook is 600s (`hooks.md:428`); we
- * set `"timeout": 10` in our own `plugin/hooks/hooks.json`. No watchdog is needed
- * because overrun already fails the way we want: "On PreToolUse … a timed-out
- * command hook lets the tool call continue" (`hooks.md:3186`). An overrunning guard
- * gives no decision, which is the fail-open posture. Cursor lets a timed-out hook's
- * call through too, unless the entry sets `failClosed`.
+ * ── Running out of time is NOT failing open ───────────────────────────────
+ * Every agent lets a call through when its hook overruns the entry's `timeout` (10 s in
+ * all three of guard's entries). So an overrun would be an allow, and any input that made
+ * evaluation slow would turn into one. This function therefore runs in a worker thread
+ * (`hook-worker.ts`), and the main thread (`hook-deadline.ts`) answers at a deadline well
+ * inside that timeout: an approval, which Codex turns into a deny. Only time is treated
+ * this way. A throw in here still fails open, as described above.
  *
- * That also makes compile-once (`rules.ts`) a requirement rather than an
- * optimization: nothing else keeps the whole catalog inside a 10s budget.
+ * Compile-once (`rules.ts`) still matters: nothing else keeps the whole catalog inside
+ * the deadline.
  */
 
 import { detectAgent, hookProtocolOf, unhandledAgent } from "../core/agent.js";
@@ -162,6 +162,16 @@ export interface HookDeps {
   readonly platform?: NodeJS.Platform;
   /** The hook process's working folder, for the step-aside check. */
   readonly processCwd?: string;
+  /**
+   * Told the one answer as soon as it is decided, including an answer that writes nothing.
+   * The worker thread (`hook-worker.ts`) passes the answer to the main thread through this.
+   */
+  readonly onAnswered?: (text: string) => void;
+  /**
+   * Told the AgentTrail OS step-aside result, before anything is evaluated. The main thread
+   * stays silent at the deadline only after a reported stand-down (`hook-deadline.ts`).
+   */
+  readonly onStepAside?: (standDown: boolean) => void;
 }
 
 /**
@@ -230,7 +240,10 @@ export async function runHook(io: GuardIO, deps: HookDeps = {}): Promise<void> {
   // guard knows. `undefined` is not an error: the flag is advisory here (`core/agent.ts`)
   // and the payload is the better witness.
   const launchedAs: AgentSource | undefined = deps.agent;
-  const stdout: StdoutSink = { write: (text) => io.writeStdout(text) };
+  const stdout: StdoutSink = {
+    write: (text) => io.writeStdout(text),
+    ...(deps.onAnswered !== undefined ? { answered: deps.onAnswered } : {}),
+  };
   const claudeEmitter = createEmitter(stdout);
   const cursorEmitter = createCursorEmitter(stdout);
   const codexEmitter = createCodexEmitter(stdout);
@@ -365,6 +378,11 @@ function answerClaudeCodeCall(
       ...(deps.platform !== undefined ? { platform: deps.platform } : {}),
       ...(deps.processCwd !== undefined ? { processCwd: deps.processCwd } : {}),
     });
+    try {
+      deps.onStepAside?.(aside.standDown);
+    } catch {
+      /* a report that fails changes nothing about the decision */
+    }
     if (aside.standDown) {
       emitter.emit("allow", "");
       recordSteppedAside(io, aside.projectKey, sentBy);

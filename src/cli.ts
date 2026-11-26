@@ -52,8 +52,11 @@ import { runScrub } from "./commands/scan-scrub.js";
 import { runStatus } from "./commands/status.js";
 import { runUninstall } from "./commands/uninstall.js";
 import { agentFromArgv } from "./core/agent.js";
+import type { AgentSource } from "./core/types.js";
 import { VERSION } from "./core/version.js";
 import type { CursorFileIO } from "./cursor/cursor-io.js";
+import { runHookWithDeadline } from "./hook-run.js";
+import { isHookWorker, runHookWorker } from "./hook-worker.js";
 import { createRealIO, type GuardIO } from "./io.js";
 import { createRealScanIO, type ScanIO } from "./scan-io.js";
 import { isScanWorker, readInWorkers, runScanWorker } from "./scan-workers.js";
@@ -120,6 +123,7 @@ export async function runCli(
   scanIo?: ScanIO,
   cursorIo?: CursorFileIO,
   codexIo?: CodexFileIO,
+  runRealHook?: (agent: AgentSource | undefined) => Promise<void>,
 ): Promise<number> {
   let positionals: string[];
   let values: {
@@ -163,8 +167,14 @@ export async function runCli(
   //
   // `--agent` is read from the raw argv here, by the same function the hook bundle uses, so
   // `agenttrail-guard hook` and the bundle read one command line the same way.
+  //
+  // The bin passes `runRealHook`, which runs the check on a worker thread with the deadline
+  // (`hook-run.ts`), so `hook` gets it whatever the order of its flags. Tests drive the
+  // in-process form with an injected IO.
   if (command === "hook") {
-    await runHook(io, { agent: agentFromArgv(argv.slice(1)) });
+    const agent = agentFromArgv(argv);
+    if (runRealHook !== undefined) await runRealHook(agent);
+    else await runHook(io, { agent });
     return 0;
   }
 
@@ -240,11 +250,22 @@ export async function runCli(
 }
 
 // A worker thread `scan` started to read sessions runs this same file: it reads transcripts
-// and nothing else.
+// and nothing else. So does the hook's worker thread, which runs the check and nothing else.
+// A real `hook` run goes through the same deadline as the plugin bundle (`hook-run.ts`).
 if (isScanWorker()) {
   await runScanWorker();
+} else if (isHookWorker()) {
+  await runHookWorker();
 } else {
-  const code = await runCli(process.argv.slice(2), createRealIO());
+  const code = await runCli(
+    process.argv.slice(2),
+    createRealIO(),
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    (agent) => runHookWithDeadline(agent, new URL(import.meta.url)),
+  );
   if (code !== 0) {
     process.exitCode = code;
   }

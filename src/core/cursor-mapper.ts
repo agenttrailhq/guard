@@ -110,6 +110,22 @@ export function grepCandidates(folder: unknown, glob: unknown): CursorCandidates
 }
 
 /**
+ * Which event and tool a Cursor payload would be checked under, or `undefined` for an event
+ * the guard does not check — exactly when `mapCursorCall` returns `undefined`.
+ *
+ * Reads the event and tool names and nothing else, so it costs nothing whatever the payload
+ * holds. The hook's main thread uses it to answer at the deadline without mapping the call.
+ */
+export function cursorCheckedCall(
+  payload: CursorHookPayload,
+): { readonly event: CursorCheckedEvent; readonly tool: string } | undefined {
+  const event = payload.hook_event_name;
+  if (event === "beforeShellExecution") return { event, tool: "" };
+  if (event !== "preToolUse") return undefined;
+  return { event, tool: typeof payload.tool_name === "string" ? payload.tool_name : "" };
+}
+
+/**
  * Map a Cursor payload to the calls to evaluate, or `undefined` for an event the guard
  * does not check.
  *

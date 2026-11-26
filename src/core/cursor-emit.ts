@@ -244,6 +244,7 @@ export function createCursorEmitter(stdout: StdoutSink): {
     emit(output) {
       if (done) return;
       done = true;
+      stdout.answered?.(output);
       stdout.write(output);
     },
     hasEmitted() {
