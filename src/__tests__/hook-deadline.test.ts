@@ -32,6 +32,7 @@ import {
   HOOK_WORKER_ROLE,
   type HookWorkerInput,
   superviseHook,
+  TERMINATE_GRACE_MS,
   type WorkerHandle,
 } from "../hook-deadline.js";
 import type { GuardIO } from "../io.js";
@@ -366,7 +367,7 @@ describe("superviseHook: one answer, and the hook always ends", () => {
     await h.fire(HOOK_DEADLINE_MS);
     expect(h.writes).toEqual([CLAUDE_ASK]);
     expect(h.state.killed).toBe(0);
-    await h.fire(250);
+    await h.fire(TERMINATE_GRACE_MS);
     expect(h.state.killed).toBe(1);
   });
 
@@ -376,7 +377,7 @@ describe("superviseHook: one answer, and the hook always ends", () => {
     h.worker.emit("message", { kind: "answer", text: "ANSWER" });
     await h.settle();
     await h.fire(HOOK_DEADLINE_MS);
-    await h.fire(250);
+    await h.fire(TERMINATE_GRACE_MS);
     expect(h.writes).toEqual(["ANSWER"]);
     expect(h.state.killed).toBe(1);
   });
@@ -537,11 +538,15 @@ function run(
     // A stdin nobody closes is the case under test when `input` is undefined.
     if (input !== undefined) child.stdin.end(input);
     const guard = setTimeout(() => child.kill("SIGKILL"), 15_000);
+    // `close`, not `exit`: `exit` can come before the last of stdout has been read, which on
+    // a loaded machine reads as an empty answer.
+    let ended = { status: null as number | null, signal: null as NodeJS.Signals | null, ms: 0 };
     child.on("exit", (status, signal) => {
       clearTimeout(guard);
       if (input === undefined) child.stdin.destroy();
-      resolve({ status, signal, stdout, ms: performance.now() - started });
+      ended = { status, signal, ms: performance.now() - started };
     });
+    child.on("close", () => resolve({ ...ended, stdout }));
   });
 }
 
@@ -677,7 +682,7 @@ describe.concurrent("the built hook, hung on purpose, is decided and never allow
       const r = await run(["--agent", "claude"], JSON.stringify(claude("ls")), dir);
       expect(r.stdout).toBe(CLAUDE_ASK);
       expect(r.signal).toBe("SIGKILL");
-      expect(r.ms).toBeLessThan(IN_TIME_MS);
+      expect(r.ms).toBeLessThan(IN_TIME_MS + TERMINATE_GRACE_MS);
     },
   );
 

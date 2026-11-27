@@ -9905,7 +9905,7 @@ function answerCodexCall(io, deps, payload, emitter) {
 
 // src/hook-deadline.ts
 var HOOK_DEADLINE_MS = 6e3;
-var TERMINATE_GRACE_MS = 250;
+var TERMINATE_GRACE_MS = 2500;
 var HOOK_WORKER_MAX_HEAP_MB = 256;
 var HOOK_WORKER_ROLE = "agenttrail-guard-hook";
 var DEADLINE_REASON = "agenttrail-guard could not finish checking this action in time";
