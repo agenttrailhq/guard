@@ -58,6 +58,10 @@ const CORPUS: { name: string; rule: unknown }[] = [
     name: "`ask` but with a category",
     rule: { id: "a.ask", category: "prod-infra", defaultAction: "ask", match: MATCH },
   },
+  {
+    name: "`record`, an action the guard cannot honour",
+    rule: { id: "a.rec", category: "prod-infra", defaultAction: "record", match: MATCH },
+  },
   { name: "missing category", rule: { id: "a.nocat", defaultAction: "block", match: MATCH } },
   { name: "missing id", rule: { category: "prod-infra", defaultAction: "block", match: MATCH } },
   {
@@ -273,5 +277,17 @@ describe("a match that selects nothing is DISCARDED, not promoted to match-every
         ).toContain(id);
       }
     }
+  });
+});
+
+describe("`record` is refused by both loaders", () => {
+  it("the strict loader names why, and the hook's loader skips it", () => {
+    const text = JSON.stringify([
+      { id: "a.rec", category: "prod-infra", defaultAction: "record", match: MATCH },
+    ]);
+    const strict = loadUserRules(text);
+    expect(strict.valid).toEqual([]);
+    expect(strict.invalid[0]?.reason).toContain("`record` needs AgentTrail");
+    expect(parseUserRulesData(text)).toEqual([]);
   });
 });

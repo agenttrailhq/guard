@@ -145,7 +145,7 @@ export const ScopeSchema = z
   .strict()
   .optional();
 
-export const ActionSchema = z.enum(["block", "require_approval", "warn"]);
+export const ActionSchema = z.enum(["block", "require_approval", "warn", "record"]);
 
 export const PolicyPredicateSchema = z
   .object({

@@ -8747,10 +8747,10 @@ function evaluateRules(rules12, context, mapped, allowlist) {
     const what = policyId === COMMAND_TOO_LONG_ID && mapped.uncheckedLength !== void 0 ? commandTooLongText(mapped.uncheckedLength) : describeRule(policyId, titles);
     return { decision: "ask", reason: `${APPROVAL_LEAD}${what}`, matches };
   }
-  const warned = matches.length > 0;
+  const firstWarn = matches.find((m) => m.action === "warn");
   return {
     decision: "allow",
-    reason: warned ? `${WARN_LEAD}${describeRule(matches[0]?.ruleId, titles)}` : "",
+    reason: firstWarn ? `${WARN_LEAD}${describeRule(firstWarn.ruleId, titles)}` : "",
     matches
   };
 }

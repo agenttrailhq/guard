@@ -11,7 +11,10 @@
 import type { OwaspId } from "@agenttrail/guardrails/guardrails";
 import type { Match } from "../engine/policy-predicate.js";
 
-/** What a rule asks for when it matches. Mirrors the engine's `ActionSchema`. */
+/**
+ * What a rule asks for when it matches. Mirrors the engine's `ActionSchema`, except `record`:
+ * that action keeps the call as evidence in AgentTrail, and the guard keeps none.
+ */
 export type GuardAction = "block" | "require_approval" | "warn";
 
 /** What Claude Code understands on `hookSpecificOutput.permissionDecision`. */
