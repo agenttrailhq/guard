@@ -1799,7 +1799,7 @@ function agentDisplayName(agent) {
   }
 }
 
-// node_modules/@agenttrail/guardrails/dist/chunk-EUHX4WNP.js
+// node_modules/@agenttrail/guardrails/dist/chunk-52QK2KVY.js
 var SHELL_AND_MCP = "{Bash,PowerShell,mcp__*}";
 var CURLY = "\u2018-\u201F";
 var OUTSIDE = `[^"'|;&\`$<>()\\n\\r\\\\${CURLY}]`;
@@ -3571,10 +3571,12 @@ var fsSystemPaths = {
   defaultAction: "require_approval",
   owasp: ["ASI02", "LLM03"],
   title: "Writing to a system directory",
-  description: "Holds a file tool writing to a path under a system directory \u2014 /etc, /bin, /sbin, /usr/bin, /usr/local/bin, /boot, /System, /Library/LaunchDaemons, or Windows/System32. Reading is excluded \u2014 the Read and Grep tools never match \u2014 so reading /etc/hosts is not held; every other file tool is, including one this corpus does not know. HONEST CEILING: this is a list of well-known ABSOLUTE paths and it cannot be anything else. No working directory and no project root reaches the guard, so the check you would actually want \u2014 'the agent wrote outside the project' \u2014 is inexpressible, and would match everything or nothing. It therefore MISSES a write anywhere else outside your repository, including another project on the same machine.",
+  description: "Holds a file tool writing to a path under a system directory \u2014 /etc (and /private/etc, which macOS links it to), /bin, /sbin, /usr/bin, /usr/local/bin, /boot, /System, /Library/LaunchDaemons, or Windows/System32. Reading is excluded \u2014 the Read and Grep tools never match \u2014 so reading /etc/hosts is not held; every other file tool is, including one this corpus does not know. The path is checked after '.' and '..' are resolved, and a relative or '~' path also after resolving it against the agent's working and home folders, so /tmp/../etc/hosts and ../../../etc/hosts written from a project are both held. CEILING: this is a list of well-known ABSOLUTE paths and it cannot be anything else. No project root reaches a rule, so the check you would actually want \u2014 'the agent wrote outside the project' \u2014 is inexpressible, and would match everything or nothing. It therefore MISSES a write anywhere else outside your repository, including another project on the same machine. It also MISSES a path that only reaches a system directory through a symbolic link (a link in the project pointing at /etc), a Windows 8.3 short name such as PROGRA~1, and a relative path when the hook is given no working folder.",
   match: {
     any_of: [
       { kind: "execute_tool", file_glob: "/etc/**" },
+      // macOS links `/etc` to `/private/etc`; `/tmp` and `/var` are not protected here.
+      { kind: "execute_tool", file_glob: "/private/etc/**" },
       { kind: "execute_tool", file_glob: "/bin/**" },
       { kind: "execute_tool", file_glob: "/sbin/**" },
       { kind: "execute_tool", file_glob: "/usr/bin/**" },
@@ -3591,18 +3593,44 @@ var fsSystemPaths = {
     ]
   },
   fixtures: {
+    // Ordered so the first, middle and last of each list (the examples shown for a rule)
+    // stay plain paths; the dot-segment cases sit between them.
     block: [
       file("/etc/hosts", "Write"),
       file("/usr/local/bin/app", "Write"),
+      // Paths that only reach a system directory once '.' and '..' are resolved.
+      file("/tmp/../etc/hosts", "Write"),
+      file("/Users/dev/project/../../../etc/hosts", "Write"),
+      file("/etc/./hosts", "Write"),
+      file("/etc//hosts", "Write"),
+      file("/private/etc/hosts", "Write"),
+      file("/tmp/../bin/sh", "Write"),
+      file("/tmp/../sbin/launchd", "Write"),
+      file("/opt/../usr/bin/env", "Write"),
       file("/Library/LaunchDaemons/com.example.plist", "Write"),
+      file("/tmp/../private/etc/hosts", "Write"),
+      file("/var/../usr/local/bin/app", "Write"),
+      file("/tmp/../boot/vmlinuz", "Write"),
+      file("/tmp/../System/Library/x.plist", "Write"),
+      file("/tmp/../Library/LaunchDaemons/com.example.plist", "Write"),
+      file("C:\\Users\\dev\\..\\..\\Windows\\System32\\drivers\\etc\\hosts", "Write"),
+      file("C:\\..\\..\\Windows\\System32\\x.dll", "Write"),
+      file("\\\\?\\C:\\Windows\\System32\\x.dll", "Write"),
+      file("C:\\Windows\\System32.\\x.dll", "Write"),
       file("C:/Windows/System32/drivers/etc/hosts", "Write")
     ],
     allow: [
       file("src/index.ts"),
       file("/home/dev/project/src/main.rs"),
       file("/tmp/scratch.txt", "Write"),
+      // A '..' that stays inside the project, or climbs out of a system directory.
+      file("/home/dev/project/src/../lib/main.rs", "Write"),
+      file("/private/tmp/scratch.txt", "Write"),
       file("docs/etc-notes.md"),
       file("/etc/hosts", "Read"),
+      file("/etc/../tmp/scratch.txt", "Write"),
+      file("/tmp/../etc/hosts", "Read"),
+      file("/private/var/folders/xy/T/scratch.txt", "Write"),
       file("/usr/local/bin/app", "Grep")
     ]
   }
@@ -5280,7 +5308,10 @@ var blockEnvFileRead = {
     block: [
       file(".env", "Read"),
       file("config/.env.production", "Read"),
+      // Matched after '.' and '..' are resolved.
+      file("/home/dev/project/src/../.env", "Read"),
       file("config/production.env", "Read"),
+      file("apps/api/./.env.local", "Read"),
       file("apps/api/.env.local", "Read")
     ],
     allow: [
@@ -5426,7 +5457,7 @@ var seCredentialFile = {
   defaultAction: "require_approval",
   owasp: ["ASI02", "ASI03", "LLM02"],
   title: "Opening a file that holds credentials",
-  description: "Holds a file tool opening a path where credentials live \u2014 an SSH private key, an AWS credentials file, a PEM/P12/PFX/JKS keystore, `.npmrc` or `.pypirc` (which hold registry tokens), a Docker config, or a kubeconfig. Public keys are excluded (`*.pub`). It matches the PATH ONLY: it cannot tell whether the file actually holds a secret, so a `.pem` that is a public certificate is held too, and a credential in a file named something else is missed entirely. `.env` files are covered separately by block-env-file-read. It also holds READING \u2014 the `Read` and `Grep` tools, nothing else \u2014 of files whose edit another guardrail already holds and which commonly carry a secret: `/etc/shadow`, `/etc/gshadow`, their `-` backups, `/etc/sudoers` and `/etc/sudoers.d/`; SSH host private keys (`/etc/ssh/ssh_host_*_key` and the legacy `/etc/ssh/ssh_host_key`); `/etc/ssl/private/` and `/etc/pki/tls/private/`; Kubernetes admin configs (`/etc/kubernetes/*.conf`) and private keys (`/etc/kubernetes/pki/**/*.key`); the k3s kubeconfig (`/etc/rancher/k3s/k3s.yaml`); a repository's `.git/config`, where a remote URL or extra header can carry a token; agent configuration that often holds API keys \u2014 `.mcp.json`, `.claude/settings.local.json`, `.claude.json`, `.cursor/mcp.json` and `.codex/config.toml`; and production configuration: a `.yml`, `.yaml`, `.json`, `.toml`, `.env`, `.ini`, `.conf`, `.properties` or `.tfvars` file named `*.prod.*`, `prod.*`, `*.production.*` or `production.*`, or under a `prod/` or `production/` folder, unless any folder in the path, an absolute path's leading folders included, is named exactly `node_modules`, `dist` or `vendor` (so `/srv/vendor/app/config/database.prod.yml` is not held). A Grep anywhere under `/etc`, including a search of the folder itself or with a wildcard, is held too; a Read of an `/etc` file not named here is not. Editing those files is held by the guardrail that owns the path, not by this one. NOT held on read by this guardrail: a shell command such as `cat`, on any agent (Codex has no read tool, so its reads are always shell commands); a file tool other than Read and Grep, such as Claude Code's Glob or another Cursor tool, which the guardrail that owns the path still holds under its own title, except on `.claude.json`, which no other guardrail names; `.claude/settings.json`, at project or user level; other secrets under `/etc` such as Kerberos keytabs and VPN or Wi-Fi connection files, which are held on Grep only; a Grep of a production folder with no file pattern, or with a pattern whose extension is a wildcard; Terraform source (`.tf`), which references secrets by variable rather than holding them (the values file, `.tfvars`, is held); a production folder read from a temporary checkout is held like any other; production files of other types, such as `.key`, `.tfstate`, `.hcl`, `.cfg`, `.xml`, `.config` or Angular's `environment.prod.ts`; and production code or prose, such as `webpack.prod.js` or a runbook in `docs/production/`.",
+  description: "Holds a file tool opening a path where credentials live \u2014 an SSH private key, an AWS credentials file, a PEM/P12/PFX/JKS keystore, `.npmrc` or `.pypirc` (which hold registry tokens), a Docker config, or a kubeconfig. Public keys are excluded (`*.pub`). It matches the PATH ONLY: it cannot tell whether the file actually holds a secret, so a `.pem` that is a public certificate is held too, and a credential in a file named something else is missed entirely. `.env` files are covered separately by block-env-file-read. It also holds READING \u2014 the `Read` and `Grep` tools, nothing else \u2014 of files whose edit another guardrail already holds and which commonly carry a secret: `/etc/shadow`, `/etc/gshadow`, their `-` backups, `/etc/sudoers` and `/etc/sudoers.d/`; SSH host private keys (`/etc/ssh/ssh_host_*_key` and the legacy `/etc/ssh/ssh_host_key`); `/etc/ssl/private/` and `/etc/pki/tls/private/`; Kubernetes admin configs (`/etc/kubernetes/*.conf`) and private keys (`/etc/kubernetes/pki/**/*.key`); the k3s kubeconfig (`/etc/rancher/k3s/k3s.yaml`); a repository's `.git/config`, where a remote URL or extra header can carry a token; agent configuration that often holds API keys \u2014 `.mcp.json`, `.claude/settings.local.json`, `.claude.json`, `.cursor/mcp.json` and `.codex/config.toml`; and production configuration: a `.yml`, `.yaml`, `.json`, `.toml`, `.env`, `.ini`, `.conf`, `.properties` or `.tfvars` file named `*.prod.*`, `prod.*`, `*.production.*` or `production.*`, or under a `prod/` or `production/` folder, unless any folder in the path, an absolute path's leading folders included, is named exactly `node_modules`, `dist` or `vendor` (so `/srv/vendor/app/config/database.prod.yml` is not held). A Grep anywhere under `/etc`, including a search of the folder itself or with a wildcard, is held too; a Read of an `/etc` file not named here is not. Every `/etc` path here is also held under `/private/etc`, the folder macOS links `/etc` to. Editing those files is held by the guardrail that owns the path, not by this one. NOT held on read by this guardrail: a shell command such as `cat`, on any agent (Codex has no read tool, so its reads are always shell commands); a file tool other than Read and Grep, such as Claude Code's Glob or another Cursor tool, which the guardrail that owns the path still holds under its own title, except on `.claude.json`, which no other guardrail names; `.claude/settings.json`, at project or user level; other secrets under `/etc` such as Kerberos keytabs and VPN or Wi-Fi connection files, which are held on Grep only; a Grep of a production folder with no file pattern, or with a pattern whose extension is a wildcard; Terraform source (`.tf`), which references secrets by variable rather than holding them (the values file, `.tfvars`, is held); a production folder read from a temporary checkout is held like any other; production files of other types, such as `.key`, `.tfstate`, `.hcl`, `.cfg`, `.xml`, `.config` or Angular's `environment.prod.ts`; and production code or prose, such as `webpack.prod.js` or a runbook in `docs/production/`.",
   match: {
     any_of: [
       { kind: "execute_tool", file_glob: "**/.ssh/id_*" },
@@ -5456,6 +5487,29 @@ var seCredentialFile = {
       { kind: "execute_tool", label: "{Read,Grep}", file_glob: "/etc/rancher/k3s/k3s.yaml" },
       // Grep only: a search anywhere under `/etc`, including the folder itself.
       { kind: "execute_tool", label: "Grep", file_glob: "/etc/**" },
+      // The same `/etc` paths under macOS's `/private/etc`, the folder `/etc` links to.
+      {
+        kind: "execute_tool",
+        label: "{Read,Grep}",
+        file_glob: "/private/etc/{shadow,shadow-,gshadow,gshadow-,sudoers}"
+      },
+      { kind: "execute_tool", label: "{Read,Grep}", file_glob: "/private/etc/sudoers.d/**" },
+      { kind: "execute_tool", label: "{Read,Grep}", file_glob: "/private/etc/ssh/ssh_host_*_key" },
+      { kind: "execute_tool", label: "{Read,Grep}", file_glob: "/private/etc/ssh/ssh_host_key" },
+      { kind: "execute_tool", label: "{Read,Grep}", file_glob: "/private/etc/ssl/private/**" },
+      { kind: "execute_tool", label: "{Read,Grep}", file_glob: "/private/etc/pki/tls/private/**" },
+      { kind: "execute_tool", label: "{Read,Grep}", file_glob: "/private/etc/kubernetes/*.conf" },
+      {
+        kind: "execute_tool",
+        label: "{Read,Grep}",
+        file_glob: "/private/etc/kubernetes/pki/**/*.key"
+      },
+      {
+        kind: "execute_tool",
+        label: "{Read,Grep}",
+        file_glob: "/private/etc/rancher/k3s/k3s.yaml"
+      },
+      { kind: "execute_tool", label: "Grep", file_glob: "/private/etc/**" },
       // Read only: a remote URL or `http.extraheader` can carry a token.
       { kind: "execute_tool", label: "{Read,Grep}", file_glob: "**/.git/config" },
       // Read only: MCP server definitions and agent settings often carry API keys in `env`.
@@ -5501,6 +5555,7 @@ var seCredentialFile = {
   fixtures: {
     block: [
       file("/home/dev/.ssh/id_rsa", "Read"),
+      file("/private/etc/shadow", "Read"),
       file("/Users/dev/.aws/credentials", "Read"),
       file("certs/server.pem", "Read"),
       file(".npmrc", "Write"),
@@ -5544,7 +5599,10 @@ var seCredentialFile = {
       file("/etc", "Grep"),
       file("/etc/ssh", "Grep"),
       file("/etc/kubernetes", "Grep"),
+      // Matched after '.' and '..' are resolved.
+      file("/home/dev/.ssh/../.ssh/id_rsa", "Read"),
       file("/etc/ssh/*_key", "Grep"),
+      file("/home/dev/project/../.aws/credentials", "Read"),
       file("/etc/shadow*", "Grep"),
       file("/etc/hosts", "Grep"),
       file("/repo/.git/config", "Read"),
@@ -5586,6 +5644,7 @@ var seCredentialFile = {
       file("/private/tmp/agent-1/scratch/repo/deploy/production/values.yaml", "Grep"),
       // One fixture per file type not used above.
       file("config/nginx.prod.conf", "Read"),
+      file("/private/etc/ssh/ssh_host_ed25519_key", "Grep"),
       file("config/app.prod.ini", "Grep")
     ],
     allow: [
@@ -6956,8 +7015,8 @@ var PACKS = [
   "test-integrity",
   "exfiltration"
 ];
-var CATALOG_VERSION = "0.2.15";
-var CATALOG_PUBLISHED_AT = "2026-11-25T17:11:27Z";
+var CATALOG_VERSION = "0.2.16";
+var CATALOG_PUBLISHED_AT = "2026-11-26T12:27:41Z";
 var RULES_BY_PACK = {
   "working-tree": rules11,
   "destructive-data": rules2,
