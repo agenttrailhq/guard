@@ -44,6 +44,8 @@ export interface PolicyHoldResponse {
   readonly approval_id: string | null;
 
   readonly reason: string;
+
+  readonly grant_id?: string | null;
 }
 
 export interface PolicyMatchedPolicy {
@@ -65,6 +67,8 @@ export interface PolicyEvaluateResponse {
   readonly fail_mode: PolicyFailMode;
 
   readonly snapshot_version: string;
+
+  readonly grant_id?: string | null;
 }
 
 export interface PolicyCompiledEntry {

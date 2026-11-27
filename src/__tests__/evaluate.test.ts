@@ -166,6 +166,21 @@ describe("a warn keeps its identity even though the verdict discards it", () => 
     );
   });
 
+  it("only a `warn` match produces the warning; a `record` match allows silently", () => {
+    // The guard's own rules can't be `record` (the user-rule loaders refuse it), but the engine's
+    // `ActionSchema` has it, so the message must not depend on "any match that isn't a hold".
+    const recordOnly = run([rule("r.rec", "record" as unknown as GuardAction, "x")], bash("x"));
+    expect(recordOnly.decision).toBe("allow");
+    expect(recordOnly.reason).toBe("");
+    const both = run(
+      [rule("r.rec", "record" as unknown as GuardAction, "x"), rule("r.warn", "warn", "x")],
+      bash("x"),
+    );
+    expect(both.reason).toBe(
+      "agenttrail-guard is warning about this: the r.warn rule (guardrail r.warn)",
+    );
+  });
+
   it("a warn-only result is distinguishable from no match at all", () => {
     // `strongestVerdict` returns `{verdict:"allow", policyId:null}` for BOTH, which
     // is exactly why the guard keeps its own list rather than reading the verdict.

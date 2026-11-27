@@ -243,12 +243,13 @@ function evaluateRules(
         : describeRule(policyId, titles);
     return { decision: "ask", reason: `${APPROVAL_LEAD}${what}`, matches };
   }
-  // `allow` — either nothing matched, or only `warn` rules did. The warns are in
-  // `matches` even though the verdict discarded them.
-  const warned = matches.length > 0;
+  // `allow` — nothing matched, or only rules weaker than a hold did. The warns are in
+  // `matches` even though the verdict discarded them. Only a `warn` match produces the warning:
+  // the engine's `ActionSchema` also has `record`, which allows without a message.
+  const firstWarn = matches.find((m) => m.action === "warn");
   return {
     decision: "allow",
-    reason: warned ? `${WARN_LEAD}${describeRule(matches[0]?.ruleId, titles)}` : "",
+    reason: firstWarn ? `${WARN_LEAD}${describeRule(firstWarn.ruleId, titles)}` : "",
     matches,
   };
 }

@@ -84,10 +84,14 @@ export function loadUserRules(text: string | undefined): UserRulesResult {
       // it is the vocabulary the CLI uses (`guardrails set-action <id> block|ask|warn`) and
       // the decision Claude Code ultimately shows, but the STORED action is
       // `require_approval`, and a hand-edited file gets it wrong.
+      // `record` is a valid AgentTrail action (allow, and keep the call as evidence), but the
+      // guard runs offline and keeps no evidence, so a `record` rule here would do nothing.
       const hint =
         action === "ask"
           ? " — write `require_approval`; `ask` is the prompt Claude Code shows, not the stored action"
-          : "";
+          : action === "record"
+            ? " — `record` needs AgentTrail, which keeps the evidence; the local guard has nowhere to keep it"
+            : "";
       invalid.push({
         id: named,
         reason: `\`defaultAction\` must be one of block, require_approval, warn${hint}`,
