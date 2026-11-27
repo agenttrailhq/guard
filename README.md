@@ -590,7 +590,9 @@ that bypass those hooks or detect dangerous content inside a written file. In sh
   because Guard's plugin sets `onFailure: "block"` (older Claude Code ignores the setting
   and lets the call through). Cursor and Codex let it through. When a read is stuck, Guard
   first answers, then ends itself, so the agent hears from it in about 6 seconds rather
-  than at its own timeout.
+  than at its own timeout. Cursor and Codex read a hook that was ended this way as failed,
+  so they can run the call even when the answer Guard gave was a block or an approval;
+  Guard's Cursor entries do not set `failClosed`, and Codex has no such setting.
 - On Codex, when Guard could not read the call at all and the event was
   `PermissionRequest`, the action is not run unless Codex's automatic reviewer approves it.
 - An `ask` can be skipped by your agent's own allow settings, and becomes a block on Codex.
