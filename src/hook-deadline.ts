@@ -47,8 +47,16 @@ import type {
 /** How long the check has, counted from the hook's start. Well inside the entries' 10 s. */
 export const HOOK_DEADLINE_MS = 6_000;
 
-/** How long a terminated worker has to stop before the hook ends itself. */
-export const TERMINATE_GRACE_MS = 250;
+/**
+ * How long a terminated worker has to stop before the hook ends itself.
+ *
+ * Long on purpose. A worker that is only BUSY (a pattern still backtracking) stops when it
+ * is terminated, but on a starved machine that can take well over a second: measured with 16
+ * slow hooks on one CPU, a 250 ms grace killed 6 of them that were not stuck at all, and a
+ * killed hook is a failed hook to every agent, so its answer can be ignored. Only a worker
+ * blocked in a system call never stops. 6 s plus this is still inside the entries' 10 s.
+ */
+export const TERMINATE_GRACE_MS = 2_500;
 
 /** Most memory the worker may use, so input that exhausts it ends the worker, not the hook. */
 export const HOOK_WORKER_MAX_HEAP_MB = 256;
