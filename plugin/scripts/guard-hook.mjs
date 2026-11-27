@@ -10335,7 +10335,7 @@ function captureCrash(err, deps) {
 var scrubSecrets = scrubText;
 
 // src/core/version.ts
-var VERSION = "0.4.31";
+var VERSION = "0.4.32";
 
 // src/hook-worker.ts
 function isHookWorker() {
